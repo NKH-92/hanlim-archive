@@ -1,9 +1,12 @@
 import {
   changeUserPassword,
+  clearLoginFailures,
   createSessionCookie,
   expiredSessionCookie,
   getMissingSetup,
+  isLoginLocked,
   readSession,
+  recordLoginFailure,
   validateUser
 } from "./auth.js";
 import {
@@ -45,6 +48,7 @@ import {
   addDocumentsToSet,
   approveUser,
   buildFloorPlanLayout,
+  checkoutDocument,
   createDocument,
   createSignupRequest,
   configureRackCounts,
@@ -61,10 +65,12 @@ import {
   getDisposalLogs,
   getDocument,
   getDocumentAuditLogs,
+  getDocumentCheckoutLogs,
   getDocumentMovementLogs,
   getDocumentQualitySummary,
   getDocumentSet,
   getDocumentSetDocuments,
+  getDocumentSetLogs,
   getDocumentSets,
   getDocumentTags,
   getDocumentsForExport,
@@ -81,6 +87,7 @@ import {
   rejectUser,
   removeDocumentFromSet,
   restoreDocument,
+  returnDocument,
   searchDocuments,
   updateDocument,
   upsertCategory,
@@ -122,7 +129,7 @@ async function route(request, env) {
   if (path === "/login" && request.method === "GET") {
     return loginPage({
       returnUrl: url.searchParams.get("returnUrl") || "/",
-      error: url.searchParams.has("error"),
+      error: clean(url.searchParams.get("error")),
       signupSubmitted: url.searchParams.has("signup"),
       setupWarning: getMissingSetup(env)
     });
@@ -319,11 +326,19 @@ async function handleLogin(request, env) {
   const username = clean(form.get("username"));
   const password = String(form.get("password") ?? "");
   const returnUrl = sanitizeReturnUrl(clean(form.get("returnUrl")) || "/");
+
+  if (await isLoginLocked(env, username)) {
+    return redirect(`/login?error=locked&returnUrl=${encodeURIComponent(returnUrl)}`);
+  }
+
   const user = await validateUser(env, username, password);
 
   if (!user) {
+    await recordLoginFailure(env, username);
     return redirect(`/login?error=1&returnUrl=${encodeURIComponent(returnUrl)}`);
   }
+
+  await clearLoginFailures(env, username);
 
   const secureCookie = new URL(request.url).protocol === "https:";
   const destination = returnUrl === "/" ? (user.role === "Admin" ? "/admin" : "/app") : returnUrl;
@@ -556,19 +571,20 @@ async function handleDocumentRoute(request, env, session, routeInfo) {
   const { id, action } = routeInfo;
 
   if (request.method === "GET" && action === "details") {
-    const [document, tags, movementLogs, disposalLogs, auditLogs] = await Promise.all([
+    const [document, tags, movementLogs, disposalLogs, auditLogs, checkoutLogs] = await Promise.all([
       getDocument(env, id),
       getDocumentTags(env, id),
       getDocumentMovementLogs(env, id),
       getDisposalLogs(env, id),
-      getDocumentAuditLogs(env, id)
+      getDocumentAuditLogs(env, id),
+      getDocumentCheckoutLogs(env, id)
     ]);
 
     if (!document) {
       return notFoundPage(session);
     }
 
-    return documentDetailsPage({ session, document, tags, movementLogs, disposalLogs, auditLogs });
+    return documentDetailsPage({ session, document, tags, movementLogs, disposalLogs, auditLogs, checkoutLogs });
   }
 
   if (request.method === "GET" && action === "edit") {
@@ -701,6 +717,36 @@ async function handleDocumentRoute(request, env, session, routeInfo) {
     return redirect(`/documents/${id}?toast=moved`);
   }
 
+  if (request.method === "POST" && action === "checkout") {
+    const denied = requireAdmin(session);
+    if (denied) {
+      return denied;
+    }
+
+    const form = await request.formData();
+    const result = await checkoutDocument(env, id, {
+      borrower: clean(form.get("borrower")),
+      purpose: clean(form.get("purpose"))
+    }, session.displayName, session.role);
+    if (!result.ok) {
+      return errorPage(result.message, session, 400);
+    }
+    return redirect(`/documents/${id}?toast=checked-out`);
+  }
+
+  if (request.method === "POST" && action === "return") {
+    const denied = requireAdmin(session);
+    if (denied) {
+      return denied;
+    }
+
+    const result = await returnDocument(env, id, session.displayName, session.role);
+    if (!result.ok) {
+      return errorPage(result.message, session, 400);
+    }
+    return redirect(`/documents/${id}?toast=returned`);
+  }
+
   if (request.method === "POST" && action === "dispose") {
     const denied = requireAdmin(session);
     if (denied) {
@@ -755,9 +801,10 @@ async function renderSetDetails(env, session, id, options = {}) {
     return notFoundPage(session);
   }
 
-  const [documents, racks] = await Promise.all([
+  const [documents, racks, logs] = await Promise.all([
     getDocumentSetDocuments(env, id),
-    getRackSummaries(env)
+    getRackSummaries(env),
+    getDocumentSetLogs(env, id)
   ]);
 
   let addCandidates = null;
@@ -772,6 +819,7 @@ async function renderSetDetails(env, session, id, options = {}) {
     set,
     documents,
     racks,
+    logs,
     addQuery: options.addQuery || "",
     addCandidates,
     addResult: options.addResult || null,
@@ -833,7 +881,7 @@ async function handleSetRoute(request, env, session, routeInfo) {
       return denied;
     }
 
-    const result = await deleteDocumentSet(env, id);
+    const result = await deleteDocumentSet(env, id, session.displayName);
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
@@ -853,7 +901,7 @@ async function handleSetRoute(request, env, session, routeInfo) {
 
     const form = await request.formData();
     const documentId = Number(form.get("documentId"));
-    const result = await removeDocumentFromSet(env, id, documentId);
+    const result = await removeDocumentFromSet(env, id, documentId, session.displayName);
 
     if (!result.ok) {
       return renderSetDetails(env, session, id, { error: result.message });
@@ -875,7 +923,7 @@ async function handleAddSetDocuments(request, env, session, setId) {
   const documentId = Number(form.get("documentId"));
 
   if (documentId) {
-    const { added } = await addDocumentsToSet(env, setId, [documentId]);
+    const { added } = await addDocumentsToSet(env, setId, [documentId], session.displayName);
     return renderSetDetails(env, session, setId, {
       addQuery: clean(form.get("add-q")),
       addResult: { added, missing: [] }
@@ -893,7 +941,7 @@ async function handleAddSetDocuments(request, env, session, setId) {
   }
 
   const { documents, missing } = await findDocumentsByNumbers(env, numbers);
-  const { added } = await addDocumentsToSet(env, setId, documents.map((document) => document.id));
+  const { added } = await addDocumentsToSet(env, setId, documents.map((document) => document.id), session.displayName);
 
   return renderSetDetails(env, session, setId, { addResult: { added, missing } });
 }

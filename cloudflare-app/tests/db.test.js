@@ -2,15 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  addDocumentsToSet,
   buildFloorPlanLayout,
   buildViewerFacets,
+  checkoutDocument,
   compactSearchText,
+  deleteDocumentSet,
   documentToViewerItem,
   disposeDocument,
   levenshteinDistance,
   parseDocumentNumberList,
+  removeDocumentFromSet,
+  returnDocument,
   scoreDocumentMatch,
-  searchTokens
+  searchTokens,
+  upsertDocumentSet
 } from "../src/db.js";
 
 test("parseDocumentNumberList splits, trims, and dedupes pasted numbers", () => {
@@ -121,6 +127,184 @@ test("disposeDocument writes logs after a successful status update", async () =>
   assert.equal(result.ok, true);
   assert.equal(env.batchCalls, 1);
 });
+
+test("checkoutDocument rejects disposed or already checked-out documents", async () => {
+  const disposedEnv = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ status: "disposed" }) : null)
+  });
+  const disposedResult = await checkoutDocument(disposedEnv, 1, { borrower: "김감사" }, "관리자");
+  assert.equal(disposedResult.ok, false);
+  assert.equal(disposedEnv.state.batches.length, 0);
+
+  const outEnv = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ checkout_borrower: "홍길동" }) : null)
+  });
+  const outResult = await checkoutDocument(outEnv, 1, { borrower: "김감사" }, "관리자");
+  assert.equal(outResult.ok, false);
+  assert.match(outResult.message, /홍길동/);
+  assert.equal(outEnv.state.batches.length, 0);
+});
+
+test("checkoutDocument records the checkout and an audit log", async () => {
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null)
+  });
+
+  const missingBorrower = await checkoutDocument(env, 1, { borrower: " " }, "관리자");
+  assert.equal(missingBorrower.ok, false);
+
+  const result = await checkoutDocument(env, 1, { borrower: "홍길동", purpose: "불시감사 대응" }, "관리자", "Admin");
+  assert.equal(result.ok, true);
+  assert.equal(env.state.batches.length, 1);
+  const sqls = env.state.batches[0].map((statement) => statement.sql);
+  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_checkouts")));
+  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_audit_logs")));
+});
+
+test("returnDocument closes the active checkout and audits, or fails when none is open", async () => {
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ checkout_borrower: "홍길동" }) : null),
+    run: (sql) => (sql.includes("UPDATE document_checkouts") ? 1 : 1)
+  });
+  const result = await returnDocument(env, 1, "관리자", "Admin");
+  assert.equal(result.ok, true);
+  assert.ok(env.state.calls.some((call) => call.type === "run" && call.sql.includes("INSERT INTO document_audit_logs")));
+
+  const noneEnv = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null),
+    run: (sql) => (sql.includes("UPDATE document_checkouts") ? 0 : 1)
+  });
+  const noneResult = await returnDocument(noneEnv, 1, "관리자", "Admin");
+  assert.equal(noneResult.ok, false);
+  assert.ok(!noneEnv.state.calls.some((call) => call.sql.includes("INSERT INTO document_audit_logs")));
+});
+
+test("disposeDocument refuses documents that are checked out", async () => {
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ checkout_borrower: "홍길동" }) : null)
+  });
+
+  const result = await disposeDocument(env, 1, "관리자", "폐기 사유", "Admin");
+
+  assert.equal(result.ok, false);
+  assert.match(result.message, /반출 중/);
+  assert.equal(env.state.batches.length, 0);
+});
+
+test("upsertDocumentSet writes create and update logs", async () => {
+  const createEnv = recordingEnv({
+    first: (sql) => (sql.includes("INSERT INTO document_sets") ? { id: 9 } : null)
+  });
+  const created = await upsertDocumentSet(createEnv, { name: "정기감사 준비문서" }, "관리자");
+  assert.equal(created.ok, true);
+  const createLog = createEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
+  assert.ok(createLog);
+  assert.equal(createLog.args[2], "create");
+
+  const updateEnv = recordingEnv({ run: () => 1 });
+  const updated = await upsertDocumentSet(updateEnv, { id: 9, name: "정기감사 준비문서" }, "관리자");
+  assert.equal(updated.ok, true);
+  const updateLog = updateEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
+  assert.ok(updateLog);
+  assert.equal(updateLog.args[2], "update");
+});
+
+test("addDocumentsToSet logs which document numbers were actually added", async () => {
+  const env = recordingEnv({
+    batch: (statements) => statements.map((_, index) => ({ meta: { changes: index === 0 ? 1 : 0 } })),
+    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null),
+    all: (sql) => (sql.includes("FROM documents") ? [{ document_number: "MR-2026-001" }] : [])
+  });
+
+  const { added } = await addDocumentsToSet(env, 3, [10, 11], "관리자");
+
+  assert.equal(added, 1);
+  const log = env.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
+  assert.ok(log);
+  assert.equal(log.args[2], "add");
+  assert.match(log.args[4], /MR-2026-001/);
+});
+
+test("removeDocumentFromSet and deleteDocumentSet write remove and delete logs", async () => {
+  const removeEnv = recordingEnv({
+    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null),
+    all: (sql) => (sql.includes("FROM documents") ? [{ document_number: "PV-2026-014" }] : []),
+    run: () => 1
+  });
+  const removed = await removeDocumentFromSet(removeEnv, 3, 10, "관리자");
+  assert.equal(removed.ok, true);
+  const removeLog = removeEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
+  assert.equal(removeLog.args[2], "remove");
+  assert.match(removeLog.args[4], /PV-2026-014/);
+
+  const deleteEnv = recordingEnv({
+    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null)
+  });
+  const deleted = await deleteDocumentSet(deleteEnv, 3, "관리자");
+  assert.equal(deleted.ok, true);
+  const deleteLog = deleteEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
+  assert.equal(deleteLog.args[2], "delete");
+});
+
+function sampleDocument(overrides = {}) {
+  return {
+    id: 1,
+    storage_code: "ARC-000001",
+    document_number: "MR-001",
+    revision_number: "Rev.0",
+    document_name: "문서",
+    category_name: "제조기록서",
+    category_id: 1,
+    rack_slot_id: 1,
+    rack_face: "A",
+    status: "active",
+    rack_code: "1-01",
+    zone_number: 1,
+    rack_number: 1,
+    column_number: 1,
+    shelf_number: 1,
+    slot_code: "1-1",
+    note: "",
+    ...overrides
+  };
+}
+
+function recordingEnv({ first = () => null, all = () => [], run = () => 1, batch = null } = {}) {
+  const state = { calls: [], batches: [] };
+  const env = {
+    state,
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...args) {
+            return {
+              sql,
+              args,
+              async first() {
+                state.calls.push({ sql, args, type: "first" });
+                return first(sql, args);
+              },
+              async all() {
+                state.calls.push({ sql, args, type: "all" });
+                return { results: all(sql, args) };
+              },
+              async run() {
+                state.calls.push({ sql, args, type: "run" });
+                return { meta: { changes: run(sql, args) } };
+              }
+            };
+          }
+        };
+      },
+      async batch(statements) {
+        state.batches.push(statements.map((statement) => ({ sql: statement.sql, args: statement.args })));
+        return batch ? batch(statements) : statements.map(() => ({ meta: { changes: 1 } }));
+      }
+    }
+  };
+
+  return env;
+}
 
 function envForDispose({ updateChanges }) {
   const env = {

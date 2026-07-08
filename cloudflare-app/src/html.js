@@ -60,7 +60,9 @@ export function loginPage({ returnUrl, error, setupWarning, signupSubmitted }) {
         <p class="eyebrow">로그인</p>
         <h2>문서고 검색 시작</h2>
         ${setupWarning ? alertWarning(setupWarning) : ""}
-        ${error ? alertDanger("아이디 또는 비밀번호가 올바르지 않습니다.") : ""}
+        ${error ? alertDanger(error === "locked"
+          ? "로그인 실패가 반복되어 이 계정은 잠시 잠금되었습니다. 10분 후 다시 시도하세요."
+          : "아이디 또는 비밀번호가 올바르지 않습니다.") : ""}
         ${signupSubmitted ? `<div class="alert success" role="alert">가입 요청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.</div>` : ""}
         <form method="post" action="/login" class="stack">
           <input type="hidden" name="returnUrl" value="${escapeHtml(returnUrl)}">
@@ -374,7 +376,7 @@ export function moveFormPage({ session, document, slots, error = "" }) {
   `, session);
 }
 
-export function documentDetailsPage({ session, document, tags, movementLogs, disposalLogs, auditLogs }) {
+export function documentDetailsPage({ session, document, tags, movementLogs, disposalLogs, auditLogs, checkoutLogs = [] }) {
   const isAdmin = session.role === "Admin";
   return page(document.document_name, `
     <section class="page-head">
@@ -385,6 +387,7 @@ export function documentDetailsPage({ session, document, tags, movementLogs, dis
       </div>
       <div class="head-actions">
         ${statusBadge(document.status)}
+        ${checkoutBadge(document.checkout_borrower)}
         ${isAdmin ? documentActions(document) : ""}
       </div>
     </section>
@@ -396,10 +399,12 @@ export function documentDetailsPage({ session, document, tags, movementLogs, dis
       </div>
       <a class="button secondary" href="/documents?q=${encodeURIComponent(document.rack_code)}">같은 랙 문서 보기</a>
     </section>
+    ${checkoutPanel(document, isAdmin)}
     <div class="tab-nav" role="tablist" aria-label="문서 상세 정보">
       <button role="tab" aria-selected="true" data-tab="info" id="tab-info" aria-controls="panel-info">기본 정보</button>
       <button role="tab" aria-selected="false" data-tab="audit" id="tab-audit" aria-controls="panel-audit">감사 이력 <span class="tab-count">${auditLogs.length}</span></button>
       <button role="tab" aria-selected="false" data-tab="movement" id="tab-movement" aria-controls="panel-movement">이동 이력 <span class="tab-count">${movementLogs.length}</span></button>
+      <button role="tab" aria-selected="false" data-tab="checkout" id="tab-checkout" aria-controls="panel-checkout">반출 이력 <span class="tab-count">${checkoutLogs.length}</span></button>
       <button role="tab" aria-selected="false" data-tab="disposal" id="tab-disposal" aria-controls="panel-disposal">폐기 이력 <span class="tab-count">${disposalLogs.length}</span></button>
     </div>
     <div class="tab-panel" id="panel-info" role="tabpanel" aria-labelledby="tab-info">
@@ -409,17 +414,58 @@ export function documentDetailsPage({ session, document, tags, movementLogs, dis
         ${detail("보관코드", document.storage_code)}
         ${detail("대분류", document.category_name)}
         ${detail("태그", tags.length ? tags.map((t) => t.name).join(", ") : "-")}
-        ${detail("상태", document.status === "active" ? "보관중" : "폐기")}
+        ${detail("상태", document.status === "active" ? (document.checkout_borrower ? "보관중 (반출 중)" : "보관중") : "폐기")}
         ${detail("비고", document.note || "-")}
       </section>
       ${renderMiniVisualizer(document)}
     </div>
     <div class="tab-panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" hidden><section class="panel">${timeline(auditLogs, renderAuditLog, "감사 이력이 없습니다.")}</section></div>
     <div class="tab-panel" id="panel-movement" role="tabpanel" aria-labelledby="tab-movement" hidden><section class="panel">${timeline(movementLogs, renderMovementLog, "이동 이력이 없습니다.")}</section></div>
+    <div class="tab-panel" id="panel-checkout" role="tabpanel" aria-labelledby="tab-checkout" hidden><section class="panel">${timeline(checkoutLogs, renderCheckoutLog, "반출 이력이 없습니다.")}</section></div>
     <div class="tab-panel" id="panel-disposal" role="tabpanel" aria-labelledby="tab-disposal" hidden><section class="panel">${timeline(disposalLogs, renderDisposalLog, "폐기 이력이 없습니다.")}</section></div>
     ${isAdmin && document.status === "active" ? disposeModal(document) : ""}
     ${isAdmin && document.status !== "active" ? deleteModal(document) : ""}
   `, session);
+}
+
+function checkoutPanel(document, isAdmin) {
+  if (document.checkout_borrower) {
+    return `
+    <section class="panel checkout-panel is-out">
+      <div class="section-title">
+        <div><p class="eyebrow">반출 상태</p><h2>반출 중 — 실물이 랙에 없습니다</h2></div>
+        <span class="count-badge">${escapeHtml(document.checkout_at || "")}</span>
+      </div>
+      <p>반출자 <strong>${escapeHtml(document.checkout_borrower)}</strong>${document.checkout_purpose ? ` · 용도: ${escapeHtml(document.checkout_purpose)}` : ""}</p>
+      ${isAdmin ? `<form method="post" action="/documents/${document.id}/return" data-confirm="이 문서를 반납 처리할까요?"><button type="submit" class="button">반납 처리</button></form>` : ""}
+    </section>`;
+  }
+
+  if (!isAdmin || document.status !== "active") {
+    return "";
+  }
+
+  return `
+    <section class="panel checkout-panel">
+      <div class="section-title"><div><p class="eyebrow">반출 상태</p><h2>랙에 보관 중</h2></div></div>
+      <form method="post" action="/documents/${document.id}/checkout" class="checkout-form">
+        <label>반출자 <em>*</em><input name="borrower" required placeholder="문서를 가져가는 사람"></label>
+        <label>용도<input name="purpose" placeholder="예: 불시감사 대응, 데이터 확인"></label>
+        <button type="submit" class="button">반출 기록</button>
+      </form>
+    </section>`;
+}
+
+function renderCheckoutLog(log) {
+  const title = log.returned_at
+    ? `반출 → 반납 완료: ${log.borrower}`
+    : `반출 중: ${log.borrower}`;
+  const meta = `기록: ${log.checked_out_by} / ${log.checked_out_at}`;
+  const bodyParts = [
+    log.purpose ? `용도: ${log.purpose}` : "",
+    log.returned_at ? `반납: ${log.returned_by || "-"} / ${log.returned_at}` : "아직 반납되지 않았습니다."
+  ].filter(Boolean);
+  return timelineItem(title, meta, bodyParts.join(" · "));
 }
 
 export function documentImportPage({ session, result = null, error = "" }) {
@@ -537,9 +583,10 @@ export function setFormPage({ session, values = {}, action, title, error = "" })
   `, session);
 }
 
-export function setDetailsPage({ session, set, documents, racks, addQuery = "", addCandidates = null, addResult = null, error = "" }) {
+export function setDetailsPage({ session, set, documents, racks, logs = [], addQuery = "", addCandidates = null, addResult = null, error = "" }) {
   const isAdmin = session.role === "Admin";
   const disposedCount = documents.filter((doc) => doc.status !== "active").length;
+  const checkedOutCount = documents.filter((doc) => doc.checkout_borrower).length;
   const rackCount = new Set(documents.map((doc) => doc.rack_code)).size;
   const zoneCount = new Set(documents.map((doc) => doc.zone_number)).size;
   const hits = new Set(documents.map((doc) => `${doc.rack_code}:${doc.rack_face}`));
@@ -555,9 +602,11 @@ export function setDetailsPage({ session, set, documents, racks, addQuery = "", 
     ${set.description ? `<p class="muted">${escapeHtml(set.description)}</p>` : ""}
     ${error ? alertDanger(error) : ""}
     ${addResult ? setAddResultView(addResult) : ""}
+    ${checkedOutCount ? alertWarning(`반출 중 문서 ${checkedOutCount}건 — 랙에 없으므로 감사 전 회수가 필요합니다. 목록에서 반출자를 확인하세요.`) : ""}
     <section class="metric-strip" aria-label="세트 요약">
       ${metric("문서", documents.length, "세트에 등록된 문서")}
       ${metric("보관 랙", rackCount, `${zoneCount}개 구역`)}
+      ${metric("반출 중", checkedOutCount, checkedOutCount ? "회수 필요" : "없음")}
       ${metric("폐기 포함", disposedCount, disposedCount ? "목록 확인 필요" : "없음")}
     </section>
     <section class="panel">
@@ -570,7 +619,16 @@ export function setDetailsPage({ session, set, documents, racks, addQuery = "", 
       ${archiveMap(racks, hits)}
     </section>` : ""}
     ${isAdmin ? setAdminTools(set, addQuery, addCandidates) : ""}
+    ${logs.length ? `<section class="panel">
+      ${sectionHeader("세트 변경 이력", `${logs.length}건`)}
+      ${timeline(logs, renderSetLog, "변경 이력이 없습니다.")}
+    </section>` : ""}
   `, session);
+}
+
+function renderSetLog(log) {
+  const labels = { create: "세트 생성", update: "정보 수정", delete: "세트 삭제", add: "문서 추가", remove: "문서 제외" };
+  return timelineItem(labels[log.action] || log.action, `${log.actor} / ${log.created_at}`, log.details || "");
 }
 
 function setDocumentTable(set, documents, isAdmin) {
@@ -590,7 +648,7 @@ function setDocumentTable(set, documents, isAdmin) {
           <td>${escapeHtml(doc.revision_number)}</td>
           <td><a href="/documents/${doc.id}">${escapeHtml(doc.document_name)}</a></td>
           <td>${escapeHtml(doc.category_name)}</td>
-          <td>${statusBadge(doc.status)}</td>
+          <td>${statusBadge(doc.status)}${checkoutBadge(doc.checkout_borrower)}</td>
           ${isAdmin ? `<td><form method="post" action="/sets/${set.id}/remove" data-confirm="세트에서 이 문서를 제외할까요?"><input type="hidden" name="documentId" value="${doc.id}"><button type="submit" class="danger-button sm">제외</button></form></td>` : ""}
         </tr>
       `).join("")}</tbody>
@@ -850,6 +908,7 @@ function viewerDocumentCard(document) {
         <div class="result-title">
           <a href="/documents/${document.id}">${escapeHtml(document.documentName || "문서명 없음")}</a>
           ${statusBadge(document.status)}
+          ${document.checkedOut ? checkoutBadge(document.checkoutBorrower || "확인 필요") : ""}
         </div>
         <dl class="result-meta">
           <div><dt>문서번호</dt><dd>${escapeHtml(document.documentNumber)}</dd></div>
@@ -992,6 +1051,7 @@ function documentCard(doc, opts = {}) {
         <div class="result-title">
           <a href="/documents/${doc.id}">${escapeHtml(doc.document_name)}</a>
           ${statusBadge(doc.status)}
+          ${checkoutBadge(doc.checkout_borrower)}
         </div>
         <dl class="result-meta">
           <div><dt>문서번호</dt><dd>${escapeHtml(doc.document_number)}</dd></div>
@@ -1069,6 +1129,13 @@ function documentListUrl({ query, filters = {}, page = 1 }) {
 
 function statusBadge(status) {
   return `<span class="status ${status === "active" ? "active" : "disposed"}">${status === "active" ? "보관중" : "폐기"}</span>`;
+}
+
+function checkoutBadge(borrower) {
+  if (!borrower) {
+    return "";
+  }
+  return `<span class="status checked-out" title="반출자: ${escapeHtml(borrower)}">반출 중 · ${escapeHtml(borrower)}</span>`;
 }
 
 function bulkActionBar() {
@@ -1575,6 +1642,11 @@ function styles() {
     .status.active { background: #e8f7f0; color: var(--success); }
     .status.disposed { background: #fdecea; color: var(--danger); }
     .status.pending { background: #fff7dd; color: var(--warning); }
+    .status.checked-out { background: #fff3e0; color: #b45309; }
+    .checkout-panel.is-out { border-left: 4px solid var(--warning); }
+    .checkout-form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }
+    .checkout-form label { flex: 1 1 220px; display: grid; gap: .35rem; }
+    .checkout-form button { flex: 0 0 auto; }
     .category-index { display: grid; gap: .55rem; }
     .category-node { border: 1px solid var(--line); border-radius: 6px; padding: .75rem; background: #fff; }
     .category-node summary { display: flex; justify-content: space-between; gap: 1rem; cursor: pointer; font-weight: 900; }

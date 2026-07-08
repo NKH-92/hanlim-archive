@@ -282,11 +282,14 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
       rs.column_number,
       rs.shelf_number,
       rs.slot_code,
+      co.borrower AS checkout_borrower,
+      co.checked_out_at AS checkout_at,
       GROUP_CONCAT(t.name, '; ') AS tag_names
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     LEFT JOIN document_tags dt ON dt.document_id = d.id
     LEFT JOIN tags t ON t.id = dt.tag_id
     ${where}
@@ -356,11 +359,14 @@ async function searchDocumentsLegacy(env, query, limit = 100, filters = {}) {
       r.shelf_count,
       rs.column_number,
       rs.shelf_number,
-      rs.slot_code
+      rs.slot_code,
+      co.borrower AS checkout_borrower,
+      co.checked_out_at AS checkout_at
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     WHERE (
       ? = ''
       OR d.storage_code LIKE ?
@@ -460,7 +466,9 @@ export function documentToViewerItem(document) {
     },
     matchReason: clean(document.match_reason),
     relevanceScore: Number(document.relevance_score || 0),
-    updatedAt: clean(document.updated_at)
+    updatedAt: clean(document.updated_at),
+    checkedOut: Boolean(document.checkout_borrower),
+    checkoutBorrower: clean(document.checkout_borrower)
   };
 }
 
@@ -770,11 +778,15 @@ export async function getDocument(env, id) {
       r.shelf_count,
       rs.column_number,
       rs.shelf_number,
-      rs.slot_code
+      rs.slot_code,
+      co.borrower AS checkout_borrower,
+      co.purpose AS checkout_purpose,
+      co.checked_out_at AS checkout_at
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     WHERE d.id = ?
   `).bind(id).first();
 }
@@ -1104,11 +1116,14 @@ export async function getRackDocuments(env, rackId) {
       r.rack_number,
       rs.column_number,
       rs.shelf_number,
-      rs.slot_code
+      rs.slot_code,
+      co.borrower AS checkout_borrower,
+      co.checked_out_at AS checkout_at
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     WHERE r.id = ?
     ORDER BY d.rack_face, rs.column_number, rs.shelf_number, d.document_number
   `).bind(rackId).all();
@@ -1588,6 +1603,10 @@ export async function disposeDocument(env, id, actor, reason, actorRole = "Admin
     return { ok: true };
   }
 
+  if (doc.checkout_borrower) {
+    return { ok: false, message: `반출 중인 문서(반출자: ${doc.checkout_borrower})는 반납 처리 후 폐기할 수 있습니다.` };
+  }
+
   const tags = await getDocumentTags(env, id);
   const disposed = { ...doc, status: "disposed" };
 
@@ -1651,6 +1670,84 @@ export async function restoreDocument(env, id, actor, actorRole = "Admin") {
   ]);
 
   return { ok: true };
+}
+
+export async function checkoutDocument(env, id, values, actor, actorRole = "Admin") {
+  const doc = await getDocument(env, id);
+  if (!doc) {
+    return { ok: false, message: "문서를 찾을 수 없습니다." };
+  }
+
+  if (doc.status === "disposed") {
+    return { ok: false, message: "폐기 상태 문서는 반출할 수 없습니다." };
+  }
+
+  if (doc.checkout_borrower) {
+    return { ok: false, message: `이미 반출 중인 문서입니다(반출자: ${doc.checkout_borrower}). 먼저 반납 처리하세요.` };
+  }
+
+  const borrower = clean(values.borrower);
+  if (!borrower) {
+    return { ok: false, message: "반출자 이름을 입력하세요." };
+  }
+
+  const purpose = clean(values.purpose);
+
+  try {
+    await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO document_checkouts (document_id, borrower, purpose, checked_out_by)
+        VALUES (?, ?, ?, ?)
+      `).bind(id, borrower, purpose || null, actor || "알 수 없음"),
+      auditDocumentStatement(env, doc, "checkout", actor, actorRole, `문서 반출 (반출자: ${borrower})`, {
+        borrower,
+        purpose
+      })
+    ]);
+  } catch (error) {
+    if (error.message.includes("UNIQUE")) {
+      return { ok: false, message: "이미 반출 중인 문서입니다. 먼저 반납 처리하세요." };
+    }
+    throw error;
+  }
+
+  return { ok: true };
+}
+
+export async function returnDocument(env, id, actor, actorRole = "Admin") {
+  const doc = await getDocument(env, id);
+  if (!doc) {
+    return { ok: false, message: "문서를 찾을 수 없습니다." };
+  }
+
+  const updateResult = await env.DB.prepare(`
+    UPDATE document_checkouts
+    SET returned_at = CURRENT_TIMESTAMP,
+        returned_by = ?
+    WHERE document_id = ? AND returned_at IS NULL
+  `).bind(actor || "알 수 없음", id).run();
+
+  if (!hasChanged(updateResult)) {
+    return { ok: false, message: "반출 중인 문서가 아닙니다." };
+  }
+
+  await auditDocument(env, doc, "return", actor, actorRole, `문서 반납 (반출자: ${doc.checkout_borrower || "-"})`, {
+    borrower: doc.checkout_borrower || "",
+    purpose: doc.checkout_purpose || ""
+  });
+
+  return { ok: true };
+}
+
+export async function getDocumentCheckoutLogs(env, documentId) {
+  const result = await env.DB.prepare(`
+    SELECT id, borrower, purpose, checked_out_by, checked_out_at, returned_by, returned_at
+    FROM document_checkouts
+    WHERE document_id = ?
+    ORDER BY checked_out_at DESC, id DESC
+  `).bind(documentId).all();
+
+  return result.results ?? [];
 }
 
 export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음", actorRole = "Admin") {
@@ -1983,12 +2080,15 @@ export async function getDocumentSetDocuments(env, setId) {
       r.rack_number,
       rs.column_number,
       rs.shelf_number,
-      rs.slot_code
+      rs.slot_code,
+      co.borrower AS checkout_borrower,
+      co.checked_out_at AS checkout_at
     FROM document_set_items i
     JOIN documents d ON d.id = i.document_id
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     WHERE i.set_id = ?
     ORDER BY r.zone_number, r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number
   `).bind(setId).all();
@@ -2015,7 +2115,12 @@ export async function upsertDocumentSet(env, values, actor = "") {
         WHERE id = ?
       `).bind(name, clean(values.description) || null, values.id).run();
 
-      return result.meta.changes > 0 ? { ok: true, id: values.id } : { ok: false, message: "세트를 찾을 수 없습니다." };
+      if (result.meta.changes === 0) {
+        return { ok: false, message: "세트를 찾을 수 없습니다." };
+      }
+
+      await logDocumentSetAction(env, values.id, name, "update", actor, "세트 정보 수정");
+      return { ok: true, id: values.id };
     }
 
     const result = await env.DB.prepare(`
@@ -2024,6 +2129,7 @@ export async function upsertDocumentSet(env, values, actor = "") {
       RETURNING id
     `).bind(name, clean(values.description) || null, actor || null).first();
 
+    await logDocumentSetAction(env, result.id, name, "create", actor, "세트 생성");
     return { ok: true, id: result.id };
   } catch (error) {
     return {
@@ -2033,16 +2139,26 @@ export async function upsertDocumentSet(env, values, actor = "") {
   }
 }
 
-export async function deleteDocumentSet(env, id) {
+export async function deleteDocumentSet(env, id, actor = "") {
+  const set = await getDocumentSet(env, id);
+  if (!set) {
+    return { ok: false, message: "세트를 찾을 수 없습니다." };
+  }
+
   const results = await env.DB.batch([
     env.DB.prepare("DELETE FROM document_set_items WHERE set_id = ?").bind(id),
     env.DB.prepare("DELETE FROM document_sets WHERE id = ?").bind(id)
   ]);
 
-  return results[1].meta.changes > 0 ? { ok: true } : { ok: false, message: "세트를 찾을 수 없습니다." };
+  if (results[1].meta.changes === 0) {
+    return { ok: false, message: "세트를 찾을 수 없습니다." };
+  }
+
+  await logDocumentSetAction(env, id, set.name, "delete", actor, "세트 삭제");
+  return { ok: true };
 }
 
-export async function addDocumentsToSet(env, setId, documentIds) {
+export async function addDocumentsToSet(env, setId, documentIds, actor = "") {
   const ids = [...new Set(documentIds)].filter((id) => Number.isInteger(id) && id > 0);
   if (!ids.length) {
     return { added: 0 };
@@ -2060,12 +2176,19 @@ export async function addDocumentsToSet(env, setId, documentIds) {
 
   if (added > 0) {
     await touchDocumentSet(env, setId);
+
+    const addedIds = ids.filter((_, index) => (results[index]?.meta?.changes || 0) > 0);
+    const [set, numbers] = await Promise.all([
+      getDocumentSet(env, setId),
+      getDocumentNumbersByIds(env, addedIds)
+    ]);
+    await logDocumentSetAction(env, setId, set?.name ?? "", "add", actor, `문서 ${added}건 추가: ${summarizeNumbers(numbers)}`);
   }
 
   return { added };
 }
 
-export async function removeDocumentFromSet(env, setId, documentId) {
+export async function removeDocumentFromSet(env, setId, documentId, actor = "") {
   const result = await env.DB.prepare(`
     DELETE FROM document_set_items
     WHERE set_id = ? AND document_id = ?
@@ -2073,10 +2196,59 @@ export async function removeDocumentFromSet(env, setId, documentId) {
 
   if (result.meta.changes > 0) {
     await touchDocumentSet(env, setId);
+
+    const [set, numbers] = await Promise.all([
+      getDocumentSet(env, setId),
+      getDocumentNumbersByIds(env, [documentId])
+    ]);
+    await logDocumentSetAction(env, setId, set?.name ?? "", "remove", actor, `문서 제외: ${numbers[0] ?? `문서 ID ${documentId}`}`);
     return { ok: true };
   }
 
   return { ok: false, message: "세트에서 해당 문서를 찾을 수 없습니다." };
+}
+
+async function logDocumentSetAction(env, setId, setName, action, actor, details = "") {
+  await env.DB.prepare(`
+    INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
+    VALUES (?, ?, ?, ?, ?)
+  `).bind(setId, setName || "이름 없는 세트", action, actor || "알 수 없음", details || null).run();
+}
+
+export async function getDocumentSetLogs(env, setId, limit = 50) {
+  const result = await env.DB.prepare(`
+    SELECT id, set_name, action, actor, details, created_at
+    FROM document_set_logs
+    WHERE set_id = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+  `).bind(setId, Math.max(1, Math.min(Number(limit) || 50, 200))).all();
+
+  return result.results ?? [];
+}
+
+async function getDocumentNumbersByIds(env, documentIds) {
+  const ids = [...new Set(documentIds)].filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) {
+    return [];
+  }
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = await env.DB.prepare(`
+    SELECT document_number
+    FROM documents
+    WHERE id IN (${placeholders})
+    ORDER BY document_number
+  `).bind(...ids).all();
+
+  return (result.results ?? []).map((row) => row.document_number);
+}
+
+function summarizeNumbers(numbers, max = 30) {
+  if (numbers.length <= max) {
+    return numbers.join(", ");
+  }
+  return `${numbers.slice(0, max).join(", ")} 외 ${numbers.length - max}건`;
 }
 
 async function touchDocumentSet(env, setId) {

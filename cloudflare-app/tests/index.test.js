@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import worker from "../src/index.js";
-import { createSessionCookie } from "../src/auth.js";
+import { createPasswordRecord, createSessionCookie } from "../src/auth.js";
 
 const SESSION_SECRET = "test-session-secret-with-at-least-32-characters";
 
@@ -50,6 +50,90 @@ test("viewer search api returns paginated items, facets, and suggestions", async
   assert.equal(payload.facets.categories[0].label, "PV");
   assert.ok(payload.suggestions.length >= 1);
 });
+
+test("locked accounts are redirected with a lock message and no new failure is recorded", async () => {
+  const env = loginThrottleEnv({ locked: true });
+
+  const response = await worker.fetch(loginRequest("someone", "wrong-password"), env);
+
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get("Location"), /error=locked/);
+  assert.ok(!env.state.runs.some((sql) => sql.includes("INSERT INTO login_throttle")));
+});
+
+test("failed logins record a throttle failure", async () => {
+  const env = loginThrottleEnv({ locked: false, user: null });
+
+  const response = await worker.fetch(loginRequest("someone", "wrong-password"), env);
+
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get("Location"), /error=1/);
+  assert.ok(env.state.runs.some((sql) => sql.includes("INSERT INTO login_throttle")));
+});
+
+test("successful logins clear recorded failures", async () => {
+  const record = await createPasswordRecord("correct-password");
+  const env = loginThrottleEnv({
+    locked: false,
+    user: {
+      username: "someone",
+      display_name: "사용자",
+      password_salt: record.salt,
+      password_hash: record.hash,
+      status: "approved",
+      role: "User"
+    }
+  });
+
+  const response = await worker.fetch(loginRequest("someone", "correct-password"), env);
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("Location"), "/app");
+  assert.ok(env.state.runs.some((sql) => sql.includes("DELETE FROM login_throttle")));
+});
+
+function loginRequest(username, password) {
+  return new Request("https://archive.example.com/login", {
+    method: "POST",
+    headers: { Origin: "https://archive.example.com" },
+    body: new URLSearchParams({ username, password })
+  });
+}
+
+function loginThrottleEnv({ locked, user = null }) {
+  const state = { runs: [] };
+
+  return {
+    SESSION_SECRET,
+    state,
+    DB: {
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              async first() {
+                if (sql.includes("FROM login_throttle")) {
+                  return locked ? { locked_until: "2999-01-01 00:00:00" } : null;
+                }
+                if (sql.includes("FROM app_users")) {
+                  return user;
+                }
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                state.runs.push(sql);
+                return { meta: { changes: 1 } };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+}
 
 function userSessionEnv() {
   return {

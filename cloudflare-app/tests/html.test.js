@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { dashboardPage, page, setDetailsPage } from "../src/html.js";
+import { dashboardPage, documentDetailsPage, page, setDetailsPage } from "../src/html.js";
 
 test("page injects csrf token into authenticated post forms", async () => {
   const response = page("Test", `
@@ -143,4 +143,80 @@ test("set details page lists documents in location order with admin tools", asyn
   assert.doesNotMatch(userHtml, /action="\/sets\/5\/add"/);
   assert.doesNotMatch(userHtml, /action="\/sets\/5\/remove"/);
   assert.doesNotMatch(userHtml, /세트 삭제/);
+});
+
+test("set details page warns about checked-out documents and shows set history", async () => {
+  const documents = [{
+    id: 1,
+    storage_code: "ARC-000001",
+    document_number: "MR-2026-001",
+    revision_number: "Rev.0",
+    document_name: "제조기록서",
+    category_name: "제조기록서",
+    status: "active",
+    rack_code: "1-01",
+    zone_number: 1,
+    rack_number: 1,
+    column_number: 1,
+    shelf_number: 1,
+    rack_face: "A",
+    checkout_borrower: "홍길동"
+  }];
+
+  const html = await setDetailsPage({
+    session: { username: "user", displayName: "사용자", role: "User", csrfToken: "csrf-token-123" },
+    set: { id: 5, name: "정기감사 준비문서", description: "" },
+    documents,
+    racks: [{ id: 1, code: "1-01", zone_number: 1, rack_number: 1, document_count: 1 }],
+    logs: [{ id: 1, action: "add", actor: "관리자", details: "문서 1건 추가: MR-2026-001", created_at: "2026-07-08" }]
+  }).text();
+
+  assert.match(html, /반출 중 문서 1건/);
+  assert.match(html, /반출 중 · 홍길동/);
+  assert.match(html, /세트 변경 이력/);
+  assert.match(html, /문서 추가/);
+});
+
+test("document details page offers checkout and return controls to admins", async () => {
+  const baseDocument = {
+    id: 7,
+    storage_code: "ARC-000007",
+    document_number: "PV-2026-014",
+    revision_number: "Rev.1",
+    document_name: "밸리데이션 보고서",
+    category_name: "PV",
+    status: "active",
+    rack_code: "1-01",
+    zone_number: 1,
+    rack_number: 1,
+    column_number: 2,
+    shelf_number: 3,
+    column_count: 3,
+    shelf_count: 4,
+    rack_face: "A",
+    note: ""
+  };
+  const session = { username: "admin", displayName: "관리자", role: "Admin", csrfToken: "csrf-token-123" };
+  const emptyLogs = { tags: [], movementLogs: [], disposalLogs: [], auditLogs: [], checkoutLogs: [] };
+
+  const inRackHtml = await documentDetailsPage({ session, document: baseDocument, ...emptyLogs }).text();
+  assert.match(inRackHtml, /action="\/documents\/7\/checkout"/);
+  assert.doesNotMatch(inRackHtml, /action="\/documents\/7\/return"/);
+
+  const checkedOutHtml = await documentDetailsPage({
+    session,
+    document: { ...baseDocument, checkout_borrower: "홍길동", checkout_purpose: "불시감사 대응", checkout_at: "2026-07-08" },
+    ...emptyLogs
+  }).text();
+  assert.match(checkedOutHtml, /action="\/documents\/7\/return"/);
+  assert.doesNotMatch(checkedOutHtml, /action="\/documents\/7\/checkout"/);
+  assert.match(checkedOutHtml, /반출 중 · 홍길동/);
+
+  const viewerHtml = await documentDetailsPage({
+    session: { username: "user", displayName: "사용자", role: "User", csrfToken: "csrf-token-123" },
+    document: { ...baseDocument, checkout_borrower: "홍길동" },
+    ...emptyLogs
+  }).text();
+  assert.doesNotMatch(viewerHtml, /action="\/documents\/7\/return"/);
+  assert.match(viewerHtml, /반출 중 · 홍길동/);
 });
