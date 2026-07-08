@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "hanlim-archive",
+  "main": "src/index.js",
+  "compatibility_date": "2026-04-13",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hanlim-archive",
+      "database_id": "1262ca00-b431-490c-aad2-539d77d4f73f",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

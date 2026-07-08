@@ -1,0 +1,149 @@
+import { clean, csvEscape, parseCsv } from "./utils.js";
+
+export const DOCUMENT_CSV_HEADER = Object.freeze([
+  "documentNumber",
+  "revisionNumber",
+  "documentName",
+  "category",
+  "rackCode",
+  "rackColumn",
+  "shelfNumber",
+  "rackFace",
+  "tags",
+  "note",
+  "status"
+]);
+
+export function buildDocumentCsv(documents, now = new Date()) {
+  const rows = documents.map((document) => [
+    document.document_number,
+    document.revision_number,
+    document.document_name,
+    document.category_name,
+    document.rack_code,
+    document.column_number,
+    document.shelf_number,
+    document.rack_face,
+    document.tag_names || "",
+    document.note || "",
+    document.status
+  ]);
+  const csv = [DOCUMENT_CSV_HEADER, ...rows]
+    .map((row) => row.map(csvEscape).join(","))
+    .join("\r\n");
+
+  return {
+    body: `\uFEFF${csv}\r\n`,
+    filename: `hanlim-archive-documents-${now.toISOString().slice(0, 10)}.csv`
+  };
+}
+
+export async function readDocumentImportRows(form, limits) {
+  const uploaded = form.get("csvFile");
+
+  if (uploaded && typeof uploaded.text === "function" && uploaded.size > limits.maxBytes) {
+    return { ok: false, error: `CSV 파일은 한 번에 ${limits.maxBytes / 1024}KB 이하만 가져올 수 있습니다.` };
+  }
+
+  const csvText = uploaded && typeof uploaded.text === "function" && uploaded.size > 0
+    ? await uploaded.text()
+    : String(form.get("csvText") ?? "");
+  const csvBytes = new TextEncoder().encode(csvText).length;
+
+  if (csvBytes > limits.maxBytes) {
+    return { ok: false, error: `CSV 내용은 한 번에 ${limits.maxBytes / 1024}KB 이하만 가져올 수 있습니다.` };
+  }
+
+  let rows = [];
+  try {
+    rows = parseCsv(csvText);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+
+  if (!rows.length) {
+    return { ok: false, error: "가져올 CSV 데이터가 없습니다." };
+  }
+
+  if (rows.length > limits.maxRows) {
+    return { ok: false, error: `CSV 가져오기는 한 번에 ${limits.maxRows}건까지 처리합니다. 파일을 나누어 가져오세요.` };
+  }
+
+  return { ok: true, rows };
+}
+
+export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
+  const categoryByName = new Map(categories.map((category) => [category.name.toLowerCase(), category]));
+  const tagByName = new Map(tags.map((tag) => [tag.name.toLowerCase(), tag]));
+  const slotByPosition = new Map(slots.map((slot) => [`${slot.code}|${slot.column_number}|${slot.shelf_number}`, slot]));
+  const slotByLegacyCode = new Map(slots.map((slot) => [`${slot.code}|${slot.slot_code}`, slot]));
+  const slotByLegacyShelf = new Map(slots.map((slot) => [`${slot.code}|${slot.shelf_number}`, slot]));
+  const errors = [];
+  const items = [];
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const rowNumber = index + 2;
+    const row = rows[index];
+    const categoryName = clean(row.category);
+    const rackCode = clean(row.rackCode);
+    const rackColumn = Number(clean(row.rackColumn || row.columnNumber || row.column || "1"));
+    const shelfNumber = Number(clean(row.shelfNumber || row.shelf || row.slotCode || "1"));
+    const legacySlotCode = clean(row.slotCode);
+    const category = categoryByName.get(categoryName.toLowerCase());
+    const slot = slotByPosition.get(`${rackCode}|${rackColumn}|${shelfNumber}`) ??
+      (legacySlotCode ? slotByLegacyCode.get(`${rackCode}|${legacySlotCode}`) : null) ??
+      (legacySlotCode ? slotByLegacyShelf.get(`${rackCode}|${legacySlotCode}`) : null);
+    const tagNames = clean(row.tags)
+      ? clean(row.tags).split(/[;|]/).map((name) => clean(name)).filter(Boolean)
+      : [];
+    const tagIds = [];
+
+    for (const tagName of tagNames) {
+      const tag = tagByName.get(tagName.toLowerCase());
+      if (!tag) {
+        errors.push(`${rowNumber}행: 존재하지 않는 태그(${tagName})`);
+      } else {
+        tagIds.push(tag.id);
+      }
+    }
+
+    if (!category) {
+      errors.push(`${rowNumber}행: 존재하지 않는 대분류(${categoryName || "-"})`);
+    }
+
+    if (!slot) {
+      errors.push(`${rowNumber}행: 존재하지 않는 위치(${rackCode || "-"} / ${rackColumn || "-"}열 / ${shelfNumber || "-"}행)`);
+    }
+
+    const values = {
+      documentNumber: clean(row.documentNumber),
+      revisionNumber: clean(row.revisionNumber || "Rev.0"),
+      documentName: clean(row.documentName),
+      categoryId: category?.id ?? 0,
+      rackSlotId: slot?.id ?? 0,
+      rackFace: clean(row.rackFace || "A").toUpperCase(),
+      note: clean(row.note),
+      tagIds: [...new Set(tagIds)]
+    };
+
+    if (!values.documentNumber || !values.revisionNumber || !values.documentName) {
+      errors.push(`${rowNumber}행: 문서번호, 개정번호, 문서명은 필수입니다.`);
+    }
+
+    if (!["A", "B"].includes(values.rackFace)) {
+      errors.push(`${rowNumber}행: 보관 면은 A 또는 B만 가능합니다.`);
+    }
+
+    if (slot?.is_single_sided && values.rackFace === "B") {
+      errors.push(`${rowNumber}행: 단면 랙은 B면을 선택할 수 없습니다.`);
+    }
+
+    const status = clean(row.status).toLowerCase();
+    items.push({
+      values,
+      status: status === "disposed" || status === "폐기" || clean(row.status) === "?먭린" ? "disposed" : "active"
+    });
+  }
+
+  return { items, errors };
+}

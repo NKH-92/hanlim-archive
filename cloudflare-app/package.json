@@ -1,0 +1,18 @@
+{
+  "name": "hanlim-archive-cloudflare",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/index.js && node --check src/auth.js && node --check src/config.js && node --check src/db.js && node --check src/documentCsv.js && node --check src/html.js && node --check src/routes.js && node --check src/utils.js",
+    "test": "node --test tests/*.test.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply hanlim-archive --local",
+    "db:migrate:remote": "wrangler d1 migrations apply hanlim-archive --remote",
+    "admin:sql": "node scripts/create-admin-sql.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.13.2"
+  }
+}
