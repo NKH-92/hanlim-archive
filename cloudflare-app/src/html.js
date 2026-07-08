@@ -115,21 +115,18 @@ export function dashboardPage({
   const documents = viewerSearch.items || [];
   const suggestions = viewerSearch.suggestions || [];
   const hits = new Set(documents.map((document) => document.location?.rackCode).filter(Boolean));
-  const totalActive = racks.reduce((sum, rack) => sum + Number(rack.active_document_count || 0), 0);
 
   return page("문서 검색", `
     <section class="viewer-hero" aria-labelledby="viewer-title">
       <div class="viewer-hero-copy">
         <p class="eyebrow">통합 검색</p>
         <h1 id="viewer-title">문서를 찾고 실제 위치로 이동하세요.</h1>
-        <p>문서번호, 문서명, 대분류, 태그, 랙 위치를 한 번에 검색하고 도면에서 찾아갈 구역을 바로 확인합니다.</p>
       </div>
       ${viewerSearchForm({ query, suggestions, categories, tags, filters })}
       ${viewerQuickFilters(viewerSearch.facets || {}, { query, filters })}
       <div class="quick-row viewer-recents" data-recent-searches></div>
     </section>
 
-    ${dashboardStats(racks, totalActive, documents, query)}
     ${quality ? dataQualityPanel(quality) : ""}
 
     <section class="viewer-workspace" data-viewer-app>
@@ -794,46 +791,50 @@ function globalSearchForm({ action, query, suggestions, large = false }) {
 }
 
 function viewerSearchForm({ query, suggestions, categories, tags, filters }) {
+  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status].filter(Boolean).length;
   return `
     <form method="get" action="/app" class="viewer-search-form" data-search-form data-viewer-form>
       ${searchInputBlock(query, suggestions)}
-      <div class="viewer-filter-row">
-        <label>대분류
-          <select name="category">
-            <option value="">전체</option>
-            ${categories.map((category) => option(category.id, category.name, filters.categoryId)).join("")}
-          </select>
-        </label>
-        <label>태그
-          <select name="tag">
-            <option value="">전체</option>
-            ${tags.map((tag) => option(tag.id, tag.name, filters.tagId)).join("")}
-          </select>
-        </label>
-        <label>구역
-          <select name="zone">
-            <option value="">전체</option>
-            ${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}
-          </select>
-        </label>
-        <label>상태
-          <select name="status">
-            <option value="">전체</option>
-            ${option("active", "보관중", filters.status)}
-            ${option("disposed", "폐기", filters.status)}
-          </select>
-        </label>
-        <label>정렬
-          <select name="sort">
-            ${option("relevance", "정확도순", filters.sort || "relevance")}
-            ${option("updated", "최신순", filters.sort)}
-            ${option("location", "위치순", filters.sort)}
-            ${option("docnum", "문서번호순", filters.sort)}
-            ${option("category", "대분류순", filters.sort)}
-          </select>
-        </label>
-        <a class="button secondary sm" href="/app">초기화</a>
-      </div>
+      <details class="filter-details" ${activeFilterCount ? "open" : ""}>
+        <summary><i class="fa-solid fa-sliders"></i>상세 필터${activeFilterCount ? `<span class="filter-count">${activeFilterCount}</span>` : ""}</summary>
+        <div class="viewer-filter-row">
+          <label>대분류
+            <select name="category">
+              <option value="">전체</option>
+              ${categories.map((category) => option(category.id, category.name, filters.categoryId)).join("")}
+            </select>
+          </label>
+          <label>태그
+            <select name="tag">
+              <option value="">전체</option>
+              ${tags.map((tag) => option(tag.id, tag.name, filters.tagId)).join("")}
+            </select>
+          </label>
+          <label>구역
+            <select name="zone">
+              <option value="">전체</option>
+              ${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}
+            </select>
+          </label>
+          <label>상태
+            <select name="status">
+              <option value="">전체</option>
+              ${option("active", "보관중", filters.status)}
+              ${option("disposed", "폐기", filters.status)}
+            </select>
+          </label>
+          <label>정렬
+            <select name="sort">
+              ${option("relevance", "정확도순", filters.sort || "relevance")}
+              ${option("updated", "최신순", filters.sort)}
+              ${option("location", "위치순", filters.sort)}
+              ${option("docnum", "문서번호순", filters.sort)}
+              ${option("category", "대분류순", filters.sort)}
+            </select>
+          </label>
+          <a class="button secondary sm" href="/app">초기화</a>
+        </div>
+      </details>
     </form>
   `;
 }
@@ -981,37 +982,25 @@ function viewerUrl({ query, filters = {}, patch = {}, page = 1 }) {
   return text ? `/app?${text}` : "/app";
 }
 
-function dashboardStats(racks, totalActive, documents, query) {
-  const capacity = racks.reduce((sum, rack) => {
-    const sides = readBoolean(rack.is_single_sided) ? 1 : 2;
-    return sum + Number(rack.column_count || 1) * Number(rack.shelf_count || 3) * sides;
-  }, 0);
-  const usage = capacity ? Math.round((totalActive / capacity) * 100) : 0;
-  return `
-    <section class="metric-strip" aria-label="요약">
-      ${metric("운영 랙", racks.length, "전체 보관 랙")}
-      ${metric("보관중 문서", totalActive, "활성 문서")}
-      ${metric("위치 수용량", capacity, `사용률 ${usage}%`)}
-      ${metric(query ? "검색 결과" : "최근 표시", documents.length, query ? "상위 결과" : "최근 문서")}
-    </section>
-  `;
-}
-
 function metric(label, value, caption) {
   return `<article class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(caption)}</small></article>`;
 }
 
 function dataQualityPanel(quality) {
-  const items = [
+  const issues = [
     ["중복 문서번호", quality.duplicateDocumentNumbers],
     ["누락 위치", quality.missingLocation],
     ["비활성/누락 분류", quality.missingCategory],
     ["단면 랙 B면", quality.invalidRackFace],
     ["문자 깨짐 의심", quality.suspiciousText],
-    ["태그 없음", quality.documentsWithoutTags],
-    ["폐기 문서", quality.disposedDocuments]
-  ];
-  return `<section class="quality-strip" aria-label="데이터 품질">${items.map(([label, value]) => `<span class="${value ? "warn" : ""}"><strong>${value}</strong>${label}</span>`).join("")}</section>`;
+    ["태그 없음", quality.documentsWithoutTags]
+  ].filter(([, value]) => Number(value) > 0);
+
+  if (!issues.length) {
+    return "";
+  }
+
+  return `<section class="quality-strip" aria-label="데이터 품질">${issues.map(([label, value]) => `<span class="warn"><strong>${value}</strong>${label}</span>`).join("")}</section>`;
 }
 
 function archiveMap(racks, hits) {
@@ -1648,9 +1637,15 @@ function styles() {
     .viewer-hero-copy { max-width: 920px; }
     .viewer-hero-copy h1 { max-width: 24ch; }
     .viewer-hero-copy p:last-child { margin: .5rem 0 0; color: var(--muted); font-size: 1rem; }
-    .viewer-search-form { display: grid; gap: .8rem; }
+    .viewer-search-form { display: grid; gap: .6rem; }
     .viewer-search-form .search-box { background: var(--gray-100); }
     .viewer-search-form .search-box input { min-height: 3rem; font-size: 1.02rem; }
+    .filter-details summary { display: inline-flex; align-items: center; gap: .45rem; width: max-content; padding: .3rem .2rem; color: var(--gray-500); font-size: .88rem; font-weight: 600; cursor: pointer; list-style: none; border-radius: 8px; }
+    .filter-details summary::-webkit-details-marker { display: none; }
+    .filter-details summary:hover { color: var(--gray-700); }
+    .filter-details summary i { font-size: .8em; }
+    .filter-details[open] summary { margin-bottom: .7rem; color: var(--gray-700); }
+    .filter-count { display: inline-grid; place-items: center; min-width: 1.25rem; height: 1.25rem; padding: 0 .3rem; border-radius: 999px; background: var(--primary); color: #fff; font-size: .72rem; font-weight: 700; }
     .viewer-filter-row { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)) auto; gap: .6rem; align-items: end; }
     .quick-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; color: var(--gray-500); font-weight: 600; font-size: .88rem; }
     .viewer-recents:empty { display: none; }
@@ -1775,12 +1770,14 @@ function styles() {
     .legend-box.hit { background: var(--primary); box-shadow: none; }
 
     .floor-plan-shell { display: grid; gap: .8rem; }
-    .floor-plan-media { position: relative; overflow: hidden; border-radius: var(--radius-sm); background: var(--gray-100); aspect-ratio: 1.45; }
-    .floor-plan-media img { width: 100%; height: 100%; object-fit: cover; display: block; filter: saturate(.9) contrast(.97); }
-    .floor-region { position: absolute; top: var(--top); left: var(--left); width: var(--width); height: var(--height); border: 2px solid rgba(49, 130, 246, .55); border-radius: 10px; background: rgba(49, 130, 246, .07); }
-    .floor-region-label { position: absolute; top: .35rem; left: .35rem; padding: .2rem .5rem; border-radius: 999px; background: rgba(255,255,255,.92); color: var(--primary); font-size: .76rem; font-weight: 700; }
-    .floor-rack { position: absolute; left: var(--rack-left); top: var(--rack-top); transform: translate(-50%, -50%); width: 1.65rem; height: 1.65rem; display: grid; place-items: center; border-radius: 8px; background: #fff; color: var(--gray-700); text-decoration: none; font-size: .72rem; font-weight: 700; box-shadow: 0 2px 8px rgba(2, 32, 71, .18); }
-    .floor-rack.is-hit { background: var(--primary); color: #fff; box-shadow: 0 0 0 4px rgba(49, 130, 246, .25); }
+    /* aspect-ratio는 반드시 도면 이미지 원본 비율(1024x797)과 같아야 퍼센트 오버레이가 어긋나지 않는다. */
+    .floor-plan-media { position: relative; overflow: hidden; border-radius: var(--radius-sm); background: #fff; aspect-ratio: 1024 / 797; }
+    .floor-plan-media img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .floor-region { position: absolute; top: var(--top); left: var(--left); width: var(--width); height: var(--height); border: 1.5px solid rgba(49, 130, 246, .45); border-radius: 8px; background: rgba(49, 130, 246, .05); }
+    .floor-region-label { position: absolute; top: .3rem; left: .3rem; padding: .16rem .45rem; border-radius: 999px; background: rgba(255,255,255,.92); color: var(--primary); font-size: .72rem; font-weight: 700; }
+    .floor-rack { position: absolute; left: var(--rack-left); top: var(--rack-top); transform: translate(-50%, -50%); width: 1.45rem; height: 1.45rem; display: grid; place-items: center; border-radius: 7px; background: #fff; color: var(--gray-700); text-decoration: none; font-size: .66rem; font-weight: 700; box-shadow: 0 1px 5px rgba(2, 32, 71, .22); transition: transform .12s ease; }
+    .floor-rack:hover { transform: translate(-50%, -50%) scale(1.18); z-index: 2; }
+    .floor-rack.is-hit { background: var(--primary); color: #fff; box-shadow: 0 0 0 3px rgba(49, 130, 246, .28); z-index: 1; }
     .floor-plan-summary, .zone-list { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; color: var(--gray-500); font-size: .86rem; }
     .floor-plan-summary span, .zone-list a { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .7rem; border-radius: 999px; background: var(--gray-100); text-decoration: none; font-weight: 600; }
     .zone-list a:hover { background: var(--primary-soft); color: var(--primary); }
@@ -1924,8 +1921,7 @@ function styles() {
       .viewer-hero { padding: 1.25rem; }
       .viewer-search-form .search-box input { min-height: 2.7rem; font-size: 1rem; }
       .panel { padding: 1.15rem; }
-      .floor-plan-media { aspect-ratio: 1.1; }
-      .floor-rack { width: 1.35rem; height: 1.35rem; font-size: .65rem; }
+      .floor-rack { width: 1.3rem; height: 1.3rem; font-size: .62rem; }
       .topbar { justify-content: space-between; }
       .hamburger { display: inline-flex; flex-direction: column; gap: 4px; width: 2.5rem; min-height: 2.5rem; background: var(--gray-100); color: var(--ink); border-radius: 10px; }
       .hamburger span { display: block; width: 1.1rem; height: 2px; background: currentColor; border-radius: 2px; }

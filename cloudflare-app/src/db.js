@@ -9,15 +9,17 @@ import {
 } from "./config.js";
 import { clean, locationLabel } from "./utils.js";
 
+// 좌표는 Archive.png(1024x797) 회색 구역 실측 비율. 컨테이너 aspect-ratio가
+// 이미지 비율과 일치해야 오버레이가 어긋나지 않는다 (html.js .floor-plan-media 참조).
 export const DEFAULT_FLOOR_PLAN_REGIONS = Object.freeze([
   Object.freeze({
     region_key: "zone-1",
     label: "1구역",
     description: "좌상단 문서 보관 구역",
-    top_pct: 8.8,
-    left_pct: 5.2,
-    width_pct: 42.8,
-    height_pct: 38.8,
+    top_pct: 3.2,
+    left_pct: 4.7,
+    width_pct: 47.5,
+    height_pct: 38.2,
     default_rack_count: 10,
     is_active: 1
   }),
@@ -25,10 +27,10 @@ export const DEFAULT_FLOOR_PLAN_REGIONS = Object.freeze([
     region_key: "zone-2",
     label: "2구역",
     description: "좌하단 문서 보관 구역",
-    top_pct: 55.0,
-    left_pct: 5.2,
-    width_pct: 42.8,
-    height_pct: 37.8,
+    top_pct: 55.8,
+    left_pct: 2.5,
+    width_pct: 43.9,
+    height_pct: 38.9,
     default_rack_count: 10,
     is_active: 1
   }),
@@ -36,10 +38,10 @@ export const DEFAULT_FLOOR_PLAN_REGIONS = Object.freeze([
     region_key: "zone-3",
     label: "3구역",
     description: "우하단 문서 보관 구역",
-    top_pct: 55.0,
-    left_pct: 52.0,
-    width_pct: 37.8,
-    height_pct: 37.8,
+    top_pct: 55.8,
+    left_pct: 52.2,
+    width_pct: 39.1,
+    height_pct: 38.9,
     default_rack_count: 10,
     is_active: 1
   })
@@ -606,6 +608,9 @@ export function buildFloorPlanLayout(racks, regions = DEFAULT_FLOOR_PLAN_REGIONS
       .filter((rack) => Number(rack.zone_number) === zoneNumber)
       .sort((left, right) => Number(left.rack_number || 0) - Number(right.rack_number || 0));
     const count = Math.max(zoneRacks.length, Number(region.default_rack_count || 0), 1);
+    // 한 줄에 몰아넣으면 랙이 많을 때 겹치므로 개수에 따라 1~3행 격자로 배치한다.
+    const gridRows = count <= 6 ? 1 : count <= 12 ? 2 : 3;
+    const gridCols = Math.ceil(count / gridRows);
 
     return {
       key: clean(region.region_key) || `zone-${zoneNumber}`,
@@ -617,15 +622,18 @@ export function buildFloorPlanLayout(racks, regions = DEFAULT_FLOOR_PLAN_REGIONS
       widthPct: clampPercent(region.width_pct, 30),
       heightPct: clampPercent(region.height_pct, 30),
       racks: zoneRacks.map((rack, index) => {
-        const slot = count === 1 ? 50 : 8 + (index * (84 / Math.max(count - 1, 1)));
+        const row = Math.floor(index / gridCols);
+        const col = index % gridCols;
+        const leftPct = gridCols === 1 ? 50 : 12 + (col * (76 / (gridCols - 1)));
+        const topPct = gridRows === 1 ? 50 : 24 + (row * (52 / (gridRows - 1)));
         return {
           id: Number(rack.id),
           code: clean(rack.code),
           rackNumber: Number(rack.rack_number || 0),
           documentCount: Number(rack.active_document_count || rack.document_count || 0),
           isSingleSided: Boolean(Number(rack.is_single_sided || 0)),
-          leftPct: clampPercent(slot, 50),
-          topPct: 50
+          leftPct: clampPercent(leftPct, 50),
+          topPct: clampPercent(topPct, 50)
         };
       })
     };
