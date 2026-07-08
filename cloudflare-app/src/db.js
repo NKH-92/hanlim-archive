@@ -608,9 +608,10 @@ export function buildFloorPlanLayout(racks, regions = DEFAULT_FLOOR_PLAN_REGIONS
       .filter((rack) => Number(rack.zone_number) === zoneNumber)
       .sort((left, right) => Number(left.rack_number || 0) - Number(right.rack_number || 0));
     const count = Math.max(zoneRacks.length, Number(region.default_rack_count || 0), 1);
-    // 한 줄에 몰아넣으면 랙이 많을 때 겹치므로 개수에 따라 1~3행 격자로 배치한다.
-    const gridRows = count <= 6 ? 1 : count <= 12 ? 2 : 3;
-    const gridCols = Math.ceil(count / gridRows);
+    // 실제 문서고 구조: 세로로 긴 랙이 구역 안에 좌→우로 일렬 배치.
+    // 각 랙은 자기 슬롯(구역 폭/count)의 중앙에 서고, 슬롯의 일부만 차지해 랙 사이 통로가 보인다.
+    const slotWidth = 100 / count;
+    const barWidthPct = Math.round(slotWidth * 62) / 100;
 
     return {
       key: clean(region.region_key) || `zone-${zoneNumber}`,
@@ -621,21 +622,16 @@ export function buildFloorPlanLayout(racks, regions = DEFAULT_FLOOR_PLAN_REGIONS
       leftPct: clampPercent(region.left_pct, 0),
       widthPct: clampPercent(region.width_pct, 30),
       heightPct: clampPercent(region.height_pct, 30),
-      racks: zoneRacks.map((rack, index) => {
-        const row = Math.floor(index / gridCols);
-        const col = index % gridCols;
-        const leftPct = gridCols === 1 ? 50 : 12 + (col * (76 / (gridCols - 1)));
-        const topPct = gridRows === 1 ? 50 : 24 + (row * (52 / (gridRows - 1)));
-        return {
-          id: Number(rack.id),
-          code: clean(rack.code),
-          rackNumber: Number(rack.rack_number || 0),
-          documentCount: Number(rack.active_document_count || rack.document_count || 0),
-          isSingleSided: Boolean(Number(rack.is_single_sided || 0)),
-          leftPct: clampPercent(leftPct, 50),
-          topPct: clampPercent(topPct, 50)
-        };
-      })
+      racks: zoneRacks.map((rack, index) => ({
+        id: Number(rack.id),
+        code: clean(rack.code),
+        rackNumber: Number(rack.rack_number || 0),
+        documentCount: Number(rack.active_document_count || rack.document_count || 0),
+        isSingleSided: Boolean(Number(rack.is_single_sided || 0)),
+        leftPct: clampPercent(slotWidth * (index + 0.5), 50),
+        topPct: 50,
+        widthPct: barWidthPct
+      }))
     };
   });
 }

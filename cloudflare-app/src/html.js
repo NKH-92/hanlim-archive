@@ -936,7 +936,7 @@ function floorPlanView(regions, hits) {
             <span class="floor-region-label">${escapeHtml(region.label)}</span>
             ${region.racks.map((rack) => {
               const isHit = hits.has(rack.code);
-              return `<a class="floor-rack ${isHit ? "is-hit" : ""}" href="/documents?q=${encodeURIComponent(rack.code)}&sort=location" style="--rack-left:${rack.leftPct}%;--rack-top:${rack.topPct}%;" title="${escapeHtml(rack.code)} ${rack.documentCount}건">
+              return `<a class="floor-rack ${isHit ? "is-hit" : ""} ${rack.isSingleSided ? "is-single" : ""}" href="/documents?q=${encodeURIComponent(rack.code)}&sort=location" style="--rack-left:${rack.leftPct}%;--rack-width:${rack.widthPct}%;" title="${escapeHtml(rack.code)} ${rack.documentCount}건${rack.isSingleSided ? " · 단면" : " · 양면"}">
                 <span>${escapeHtml(String(rack.rackNumber))}</span>
               </a>`;
             }).join("")}
@@ -945,7 +945,8 @@ function floorPlanView(regions, hits) {
       </div>
       <div class="floor-plan-summary">
         <span>일치 랙 ${activeRackCount}개</span>
-        <span><i class="legend-box"></i>랙</span>
+        <span><i class="legend-box"></i>양면 랙</span>
+        <span><i class="legend-box single"></i>단면 랙</span>
         <span><i class="legend-box hit"></i>검색 위치</span>
       </div>
       <div class="zone-list">
@@ -1766,7 +1767,8 @@ function styles() {
     .rack-tile:hover { box-shadow: inset 0 0 0 2px var(--gray-300); }
     .rack-tile.is-hit { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(49, 130, 246, .35); font-weight: 700; }
     .legend { display: flex; flex-wrap: wrap; gap: .75rem; color: var(--gray-500); font-size: .86rem; }
-    .legend-box { display: inline-block; width: .75rem; height: .75rem; border-radius: 3px; background: #fff; box-shadow: inset 0 0 0 1px var(--gray-300); margin-right: .3rem; }
+    .legend-box { display: inline-block; width: .5rem; height: .85rem; border-radius: 2px; background: #fff; box-shadow: inset 0 0 0 1px var(--gray-300); margin-right: .3rem; }
+    .legend-box.single { box-shadow: inset 2px 0 0 var(--gray-300), inset 0 0 0 1px var(--gray-300); }
     .legend-box.hit { background: var(--primary); box-shadow: none; }
 
     .floor-plan-shell { display: grid; gap: .8rem; }
@@ -1775,9 +1777,13 @@ function styles() {
     .floor-plan-media img { width: 100%; height: 100%; object-fit: contain; display: block; }
     .floor-region { position: absolute; top: var(--top); left: var(--left); width: var(--width); height: var(--height); border: 1.5px solid rgba(49, 130, 246, .45); border-radius: 8px; background: rgba(49, 130, 246, .05); }
     .floor-region-label { position: absolute; top: .3rem; left: .3rem; padding: .16rem .45rem; border-radius: 999px; background: rgba(255,255,255,.92); color: var(--primary); font-size: .72rem; font-weight: 700; }
-    .floor-rack { position: absolute; left: var(--rack-left); top: var(--rack-top); transform: translate(-50%, -50%); width: 1.45rem; height: 1.45rem; display: grid; place-items: center; border-radius: 7px; background: #fff; color: var(--gray-700); text-decoration: none; font-size: .66rem; font-weight: 700; box-shadow: 0 1px 5px rgba(2, 32, 71, .22); transition: transform .12s ease; }
-    .floor-rack:hover { transform: translate(-50%, -50%) scale(1.18); z-index: 2; }
-    .floor-rack.is-hit { background: var(--primary); color: #fff; box-shadow: 0 0 0 3px rgba(49, 130, 246, .28); z-index: 1; }
+    /* 랙 실루엣: 세로로 긴 막대가 구역 안에 좌→우로 늘어선다 (실제 배치 반영). */
+    .floor-rack { position: absolute; left: var(--rack-left); top: 50%; transform: translate(-50%, -50%); width: var(--rack-width, 6%); min-width: 7px; height: 76%; display: flex; align-items: flex-start; justify-content: center; padding-top: .2rem; border-radius: 3px; background: #fff; box-shadow: inset 0 0 0 1px var(--gray-300); color: var(--gray-600); text-decoration: none; font-size: .56rem; font-weight: 700; line-height: 1.05; transition: box-shadow .12s ease, background .12s ease; }
+    .floor-rack span { writing-mode: vertical-rl; text-orientation: upright; letter-spacing: -.08em; }
+    .floor-rack:hover { background: var(--gray-100); box-shadow: inset 0 0 0 1.5px var(--gray-400); z-index: 2; }
+    .floor-rack.is-single { box-shadow: inset 3px 0 0 var(--gray-300), inset 0 0 0 1px var(--gray-300); }
+    .floor-rack.is-hit, .floor-rack.is-single.is-hit { background: var(--primary); color: #fff; box-shadow: 0 0 0 2px rgba(49, 130, 246, .3); z-index: 1; }
+    .floor-rack.is-hit:hover { background: var(--primary-strong); }
     .floor-plan-summary, .zone-list { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; color: var(--gray-500); font-size: .86rem; }
     .floor-plan-summary span, .zone-list a { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .7rem; border-radius: 999px; background: var(--gray-100); text-decoration: none; font-weight: 600; }
     .zone-list a:hover { background: var(--primary-soft); color: var(--primary); }
@@ -1921,7 +1927,7 @@ function styles() {
       .viewer-hero { padding: 1.25rem; }
       .viewer-search-form .search-box input { min-height: 2.7rem; font-size: 1rem; }
       .panel { padding: 1.15rem; }
-      .floor-rack { width: 1.3rem; height: 1.3rem; font-size: .62rem; }
+      .floor-rack { font-size: .52rem; }
       .topbar { justify-content: space-between; }
       .hamburger { display: inline-flex; flex-direction: column; gap: 4px; width: 2.5rem; min-height: 2.5rem; background: var(--gray-100); color: var(--ink); border-radius: 10px; }
       .hamburger span { display: block; width: 1.1rem; height: 2px; background: currentColor; border-radius: 2px; }
