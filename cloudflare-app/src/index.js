@@ -36,6 +36,7 @@ import {
   passwordPage,
   picklistPage,
   qaPage,
+  recoveryPage,
   rackDetailsPage,
   rackFormPage,
   rackConfigurePage,
@@ -82,6 +83,7 @@ import {
   getFloorPlanRegions,
   getPopularDocuments,
   getRackDetails,
+  getRecoveryCandidates,
   getRackDocuments,
   getRackSummaries,
   getSearchIndexDocuments,
@@ -99,6 +101,7 @@ import {
   recordSearchLog,
   permanentlyDeleteDocument,
   rejectUser,
+  recordLocationMismatch,
   removeDocumentFromSet,
   resolvePicklist,
   restoreDocument,
@@ -791,6 +794,15 @@ async function handleDocumentRoute(request, env, session, routeInfo) {
     }
 
     return custodyCardPage({ session, document, movementLogs, checkoutLogs });
+  }
+
+  if (request.method === "POST" && action === "not-here") {
+    const result = await recordLocationMismatch(env, id, session.displayName, session.role);
+    if (!result.ok) {
+      return errorPage(result.message, session, 400);
+    }
+    const candidates = await getRecoveryCandidates(env, result.document);
+    return recoveryPage({ session, document: result.document, candidates });
   }
 
   if (request.method === "GET" && action === "edit") {

@@ -771,6 +771,72 @@ export async function getDocument(env, id) {
 
 // 같은 물리 슬롯(같은 rack_slot_id + 같은 면)에 꽂힌 문서들을 문서번호·개정 순으로 반환한다.
 // "이웃 앵커"(찾는 문서를 앞뒤 이웃 사이에 두고 손이 바로 가게)와 "개정판 함정 차단"의 단일 조회 소스.
+// "여기 없어요" 신고: 실물이 시스템 위치에 없다는 불일치를 감사 로그에 append-only로 기록한다.
+// 상태변경이 아니라 사후 동기화 근거가 되는 신고이며, 신고자에게 귀속된다(비관리자도 가능).
+export async function recordLocationMismatch(env, id, actor, actorRole = "User") {
+  const doc = await getDocument(env, id);
+  if (!doc) {
+    return { ok: false, message: "문서를 찾을 수 없습니다." };
+  }
+  await auditDocumentStatement(
+    env,
+    doc,
+    "location_mismatch",
+    actor,
+    actorRole,
+    "실물 위치 불일치 신고 (여기 없어요)",
+    null
+  ).run();
+  return { ok: true, document: doc };
+}
+
+// "여기 없어요" 이후 다음 수: 가능성 순으로 후보를 모은다.
+// (1) 반출 중이면 반출자 → (2) 같은 문서번호의 다른 사본/개정(오배치·개정 혼동) → (3) 직전 이동 위치.
+export async function getRecoveryCandidates(env, document) {
+  const checkout = document.checkout_borrower
+    ? { borrower: document.checkout_borrower, at: document.checkout_at || "" }
+    : null;
+
+  const others = await env.DB.prepare(`
+    SELECT
+      d.id,
+      d.revision_number,
+      d.status,
+      d.rack_face,
+      r.code AS rack_code,
+      r.zone_number,
+      r.rack_number,
+      rs.column_number,
+      rs.shelf_number
+    FROM documents d
+    JOIN rack_slots rs ON rs.id = d.rack_slot_id
+    JOIN racks r ON r.id = rs.rack_id
+    WHERE UPPER(d.document_number) = UPPER(?) AND d.id != ?
+    ORDER BY CASE d.status WHEN 'active' THEN 0 ELSE 1 END, d.revision_number
+    LIMIT 10
+  `).bind(document.document_number, document.id).all();
+
+  const lastFrom = await env.DB.prepare(`
+    SELECT
+      from_r.code AS rack_code,
+      from_r.zone_number,
+      from_r.rack_number,
+      from_s.column_number,
+      from_s.shelf_number,
+      ml.from_rack_face AS rack_face,
+      ml.created_at,
+      ml.performed_by
+    FROM movement_logs ml
+    LEFT JOIN rack_slots from_s ON from_s.id = ml.from_rack_slot_id
+    LEFT JOIN racks from_r ON from_r.id = from_s.rack_id
+    WHERE ml.document_id = ? AND ml.from_rack_slot_id IS NOT NULL
+    ORDER BY ml.created_at DESC, ml.id DESC
+    LIMIT 1
+  `).bind(document.id).first();
+
+  return { checkout, otherCopies: others.results ?? [], lastFrom: lastFrom || null };
+}
+
 export async function getSlotNeighbors(env, document) {
   if (!document || !document.rack_slot_id || !document.rack_face) {
     return [];

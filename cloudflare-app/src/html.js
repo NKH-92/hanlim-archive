@@ -893,6 +893,7 @@ export function documentGuidePage({ session, document, floorPlan = [], neighbors
           <button type="button" class="button" data-big-view><i class="fa-solid fa-up-right-and-down-left-from-center"></i>크게 보기</button>
           <button type="button" class="button secondary" data-copy-text="${escapeHtml(locationLabel(document))}"><i class="fa-regular fa-copy"></i>위치 복사</button>
           <a class="button secondary" href="/documents?q=${encodeURIComponent(document.rack_code)}&sort=location">같은 랙 문서</a>
+          <form method="post" action="/documents/${document.id}/not-here" class="inline-form"><button type="submit" class="danger-button"><i class="fa-solid fa-circle-question"></i>여기 없어요</button></form>
         </div>
       </section>
 
@@ -1021,6 +1022,69 @@ export function custodyCardPage({ session, document, movementLogs = [], checkout
           ? `<div class="timeline-container">${custodyEvents.map((event) => event.render()).join("")}</div>`
           : emptyState("기록된 반출·이동 이력이 없습니다.")}
       </section>
+    </section>
+  `, session);
+}
+
+// "여기 없어요" 이후 복구 화면: 신고가 기록됐음을 알리고, 실물을 찾을 다음 수를 가능성 순으로 제시한다.
+export function recoveryPage({ session, document, candidates }) {
+  const { checkout, otherCopies = [], lastFrom } = candidates || {};
+  const locText = (item) => locationLabel({
+    rack_code: item.rack_code,
+    zone_number: item.zone_number,
+    rack_number: item.rack_number,
+    column_number: item.column_number,
+    shelf_number: item.shelf_number,
+    rack_face: item.rack_face
+  });
+  const hasCandidate = Boolean(checkout) || otherCopies.length > 0 || Boolean(lastFrom);
+
+  return page(`위치 확인 - ${document.document_number}`, `
+    <section class="recovery-shell">
+      <nav class="breadcrumb" aria-label="경로"><a href="/documents/${document.id}/guide">길찾기</a><span>/</span><span>위치 확인</span></nav>
+
+      <section class="panel recovery-head">
+        <span class="recovery-flag"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 실물 위치 불일치가 감사 이력에 기록되었습니다</span>
+        <h1 class="mono">${escapeHtml(document.document_number)} 실물 찾기</h1>
+        <p class="muted">시스템 위치에 실물이 없다고 신고했습니다. 아래 순서로 확인하세요.</p>
+      </section>
+
+      ${checkout ? `
+      <section class="panel recovery-lead">
+        <span class="lead-num">1</span>
+        <div>
+          <h2>반출 중일 가능성이 가장 높습니다</h2>
+          <p><strong>${escapeHtml(checkout.borrower)}</strong>님이 ${escapeHtml(checkout.at || "")}부터 보관 중입니다. 이 사람에게 먼저 문의하세요.</p>
+        </div>
+      </section>` : ""}
+
+      ${otherCopies.length ? `
+      <section class="panel">
+        <div class="section-title"><h2>같은 번호의 다른 사본 · 개정</h2><span class="count-badge">${otherCopies.length}건</span></div>
+        <p class="muted">오배치되었거나 다른 개정본을 찾고 있을 수 있습니다.</p>
+        <ul class="recovery-list">
+          ${otherCopies.map((copy) => `
+            <li>
+              <span class="mono rev">${escapeHtml(copy.revision_number)}</span>
+              <span class="mono loc">${escapeHtml(locText(copy))}</span>
+              ${copy.status !== "active" ? statusBadge(copy.status) : ""}
+              <a class="button secondary sm" href="/documents/${copy.id}/guide">길찾기</a>
+            </li>`).join("")}
+        </ul>
+      </section>` : ""}
+
+      ${lastFrom ? `
+      <section class="panel">
+        <div class="section-title"><h2>직전 위치</h2></div>
+        <p>이동되기 전 위치입니다: <span class="mono">${escapeHtml(locText(lastFrom))}</span> <span class="muted">(${escapeHtml(lastFrom.performed_by || "-")} · ${escapeHtml(lastFrom.created_at || "")})</span></p>
+      </section>` : ""}
+
+      ${hasCandidate ? "" : emptyState("자동으로 찾을 수 있는 후보가 없습니다. 관리자에게 문의하세요.")}
+
+      <div class="button-group">
+        <a class="button secondary" href="/documents/${document.id}/guide">길찾기로 돌아가기</a>
+        <a class="button secondary" href="/documents/${document.id}">문서 상세</a>
+      </div>
     </section>
   `, session);
 }
@@ -2681,6 +2745,21 @@ function styles() {
     .custody-facts dt { font-size: 12px; font-weight: 600; color: var(--gray-500); }
     .custody-facts dd { margin: 0; font-size: 14px; color: var(--gray-900); }
     .custody-hint { margin: var(--sp-4) 0 0; font-size: 12.5px; color: var(--gray-500); }
+    /* 여기 없어요 복구 */
+    .inline-form { display: inline; margin: 0; }
+    .recovery-shell { display: flex; flex-direction: column; gap: var(--sp-4); }
+    .recovery-head { border-left: 4px solid var(--warning); }
+    .recovery-flag { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: 12.5px; font-weight: 700; color: var(--warning); }
+    .recovery-head h1 { font-size: 22px; margin: var(--sp-3) 0 var(--sp-1); }
+    .recovery-lead { display: flex; align-items: flex-start; gap: var(--sp-4); border-left: 4px solid var(--primary); }
+    .lead-num { flex-shrink: 0; width: 32px; height: 32px; border-radius: 999px; background: var(--primary); color: var(--surface); display: grid; place-items: center; font-weight: 700; font-family: var(--font-mono); }
+    .recovery-lead h2 { font-size: 15px; margin: 0 0 var(--sp-1); }
+    .recovery-list { list-style: none; margin: var(--sp-3) 0 0; padding: 0; display: flex; flex-direction: column; }
+    .recovery-list li { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: var(--sp-3) 0; border-top: 1px solid var(--line); min-height: 44px; }
+    .recovery-list li:first-child { border-top: 0; }
+    .recovery-list .rev { color: var(--gray-600); }
+    .recovery-list .loc { color: var(--primary); font-weight: 600; }
+    .recovery-list li .button { margin-left: auto; }
 
     .timeline-container { display: grid; gap: var(--sp-2); }
     .timeline-item { display: grid; grid-template-columns: 14px 1fr; gap: var(--sp-2); }
