@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { dashboardPage, documentDetailsPage, page, setDetailsPage } from "../src/html.js";
+import { dashboardPage, documentDetailsPage, documentGuidePage, page, setDetailsPage, setPicklistPage } from "../src/html.js";
 
 test("page injects csrf token into authenticated post forms", async () => {
   const response = page("Test", `
@@ -46,6 +46,7 @@ test("dashboard page renders viewer-first search and floor plan landmarks", asyn
           rackFace: "A"
         },
         matchReason: "문서번호 부분 일치",
+        relevanceScore: 320,
         updatedAt: "2026-06-28"
       }],
       pagination: { page: 1, pageSize: 12, totalItems: 1, totalPages: 1 },
@@ -72,12 +73,97 @@ test("dashboard page renders viewer-first search and floor plan landmarks", asyn
 
   const html = await response.text();
 
-  assert.match(html, /문서를 찾고 실제 위치로 이동하세요/);
+  assert.match(html, /문서 위치 검색/);
   assert.match(html, /data-viewer-results/);
   assert.match(html, /문서고 도면/);
   assert.match(html, /Archive\.png/);
-  assert.match(html, /같은 랙 문서/);
+  assert.match(html, /data-answer-card/, "단독 결과는 정답 카드로 렌더된다");
+  assert.match(html, /길찾기/);
+  assert.match(html, /<mark>PV<\/mark>/, "검색어 일치 부분이 하이라이트된다");
+  assert.match(html, /window\.SearchCore/, "즉시 검색 코어가 내려간다");
   assert.doesNotMatch(html, />Dashboard</);
+});
+
+test("dashboard home mode renders a search-only shell", async () => {
+  const response = dashboardPage({
+    session: { username: "viewer", displayName: "조회자", role: "User", csrfToken: "csrf-token-123" },
+    mode: "home",
+    query: "",
+    categories: [{ id: 1, name: "PV" }],
+    tags: [],
+    filters: {},
+    popular: [{ id: 3, document_name: "세척 밸리데이션 보고서", rack_code: "1-02", rack_face: "A", click_count: 4 }]
+  });
+  const html = await response.text();
+
+  assert.match(html, /data-search-home/);
+  assert.match(html, /자주 찾는 문서/);
+  assert.match(html, /세척 밸리데이션 보고서/);
+  assert.match(html, /window\.SearchCore/);
+  assert.doesNotMatch(html, /문서고 도면/, "홈 모드에는 도면이 없다");
+  assert.doesNotMatch(html, /검색 리포트/, "일반 사용자에게 관리자 링크가 없다");
+});
+
+test("document guide page leads with the storage location", async () => {
+  const response = documentGuidePage({
+    session: { username: "viewer", displayName: "조회자", role: "User", csrfToken: "csrf-token-123" },
+    document: {
+      id: 7,
+      storage_code: "ARC-000007",
+      document_number: "PV-2026-014",
+      revision_number: "Rev.1",
+      document_name: "밸리데이션 보고서",
+      category_name: "PV",
+      status: "active",
+      rack_code: "2-03",
+      zone_number: 2,
+      rack_number: 3,
+      column_number: 2,
+      shelf_number: 4,
+      column_count: 3,
+      shelf_count: 4,
+      rack_face: "A",
+      checkout_borrower: "홍길동"
+    },
+    floorPlan: [{
+      key: "zone-2",
+      label: "2구역",
+      zoneNumber: 2,
+      topPct: 50,
+      leftPct: 5,
+      widthPct: 40,
+      heightPct: 35,
+      racks: [{ id: 3, code: "2-03", rackNumber: 3, documentCount: 5, leftPct: 50, topPct: 50 }]
+    }]
+  });
+  const html = await response.text();
+
+  assert.match(html, /guide-loc/);
+  assert.match(html, /2구역 3번 랙 · A면/);
+  assert.match(html, /2열 4선반/);
+  assert.match(html, /반출 중입니다/);
+  assert.match(html, /data-rack-code="2-03"/);
+  assert.match(html, /mini-rack-grid/);
+});
+
+test("set picklist page orders documents and tracks checkoff", async () => {
+  const response = setPicklistPage({
+    session: { username: "user", displayName: "사용자", role: "User", csrfToken: "csrf-token-123" },
+    set: { id: 5, name: "정기감사 준비문서", description: "" },
+    documents: [
+      { id: 1, document_number: "MR-2026-001", revision_number: "Rev.0", document_name: "제조기록서", category_name: "제조기록서", status: "active", rack_code: "1-01", zone_number: 1, rack_number: 1, column_number: 1, shelf_number: 1, rack_face: "A" },
+      { id: 2, document_number: "PV-2026-014", revision_number: "Rev.1", document_name: "밸리데이션 보고서", category_name: "PV", status: "active", rack_code: "2-01", zone_number: 2, rack_number: 1, column_number: 3, shelf_number: 2, rack_face: "A", checkout_borrower: "홍길동" }
+    ],
+    floorPlan: []
+  });
+  const html = await response.text();
+
+  assert.match(html, /data-picklist/);
+  assert.match(html, /data-pick-set="5"/);
+  assert.match(html, /data-pick-doc="1"/);
+  assert.match(html, /data-pick-count/);
+  assert.match(html, /반출 중 문서 1건/);
+  assert.ok(html.indexOf("MR-2026-001") < html.indexOf("PV-2026-014"), "위치순 정렬 유지");
 });
 
 test("set details page lists documents in location order with admin tools", async () => {

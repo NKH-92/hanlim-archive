@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "cloudflare-app", "run", "dev"],
       "port": 8787
+    },
+    {
+      "name": "hanlim-archive-qa",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "cloudflare-app", "run", "dev", "--", "--port", "8788", "--ip", "127.0.0.1"],
+      "port": 8788
     }
   ]
 }

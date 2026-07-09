@@ -4,6 +4,10 @@
   "main": "src/index.js",
   "compatibility_date": "2026-04-13",
   "workers_dev": true,
+  // 무료 한도 내 구조화 로그 수집(Workers Logs). logError()가 남기는 JSON 로그를 대시보드/Tail에서 조회.
+  "observability": {
+    "enabled": true
+  },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

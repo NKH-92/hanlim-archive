@@ -7,7 +7,31 @@ import {
   MAX_RACK_SHELVES,
   RACK_ZONES
 } from "./config.js";
-import { clean, locationLabel } from "./utils.js";
+import { clean, locationLabel, logError } from "./utils.js";
+import { createSearchCore } from "./searchCore.js";
+
+// 검색 로직은 searchCore가 단일 출처. 서버는 여기서 인스턴스를 만들고,
+// 클라이언트(즉시 검색)는 html.js가 같은 팩토리 소스를 내려보낸다.
+const searchCore = createSearchCore();
+
+export const normalizeSearchText = searchCore.normalizeSearchText;
+export const compactSearchText = searchCore.compactSearchText;
+export const searchTokens = searchCore.searchTokens;
+export const levenshteinDistance = searchCore.levenshteinDistance;
+export const scoreDocumentMatch = searchCore.scoreDocumentMatch;
+export const parseSearchQuery = searchCore.parseSearchQuery;
+export const highlightSearchText = searchCore.highlightHtml;
+export const chosungOf = searchCore.chosungOf;
+export const qwertyToHangul = searchCore.qwertyToHangul;
+export const hangulToQwerty = searchCore.hangulToQwerty;
+
+const compareSearchResults = searchCore.compareSearchResults;
+const clickBoost = searchCore.clickBoost;
+
+// 권위 브라우즈 상한. 실제 아카이브 규모(수백~수천) 위로 두어 목록 절단을 방지한다.
+export const MAX_SEARCH_RESULTS = 5000;
+// 검색어 스코어링 후보 상한. 상위 매칭에 충분하면서 요청당 JS 스코어링 부하를 억제한다.
+const SEARCH_CANDIDATE_LIMIT = 1500;
 
 // 좌표는 Archive.png(1024x797) 회색 구역 실측 비율. 컨테이너 aspect-ratio가
 // 이미지 비율과 일치해야 오버레이가 어긋나지 않는다 (html.js .floor-plan-media 참조).
@@ -47,196 +71,6 @@ export const DEFAULT_FLOOR_PLAN_REGIONS = Object.freeze([
   })
 ]);
 
-export function normalizeSearchText(value) {
-  return clean(value).normalize("NFKC").toLowerCase().replace(/\s+/g, " ");
-}
-
-export function compactSearchText(value) {
-  return normalizeSearchText(value).replace(/[\s\-_/.,:;()[\]{}]+/g, "");
-}
-
-export function searchTokens(value) {
-  const normalized = normalizeSearchText(value);
-  const compacted = compactSearchText(value);
-  const tokens = normalized
-    .split(/[\s\-_/.,:;()[\]{}]+/)
-    .map((token) => token.trim())
-    .filter(Boolean);
-
-  if (compacted && !tokens.includes(compacted)) {
-    tokens.push(compacted);
-  }
-
-  return [...new Set(tokens)].slice(0, 8);
-}
-
-export function levenshteinDistance(left, right) {
-  const a = Array.from(compactSearchText(left));
-  const b = Array.from(compactSearchText(right));
-
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
-
-  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  const current = Array.from({ length: b.length + 1 }, () => 0);
-
-  for (let i = 1; i <= a.length; i += 1) {
-    current[0] = i;
-    for (let j = 1; j <= b.length; j += 1) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost);
-    }
-    previous.splice(0, previous.length, ...current);
-  }
-
-  return previous[b.length];
-}
-
-function isCloseMatch(token, value) {
-  const compactToken = compactSearchText(token);
-  const compactValue = compactSearchText(value);
-
-  if (compactToken.length < 3 || compactValue.length < 3) {
-    return false;
-  }
-  if (compactValue.includes(compactToken)) {
-    return true;
-  }
-
-  const maxDistance = compactToken.length <= 5 ? 1 : 2;
-  if (Math.abs(compactToken.length - compactValue.length) <= maxDistance &&
-      levenshteinDistance(compactToken, compactValue) <= maxDistance) {
-    return true;
-  }
-
-  return normalizeSearchText(value)
-    .split(/[\s\-_/.,:;()[\]{}]+/)
-    .filter(Boolean)
-    .some((chunk) => {
-      const compactChunk = compactSearchText(chunk);
-      return Math.abs(compactChunk.length - compactToken.length) <= maxDistance &&
-        levenshteinDistance(compactToken, compactChunk) <= maxDistance;
-    });
-}
-
-function documentLocationText(document) {
-  const zone = document.zone_number ? `${document.zone_number}구역` : "";
-  const rack = document.rack_number ? `${document.rack_number}번 랙` : document.rack_code || "";
-  const column = document.column_number ? `${document.column_number}열` : "";
-  const shelf = document.shelf_number ? `${document.shelf_number}선반` : document.slot_code ? `칸 ${document.slot_code}` : "";
-  const face = document.rack_face ? `${document.rack_face}면` : "";
-  return [zone, rack, column, shelf, face].filter(Boolean).join(" ");
-}
-
-function searchFields(document) {
-  const location = documentLocationText(document);
-  const locationAliases = [
-    location,
-    document.rack_code,
-    document.zone_number ? `${document.zone_number}구역` : "",
-    document.rack_number ? `${document.rack_number}랙 ${document.rack_number}번랙 ${document.rack_number}번 랙` : "",
-    document.column_number ? `${document.column_number}열` : "",
-    document.shelf_number ? `${document.shelf_number}선반 ${document.shelf_number}행 ${document.shelf_number}칸` : "",
-    document.rack_face ? `${document.rack_face}면` : ""
-  ].filter(Boolean).join(" ");
-  return [
-    { label: "문서번호", value: document.document_number, weight: 120 },
-    { label: "문서명", value: document.document_name, weight: 110 },
-    { label: "보관코드", value: document.storage_code, weight: 90 },
-    { label: "개정번호", value: document.revision_number, weight: 55 },
-    { label: "대분류", value: document.category_name, weight: 65 },
-    { label: "태그", value: document.tag_names, weight: 50 },
-    { label: "랙 위치", value: locationAliases, weight: 75 },
-    { label: "비고", value: document.note, weight: 30 }
-  ];
-}
-
-function scoreField(token, field) {
-  const value = normalizeSearchText(field.value);
-  const compactValue = compactSearchText(field.value);
-  const compactToken = compactSearchText(token);
-
-  if (!compactToken || !compactValue) return null;
-  if (compactValue === compactToken) return { score: field.weight + 120, reason: `${field.label} 정확히 일치` };
-  if (compactValue.startsWith(compactToken)) return { score: field.weight + 80, reason: `${field.label} 앞부분 일치` };
-  if (compactValue.includes(compactToken) || value.includes(normalizeSearchText(token))) {
-    return { score: field.weight + 45, reason: `${field.label} 부분 일치` };
-  }
-  if (isCloseMatch(token, field.value)) return { score: field.weight + 20, reason: `${field.label} 유사 일치` };
-  return null;
-}
-
-export function scoreDocumentMatch(document, query) {
-  const tokens = searchTokens(query);
-  if (!tokens.length) {
-    return { relevance_score: 0, match_reason: "전체 목록" };
-  }
-
-  let score = 0;
-  let matchedTokens = 0;
-  const reasons = [];
-  const fields = searchFields(document);
-
-  for (const token of tokens) {
-    const best = fields
-      .map((field) => scoreField(token, field))
-      .filter(Boolean)
-      .sort((left, right) => right.score - left.score)[0];
-
-    if (best) {
-      matchedTokens += 1;
-      score += best.score;
-      reasons.push(best.reason);
-    }
-  }
-
-  const coverage = matchedTokens / tokens.length;
-  if (coverage < 0.5) {
-    return { relevance_score: 0, match_reason: "" };
-  }
-
-  return {
-    relevance_score: Math.round(score * coverage + matchedTokens * 12),
-    match_reason: [...new Set(reasons)].slice(0, 2).join(", ")
-  };
-}
-
-function compareByText(left, right, field) {
-  return normalizeSearchText(left[field]).localeCompare(normalizeSearchText(right[field]), "ko");
-}
-
-function compareByLocation(left, right) {
-  return (Number(left.zone_number || 0) - Number(right.zone_number || 0)) ||
-    (Number(left.rack_number || 0) - Number(right.rack_number || 0)) ||
-    (Number(left.column_number || 0) - Number(right.column_number || 0)) ||
-    (Number(left.shelf_number || 0) - Number(right.shelf_number || 0)) ||
-    normalizeSearchText(left.rack_face).localeCompare(normalizeSearchText(right.rack_face), "ko") ||
-    compareByText(left, right, "document_number");
-}
-
-function compareSearchResults(left, right, sort, hasQuery) {
-  switch (sort) {
-    case "updated":
-      return normalizeSearchText(right.updated_at).localeCompare(normalizeSearchText(left.updated_at)) ||
-        Number(right.id || 0) - Number(left.id || 0);
-    case "docnum":
-      return compareByText(left, right, "document_number") || compareByText(left, right, "revision_number");
-    case "category":
-      return compareByText(left, right, "category_name") || compareByText(left, right, "document_number");
-    case "location":
-      return compareByLocation(left, right);
-    case "relevance":
-    default:
-      if (hasQuery) {
-        return Number(right.relevance_score || 0) - Number(left.relevance_score || 0) ||
-          normalizeSearchText(right.updated_at).localeCompare(normalizeSearchText(left.updated_at)) ||
-          Number(right.id || 0) - Number(left.id || 0);
-      }
-      return normalizeSearchText(right.updated_at).localeCompare(normalizeSearchText(left.updated_at)) ||
-        Number(right.id || 0) - Number(left.id || 0);
-  }
-}
-
 export async function searchDocuments(env, query, limit = 100, filters = {}) {
   const trimmed = clean(query);
   const filterClauses = [];
@@ -260,8 +94,11 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
   }
 
   const where = filterClauses.length ? `WHERE ${filterClauses.join(" AND ")}` : "";
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 1000));
-  const candidateLimit = trimmed ? Math.max(safeLimit, 750) : safeLimit;
+  // 권위 목록(문서 브라우즈)이 잘려 문서가 사라지지 않도록 상한을 예상 아카이브 규모 위로 둔다.
+  // LIMIT ?는 실제 문서 수만큼만 읽으므로(min(actual, cap)) 소규모에서는 무료티어 비용도 낮다.
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, MAX_SEARCH_RESULTS));
+  // 검색어가 있으면 스코어링 후보를 제한(충분한 상위 매칭 + Worker CPU 보호), 없으면 브라우즈 전량 로드.
+  const candidateLimit = trimmed ? Math.min(Math.max(safeLimit, 750), SEARCH_CANDIDATE_LIMIT) : safeLimit;
 
   const result = await env.DB.prepare(`
     SELECT
@@ -300,46 +137,166 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
   `).bind(...filterBinds, candidateLimit).all();
 
   const hasQuery = Boolean(trimmed);
+  const clickHits = hasQuery ? await getSearchClickHits(env, trimmed) : null;
   return (result.results ?? [])
-    .map((document) => ({ ...document, ...scoreDocumentMatch(document, trimmed) }))
+    .map((document) => {
+      const scored = { ...document, ...scoreDocumentMatch(document, trimmed) };
+      if (clickHits && scored.relevance_score > 0) {
+        const hits = clickHits.get(Number(scored.id)) || 0;
+        if (hits) scored.relevance_score += clickBoost(hits);
+      }
+      return scored;
+    })
     .filter((document) => !hasQuery || document.relevance_score > 0)
     .sort((left, right) => compareSearchResults(left, right, filters.sort || (hasQuery ? "relevance" : "updated"), hasQuery))
     .slice(0, safeLimit);
 }
 
-async function searchDocumentsLegacy(env, query, limit = 100, filters = {}) {
-  const trimmed = query.trim();
-  const like = `%${trimmed}%`;
+// ---- 검색 분석: 클릭 학습 랭킹 + 검색어 로그 (아이디어 8, 9) ----
+// 마이그레이션 0014 이전 배포에서도 검색이 죽지 않도록 전부 실패 허용.
 
-  const filterClauses = [];
-  const filterBinds = [];
+async function getSearchClickHits(env, query) {
+  const key = compactSearchText(query);
+  if (!key || key.length > 80) return null;
+  try {
+    const result = await env.DB.prepare(
+      "SELECT document_id, hits FROM search_clicks WHERE query_key = ?"
+    ).bind(key).all();
+    const map = new Map();
+    for (const row of result.results ?? []) {
+      map.set(Number(row.document_id), Number(row.hits) || 0);
+    }
+    return map.size ? map : null;
+  } catch (error) {
+    logError("db.getSearchClickHits", error);
+    return null;
+  }
+}
 
-  if (filters.categoryId && Number.isInteger(filters.categoryId) && filters.categoryId > 0) {
-    filterClauses.push("d.category_id = ?");
-    filterBinds.push(filters.categoryId);
+export async function recordSearchClick(env, query, documentId) {
+  const key = compactSearchText(query);
+  const id = Number(documentId);
+  if (!key || key.length > 80 || !Number.isInteger(id) || id <= 0) {
+    return { ok: false };
   }
-  if (filters.zoneNumber && Number.isInteger(filters.zoneNumber) && filters.zoneNumber > 0) {
-    filterClauses.push("r.zone_number = ?");
-    filterBinds.push(filters.zoneNumber);
+  try {
+    await env.DB.prepare(`
+      INSERT INTO search_clicks (query_key, document_id)
+      VALUES (?, ?)
+      ON CONFLICT(query_key, document_id)
+      DO UPDATE SET hits = hits + 1, last_clicked_at = CURRENT_TIMESTAMP
+    `).bind(key, id).run();
+    return { ok: true };
+  } catch (error) {
+    logError("db.recordSearchClick", error);
+    return { ok: false };
   }
-  if (filters.status === "active" || filters.status === "disposed") {
-    filterClauses.push("d.status = ?");
-    filterBinds.push(filters.status);
-  }
+}
 
-  const filterWhere = filterClauses.length ? " AND " + filterClauses.join(" AND ") : "";
-
-  let orderBy;
-  switch (filters.sort) {
-    case "docnum":
-      orderBy = "d.document_number ASC, d.id DESC";
-      break;
-    case "location":
-      orderBy = "r.zone_number ASC, r.rack_number ASC, rs.column_number ASC, rs.shelf_number ASC, d.rack_face ASC";
-      break;
-    default:
-      orderBy = "d.updated_at DESC, d.id DESC";
+export async function recordSearchLog(env, query, resultCount) {
+  const text = clean(query);
+  const key = compactSearchText(query);
+  if (!key || key.length > 80) return;
+  try {
+    await env.DB.prepare(`
+      INSERT INTO search_logs (query_key, query_text, last_result_count)
+      VALUES (?, ?, ?)
+      ON CONFLICT(query_key)
+      DO UPDATE SET
+        hits = hits + 1,
+        query_text = excluded.query_text,
+        last_result_count = excluded.last_result_count,
+        last_searched_at = CURRENT_TIMESTAMP
+    `).bind(key, text.slice(0, 120), Math.max(0, Number(resultCount) || 0)).run();
+  } catch (error) {
+    // 분석 로그는 검색 자체를 막지 않는다. 실패는 로깅만 한다.
+    logError("db.recordSearchLog", error);
   }
+}
+
+export async function getPopularDocuments(env, limit = 5) {
+  try {
+    const result = await env.DB.prepare(`
+      SELECT
+        d.id,
+        d.document_number,
+        d.document_name,
+        d.rack_face,
+        r.code AS rack_code,
+        r.zone_number,
+        r.rack_number,
+        rs.column_number,
+        rs.shelf_number,
+        SUM(sc.hits) AS click_count
+      FROM search_clicks sc
+      JOIN documents d ON d.id = sc.document_id
+      JOIN rack_slots rs ON rs.id = d.rack_slot_id
+      JOIN racks r ON r.id = rs.rack_id
+      WHERE d.status = 'active'
+      GROUP BY d.id
+      ORDER BY click_count DESC, MAX(sc.last_clicked_at) DESC
+      LIMIT ?
+    `).bind(Math.max(1, Math.min(Number(limit) || 5, 10))).all();
+    return result.results ?? [];
+  } catch (error) {
+    logError("db.getPopularDocuments", error);
+    return [];
+  }
+}
+
+export async function getSearchReport(env) {
+  try {
+    const [top, failed, clicked] = await Promise.all([
+      env.DB.prepare(`
+        SELECT query_text, hits, last_result_count, last_searched_at
+        FROM search_logs
+        WHERE last_result_count > 0
+        ORDER BY hits DESC, last_searched_at DESC
+        LIMIT 20
+      `).all(),
+      env.DB.prepare(`
+        SELECT query_text, hits, last_searched_at
+        FROM search_logs
+        WHERE last_result_count = 0
+        ORDER BY hits DESC, last_searched_at DESC
+        LIMIT 20
+      `).all(),
+      env.DB.prepare(`
+        SELECT d.id, d.document_number, d.document_name, SUM(sc.hits) AS click_count
+        FROM search_clicks sc
+        JOIN documents d ON d.id = sc.document_id
+        GROUP BY d.id
+        ORDER BY click_count DESC
+        LIMIT 10
+      `).all()
+    ]);
+    return {
+      topQueries: top.results ?? [],
+      failedQueries: failed.results ?? [],
+      topDocuments: clicked.results ?? []
+    };
+  } catch (error) {
+    logError("db.getSearchReport", error);
+    return { topQueries: [], failedQueries: [], topDocuments: [], unavailable: true };
+  }
+}
+
+async function getDocumentClickPopularity(env) {
+  try {
+    const result = await env.DB.prepare(
+      "SELECT document_id, SUM(hits) AS total FROM search_clicks GROUP BY document_id"
+    ).all();
+    return new Map((result.results ?? []).map((row) => [Number(row.document_id), Number(row.total) || 0]));
+  } catch (error) {
+    logError("db.getDocumentClickPopularity", error);
+    return new Map();
+  }
+}
+
+// 0건 검색 시 "혹시 이 문서를 찾으셨나요?" 후보 (커버리지 완화 재검색)
+export async function getDidYouMeanSuggestions(env, query, limit = 3) {
+  const trimmed = clean(query);
+  if (!trimmed) return [];
 
   const result = await env.DB.prepare(`
     SELECT
@@ -351,66 +308,79 @@ async function searchDocumentsLegacy(env, query, limit = 100, filters = {}) {
       d.note,
       d.rack_face,
       d.status,
-      d.updated_at,
       c.name AS category_name,
       r.code AS rack_code,
       r.zone_number,
       r.rack_number,
-      r.is_single_sided,
-      r.column_count,
-      r.shelf_count,
       rs.column_number,
       rs.shelf_number,
-      rs.slot_code,
+      GROUP_CONCAT(t.name, '; ') AS tag_names
+    FROM documents d
+    JOIN categories c ON c.id = d.category_id
+    JOIN rack_slots rs ON rs.id = d.rack_slot_id
+    JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN document_tags dt ON dt.document_id = d.id
+    LEFT JOIN tags t ON t.id = dt.tag_id
+    WHERE d.status = 'active'
+    GROUP BY d.id
+    LIMIT 750
+  `).all();
+
+  return (result.results ?? [])
+    .map((document) => ({ ...document, ...scoreDocumentMatch(document, trimmed, { minCoverage: 0.2 }) }))
+    .filter((document) => document.relevance_score > 0)
+    .sort((left, right) => right.relevance_score - left.relevance_score)
+    .slice(0, Math.max(1, Math.min(Number(limit) || 3, 8)));
+}
+
+// 즉시 검색용 경량 인덱스 (아이디어 3). ETag는 문서 수 + 최신 수정 시각.
+export async function getSearchIndexMeta(env) {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS count, MAX(updated_at) AS updated, MAX(id) AS max_id FROM documents"
+  ).first();
+  return {
+    count: Number(row?.count || 0),
+    updated: clean(row?.updated || ""),
+    maxId: Number(row?.max_id || 0)
+  };
+}
+
+export async function getSearchIndexDocuments(env) {
+  const result = await env.DB.prepare(`
+    SELECT
+      d.id,
+      d.storage_code,
+      d.document_number,
+      d.revision_number,
+      d.document_name,
+      d.note,
+      d.rack_face,
+      d.status,
+      d.updated_at,
+      d.category_id,
+      c.name AS category_name,
+      r.code AS rack_code,
+      r.zone_number,
+      r.rack_number,
+      rs.column_number,
+      rs.shelf_number,
       co.borrower AS checkout_borrower,
-      co.checked_out_at AS checkout_at
+      GROUP_CONCAT(t.name, '; ') AS tag_names
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
     LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
-    WHERE (
-      ? = ''
-      OR d.storage_code LIKE ?
-      OR d.document_number LIKE ?
-      OR d.revision_number LIKE ?
-      OR d.document_name LIKE ?
-      OR IFNULL(d.note, '') LIKE ?
-      OR c.name LIKE ?
-      OR r.code LIKE ?
-      OR CAST(r.zone_number AS TEXT) LIKE ?
-      OR CAST(r.rack_number AS TEXT) LIKE ?
-      OR CAST(rs.column_number AS TEXT) LIKE ?
-      OR CAST(rs.shelf_number AS TEXT) LIKE ?
-      OR (r.zone_number || '구역') LIKE ?
-      OR (r.rack_number || '번랙') LIKE ?
-      OR (rs.column_number || '열') LIKE ?
-      OR (rs.shelf_number || '선반') LIKE ?
-    )${filterWhere}
-    ORDER BY ${orderBy}
-    LIMIT ?
-  `).bind(
-    trimmed,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    like,
-    ...filterBinds,
-    limit
-  ).all();
+    LEFT JOIN document_tags dt ON dt.document_id = d.id
+    LEFT JOIN tags t ON t.id = dt.tag_id
+    GROUP BY d.id
+  `).all();
 
-  return result.results ?? [];
+  const popularity = await getDocumentClickPopularity(env);
+  return (result.results ?? []).map((row) => ({
+    ...row,
+    popularity: popularity.get(Number(row.id)) || 0
+  }));
 }
 
 export async function getSearchSuggestions(env, query, limit = 8) {
@@ -452,6 +422,7 @@ export function documentToViewerItem(document) {
   return {
     id: Number(document.id),
     documentNumber: clean(document.document_number),
+    storageCode: clean(document.storage_code),
     revisionNumber: clean(document.revision_number),
     documentName: clean(document.document_name),
     categoryName: clean(document.category_name),
@@ -545,7 +516,7 @@ export async function getViewerSearchPayload(env, params = {}) {
   const requestedPage = Math.max(1, Number(params.page) || 1);
   const filters = readViewerFilters(params);
   const [allDocuments, suggestions] = await Promise.all([
-    searchDocuments(env, query, 1000, filters),
+    searchDocuments(env, query, MAX_SEARCH_RESULTS, filters),
     getSearchSuggestions(env, query, 8)
   ]);
   const totalItems = allDocuments.length;
@@ -585,7 +556,10 @@ export async function getFloorPlanRegions(env) {
     `).all();
     const rows = result.results ?? [];
     return rows.length ? rows : DEFAULT_FLOOR_PLAN_REGIONS.map((region) => ({ ...region }));
-  } catch {
+  } catch (error) {
+    // 위치 핵심: 도면 구역 조회가 예외로 실패하면 기본 도면으로 폴백하되 반드시 경보로 남긴다.
+    // (빈 테이블은 정상 기본값이므로 예외만 이 경로로 온다.)
+    logError("db.getFloorPlanRegions", error);
     return DEFAULT_FLOOR_PLAN_REGIONS.map((region) => ({ ...region }));
   }
 }
@@ -795,6 +769,29 @@ export async function getDocument(env, id) {
   `).bind(id).first();
 }
 
+// 같은 물리 슬롯(같은 rack_slot_id + 같은 면)에 꽂힌 문서들을 문서번호·개정 순으로 반환한다.
+// "이웃 앵커"(찾는 문서를 앞뒤 이웃 사이에 두고 손이 바로 가게)와 "개정판 함정 차단"의 단일 조회 소스.
+export async function getSlotNeighbors(env, document) {
+  if (!document || !document.rack_slot_id || !document.rack_face) {
+    return [];
+  }
+  const result = await env.DB.prepare(`
+    SELECT
+      d.id,
+      d.document_number,
+      d.revision_number,
+      d.document_name,
+      d.status,
+      co.borrower AS checkout_borrower
+    FROM documents d
+    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
+    WHERE d.rack_slot_id = ? AND d.rack_face = ?
+    ORDER BY d.document_number COLLATE NOCASE, d.revision_number COLLATE NOCASE
+  `).bind(document.rack_slot_id, document.rack_face).all();
+
+  return result.results ?? [];
+}
+
 export async function getDocumentTags(env, documentId) {
   const result = await env.DB.prepare(`
     SELECT t.id, t.name
@@ -907,10 +904,6 @@ export async function getDocumentAuditLogs(env, documentId) {
   return result.results ?? [];
 }
 
-async function auditDocument(env, document, action, actor, actorRole, summary, details = null) {
-  await auditDocumentStatement(env, document, action, actor, actorRole, summary, details).run();
-}
-
 function auditDocumentStatement(env, document, action, actor, actorRole, summary, details = null) {
   return env.DB.prepare(`
     INSERT INTO document_audit_logs (
@@ -934,6 +927,48 @@ function auditDocumentStatement(env, document, action, actor, actorRole, summary
     summary,
     details ? JSON.stringify(details) : null
   );
+}
+
+// 상태변경(UPDATE/DELETE)과 같은 batch(트랜잭션)에서 실행하는 조건부 감사 로그.
+// guardClause를 아직 만족하는 문서에만 기록되므로, 같은 조건의 가드 statement가 no-op이면
+// 감사 로그도 함께 0행이 된다 — 감사기록 없는 상태변경(2차 쓰기 실패)과 유령 로그를 모두 막는다.
+// 반드시 가드 UPDATE/DELETE '앞'에 두어 pre-state를 읽게 한다.
+function conditionalAuditStatement(env, document, action, actor, actorRole, summary, details, guardClause, guardBinds = []) {
+  return env.DB.prepare(`
+    INSERT INTO document_audit_logs (
+      document_id,
+      storage_code,
+      document_number,
+      action,
+      actor,
+      actor_role,
+      summary,
+      details
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?
+    FROM documents
+    WHERE ${guardClause}
+  `).bind(
+    document.id,
+    document.storage_code,
+    document.document_number,
+    action,
+    actor || "알 수 없음",
+    actorRole || "Unknown",
+    summary,
+    details ? JSON.stringify(details) : null,
+    ...guardBinds
+  );
+}
+
+// 낙관적 잠금 절: 사용자가 화면을 연 시점의 updated_at과 현재가 다르면(다른 관리자가 먼저 수정)
+// 가드에 걸려 no-op이 된다. expectedUpdatedAt이 비어 있으면 잠금 없이 기존 동작(하위호환).
+function optimisticLockClause(expectedUpdatedAt) {
+  const expected = clean(expectedUpdatedAt);
+  if (!expected) {
+    return { sql: "", binds: [] };
+  }
+  return { sql: " AND updated_at = ?", binds: [expected] };
 }
 
 function documentSnapshot(document, tags = []) {
@@ -985,12 +1020,6 @@ async function documentWithValues(env, baseDocument, values, status = baseDocume
   };
 }
 
-function insertDocumentTagStatements(env, documentId, tagIds) {
-  return [...new Set(tagIds || [])].map((tagId) =>
-    env.DB.prepare("INSERT OR IGNORE INTO document_tags (document_id, tag_id) VALUES (?, ?)").bind(documentId, tagId)
-  );
-}
-
 function insertDocumentTagStatementsByTempCode(env, temporaryStorageCode, tagIds) {
   return [...new Set(tagIds || [])].map((tagId) =>
     env.DB.prepare(`
@@ -1002,12 +1031,6 @@ function insertDocumentTagStatementsByTempCode(env, temporaryStorageCode, tagIds
   );
 }
 
-function replaceDocumentTagStatements(env, documentId, tagIds) {
-  return [
-    env.DB.prepare("DELETE FROM document_tags WHERE document_id = ?").bind(documentId),
-    ...insertDocumentTagStatements(env, documentId, tagIds)
-  ];
-}
 
 function hasChanged(result) {
   return Number(result?.meta?.changes ?? 0) > 0;
@@ -1392,9 +1415,30 @@ export async function getSlotOptions(env) {
   }));
 }
 
+export const DOCUMENT_FIELD_LIMITS = Object.freeze({
+  documentNumber: 100,
+  revisionNumber: 50,
+  documentName: 300,
+  note: 2000
+});
+
 export async function validateDocumentInput(env, values, existingId = 0, options = {}) {
   if (!values.documentNumber || !values.revisionNumber || !values.documentName) {
     return "문서번호, 개정번호, 문서명은 필수입니다.";
+  }
+
+  // 자유 입력 필드 길이 상한: 저장소·검색 인덱스 팽창(저장 고갈 DoS)과 기록 신뢰도 저하 방지.
+  if (clean(values.documentNumber).length > DOCUMENT_FIELD_LIMITS.documentNumber) {
+    return `문서번호는 ${DOCUMENT_FIELD_LIMITS.documentNumber}자 이하로 입력하세요.`;
+  }
+  if (clean(values.revisionNumber).length > DOCUMENT_FIELD_LIMITS.revisionNumber) {
+    return `개정번호는 ${DOCUMENT_FIELD_LIMITS.revisionNumber}자 이하로 입력하세요.`;
+  }
+  if (clean(values.documentName).length > DOCUMENT_FIELD_LIMITS.documentName) {
+    return `문서명은 ${DOCUMENT_FIELD_LIMITS.documentName}자 이하로 입력하세요.`;
+  }
+  if (clean(values.note).length > DOCUMENT_FIELD_LIMITS.note) {
+    return `비고는 ${DOCUMENT_FIELD_LIMITS.note}자 이하로 입력하세요.`;
   }
 
   if (!Number.isInteger(values.categoryId) || values.categoryId <= 0) {
@@ -1509,36 +1553,47 @@ export async function updateDocument(env, id, values, actor, actorRole = "Admin"
     documentWithValues(env, doc, values)
   ]);
 
-  const updateResult = await env.DB.prepare(`
-    UPDATE documents
-    SET
-      category_id = ?,
-      document_number = ?,
-      revision_number = ?,
-      document_name = ?,
-      note = ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND status = 'active'
-  `).bind(
-    values.categoryId,
-    values.documentNumber,
-    values.revisionNumber,
-    values.documentName,
-    values.note || null,
-    id
-  ).run();
+  const lock = optimisticLockClause(values.expectedUpdatedAt);
+  const guardClause = `id = ? AND status = 'active'${lock.sql}`;
+  const guardBinds = [id, ...lock.binds];
+  const existsGuard = `EXISTS (SELECT 1 FROM documents WHERE ${guardClause})`;
 
-  if (!hasChanged(updateResult)) {
-    return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
-  }
-
-  await env.DB.batch([
-    ...replaceDocumentTagStatements(env, id, values.tagIds),
-    auditDocumentStatement(env, updated, "update", actor, actorRole, "문서 정보 수정", {
+  // 상태변경(UPDATE)·태그 교체·감사 로그를 하나의 batch(트랜잭션)로 원자화한다.
+  // 모든 부수효과는 pre-state 가드에 묶여, 낙관적 잠금 실패 시 태그도 감사도 함께 no-op이 된다.
+  const uniqueTagIds = [...new Set(values.tagIds || [])];
+  const statements = [
+    conditionalAuditStatement(env, updated, "update", actor, actorRole, "문서 정보 수정", {
       before: documentSnapshot(doc, beforeTags),
       after: documentSnapshot(updated, afterTags)
-    })
-  ]);
+    }, guardClause, guardBinds),
+    env.DB.prepare(`DELETE FROM document_tags WHERE document_id = ? AND ${existsGuard}`).bind(id, ...guardBinds),
+    ...uniqueTagIds.map((tagId) =>
+      env.DB.prepare(`INSERT OR IGNORE INTO document_tags (document_id, tag_id) SELECT ?, ? WHERE ${existsGuard}`).bind(id, tagId, ...guardBinds)
+    ),
+    env.DB.prepare(`
+      UPDATE documents
+      SET
+        category_id = ?,
+        document_number = ?,
+        revision_number = ?,
+        document_name = ?,
+        note = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE ${guardClause}
+    `).bind(
+      values.categoryId,
+      values.documentNumber,
+      values.revisionNumber,
+      values.documentName,
+      values.note || null,
+      ...guardBinds
+    )
+  ];
+
+  const results = await env.DB.batch(statements);
+  if (!hasChanged(results[results.length - 1])) {
+    return { ok: false, message: "다른 사용자가 문서를 먼저 수정했거나 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  }
 
   return { ok: true };
 }
@@ -1556,17 +1611,13 @@ export async function moveDocument(env, id, values, actor, actorRole = "Admin") 
   const tags = await getDocumentTags(env, id);
   const moved = await documentWithValues(env, doc, values);
 
-  const updateResult = await env.DB.prepare(`
-    UPDATE documents
-    SET rack_slot_id = ?, rack_face = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND status = 'active'
-  `).bind(values.rackSlotId, values.rackFace, id).run();
+  const lock = optimisticLockClause(values.expectedUpdatedAt);
+  const guardClause = `id = ? AND status = 'active'${lock.sql}`;
+  const guardBinds = [id, ...lock.binds];
 
-  if (!hasChanged(updateResult)) {
-    return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
-  }
-
-  await env.DB.batch([
+  // 이동 기록·감사 로그를 상태변경과 하나의 batch로 원자화한다. 로그는 pre-state 가드에 묶여
+  // 가드 UPDATE와 함께 no-op이 되므로 이동기록 없는 위치변경(물리 이력 소실)을 막는다.
+  const statements = [
     env.DB.prepare(`
       INSERT INTO movement_logs (
         document_id,
@@ -1577,7 +1628,9 @@ export async function moveDocument(env, id, values, actor, actorRole = "Admin") 
         performed_by,
         note
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      SELECT ?, ?, ?, ?, ?, ?, ?
+      FROM documents
+      WHERE ${guardClause}
     `).bind(
       id,
       doc.rack_slot_id,
@@ -1585,14 +1638,25 @@ export async function moveDocument(env, id, values, actor, actorRole = "Admin") 
       values.rackSlotId,
       values.rackFace,
       actor,
-      values.note || null
+      values.note || null,
+      ...guardBinds
     ),
-    auditDocumentStatement(env, moved, "move", actor, actorRole, "문서 위치 이동", {
+    conditionalAuditStatement(env, moved, "move", actor, actorRole, "문서 위치 이동", {
       before: documentSnapshot(doc, tags),
       after: documentSnapshot(moved, tags),
       note: values.note || ""
-    })
-  ]);
+    }, guardClause, guardBinds),
+    env.DB.prepare(`
+      UPDATE documents
+      SET rack_slot_id = ?, rack_face = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE ${guardClause}
+    `).bind(values.rackSlotId, values.rackFace, ...guardBinds)
+  ];
+
+  const results = await env.DB.batch(statements);
+  if (!hasChanged(results[results.length - 1])) {
+    return { ok: false, message: "다른 사용자가 문서를 먼저 이동/수정했거나 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  }
 
   return { ok: true };
 }
@@ -1613,28 +1677,33 @@ export async function disposeDocument(env, id, actor, reason, actorRole = "Admin
 
   const tags = await getDocumentTags(env, id);
   const disposed = { ...doc, status: "disposed" };
+  const guardClause = "id = ? AND status = 'active'";
+  const guardBinds = [id];
 
-  const updateResult = await env.DB.prepare(`
-    UPDATE documents
-    SET status = 'disposed', updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND status = 'active'
-  `).bind(id).run();
-
-  if (!hasChanged(updateResult)) {
-    return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
-  }
-
-  await env.DB.batch([
+  // 폐기 기록·감사 로그를 상태변경과 하나의 batch로 원자화한다(pre-state 가드 → no-op 시 함께 0행).
+  const statements = [
     env.DB.prepare(`
       INSERT INTO disposal_logs (document_id, action, performed_by, reason)
-      VALUES (?, 'disposed', ?, ?)
-    `).bind(id, actor, reason || null),
-    auditDocumentStatement(env, disposed, "dispose", actor, actorRole, "문서 폐기", {
+      SELECT ?, 'disposed', ?, ?
+      FROM documents
+      WHERE ${guardClause}
+    `).bind(id, actor, reason || null, ...guardBinds),
+    conditionalAuditStatement(env, disposed, "dispose", actor, actorRole, "문서 폐기", {
       before: documentSnapshot(doc, tags),
       after: documentSnapshot(disposed, tags),
       reason: reason || ""
-    })
-  ]);
+    }, guardClause, guardBinds),
+    env.DB.prepare(`
+      UPDATE documents
+      SET status = 'disposed', updated_at = CURRENT_TIMESTAMP
+      WHERE ${guardClause}
+    `).bind(...guardBinds)
+  ];
+
+  const results = await env.DB.batch(statements);
+  if (!hasChanged(results[results.length - 1])) {
+    return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  }
 
   return { ok: true };
 }
@@ -1651,27 +1720,32 @@ export async function restoreDocument(env, id, actor, actorRole = "Admin") {
 
   const tags = await getDocumentTags(env, id);
   const restored = { ...doc, status: "active" };
+  const guardClause = "id = ? AND status = 'disposed'";
+  const guardBinds = [id];
 
-  const updateResult = await env.DB.prepare(`
-    UPDATE documents
-    SET status = 'active', updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND status = 'disposed'
-  `).bind(id).run();
-
-  if (!hasChanged(updateResult)) {
-    return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
-  }
-
-  await env.DB.batch([
+  // 폐기해제 기록·감사 로그를 상태변경과 하나의 batch로 원자화한다(pre-state 가드 → no-op 시 함께 0행).
+  const statements = [
     env.DB.prepare(`
       INSERT INTO disposal_logs (document_id, action, performed_by, reason)
-      VALUES (?, 'restored', ?, ?)
-    `).bind(id, actor, "관리자 폐기 해제"),
-    auditDocumentStatement(env, restored, "restore", actor, actorRole, "문서 폐기 해제", {
+      SELECT ?, 'restored', ?, ?
+      FROM documents
+      WHERE ${guardClause}
+    `).bind(id, actor, "관리자 폐기 해제", ...guardBinds),
+    conditionalAuditStatement(env, restored, "restore", actor, actorRole, "문서 폐기 해제", {
       before: documentSnapshot(doc, tags),
       after: documentSnapshot(restored, tags)
-    })
-  ]);
+    }, guardClause, guardBinds),
+    env.DB.prepare(`
+      UPDATE documents
+      SET status = 'active', updated_at = CURRENT_TIMESTAMP
+      WHERE ${guardClause}
+    `).bind(...guardBinds)
+  ];
+
+  const results = await env.DB.batch(statements);
+  if (!hasChanged(results[results.length - 1])) {
+    return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  }
 
   return { ok: true };
 }
@@ -1724,21 +1798,33 @@ export async function returnDocument(env, id, actor, actorRole = "Admin") {
     return { ok: false, message: "문서를 찾을 수 없습니다." };
   }
 
-  const updateResult = await env.DB.prepare(`
-    UPDATE document_checkouts
-    SET returned_at = CURRENT_TIMESTAMP,
-        returned_by = ?
-    WHERE document_id = ? AND returned_at IS NULL
-  `).bind(actor || "알 수 없음", id).run();
-
-  if (!hasChanged(updateResult)) {
-    return { ok: false, message: "반출 중인 문서가 아닙니다." };
-  }
-
-  await auditDocument(env, doc, "return", actor, actorRole, `문서 반납 (반출자: ${doc.checkout_borrower || "-"})`, {
+  // 반납(UPDATE)과 감사 로그를 하나의 batch로 원자화한다. 감사 로그는 '열린 반출이 있을 때'만
+  // 기록되도록 pre-state 가드에 묶어, 반납 UPDATE가 no-op이면 유령 반납 로그가 남지 않는다.
+  const summary = `문서 반납 (반출자: ${doc.checkout_borrower || "-"})`;
+  const details = JSON.stringify({
     borrower: doc.checkout_borrower || "",
     purpose: doc.checkout_purpose || ""
   });
+  const statements = [
+    env.DB.prepare(`
+      INSERT INTO document_audit_logs (
+        document_id, storage_code, document_number, action, actor, actor_role, summary, details
+      )
+      SELECT ?, ?, ?, 'return', ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM document_checkouts WHERE document_id = ? AND returned_at IS NULL)
+    `).bind(doc.id, doc.storage_code, doc.document_number, actor || "알 수 없음", actorRole || "Unknown", summary, details, id),
+    env.DB.prepare(`
+      UPDATE document_checkouts
+      SET returned_at = CURRENT_TIMESTAMP,
+          returned_by = ?
+      WHERE document_id = ? AND returned_at IS NULL
+    `).bind(actor || "알 수 없음", id)
+  ];
+
+  const results = await env.DB.batch(statements);
+  if (!hasChanged(results[results.length - 1])) {
+    return { ok: false, message: "반출 중인 문서가 아닙니다." };
+  }
 
   return { ok: true };
 }
@@ -1764,16 +1850,34 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
     return { ok: false, message: "보관중 문서는 완전삭제할 수 없습니다. 먼저 폐기 처리해야 합니다." };
   }
 
-  const tags = await getDocumentTags(env, id);
-  const deleteResult = await env.DB.prepare("DELETE FROM documents WHERE id = ? AND status = 'disposed'").bind(id).run();
+  // 하드삭제는 ON DELETE CASCADE로 이동/폐기/반출 이력을 함께 파괴한다. GMP 기록 보존을 위해
+  // 삭제 직전 전체 이력을 불변 감사 로그(document_audit_logs, documents FK 없음)의 details에
+  // 스냅샷으로 보존한다(ALCOA Enduring/Complete). 감사·삭제를 하나의 batch로 원자화.
+  const [tags, movementLogs, disposalLogs, checkoutLogs] = await Promise.all([
+    getDocumentTags(env, id),
+    getDocumentMovementLogs(env, id),
+    getDisposalLogs(env, id),
+    getDocumentCheckoutLogs(env, id)
+  ]);
+  const guardClause = "id = ? AND status = 'disposed'";
+  const guardBinds = [id];
 
-  if (!hasChanged(deleteResult)) {
+  const statements = [
+    conditionalAuditStatement(env, doc, "delete_permanent", actor, actorRole, "문서 완전삭제", {
+      before: documentSnapshot(doc, tags),
+      history: {
+        movements: movementLogs,
+        disposals: disposalLogs,
+        checkouts: checkoutLogs
+      }
+    }, guardClause, guardBinds),
+    env.DB.prepare(`DELETE FROM documents WHERE ${guardClause}`).bind(...guardBinds)
+  ];
+
+  const results = await env.DB.batch(statements);
+  if (!hasChanged(results[results.length - 1])) {
     return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
   }
-
-  await auditDocument(env, doc, "delete_permanent", actor, actorRole, "문서 완전삭제", {
-    before: documentSnapshot(doc, tags)
-  });
 
   return { ok: true };
 }
@@ -2149,16 +2253,23 @@ export async function deleteDocumentSet(env, id, actor = "") {
     return { ok: false, message: "세트를 찾을 수 없습니다." };
   }
 
+  // 삭제 이력(document_set_logs)을 삭제와 하나의 batch로 원자화한다. 로그는 세트가 아직 존재할 때만
+  // 기록되도록 가드하여, 세트만 사라지고 삭제 기록이 없는 이력 공백을 막는다.
   const results = await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
+      SELECT ?, ?, 'delete', ?, ?
+      FROM document_sets
+      WHERE id = ?
+    `).bind(id, set.name || "이름 없는 세트", actor || "알 수 없음", "세트 삭제", id),
     env.DB.prepare("DELETE FROM document_set_items WHERE set_id = ?").bind(id),
     env.DB.prepare("DELETE FROM document_sets WHERE id = ?").bind(id)
   ]);
 
-  if (results[1].meta.changes === 0) {
+  if (results[results.length - 1].meta.changes === 0) {
     return { ok: false, message: "세트를 찾을 수 없습니다." };
   }
 
-  await logDocumentSetAction(env, id, set.name, "delete", actor, "세트 삭제");
   return { ok: true };
 }
 
@@ -2267,7 +2378,8 @@ export function parseDocumentNumberList(text) {
   const seen = new Set();
   const numbers = [];
 
-  for (const token of String(text ?? "").split(/[\n\r,;\t]+/)) {
+  // 문서번호/보관코드는 공백 없는 코드이므로 공백·줄바꿈·쉼표·세미콜론·탭을 모두 구분자로 본다.
+  for (const token of String(text ?? "").split(/[\s,;]+/)) {
     const value = clean(token);
     if (!value) {
       continue;
@@ -2310,6 +2422,49 @@ export async function findDocumentsByNumbers(env, numbers) {
   return { documents, missing };
 }
 
+// 붙여넣은 문서번호/보관코드를 세트 저장 없이 즉석 픽리스트로 해석한다.
+// 매칭된 문서를 동선순(구역→랙→면→열→선반)으로, 못 찾은 번호는 그대로 돌려줘 걷기 전에 드러나게 한다.
+export async function resolvePicklist(env, numbers) {
+  const parsed = [...new Set((numbers || []).map((value) => clean(value)).filter(Boolean))];
+  if (!parsed.length) {
+    return { documents: [], missing: [] };
+  }
+
+  const { documents: matched, missing } = await findDocumentsByNumbers(env, parsed);
+  const ids = matched.map((document) => Number(document.id)).filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) {
+    return { documents: [], missing };
+  }
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = await env.DB.prepare(`
+    SELECT
+      d.id,
+      d.storage_code,
+      d.document_number,
+      d.revision_number,
+      d.document_name,
+      d.rack_face,
+      d.status,
+      c.name AS category_name,
+      r.code AS rack_code,
+      r.zone_number,
+      r.rack_number,
+      rs.column_number,
+      rs.shelf_number,
+      co.borrower AS checkout_borrower
+    FROM documents d
+    JOIN categories c ON c.id = d.category_id
+    JOIN rack_slots rs ON rs.id = d.rack_slot_id
+    JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
+    WHERE d.id IN (${placeholders})
+    ORDER BY r.zone_number, r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number
+  `).bind(...ids).all();
+
+  return { documents: result.results ?? [], missing };
+}
+
 export function valuesFromDocumentForm(form) {
   return {
     documentNumber: clean(form.get("documentNumber")),
@@ -2319,6 +2474,8 @@ export function valuesFromDocumentForm(form) {
     rackSlotId: Number(form.get("rackSlotId")),
     rackFace: clean(form.get("rackFace")).toUpperCase(),
     note: clean(form.get("note")),
-    tagIds: form.getAll("tagIds").map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+    tagIds: form.getAll("tagIds").map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
+    // 낙관적 잠금: 사용자가 수정 화면을 연 시점의 updated_at(hidden). 비어 있으면 잠금 없이 동작.
+    expectedUpdatedAt: clean(form.get("expectedUpdatedAt"))
   };
 }

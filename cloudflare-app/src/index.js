@@ -22,9 +22,11 @@ import {
   categoriesPage,
   adminDashboardPage,
   adminSettingsPage,
+  custodyCardPage,
   dashboardPage,
   documentDetailsPage,
   documentFormPage,
+  documentGuidePage,
   documentImportPage,
   documentsPage,
   errorPage,
@@ -32,13 +34,16 @@ import {
   moveFormPage,
   notFoundPage,
   passwordPage,
+  picklistPage,
   qaPage,
   rackDetailsPage,
   rackFormPage,
   rackConfigurePage,
   racksPage,
+  searchReportPage,
   setDetailsPage,
   setFormPage,
+  setPicklistPage,
   setsPage,
   signupPage,
   tagsPage,
@@ -61,7 +66,7 @@ import {
   getActiveTags,
   getAppUsers,
   getCategories,
-  getCategoryDocumentIndex,
+  getDidYouMeanSuggestions,
   getDisposalLogs,
   getDocument,
   getDocumentAuditLogs,
@@ -75,17 +80,27 @@ import {
   getDocumentTags,
   getDocumentsForExport,
   getFloorPlanRegions,
+  getPopularDocuments,
   getRackDetails,
   getRackDocuments,
   getRackSummaries,
+  getSearchIndexDocuments,
+  getSearchIndexMeta,
+  getSearchReport,
   getSearchSuggestions,
+  getSlotNeighbors,
   getSlotOptions,
   getTags,
+  MAX_SEARCH_RESULTS,
   moveDocument,
   parseDocumentNumberList,
+  parseSearchQuery,
+  recordSearchClick,
+  recordSearchLog,
   permanentlyDeleteDocument,
   rejectUser,
   removeDocumentFromSet,
+  resolvePicklist,
   restoreDocument,
   returnDocument,
   searchDocuments,
@@ -100,19 +115,38 @@ import {
 } from "./db.js";
 import { buildDocumentCsv, prepareDocumentImportRows, readDocumentImportRows } from "./documentCsv.js";
 import { matchAdminUserRoute, matchDocumentRoute, matchMasterRoute, matchRackRoute, matchSetRoute } from "./routes.js";
-import { clean, isTrustedPostOrigin, isValidCsrfToken, normalizePath, redirect, sanitizeReturnUrl } from "./utils.js";
+import { clean, isTrustedPostOrigin, isValidCsrfToken, logError, normalizePath, redirect, sanitizeReturnUrl } from "./utils.js";
+import { withSecurityHeaders } from "./security.js";
 
 export default {
   async fetch(request, env) {
+    let response;
     try {
-      return await route(request, env);
+      response = await route(request, env);
     } catch (error) {
-      console.error(error);
+      // 미처리 예외: 원시 오류 메시지를 사용자에게 노출하지 않는다(정보 노출 방지).
+      // 상관용 짧은 reqId만 사용자에게 주고, 전체 오류는 서버 로그에만 남긴다.
+      const url = new URL(request.url);
+      const reqId = shortRequestId();
+      logError("worker.fetch", error, { reqId, method: request.method, path: normalizePath(url.pathname) });
       const session = await readSession(request, env).catch(() => null);
-      return errorPage(error.message || "알 수 없는 오류", session, 500);
+      response = errorPage(
+        `처리 중 오류가 발생했습니다. 계속되면 관리자에게 오류코드 ${reqId} 를 알려주세요.`,
+        session,
+        500
+      );
     }
+    return withSecurityHeaders(response, request);
   }
 };
+
+function shortRequestId() {
+  try {
+    return crypto.randomUUID().split("-")[0];
+  } catch {
+    return "unknown";
+  }
+}
 
 async function route(request, env) {
   const url = new URL(request.url);
@@ -120,6 +154,11 @@ async function route(request, env) {
 
   if (path.startsWith("/images/") || path === "/favicon.ico") {
     return env.ASSETS.fetch(request);
+  }
+
+  // 무인증 헬스체크: D1 도달성까지 확인해 외부 업타임 모니터가 종단 상태를 알 수 있게 한다.
+  if (path === "/healthz" && request.method === "GET") {
+    return handleHealthCheck(env);
   }
 
   if (request.method === "POST" && !isTrustedPostOrigin(request)) {
@@ -181,6 +220,14 @@ async function route(request, env) {
     return handleViewerSearch(request, env);
   }
 
+  if (path === "/api/search-index" && request.method === "GET") {
+    return handleSearchIndex(request, env);
+  }
+
+  if (path === "/api/search-click" && request.method === "POST") {
+    return handleSearchClick(request, env);
+  }
+
   if (path === "/account/password" && request.method === "GET") {
     return passwordPage({ session });
   }
@@ -195,6 +242,10 @@ async function route(request, env) {
 
   if (path === "/admin/settings" && request.method === "GET") {
     return requireAdmin(session) ?? handleAdminSettings(env, session);
+  }
+
+  if (path === "/admin/search-report" && request.method === "GET") {
+    return requireAdmin(session) ?? handleAdminSearchReport(env, session);
   }
 
   const adminUserRoute = matchAdminUserRoute(path);
@@ -235,6 +286,14 @@ async function route(request, env) {
 
   if (documentRoute) {
     return handleDocumentRoute(request, env, session, documentRoute);
+  }
+
+  if (path === "/picklist" && request.method === "GET") {
+    return picklistPage({ session });
+  }
+
+  if (path === "/picklist" && request.method === "POST") {
+    return handleAdhocPicklist(request, env, session);
   }
 
   if (path === "/sets" && request.method === "GET") {
@@ -321,6 +380,17 @@ async function route(request, env) {
   return notFoundPage(session);
 }
 
+async function handleHealthCheck(env) {
+  const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
+  try {
+    await env.DB.prepare("SELECT 1 AS ok").first();
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+  } catch (error) {
+    logError("worker.healthz", error);
+    return new Response(JSON.stringify({ ok: false }), { status: 503, headers });
+  }
+}
+
 async function handleLogin(request, env) {
   const form = await request.formData();
   const username = clean(form.get("username"));
@@ -364,43 +434,124 @@ async function handleSignup(request, env) {
 async function handleDashboard(request, env, session) {
   const url = new URL(request.url);
   const query = clean(url.searchParams.get("q"));
-  const searchParams = Object.fromEntries(url.searchParams);
-  const filters = {
+  const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
+  const explicitFilters = {
     categoryId: Number(url.searchParams.get("category")) || 0,
     zoneNumber: Number(url.searchParams.get("zone")) || 0,
     tagId: Number(url.searchParams.get("tag")) || 0,
     status: clean(url.searchParams.get("status")),
-    sort: clean(url.searchParams.get("sort")) || (query ? "relevance" : "updated")
+    sort: clean(url.searchParams.get("sort"))
   };
-  const [racks, regions, viewerSearch, categories, tags, categoryIndex, quality] = await Promise.all([
+  const [categories, tags] = await Promise.all([
+    getActiveCategories(env),
+    getActiveTags(env)
+  ]);
+
+  const hasExplicitFilter = Boolean(
+    explicitFilters.categoryId || explicitFilters.zoneNumber || explicitFilters.tagId || explicitFilters.status
+  );
+
+  // 검색엔진 셸: 검색어도 필터도 없으면 검색창만 있는 홈을 그린다.
+  if (!query && !hasExplicitFilter) {
+    const popular = await getPopularDocuments(env, 5);
+    return dashboardPage({
+      session,
+      mode: "home",
+      query: "",
+      categories,
+      tags,
+      filters: explicitFilters,
+      popular
+    });
+  }
+
+  // "2구역 PV" 같은 검색어를 필터 + 남은 텍스트로 분해한다.
+  const parsed = parseSearchQuery(query, { categories, tags, explicit: explicitFilters });
+  const filters = {
+    categoryId: explicitFilters.categoryId || parsed.filters.categoryId || 0,
+    zoneNumber: explicitFilters.zoneNumber || parsed.filters.zoneNumber || 0,
+    tagId: explicitFilters.tagId || parsed.filters.tagId || 0,
+    status: explicitFilters.status || parsed.filters.status || "",
+    sort: explicitFilters.sort || (parsed.text ? "relevance" : "updated")
+  };
+
+  const [racks, regions, viewerSearch] = await Promise.all([
     getRackSummaries(env),
     getFloorPlanRegions(env),
-    getViewerSearchPayload(env, { ...searchParams, pageSize: searchParams.pageSize || 12 }),
-    getActiveCategories(env),
-    getActiveTags(env),
-    getCategoryDocumentIndex(env),
-    session.role === "Admin" ? getDocumentQualitySummary(env) : Promise.resolve(null)
+    getViewerSearchPayload(env, {
+      q: parsed.text,
+      category: filters.categoryId,
+      zone: filters.zoneNumber,
+      tag: filters.tagId,
+      status: filters.status,
+      sort: filters.sort,
+      page,
+      pageSize: 12
+    })
   ]);
+
+  const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
+  const didYouMean = query && totalItems === 0 ? await getDidYouMeanSuggestions(env, parsed.text || query, 3) : [];
+
+  if (query && page === 1) {
+    await recordSearchLog(env, query, totalItems);
+  }
 
   return dashboardPage({
     session,
+    mode: "results",
     query,
-    racks,
+    parsedQuery: parsed,
     viewerSearch,
     floorPlan: buildFloorPlanLayout(racks, regions),
     categories,
     tags,
     filters,
-    categoryIndex,
-    quality
+    didYouMean
   });
 }
 
+async function handleSearchIndex(request, env) {
+  const meta = await getSearchIndexMeta(env);
+  const etag = `"idx-${meta.count}-${meta.maxId}-${meta.updated.replace(/[^0-9]/g, "")}"`;
+
+  if (request.headers.get("If-None-Match") === etag) {
+    return new Response(null, { status: 304, headers: { ETag: etag } });
+  }
+
+  const documents = await getSearchIndexDocuments(env);
+  return new Response(JSON.stringify({ updated: meta.updated, documents }), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "private, no-cache",
+      ETag: etag
+    }
+  });
+}
+
+async function handleSearchClick(request, env) {
+  const form = await request.formData();
+  const result = await recordSearchClick(env, clean(form.get("q")), Number(form.get("documentId")));
+
+  return new Response(JSON.stringify(result), {
+    status: result.ok ? 200 : 400,
+    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
+  });
+}
+
+async function handleAdminSearchReport(env, session) {
+  const report = await getSearchReport(env);
+  return searchReportPage({ session, report });
+}
+
 async function handleAdminDashboard(env, session) {
-  const users = await getAppUsers(env);
+  const [users, quality] = await Promise.all([
+    getAppUsers(env),
+    getDocumentQualitySummary(env)
+  ]);
   const pendingCount = users.filter((user) => user.status === "pending").length;
 
-  return adminDashboardPage({ session, pendingCount });
+  return adminDashboardPage({ session, pendingCount, quality });
 }
 
 async function handleAdminSettings(env, session) {
@@ -427,34 +578,49 @@ async function handleDocuments(request, env, session) {
   const query = clean(url.searchParams.get("q"));
   const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
   const pageSize = 30;
-  const filters = {
+  const explicitFilters = {
     categoryId: Number(url.searchParams.get("category")) || 0,
     zoneNumber: Number(url.searchParams.get("zone")) || 0,
     tagId: Number(url.searchParams.get("tag")) || 0,
     status: clean(url.searchParams.get("status")),
-    sort: clean(url.searchParams.get("sort")) || (query ? "relevance" : "updated")
+    sort: clean(url.searchParams.get("sort"))
   };
-  const [allDocuments, categories, tags, categoryIndex, suggestions] = await Promise.all([
-    searchDocuments(env, query, 300, filters),
+  const [categories, tags] = await Promise.all([
     getActiveCategories(env),
-    getActiveTags(env),
-    getCategoryDocumentIndex(env),
-    getSearchSuggestions(env, query, 10)
+    getActiveTags(env)
+  ]);
+  const parsed = parseSearchQuery(query, { categories, tags, explicit: explicitFilters });
+  const filters = {
+    categoryId: explicitFilters.categoryId || parsed.filters.categoryId || 0,
+    zoneNumber: explicitFilters.zoneNumber || parsed.filters.zoneNumber || 0,
+    tagId: explicitFilters.tagId || parsed.filters.tagId || 0,
+    status: explicitFilters.status || parsed.filters.status || "",
+    sort: explicitFilters.sort || (parsed.text ? "relevance" : "updated")
+  };
+  const [allDocuments, suggestions] = await Promise.all([
+    searchDocuments(env, parsed.text, MAX_SEARCH_RESULTS, filters),
+    getSearchSuggestions(env, parsed.text, 10)
   ]);
   const totalDocuments = allDocuments.length;
   const totalPages = Math.max(1, Math.ceil(totalDocuments / pageSize));
   const currentPage = Math.min(page, totalPages);
   const documents = allDocuments.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const didYouMean = query && totalDocuments === 0 ? await getDidYouMeanSuggestions(env, parsed.text || query, 3) : [];
+
+  if (query && page === 1) {
+    await recordSearchLog(env, query, totalDocuments);
+  }
 
   return documentsPage({
     session,
     query,
+    parsedQuery: parsed,
     documents,
     categories,
     tags,
     filters,
-    categoryIndex,
     suggestions,
+    didYouMean,
     pagination: { page: currentPage, pageSize, totalDocuments, totalPages }
   });
 }
@@ -521,18 +687,28 @@ async function handleDocumentImport(request, env, session) {
 
   let created = 0;
   let disposed = 0;
+  const failures = [];
 
-  for (const item of prepared.items) {
-    const id = await createDocument(env, item.values, session.displayName, session.role);
-    created += 1;
+  // 행별로 독립 처리하고 실패를 집계한다. 중간 한 행이 실패해도 일반 500 대신
+  // "생성 N · 폐기반영 M · 실패 K" 요약을 돌려줘 운영자가 후속 조치할 수 있게 한다.
+  for (let index = 0; index < prepared.items.length; index += 1) {
+    const item = prepared.items[index];
+    const rowNumber = index + 2; // 헤더(1행) 다음부터
+    try {
+      const id = await createDocument(env, item.values, session.displayName, session.role);
+      created += 1;
 
-    if (item.status === "disposed") {
-      await disposeDocument(env, id, session.displayName, "CSV 가져오기 폐기 상태 반영", session.role);
-      disposed += 1;
+      if (item.status === "disposed") {
+        await disposeDocument(env, id, session.displayName, "CSV 가져오기 폐기 상태 반영", session.role);
+        disposed += 1;
+      }
+    } catch (error) {
+      logError("import.row", error, { row: rowNumber });
+      failures.push(`${rowNumber}행: ${error.message || "등록 실패"}`);
     }
   }
 
-  return documentImportPage({ session, result: { created, disposed } });
+  return documentImportPage({ session, result: { created, disposed, failures } });
 }
 
 async function renderCreateDocument(env, session, values = {}, error = "") {
@@ -585,6 +761,36 @@ async function handleDocumentRoute(request, env, session, routeInfo) {
     }
 
     return documentDetailsPage({ session, document, tags, movementLogs, disposalLogs, auditLogs, checkoutLogs });
+  }
+
+  if (request.method === "GET" && action === "guide") {
+    const document = await getDocument(env, id);
+
+    if (!document) {
+      return notFoundPage(session);
+    }
+
+    const [racks, regions, neighbors] = await Promise.all([
+      getRackSummaries(env),
+      getFloorPlanRegions(env),
+      getSlotNeighbors(env, document)
+    ]);
+
+    return documentGuidePage({ session, document, floorPlan: buildFloorPlanLayout(racks, regions), neighbors });
+  }
+
+  if (request.method === "GET" && action === "custody") {
+    const [document, movementLogs, checkoutLogs] = await Promise.all([
+      getDocument(env, id),
+      getDocumentMovementLogs(env, id),
+      getDocumentCheckoutLogs(env, id)
+    ]);
+
+    if (!document) {
+      return notFoundPage(session);
+    }
+
+    return custodyCardPage({ session, document, movementLogs, checkoutLogs });
   }
 
   if (request.method === "GET" && action === "edit") {
@@ -700,7 +906,8 @@ async function handleDocumentRoute(request, env, session, routeInfo) {
       categoryId: document.category_id,
       rackSlotId: Number(form.get("rackSlotId")),
       rackFace: clean(form.get("rackFace")).toUpperCase(),
-      note: clean(form.get("note"))
+      note: clean(form.get("note")),
+      expectedUpdatedAt: clean(form.get("expectedUpdatedAt"))
     };
     const validation = await validateDocumentInput(env, values, id);
 
@@ -795,6 +1002,34 @@ async function handleSets(env, session) {
   return setsPage({ session, sets });
 }
 
+async function handleAdhocPicklist(request, env, session) {
+  const form = await request.formData();
+  const raw = clean(form.get("numbers"));
+  const numbers = parseDocumentNumberList(raw);
+
+  if (!numbers.length) {
+    return picklistPage({ session, raw, error: "문서번호 또는 보관코드를 붙여넣으세요." });
+  }
+  if (numbers.length > 300) {
+    return picklistPage({ session, raw, error: "한 번에 300건 이하로 입력하세요. 나눠서 조회하세요." });
+  }
+
+  const [{ documents, missing }, racks, regions] = await Promise.all([
+    resolvePicklist(env, numbers),
+    getRackSummaries(env),
+    getFloorPlanRegions(env)
+  ]);
+
+  return picklistPage({
+    session,
+    raw,
+    requested: numbers.length,
+    documents,
+    missing,
+    floorPlan: buildFloorPlanLayout(racks, regions)
+  });
+}
+
 async function renderSetDetails(env, session, id, options = {}) {
   const set = await getDocumentSet(env, id);
   if (!set) {
@@ -855,6 +1090,21 @@ async function handleSetRoute(request, env, session, routeInfo) {
   if (request.method === "GET" && action === "details") {
     const url = new URL(request.url);
     return renderSetDetails(env, session, id, { addQuery: clean(url.searchParams.get("add-q")) });
+  }
+
+  if (request.method === "GET" && action === "picklist") {
+    const set = await getDocumentSet(env, id);
+    if (!set) {
+      return notFoundPage(session);
+    }
+
+    const [documents, racks, regions] = await Promise.all([
+      getDocumentSetDocuments(env, id),
+      getRackSummaries(env),
+      getFloorPlanRegions(env)
+    ]);
+
+    return setPicklistPage({ session, set, documents, floorPlan: buildFloorPlanLayout(racks, regions) });
   }
 
   if (request.method === "GET" && action === "edit") {
@@ -1171,7 +1421,8 @@ function documentToFormValues(document) {
     categoryId: document.category_id,
     rackSlotId: document.rack_slot_id,
     rackFace: document.rack_face,
-    note: document.note || ""
+    note: document.note || "",
+    updatedAt: document.updated_at
   };
 }
 

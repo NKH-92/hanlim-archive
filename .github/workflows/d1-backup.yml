@@ -1,0 +1,40 @@
+name: D1 Backup
+
+# 위치 DB(hanlim-archive) 전체를 주 1회 SQL 덤프로 내보내 아티팩트로 보존한다.
+# Cloudflare Time Travel(30일)로는 막지 못하는 계정 삭제·DB 손상·30일 초과·외부 감사 보존을 대비한다.
+# 필요 시크릿(리포지토리 Settings > Secrets and variables > Actions):
+#   - CLOUDFLARE_API_TOKEN   : D1 Read 권한이 있는 스코프드 토큰
+#   - CLOUDFLARE_ACCOUNT_ID  : Cloudflare 계정 ID
+on:
+  schedule:
+    - cron: "0 18 * * 0" # 매주 일요일 18:00 UTC = 월요일 03:00 KST
+  workflow_dispatch: {}
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cloudflare-app/package-lock.json
+      - run: npm ci
+      - name: Export D1 database
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          STAMP="$(date -u +%Y%m%d-%H%M%S)"
+          echo "STAMP=${STAMP}" >> "$GITHUB_ENV"
+          npx wrangler d1 export hanlim-archive --remote --output "hanlim-archive-${STAMP}.sql"
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-backup-${{ env.STAMP }}
+          path: cloudflare-app/hanlim-archive-*.sql
+          retention-days: 90

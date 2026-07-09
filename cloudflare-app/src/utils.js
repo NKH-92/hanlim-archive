@@ -2,6 +2,21 @@ export function clean(value) {
   return String(value ?? "").trim();
 }
 
+// 구조화 에러 로그. Cloudflare Workers Logs/Tail에서 JSON으로 파싱·필터링할 수 있게 한 줄로 남긴다.
+// 폴백으로 조용히 넘어가던 실패(특히 위치·도면 조회)를 운영에서 관측 가능하게 만든다.
+export function logError(context, error, extra = {}) {
+  try {
+    console.error(JSON.stringify({
+      level: "error",
+      at: context,
+      message: error && error.message ? error.message : String(error),
+      ...extra
+    }));
+  } catch {
+    console.error(context, error);
+  }
+}
+
 export function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -26,9 +41,20 @@ export function redirect(location, headers = {}) {
 }
 
 export function sanitizeReturnUrl(value) {
-  return value.startsWith("/") && !value.startsWith("//") ? value : "/";
+  const candidate = String(value ?? "");
+  // 앱 내부 경로만 허용한다. 백슬래시(브라우저가 "/"로 정규화 → //evil.com 오픈 리다이렉트),
+  // 프로토콜 상대(//), 스킴 포함(http:), 제어문자는 모두 거부한다.
+  if (!candidate.startsWith("/") || candidate.startsWith("//") || candidate.includes("\\")) {
+    return "/";
+  }
+  for (let index = 0; index < candidate.length; index += 1) {
+    const code = candidate.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f) {
+      return "/";
+    }
+  }
+  return candidate;
 }
-
 export function isTrustedPostOrigin(request) {
   const fetchSite = request.headers.get("Sec-Fetch-Site");
   if (fetchSite === "cross-site") {

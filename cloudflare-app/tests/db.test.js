@@ -11,11 +11,15 @@ import {
   documentToViewerItem,
   disposeDocument,
   levenshteinDistance,
+  moveDocument,
   parseDocumentNumberList,
+  permanentlyDeleteDocument,
   removeDocumentFromSet,
+  restoreDocument,
   returnDocument,
   scoreDocumentMatch,
   searchTokens,
+  updateDocument,
   upsertDocumentSet
 } from "../src/db.js";
 
@@ -25,6 +29,8 @@ test("parseDocumentNumberList splits, trims, and dedupes pasted numbers", () => 
   assert.deepEqual(numbers, ["MR-2026-001", "PV-2026-014", "ARC-000002"]);
   assert.deepEqual(parseDocumentNumberList(""), []);
   assert.deepEqual(parseDocumentNumberList(null), []);
+  // 공백 구분도 지원한다(감사관이 부른 번호를 공백으로 붙여넣는 경우).
+  assert.deepEqual(parseDocumentNumberList("NOPE-999  ARC-000001 PV-2026-014"), ["NOPE-999", "ARC-000001", "PV-2026-014"]);
 });
 
 test("search normalization supports partial numbers, spacing, and light typos", () => {
@@ -53,13 +59,17 @@ test("search normalization supports partial numbers, spacing, and light typos", 
   assert.equal(scoreDocumentMatch(document, "완전히다른검색어").relevance_score, 0);
 });
 
-test("disposeDocument does not write logs when the status update changes no rows", async () => {
-  const env = envForDispose({ updateChanges: 0 });
+test("disposeDocument reports a conflict when the guarded update changes no rows", async () => {
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null),
+    batch: (statements) => statements.map(() => ({ meta: { changes: 0 } }))
+  });
 
   const result = await disposeDocument(env, 1, "관리자", "폐기 사유", "Admin");
 
+  // 원자화된 batch가 실행되더라도 pre-state 가드가 모두 걸려 아무것도 커밋되지 않는다(0행).
   assert.equal(result.ok, false);
-  assert.equal(env.batchCalls, 0);
+  assert.match(result.message, /변경/);
 });
 
 test("viewer search item exposes location-first api shape", () => {
@@ -119,13 +129,23 @@ test("floor plan layout clamps regions and auto-places racks by zone", () => {
   assert.equal(layout[1].racks[0].documentCount, 2);
 });
 
-test("disposeDocument writes logs after a successful status update", async () => {
-  const env = envForDispose({ updateChanges: 1 });
+test("disposeDocument writes disposal + audit logs and the status change in one atomic batch", async () => {
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null)
+  });
 
   const result = await disposeDocument(env, 1, "관리자", "폐기 사유", "Admin");
 
   assert.equal(result.ok, true);
-  assert.equal(env.batchCalls, 1);
+  // 상태변경과 두 로그가 반드시 하나의 batch(트랜잭션) 안에 함께 있어야 한다(감사기록 없는 상태변경 방지).
+  assert.equal(env.state.batches.length, 1);
+  const sqls = env.state.batches[0].map((statement) => statement.sql);
+  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO disposal_logs")));
+  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_audit_logs")));
+  assert.ok(sqls.some((sql) => sql.includes("UPDATE documents") && sql.includes("status = 'disposed'")));
+  // 로그 INSERT는 pre-state 가드(... FROM documents WHERE ...)로 조건부 실행되어야 한다.
+  const disposalLog = env.state.batches[0].find((statement) => statement.sql.includes("INSERT INTO disposal_logs"));
+  assert.ok(disposalLog.sql.includes("FROM documents"));
 });
 
 test("checkoutDocument rejects disposed or already checked-out documents", async () => {
@@ -161,22 +181,24 @@ test("checkoutDocument records the checkout and an audit log", async () => {
   assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_audit_logs")));
 });
 
-test("returnDocument closes the active checkout and audits, or fails when none is open", async () => {
+test("returnDocument closes the active checkout and audits atomically, or fails when none is open", async () => {
   const env = recordingEnv({
-    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ checkout_borrower: "홍길동" }) : null),
-    run: (sql) => (sql.includes("UPDATE document_checkouts") ? 1 : 1)
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ checkout_borrower: "홍길동" }) : null)
   });
   const result = await returnDocument(env, 1, "관리자", "Admin");
   assert.equal(result.ok, true);
-  assert.ok(env.state.calls.some((call) => call.type === "run" && call.sql.includes("INSERT INTO document_audit_logs")));
+  // 반납 UPDATE와 감사 로그가 하나의 batch 안에 함께 있어야 한다.
+  assert.equal(env.state.batches.length, 1);
+  const sqls = env.state.batches[0].map((statement) => statement.sql);
+  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_audit_logs")));
+  assert.ok(sqls.some((sql) => sql.includes("UPDATE document_checkouts")));
 
   const noneEnv = recordingEnv({
     first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null),
-    run: (sql) => (sql.includes("UPDATE document_checkouts") ? 0 : 1)
+    batch: (statements) => statements.map(() => ({ meta: { changes: 0 } }))
   });
   const noneResult = await returnDocument(noneEnv, 1, "관리자", "Admin");
   assert.equal(noneResult.ok, false);
-  assert.ok(!noneEnv.state.calls.some((call) => call.sql.includes("INSERT INTO document_audit_logs")));
 });
 
 test("disposeDocument refuses documents that are checked out", async () => {
@@ -242,8 +264,110 @@ test("removeDocumentFromSet and deleteDocumentSet write remove and delete logs",
   });
   const deleted = await deleteDocumentSet(deleteEnv, 3, "관리자");
   assert.equal(deleted.ok, true);
-  const deleteLog = deleteEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
-  assert.equal(deleteLog.args[2], "delete");
+  // 삭제 이력이 삭제와 같은 batch 안에서 기록되어야 한다(세트만 사라지고 기록이 없는 공백 방지).
+  assert.equal(deleteEnv.state.batches.length, 1);
+  const deleteSqls = deleteEnv.state.batches[0].map((statement) => statement.sql);
+  assert.ok(deleteSqls.some((sql) => sql.includes("INSERT INTO document_set_logs") && sql.includes("'delete'")));
+  assert.ok(deleteSqls.some((sql) => sql.includes("DELETE FROM document_sets")));
+});
+
+test("updateDocument binds the optimistic lock and guards tags + audit in one atomic batch", async () => {
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null),
+    all: () => []
+  });
+
+  const result = await updateDocument(env, 1, {
+    documentNumber: "MR-002",
+    revisionNumber: "Rev.1",
+    documentName: "수정된 문서",
+    categoryId: 1,
+    tagIds: [2, 3],
+    note: "메모",
+    expectedUpdatedAt: "2026-07-01 09:00:00"
+  }, "관리자", "Admin");
+
+  assert.equal(result.ok, true);
+  assert.equal(env.state.batches.length, 1);
+  const statements = env.state.batches[0];
+  const update = statements.find((s) => s.sql.includes("UPDATE documents") && s.sql.includes("category_id"));
+  // 낙관적 잠금: 가드 UPDATE에 updated_at 조건과 기대값 바인딩이 포함되어야 한다.
+  assert.ok(update.sql.includes("updated_at = ?"));
+  assert.ok(update.args.includes("2026-07-01 09:00:00"));
+  // 태그 교체와 감사 로그가 같은 batch 안에 있고, 태그 DELETE도 pre-state 가드(EXISTS)에 묶여야 한다.
+  const tagDelete = statements.find((s) => s.sql.includes("DELETE FROM document_tags"));
+  assert.ok(tagDelete && tagDelete.sql.includes("EXISTS"));
+  assert.ok(statements.some((s) => s.sql.includes("INSERT INTO document_audit_logs")));
+});
+
+test("updateDocument reports a conflict when the optimistic lock does not match", async () => {
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null),
+    all: () => [],
+    batch: (statements) => statements.map(() => ({ meta: { changes: 0 } }))
+  });
+
+  const result = await updateDocument(env, 1, {
+    documentNumber: "MR-002",
+    revisionNumber: "Rev.1",
+    documentName: "수정",
+    categoryId: 1,
+    tagIds: [],
+    note: "",
+    expectedUpdatedAt: "2000-01-01 00:00:00"
+  }, "관리자", "Admin");
+
+  assert.equal(result.ok, false);
+  assert.match(result.message, /먼저 수정|변경/);
+});
+
+test("moveDocument records the movement log and audit alongside the location change in one batch", async () => {
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null),
+    all: () => []
+  });
+
+  const result = await moveDocument(env, 1, {
+    rackSlotId: 9,
+    rackFace: "B",
+    note: "감사 대비 재배치"
+  }, "관리자", "Admin");
+
+  assert.equal(result.ok, true);
+  assert.equal(env.state.batches.length, 1);
+  const sqls = env.state.batches[0].map((s) => s.sql);
+  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO movement_logs")));
+  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_audit_logs")));
+  assert.ok(sqls.some((sql) => sql.includes("UPDATE documents") && sql.includes("rack_slot_id")));
+});
+
+test("permanentlyDeleteDocument refuses active documents and preserves history before hard delete", async () => {
+  const activeEnv = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ status: "active" }) : null)
+  });
+  const refused = await permanentlyDeleteDocument(activeEnv, 1, "관리자", "Admin");
+  assert.equal(refused.ok, false);
+  assert.equal(activeEnv.state.batches.length, 0);
+
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ status: "disposed" }) : null),
+    all: (sql) => {
+      if (sql.includes("FROM movement_logs")) return [{ id: 5, to_rack_code: "1-01" }];
+      if (sql.includes("FROM disposal_logs")) return [{ id: 6, action: "disposed" }];
+      return [];
+    }
+  });
+  const result = await permanentlyDeleteDocument(env, 1, "관리자", "Admin");
+  assert.equal(result.ok, true);
+  assert.equal(env.state.batches.length, 1);
+  const statements = env.state.batches[0];
+  // 감사 로그 INSERT가 DELETE '앞'에 있어 이력 스냅샷이 삭제 전에 보존되어야 한다.
+  const auditIdx = statements.findIndex((s) => s.sql.includes("INSERT INTO document_audit_logs"));
+  const deleteIdx = statements.findIndex((s) => s.sql.includes("DELETE FROM documents"));
+  assert.ok(auditIdx >= 0 && deleteIdx >= 0 && auditIdx < deleteIdx);
+  const detailsJson = statements[auditIdx].args.find((a) => typeof a === "string" && a.includes("history"));
+  assert.ok(detailsJson, "감사 상세에 history 스냅샷이 포함되어야 한다");
+  assert.match(detailsJson, /movements/);
 });
 
 function sampleDocument(overrides = {}) {
@@ -299,63 +423,6 @@ function recordingEnv({ first = () => null, all = () => [], run = () => 1, batch
       async batch(statements) {
         state.batches.push(statements.map((statement) => ({ sql: statement.sql, args: statement.args })));
         return batch ? batch(statements) : statements.map(() => ({ meta: { changes: 1 } }));
-      }
-    }
-  };
-
-  return env;
-}
-
-function envForDispose({ updateChanges }) {
-  const env = {
-    batchCalls: 0,
-    DB: {
-      prepare(sql) {
-        return {
-          bind() {
-            return {
-              async first() {
-                if (sql.includes("FROM documents d")) {
-                  return {
-                    id: 1,
-                    storage_code: "ARC-000001",
-                    document_number: "MR-001",
-                    revision_number: "Rev.0",
-                    document_name: "문서",
-                    category_name: "제조기록서",
-                    category_id: 1,
-                    rack_slot_id: 1,
-                    rack_face: "A",
-                    status: "active",
-                    rack_code: "1-01",
-                    zone_number: 1,
-                    rack_number: 1,
-                    column_number: 1,
-                    shelf_number: 1,
-                    slot_code: "1-1",
-                    note: ""
-                  };
-                }
-
-                return null;
-              },
-              async all() {
-                if (sql.includes("FROM document_tags")) {
-                  return { results: [] };
-                }
-
-                return { results: [] };
-              },
-              async run() {
-                return { meta: { changes: updateChanges } };
-              }
-            };
-          }
-        };
-      },
-      async batch() {
-        env.batchCalls += 1;
-        return [];
       }
     }
   };

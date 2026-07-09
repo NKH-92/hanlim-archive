@@ -141,7 +141,7 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
     const status = clean(row.status).toLowerCase();
     items.push({
       values,
-      status: status === "disposed" || status === "폐기" || clean(row.status) === "?먭린" ? "disposed" : "active"
+      status: status === "disposed" || status === "폐기" ? "disposed" : "active"
     });
   }
 
