@@ -2,9 +2,9 @@ name: D1 Backup
 
 # 위치 DB(hanlim-archive) 전체를 주 1회 SQL 덤프로 내보내 아티팩트로 보존한다.
 # Cloudflare Time Travel(30일)로는 막지 못하는 계정 삭제·DB 손상·30일 초과·외부 감사 보존을 대비한다.
-# 필요 시크릿(리포지토리 Settings > Secrets and variables > Actions):
-#   - CLOUDFLARE_API_TOKEN   : D1 Read 권한이 있는 스코프드 토큰
-#   - CLOUDFLARE_ACCOUNT_ID  : Cloudflare 계정 ID
+# 등록이 필요한 시크릿은 딱 하나다(리포지토리 Settings > Secrets and variables > Actions):
+#   - CLOUDFLARE_API_TOKEN : Workers Scripts=Edit + D1=Edit 권한의 스코프드 토큰(배포용 토큰과 동일)
+# 계정 ID는 비밀정보가 아니므로 아래 env에 직접 적어 둔다.
 on:
   schedule:
     - cron: "0 18 * * 0" # 매주 일요일 18:00 UTC = 월요일 03:00 KST
@@ -27,7 +27,7 @@ jobs:
       - name: Export D1 database
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: e2b9c1d94dc8f0f6e349bfbfb36cfa30
         run: |
           STAMP="$(date -u +%Y%m%d-%H%M%S)"
           echo "STAMP=${STAMP}" >> "$GITHUB_ENV"
