@@ -1,0 +1,467 @@
+import {
+  DEFAULT_RACK_COLUMNS,
+  DEFAULT_RACK_SHELVES,
+  MAX_RACK_COLUMNS,
+  MAX_RACKS_PER_ZONE,
+  MAX_RACK_SHELVES,
+  RACK_ZONES
+} from "../config.js";
+import { clean, logError, readBoolean } from "../utils.js";
+import { DOCUMENT_BASE_JOINS, DOCUMENT_LOCATION_COLUMNS } from "./sqlShared.js";
+
+// 좌표는 Archive.png(1024x797) 회색 구역 실측 비율. 컨테이너 aspect-ratio가
+// 이미지 비율과 일치해야 오버레이가 어긋나지 않는다 (html.js .floor-plan-media 참조).
+export const DEFAULT_FLOOR_PLAN_REGIONS = Object.freeze([
+  Object.freeze({
+    region_key: "zone-1",
+    label: "1구역",
+    description: "좌상단 문서 보관 구역",
+    top_pct: 3.2,
+    left_pct: 4.7,
+    width_pct: 47.5,
+    height_pct: 38.2,
+    default_rack_count: 13,
+    is_active: 1
+  }),
+  Object.freeze({
+    region_key: "zone-2",
+    label: "2구역",
+    description: "좌하단 문서 보관 구역",
+    top_pct: 55.8,
+    left_pct: 2.5,
+    width_pct: 43.9,
+    height_pct: 38.9,
+    default_rack_count: 10,
+    is_active: 1
+  }),
+  Object.freeze({
+    region_key: "zone-3",
+    label: "3구역",
+    description: "우하단 문서 보관 구역",
+    top_pct: 55.8,
+    left_pct: 52.2,
+    width_pct: 39.1,
+    height_pct: 38.9,
+    default_rack_count: 10,
+    is_active: 1
+  })
+]);
+
+export async function getFloorPlanRegions(env) {
+  try {
+    const result = await env.DB.prepare(`
+      SELECT
+        region_key,
+        label,
+        description,
+        top_pct,
+        left_pct,
+        width_pct,
+        height_pct,
+        default_rack_count,
+        is_active
+      FROM floor_plan_regions
+      WHERE is_active = 1
+      ORDER BY region_key
+    `).all();
+    const rows = result.results ?? [];
+    return rows.length ? rows : DEFAULT_FLOOR_PLAN_REGIONS.map((region) => ({ ...region }));
+  } catch (error) {
+    // 위치 핵심: 도면 구역 조회가 예외로 실패하면 기본 도면으로 폴백하되 반드시 경보로 남긴다.
+    // (빈 테이블은 정상 기본값이므로 예외만 이 경로로 온다.)
+    logError("db.getFloorPlanRegions", error);
+    return DEFAULT_FLOOR_PLAN_REGIONS.map((region) => ({ ...region }));
+  }
+}
+
+function zoneFromRegion(region) {
+  const matched = clean(region.region_key).match(/(\d+)/);
+  return matched ? Number(matched[1]) : Number(region.zone_number || 0);
+}
+
+function clampPercent(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(number, 100));
+}
+
+export function buildFloorPlanLayout(racks, regions = DEFAULT_FLOOR_PLAN_REGIONS) {
+  const layout = regions.map((region) => {
+    const zoneNumber = zoneFromRegion(region);
+    const zoneRacks = racks
+      .filter((rack) => Number(rack.zone_number) === zoneNumber)
+      .sort((left, right) => Number(left.rack_number || 0) - Number(right.rack_number || 0));
+    const count = Math.max(zoneRacks.length, Number(region.default_rack_count || 0), 1);
+    // 실제 문서고 구조: 세로로 긴 랙이 구역 안에 좌→우로 일렬 배치(좌측이 1번).
+    // 각 랙은 자기 슬롯(구역 폭/count)의 중앙에 서고, 슬롯의 일부만 차지해 랙 사이 통로가 보인다.
+    const slotWidth = 100 / count;
+    const barWidthPct = Math.round(slotWidth * 62) / 100;
+
+    return {
+      key: clean(region.region_key) || `zone-${zoneNumber}`,
+      label: clean(region.label) || `${zoneNumber}구역`,
+      description: clean(region.description),
+      zoneNumber,
+      topPct: clampPercent(region.top_pct, 0),
+      leftPct: clampPercent(region.left_pct, 0),
+      widthPct: clampPercent(region.width_pct, 30),
+      heightPct: clampPercent(region.height_pct, 30),
+      racks: zoneRacks.map((rack, index) => ({
+        id: Number(rack.id),
+        code: clean(rack.code),
+        rackNumber: Number(rack.rack_number || 0),
+        documentCount: Number(rack.active_document_count || rack.document_count || 0),
+        isSingleSided: readBoolean(rack.is_single_sided),
+        leftPct: clampPercent(slotWidth * (index + 0.5), 50),
+        topPct: 50,
+        widthPct: barWidthPct
+      }))
+    };
+  });
+
+  // 랙이 없는 구역(현재 2·3구역)은 도면에서 감춘다. 증설로 랙이 생기면 자동으로 다시 나타난다.
+  return layout.filter((region) => region.racks.length > 0);
+}
+
+export async function getRackSummaries(env) {
+  const result = await env.DB.prepare(`
+    SELECT
+      r.id,
+      r.zone_number,
+      r.rack_number,
+      r.code,
+      r.name,
+      r.description,
+      r.is_single_sided,
+      r.is_active,
+      r.column_count,
+      r.shelf_count,
+      COUNT(d.id) AS document_count,
+      SUM(CASE WHEN d.status = 'active' THEN 1 ELSE 0 END) AS active_document_count
+    FROM racks r
+    LEFT JOIN rack_slots rs ON rs.rack_id = r.id
+    LEFT JOIN documents d ON d.rack_slot_id = rs.id
+    WHERE r.is_active = 1
+    GROUP BY r.id
+    ORDER BY r.zone_number, r.rack_number
+  `).all();
+
+  return result.results ?? [];
+}
+
+export async function getRackDetails(env, id) {
+  return env.DB.prepare(`
+    SELECT id, zone_number, rack_number, code, name, description, is_single_sided, is_active, column_count, shelf_count
+    FROM racks
+    WHERE id = ?
+  `).bind(id).first();
+}
+
+export async function getRackDocuments(env, rackId) {
+  const result = await env.DB.prepare(`
+    SELECT
+      d.id,
+      d.storage_code,
+      d.document_number,
+      d.revision_number,
+      d.document_name,
+      d.rack_face,
+      d.status,
+      ${DOCUMENT_LOCATION_COLUMNS}
+      rs.column_number,
+      rs.shelf_number,
+      rs.slot_code
+    ${DOCUMENT_BASE_JOINS}
+    WHERE r.id = ?
+    ORDER BY d.rack_face, rs.column_number, rs.shelf_number, d.document_number
+  `).bind(rackId).all();
+
+  return result.results ?? [];
+}
+
+export async function getSlotOptions(env) {
+  const result = await env.DB.prepare(`
+    SELECT
+      rs.id,
+      rs.slot_code,
+      rs.column_number,
+      rs.shelf_number,
+      r.code,
+      r.zone_number,
+      r.rack_number,
+      r.is_single_sided
+    FROM rack_slots rs
+    JOIN racks r ON r.id = rs.rack_id
+    WHERE rs.is_active = 1 AND r.is_active = 1
+    ORDER BY r.zone_number, r.rack_number, rs.column_number, rs.shelf_number
+  `).all();
+
+  return (result.results ?? []).map((slot) => ({
+    ...slot,
+    label: `${slot.zone_number}구역 / ${slot.rack_number}번랙 / ${slot.column_number}열 / ${slot.shelf_number}선반${slot.is_single_sided ? " / 단면" : ""}`
+  }));
+}
+
+export async function upsertRack(env, values) {
+  if (values.rackNumber < 1 || values.rackNumber > MAX_RACKS_PER_ZONE) {
+    throw new Error(`랙 번호는 구역당 1~${MAX_RACKS_PER_ZONE} 사이여야 합니다.`);
+  }
+
+  if (values.columnCount < 1 || values.columnCount > MAX_RACK_COLUMNS || values.shelfCount < 1 || values.shelfCount > MAX_RACK_SHELVES) {
+    throw new Error(`랙 구조는 1~${MAX_RACK_COLUMNS}열, 1~${MAX_RACK_SHELVES}선반 사이로 설정해야 합니다.`);
+  }
+
+  const code = `${values.zoneNumber}-${String(values.rackNumber).padStart(2, "0")}`;
+
+  if (values.id) {
+    const blocked = await env.DB.prepare(`
+      SELECT COUNT(*) AS count
+      FROM documents d
+      JOIN rack_slots rs ON rs.id = d.rack_slot_id
+      WHERE rs.rack_id = ?
+        AND (rs.column_number > ? OR rs.shelf_number > ?)
+    `).bind(values.id, values.columnCount, values.shelfCount).first();
+
+    if ((blocked?.count ?? 0) > 0) {
+      throw new Error("줄이려는 열/선반 범위 밖에 문서가 있어 랙 구조를 변경할 수 없습니다.");
+    }
+
+    await env.DB.prepare(`
+      UPDATE racks
+      SET
+        zone_number = ?,
+        rack_number = ?,
+        code = ?,
+        name = ?,
+        description = ?,
+        is_single_sided = ?,
+        is_active = ?,
+        column_count = ?,
+        shelf_count = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      values.zoneNumber,
+      values.rackNumber,
+      code,
+      values.name || null,
+      values.description || null,
+      values.isSingleSided ? 1 : 0,
+      values.isActive ? 1 : 0,
+      values.columnCount,
+      values.shelfCount,
+      values.id
+    ).run();
+
+    await syncRackSlots(env, values.id, values.columnCount, values.shelfCount);
+    return values.id;
+  }
+
+  const row = await env.DB.prepare(`
+    INSERT INTO racks (
+      zone_number,
+      rack_number,
+      code,
+      name,
+      description,
+      is_single_sided,
+      is_active,
+      column_count,
+      shelf_count,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP)
+    RETURNING id
+  `).bind(
+    values.zoneNumber,
+    values.rackNumber,
+    code,
+    values.name || null,
+    values.description || null,
+    values.isSingleSided ? 1 : 0,
+    values.columnCount,
+    values.shelfCount
+  ).first();
+
+  await syncRackSlots(env, row.id, values.columnCount, values.shelfCount);
+  return row.id;
+}
+
+async function syncRackSlots(env, rackId, columnCount, shelfCount) {
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE rack_slots
+      SET
+        is_active = CASE
+          WHEN column_number BETWEEN 1 AND ? AND shelf_number BETWEEN 1 AND ? THEN 1
+          ELSE 0
+        END,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE rack_id = ?
+    `).bind(columnCount, shelfCount, rackId),
+    env.DB.prepare(`
+      WITH RECURSIVE
+        col_nums(column_number) AS (
+          VALUES(1)
+          UNION ALL
+          SELECT column_number + 1 FROM col_nums WHERE column_number < ?
+        ),
+        shelf_nums(shelf_number) AS (
+          VALUES(1)
+          UNION ALL
+          SELECT shelf_number + 1 FROM shelf_nums WHERE shelf_number < ?
+        )
+      INSERT INTO rack_slots (
+        rack_id,
+        slot_code,
+        column_number,
+        shelf_number,
+        description,
+        is_active,
+        updated_at
+      )
+      SELECT
+        ?,
+        printf('%d-%d', col_nums.column_number, shelf_nums.shelf_number),
+        col_nums.column_number,
+        shelf_nums.shelf_number,
+        printf('%d열 %d선반', col_nums.column_number, shelf_nums.shelf_number),
+        1,
+        CURRENT_TIMESTAMP
+      FROM col_nums
+      CROSS JOIN shelf_nums
+      WHERE 1 = 1
+      ON CONFLICT(rack_id, slot_code) DO UPDATE SET
+        column_number = excluded.column_number,
+        shelf_number = excluded.shelf_number,
+        description = excluded.description,
+        is_active = 1,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(columnCount, shelfCount, rackId)
+  ]);
+}
+
+export async function configureRackCounts(env, counts) {
+  for (const zone of RACK_ZONES) {
+    if (!Number.isInteger(counts[zone]) || counts[zone] < 0 || counts[zone] > MAX_RACKS_PER_ZONE) {
+      return { ok: false, message: `구역별 랙 수는 0~${MAX_RACKS_PER_ZONE} 사이여야 합니다.` };
+    }
+  }
+
+  const usedRows = await env.DB.prepare(`
+    SELECT r.zone_number, MAX(r.rack_number) AS max_used_rack
+    FROM racks r
+    JOIN rack_slots rs ON rs.rack_id = r.id
+    JOIN documents d ON d.rack_slot_id = rs.id
+    GROUP BY r.zone_number
+  `).all();
+
+  for (const row of usedRows.results ?? []) {
+    if (counts[row.zone_number] < row.max_used_rack) {
+      return {
+        ok: false,
+        message: `${row.zone_number}구역 ${row.max_used_rack}번 랙에 문서가 있어 ${counts[row.zone_number]}개로 줄일 수 없습니다.`
+      };
+    }
+  }
+
+  await env.DB.batch([
+    env.DB.prepare(`
+      WITH RECURSIVE nums(rack_number) AS (
+        VALUES(1)
+        UNION ALL
+        SELECT rack_number + 1 FROM nums WHERE rack_number < ?
+      ),
+      zones(zone_number) AS (
+        VALUES(1), (2), (3)
+      )
+      INSERT INTO racks (
+        zone_number,
+        rack_number,
+        code,
+        name,
+        description,
+        is_single_sided,
+        is_active,
+        column_count,
+        shelf_count,
+        updated_at
+      )
+      SELECT
+        zones.zone_number,
+        nums.rack_number,
+        printf('%d-%02d', zones.zone_number, nums.rack_number),
+        printf('%d구역 %02d번 랙', zones.zone_number, nums.rack_number),
+        printf('%d구역 운영 랙', zones.zone_number),
+        0,
+        CASE
+          WHEN zones.zone_number = 1 AND nums.rack_number <= ? THEN 1
+          WHEN zones.zone_number = 2 AND nums.rack_number <= ? THEN 1
+          WHEN zones.zone_number = 3 AND nums.rack_number <= ? THEN 1
+          ELSE 0
+        END,
+        ?,
+        ?,
+        CURRENT_TIMESTAMP
+      FROM zones
+      CROSS JOIN nums
+      WHERE 1 = 1
+      ON CONFLICT(zone_number, rack_number) DO NOTHING
+    `).bind(MAX_RACKS_PER_ZONE, counts[1], counts[2], counts[3], DEFAULT_RACK_COLUMNS, DEFAULT_RACK_SHELVES),
+    env.DB.prepare(`
+      UPDATE racks
+      SET is_active = CASE
+            WHEN zone_number = 1 AND rack_number <= ? THEN 1
+            WHEN zone_number = 2 AND rack_number <= ? THEN 1
+            WHEN zone_number = 3 AND rack_number <= ? THEN 1
+            ELSE 0
+          END,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE zone_number IN (1, 2, 3)
+        AND rack_number BETWEEN 1 AND ?
+    `).bind(counts[1], counts[2], counts[3], MAX_RACKS_PER_ZONE),
+    env.DB.prepare(`
+      WITH RECURSIVE
+        default_cols(column_number) AS (
+          VALUES(1)
+          UNION ALL
+          SELECT column_number + 1 FROM default_cols WHERE column_number < ?
+        ),
+        default_shelves(shelf_number) AS (
+          VALUES(1)
+          UNION ALL
+          SELECT shelf_number + 1 FROM default_shelves WHERE shelf_number < ?
+        )
+      INSERT INTO rack_slots (
+        rack_id,
+        slot_code,
+        column_number,
+        shelf_number,
+        description,
+        is_active,
+        updated_at
+      )
+      SELECT
+        r.id,
+        printf('%d-%d', default_cols.column_number, default_shelves.shelf_number),
+        default_cols.column_number,
+        default_shelves.shelf_number,
+        printf('%d열 %d선반', default_cols.column_number, default_shelves.shelf_number),
+        1,
+        CURRENT_TIMESTAMP
+      FROM racks r
+      CROSS JOIN default_cols
+      CROSS JOIN default_shelves
+      WHERE r.zone_number IN (1, 2, 3)
+        AND r.rack_number BETWEEN 1 AND ?
+      ON CONFLICT(rack_id, slot_code) DO UPDATE SET
+        column_number = excluded.column_number,
+        shelf_number = excluded.shelf_number,
+        description = excluded.description,
+        is_active = 1,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(DEFAULT_RACK_COLUMNS, DEFAULT_RACK_SHELVES, MAX_RACKS_PER_ZONE)
+  ]);
+
+  return { ok: true };
+}

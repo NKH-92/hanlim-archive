@@ -1,0 +1,346 @@
+import { getAppConfig } from "../config.js";
+import {
+  buildFloorPlanLayout,
+  createDocument,
+  disposeDocument,
+  getActiveCategories,
+  getActiveTags,
+  getCategories,
+  getDisposalLogs,
+  getDocument,
+  getDocumentAuditLogs,
+  getDocumentTags,
+  getDocumentsForExport,
+  getFloorPlanRegions,
+  getRackSummaries,
+  getSearchSuggestions,
+  getSlotOptions,
+  getTags,
+  MAX_SEARCH_RESULTS,
+  permanentlyDeleteDocument,
+  restoreDocument,
+  searchDocuments,
+  updateDocument,
+  validateDocumentInput,
+  valuesFromDocumentForm
+} from "../db.js";
+import { buildDocumentCsv, prepareDocumentImportRows, readDocumentImportRows } from "../documentCsv.js";
+import {
+  documentDetailsPage,
+  documentFormPage,
+  documentImportPage,
+  documentsPage,
+  errorPage,
+  notFoundPage
+} from "../html.js";
+import { clean, logError, redirect } from "../utils.js";
+import { requireAdmin } from "./guards.js";
+import { resolveSearchOutcome, resolveSearchRequest } from "./searchRequest.js";
+
+export async function handleDocuments(request, env, session) {
+  const url = new URL(request.url);
+  const search = await resolveSearchRequest(env, url);
+  const { query, page, categories, tags, parsed, filters } = search;
+  const pageSize = 30;
+  const [allDocuments, suggestions] = await Promise.all([
+    searchDocuments(env, parsed.text, MAX_SEARCH_RESULTS, filters),
+    getSearchSuggestions(env, parsed.text, 10)
+  ]);
+  const totalDocuments = allDocuments.length;
+  const totalPages = Math.max(1, Math.ceil(totalDocuments / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const documents = allDocuments.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const didYouMean = await resolveSearchOutcome(env, search, totalDocuments);
+
+  return documentsPage({
+    session,
+    query,
+    parsedQuery: parsed,
+    documents,
+    categories,
+    tags,
+    filters,
+    suggestions,
+    didYouMean,
+    pagination: { page: currentPage, pageSize, totalDocuments, totalPages }
+  });
+}
+
+export async function handleDocumentExport(env) {
+  const documents = await getDocumentsForExport(env);
+  const csv = buildDocumentCsv(documents);
+
+  return new Response(csv.body, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${csv.filename}"`,
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+export function renderDocumentImport(session) {
+  return documentImportPage({ session });
+}
+
+export async function handleDocumentImport(request, env, session) {
+  const config = getAppConfig(env);
+  const form = await request.formData();
+  const importRows = await readDocumentImportRows(form, config.csvImport);
+
+  if (!importRows.ok) {
+    return documentImportPage({ session, error: importRows.error });
+  }
+
+  const [categories, tags, slots] = await Promise.all([
+    getCategories(env),
+    getTags(env),
+    getSlotOptions(env)
+  ]);
+  const prepared = prepareDocumentImportRows(importRows.rows, { categories, tags, slots });
+  if (prepared.errors.length) {
+    return documentImportPage({
+      session,
+      error: `가져오기 전 검증 오류가 있습니다: ${prepared.errors.slice(0, 8).join(" / ")}${prepared.errors.length > 8 ? " ..." : ""}`
+    });
+  }
+
+  let created = 0;
+  let disposed = 0;
+  const failures = [];
+
+  // 행별로 독립 처리하고 실패를 집계한다. 중간 한 행이 실패해도 일반 500 대신
+  // "생성 N · 폐기반영 M · 실패 K" 요약을 돌려줘 운영자가 후속 조치할 수 있게 한다.
+  for (let index = 0; index < prepared.items.length; index += 1) {
+    const item = prepared.items[index];
+    const rowNumber = index + 2; // 헤더(1행) 다음부터
+    try {
+      const id = await createDocument(env, item.values, session.displayName, session.role);
+      created += 1;
+
+      if (item.status === "disposed") {
+        await disposeDocument(env, id, session.displayName, "CSV 가져오기 폐기 상태 반영", session.role);
+        disposed += 1;
+      }
+    } catch (error) {
+      logError("import.row", error, { row: rowNumber });
+      failures.push(`${rowNumber}행: ${error.message || "등록 실패"}`);
+    }
+  }
+
+  return documentImportPage({ session, result: { created, disposed, failures } });
+}
+
+export async function renderCreateDocument(env, session, values = {}, error = "") {
+  const [categories, tags, slots] = await Promise.all([
+    getActiveCategories(env),
+    getActiveTags(env),
+    getSlotOptions(env)
+  ]);
+
+  return documentFormPage({
+    session,
+    title: "문서 등록",
+    action: "/documents",
+    values,
+    categories,
+    tags,
+    slots,
+    selectedTags: values.tagIds || [],
+    error
+  });
+}
+
+export async function handleCreateDocument(request, env, session) {
+  const values = valuesFromDocumentForm(await request.formData());
+  const validation = await validateDocumentInput(env, values);
+
+  if (validation) {
+    return renderCreateDocument(env, session, values, validation);
+  }
+
+  const id = await createDocument(env, values, session.displayName, session.role);
+  return redirect(`/documents/${id}?toast=created`);
+}
+
+export async function handleDocumentRoute(request, env, session, routeInfo) {
+  const { id, action } = routeInfo;
+
+  if (request.method === "GET" && action === "details") {
+    const [document, tags, disposalLogs, auditLogs, racks, regions] = await Promise.all([
+      getDocument(env, id),
+      getDocumentTags(env, id),
+      getDisposalLogs(env, id),
+      getDocumentAuditLogs(env, id),
+      getRackSummaries(env),
+      getFloorPlanRegions(env)
+    ]);
+
+    if (!document) {
+      return notFoundPage(session);
+    }
+
+    return documentDetailsPage({
+      session,
+      document,
+      tags,
+      disposalLogs,
+      auditLogs,
+      floorPlan: buildFloorPlanLayout(racks, regions)
+    });
+  }
+
+  if (request.method === "GET" && action === "edit") {
+    const denied = requireAdmin(session);
+    if (denied) {
+      return denied;
+    }
+
+    const [document, tags, categories, activeTags, slots] = await Promise.all([
+      getDocument(env, id),
+      getDocumentTags(env, id),
+      getCategories(env),
+      getTags(env),
+      getSlotOptions(env)
+    ]);
+
+    if (!document) {
+      return notFoundPage(session);
+    }
+
+    if (document.status === "disposed") {
+      return errorPage("폐기 상태 문서는 폐기를 해제하기 전까지 수정할 수 없습니다.", session, 400);
+    }
+
+    return documentFormPage({
+      session,
+      title: "문서 수정",
+      action: `/documents/${id}/edit`,
+      values: documentToFormValues(document),
+      categories,
+      tags: activeTags,
+      slots,
+      selectedTags: tags.map((tag) => tag.id),
+      showLocation: false
+    });
+  }
+
+  if (request.method === "POST" && action === "edit") {
+    const denied = requireAdmin(session);
+    if (denied) {
+      return denied;
+    }
+
+    const document = await getDocument(env, id);
+    if (!document) {
+      return notFoundPage(session);
+    }
+
+    const values = valuesFromDocumentForm(await request.formData());
+    values.rackSlotId = document.rack_slot_id;
+    values.rackFace = document.rack_face;
+    const validation = await validateDocumentInput(env, values, {
+      allowInactiveCategoryId: document.category_id
+    });
+
+    if (validation) {
+      const [categories, tags, slots] = await Promise.all([getCategories(env), getTags(env), getSlotOptions(env)]);
+      return documentFormPage({
+        session,
+        title: "문서 수정",
+        action: `/documents/${id}/edit`,
+        values,
+        categories,
+        tags,
+        slots,
+        selectedTags: values.tagIds,
+        error: validation,
+        showLocation: false
+      });
+    }
+
+    const result = await updateDocument(env, id, values, session.displayName, session.role);
+    if (!result.ok) {
+      return errorPage(result.message, session, 400);
+    }
+
+    return redirect(`/documents/${id}?toast=updated`);
+  }
+
+  if (request.method === "POST" && action === "dispose") {
+    const denied = requireAdmin(session);
+    if (denied) {
+      return denied;
+    }
+
+    const form = await request.formData();
+    const result = await disposeDocument(env, id, session.displayName, clean(form.get("reason")), session.role);
+    if (!result.ok) {
+      return errorPage(result.message, session, 400);
+    }
+    return redirect(`/documents/${id}?toast=disposed`);
+  }
+
+  if (request.method === "POST" && action === "restore") {
+    const denied = requireAdmin(session);
+    if (denied) {
+      return denied;
+    }
+
+    const result = await restoreDocument(env, id, session.displayName, session.role);
+    if (!result.ok) {
+      return errorPage(result.message, session, 400);
+    }
+    return redirect(`/documents/${id}?toast=restored`);
+  }
+
+  if (request.method === "POST" && action === "delete-permanent") {
+    const denied = requireAdmin(session);
+    if (denied) {
+      return denied;
+    }
+
+    const result = await permanentlyDeleteDocument(env, id, session.displayName, session.role);
+    if (!result.ok) {
+      return errorPage(result.message, session, 400);
+    }
+    return redirect("/documents?toast=deleted");
+  }
+
+  return notFoundPage(session);
+}
+
+export async function handleBulkDispose(request, env, session) {
+  const form = await request.formData();
+  const idsRaw = clean(form.get("ids"));
+  const reason = clean(form.get("reason"));
+
+  if (!idsRaw || !reason) {
+    return redirect("/documents?toast=error");
+  }
+
+  const ids = idsRaw.split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0);
+
+  if (ids.length > 20) {
+    return errorPage("일괄 폐기는 한 번에 20건 이하로 선택해 주세요.", session, 400);
+  }
+
+  for (const id of ids) {
+    await disposeDocument(env, id, session.displayName, reason, session.role);
+  }
+
+  return redirect(`/documents?toast=bulk-disposed`);
+}
+
+function documentToFormValues(document) {
+  return {
+    documentNumber: document.document_number,
+    revisionNumber: document.revision_number,
+    documentName: document.document_name,
+    categoryId: document.category_id,
+    rackSlotId: document.rack_slot_id,
+    rackFace: document.rack_face,
+    note: document.note || "",
+    updatedAt: document.updated_at
+  };
+}

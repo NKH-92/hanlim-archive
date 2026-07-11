@@ -1,6 +1,6 @@
 import { clean, csvEscape, normalizeRackFace, parseCsv } from "./utils.js";
 
-export const DOCUMENT_CSV_HEADER = Object.freeze([
+const DOCUMENT_CSV_HEADER = Object.freeze([
   "documentNumber",
   "revisionNumber",
   "documentName",

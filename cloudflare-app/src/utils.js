@@ -1,3 +1,5 @@
+import { sharedSearchCore } from "./searchCore.js";
+
 export function clean(value) {
   return String(value ?? "").trim();
 }
@@ -131,10 +133,6 @@ export function constantTimeEqual(a, b) {
   return diff === 0;
 }
 
-export function equalsIgnoreCase(a, b) {
-  return String(a).toLowerCase() === String(b).toLowerCase();
-}
-
 // 면 입력 정규화: 사용자 표기(1/2)와 저장값(A/B)을 모두 받아 저장값으로 통일한다.
 // 매핑되지 않는 값은 그대로 대문자로 돌려보내 검증 단계에서 걸리게 한다.
 export function normalizeRackFace(value) {
@@ -144,17 +142,10 @@ export function normalizeRackFace(value) {
   return raw;
 }
 
-// 랙 면 표기: 실물 라벨 규칙을 따른다. 단면 랙은 랙 번호 그대로("13"),
-// 양면 랙은 랙번호-면번호("13-1"=A면, "13-2"=B면)로 부른다. 저장값은 A/B를 유지한다.
+// 랙 면 표기: 실물 라벨 규칙(단면 "13", 양면 "13-1"/"13-2")의 단일 출처는 searchCore다.
+// 서버·브라우저가 같은 규칙을 쓰도록 여기서는 위임만 한다.
 export function rackFaceLabel(doc) {
-  const rackNumber = Number(doc.rack_number || 0);
-  if (!rackNumber) {
-    return "";
-  }
-  if (readBoolean(doc.is_single_sided)) {
-    return String(rackNumber);
-  }
-  return `${rackNumber}-${doc.rack_face === "B" ? 2 : 1}`;
+  return sharedSearchCore.rackFaceLabel(doc);
 }
 
 export function locationLabel(doc) {

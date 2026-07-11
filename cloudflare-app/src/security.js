@@ -4,7 +4,7 @@
 
 // 폰트/아이콘을 아직 CDN에서 받으므로 style-src/font-src에 두 호스트만 명시적으로 허용한다.
 // self-host로 전환하면 이 목록을 지우고 default-src 'self'만으로 충분하다.
-export const CDN_HOSTS = Object.freeze([
+const CDN_HOSTS = Object.freeze([
   "https://cdn.jsdelivr.net",
   "https://cdnjs.cloudflare.com"
 ]);
