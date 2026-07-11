@@ -39,8 +39,8 @@ Do / Don't
 | `--primary-deep` | `#122c63` | 로그인 사이드 등 딥 블루 면 |
 | `--success` | `#0c7a43` | 보관중 상태 |
 | `--success-soft` | `#e5f4eb` | 보관중 배경 |
-| `--warning` | `#9a5b00` | 반출·대기 상태 |
-| `--warning-soft` | `#fdf1dd` | 반출·대기 배경 |
+| `--warning` | `#9a5b00` | 대기 상태 |
+| `--warning-soft` | `#fdf1dd` | 대기 배경 |
 | `--danger` | `#c22f2f` | 폐기·오류·파괴적 동작 |
 | `--danger-soft` | `#fbecec` | 폐기·오류 배경 |
 
@@ -68,7 +68,6 @@ Do / Don't
 | 위치/코드(모노) | 13px · 600 · 1.4 |
 | 통계 숫자 | 22px · 700 · 1.2 · tabular-nums |
 | 위치 디스플레이 lg(정답 카드) | 22px · 700 · 1.25 · mono · tabular-nums |
-| 위치 디스플레이 xl(길찾기) | 30px · 700 · 1.2 · mono · tabular-nums (모바일 26px) |
 
 ## 4. Spacing
 
@@ -90,14 +89,13 @@ Do / Don't
   focus 보더 `--primary` + 3px `--ring` 링. placeholder `--gray-400`.
 - **테이블/리스트 행**: 헤더 `--gray-50` 배경 + 12px/600 `--gray-600`, 행 높이 ≥44px,
   행 구분 1px `--line`, hover `--gray-50`. 위치 셀은 `--font-mono` + `--primary` 텍스트.
-- **상태 배지**: pill, 12px/700, soft 배경 + 상태색 텍스트. 보관중=success, 반출/대기=warning, 폐기=danger.
+- **상태 배지**: pill, 12px/700, soft 배경 + 상태색 텍스트. 보관중=success, 대기=warning, 폐기=danger.
 - **칩(필터)**: pill, 12.5px/600, `--surface`+`--line` 보더, 활성 = `--primary-soft`+`--primary`.
 - **탭**: 언더라인 형. 비활성 `--gray-500`, 활성 `--gray-900` + 2px `--primary` 밑줄.
 - **패널**: `--surface` + 1px `--line` + `--r-lg`. 그림자 없음.
 - **사이드바**: `--surface`, 우측 1px `--line`. 항목 13.5px/600 `--gray-700`, 활성 `--primary-soft` 배경 + `--primary`.
 - **검색 하이라이트(mark)**: `--primary-soft` 배경 + `--primary` 텍스트, radius 2px, 추가 padding 없음. 장식 금지, 검색어 일치 표시 전용.
 - **정답 카드(압도적 1위 결과)**: 패널 규격 + 좌측 4px `--primary` 보더(locator-hero와 동일 문법). 위치는 위치 디스플레이 lg, 페이지당 최대 1개.
-- **픽리스트 행**: 테이블 행 규격(≥44px, 1px `--line` 구분). 체크 시 `--gray-50` 배경 + opacity .55. 순번은 mono.
 - 비활성(disabled): opacity .45 + pointer-events 차단.
 
 ## 6. Motion

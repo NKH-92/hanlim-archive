@@ -68,6 +68,6 @@ Invoke-WebRequest https://hanlim-archive.skarhkdgus7.workers.dev/login -UseBasic
 ## 운영 메모
 
 - 일반 사용자는 문서 조회와 검색만 가능합니다.
-- 문서 등록, 수정, 이동, 폐기, 복구, 영구 삭제는 관리자 전용입니다.
+- 문서 등록, 수정, 폐기, 복구, 영구 삭제는 관리자 전용입니다.
 - 인증된 POST 요청은 세션 CSRF 토큰을 요구합니다.
 - 외부 CDN 의존성은 남아 있으므로 보안 정책이 엄격해지면 font/icon self-hosting과 CSP 적용을 추가로 검토합니다.

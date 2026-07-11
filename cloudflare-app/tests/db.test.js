@@ -5,18 +5,15 @@ import {
   addDocumentsToSet,
   buildFloorPlanLayout,
   buildViewerFacets,
-  checkoutDocument,
   compactSearchText,
   deleteDocumentSet,
   documentToViewerItem,
   disposeDocument,
   levenshteinDistance,
-  moveDocument,
   parseDocumentNumberList,
   permanentlyDeleteDocument,
   removeDocumentFromSet,
   restoreDocument,
-  returnDocument,
   scoreDocumentMatch,
   searchTokens,
   updateDocument,
@@ -44,6 +41,7 @@ test("search normalization supports partial numbers, spacing, and light typos", 
     rack_code: "2-01",
     zone_number: 2,
     rack_number: 1,
+    is_single_sided: 0,
     column_number: 3,
     shelf_number: 2,
     rack_face: "A",
@@ -56,6 +54,8 @@ test("search normalization supports partial numbers, spacing, and light typos", 
   assert.ok(scoreDocumentMatch(document, "2026-014").relevance_score > 0);
   assert.ok(scoreDocumentMatch(document, "밸리데이선").relevance_score > 0);
   assert.ok(scoreDocumentMatch(document, "2구역 1랙").relevance_score > 0);
+  // 면 단위 랙 표기(양면 1번 랙 A면 = "1-1")로도 찾을 수 있어야 한다.
+  assert.ok(scoreDocumentMatch(document, "1-1").relevance_score > 0);
   assert.equal(scoreDocumentMatch(document, "완전히다른검색어").relevance_score, 0);
 });
 
@@ -84,6 +84,7 @@ test("viewer search item exposes location-first api shape", () => {
     rack_code: "2-01",
     zone_number: 2,
     rack_number: 1,
+    is_single_sided: 0,
     column_number: 3,
     shelf_number: 2,
     rack_face: "A",
@@ -95,8 +96,54 @@ test("viewer search item exposes location-first api shape", () => {
   assert.equal(item.id, 7);
   assert.equal(item.documentNumber, "PV-2026-014");
   assert.deepEqual(item.tags, ["중요문서", "원본보관"]);
-  assert.equal(item.location.label, "2구역 / 1번 랙 / 3열 / 2선반 / A면");
+  // 양면 랙은 면 단위 표기(1-1 = 1번 랙 A면)로 위치를 안내한다.
+  assert.equal(item.location.label, "2구역 / 1-1번 랙 / 3열 / 2선반");
+  assert.equal(item.location.rackLabel, "1-1");
+  assert.equal(item.location.isSingleSided, false);
   assert.equal(item.matchReason, "문서번호 부분 일치");
+});
+
+test("viewer search item labels single-sided racks without a face suffix", () => {
+  const single = documentToViewerItem({
+    id: 8,
+    document_number: "MR-2026-001",
+    revision_number: "Rev.0",
+    document_name: "제조기록서",
+    category_name: "제조기록서",
+    status: "active",
+    rack_code: "2-09",
+    zone_number: 2,
+    rack_number: 9,
+    is_single_sided: 1,
+    column_number: 7,
+    shelf_number: 6,
+    rack_face: "A",
+    updated_at: "2026-06-28"
+  });
+
+  assert.equal(single.location.rackLabel, "9");
+  assert.equal(single.location.isSingleSided, true);
+  assert.equal(single.location.label, "2구역 / 9번 랙 / 7열 / 6선반");
+
+  const faceB = documentToViewerItem({
+    id: 9,
+    document_number: "PV-2026-020",
+    revision_number: "Rev.0",
+    document_name: "밸리데이션 보고서",
+    category_name: "PV",
+    status: "active",
+    rack_code: "1-13",
+    zone_number: 1,
+    rack_number: 13,
+    is_single_sided: 0,
+    column_number: 1,
+    shelf_number: 1,
+    rack_face: "B",
+    updated_at: "2026-06-28"
+  });
+
+  assert.equal(faceB.location.rackLabel, "13-2");
+  assert.equal(faceB.location.label, "1구역 / 13-2번 랙 / 1열 / 1선반");
 });
 
 test("viewer facets count active filters from result rows", () => {
@@ -119,11 +166,15 @@ test("floor plan layout clamps regions and auto-places racks by zone", () => {
     { id: 3, code: "3-01", zone_number: 3, rack_number: 1, active_document_count: 2, is_single_sided: 0 }
   ], [
     { region_key: "zone-1", label: "1구역", description: "", top_pct: -5, left_pct: 12, width_pct: 38, height_pct: 40, default_rack_count: 4 },
+    { region_key: "zone-2", label: "2구역", description: "", top_pct: 55, left_pct: 5, width_pct: 40, height_pct: 38, default_rack_count: 10 },
     { region_key: "zone-3", label: "3구역", description: "", top_pct: 55, left_pct: 52, width_pct: 160, height_pct: 38, default_rack_count: 2 }
   ]);
 
+  // 랙이 없는 구역(2구역)은 도면에서 빠진다.
+  assert.deepEqual(layout.map((region) => region.key), ["zone-1", "zone-3"]);
   assert.equal(layout[0].topPct, 0);
   assert.equal(layout[1].widthPct, 100);
+  // 좌측부터 1번 랙 순서로 배치된다.
   assert.deepEqual(layout[0].racks.map((rack) => rack.code), ["1-01", "1-02"]);
   assert.ok(layout[0].racks[0].leftPct < layout[0].racks[1].leftPct);
   assert.equal(layout[1].racks[0].documentCount, 2);
@@ -146,71 +197,6 @@ test("disposeDocument writes disposal + audit logs and the status change in one 
   // 로그 INSERT는 pre-state 가드(... FROM documents WHERE ...)로 조건부 실행되어야 한다.
   const disposalLog = env.state.batches[0].find((statement) => statement.sql.includes("INSERT INTO disposal_logs"));
   assert.ok(disposalLog.sql.includes("FROM documents"));
-});
-
-test("checkoutDocument rejects disposed or already checked-out documents", async () => {
-  const disposedEnv = recordingEnv({
-    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ status: "disposed" }) : null)
-  });
-  const disposedResult = await checkoutDocument(disposedEnv, 1, { borrower: "김감사" }, "관리자");
-  assert.equal(disposedResult.ok, false);
-  assert.equal(disposedEnv.state.batches.length, 0);
-
-  const outEnv = recordingEnv({
-    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ checkout_borrower: "홍길동" }) : null)
-  });
-  const outResult = await checkoutDocument(outEnv, 1, { borrower: "김감사" }, "관리자");
-  assert.equal(outResult.ok, false);
-  assert.match(outResult.message, /홍길동/);
-  assert.equal(outEnv.state.batches.length, 0);
-});
-
-test("checkoutDocument records the checkout and an audit log", async () => {
-  const env = recordingEnv({
-    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null)
-  });
-
-  const missingBorrower = await checkoutDocument(env, 1, { borrower: " " }, "관리자");
-  assert.equal(missingBorrower.ok, false);
-
-  const result = await checkoutDocument(env, 1, { borrower: "홍길동", purpose: "불시감사 대응" }, "관리자", "Admin");
-  assert.equal(result.ok, true);
-  assert.equal(env.state.batches.length, 1);
-  const sqls = env.state.batches[0].map((statement) => statement.sql);
-  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_checkouts")));
-  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_audit_logs")));
-});
-
-test("returnDocument closes the active checkout and audits atomically, or fails when none is open", async () => {
-  const env = recordingEnv({
-    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ checkout_borrower: "홍길동" }) : null)
-  });
-  const result = await returnDocument(env, 1, "관리자", "Admin");
-  assert.equal(result.ok, true);
-  // 반납 UPDATE와 감사 로그가 하나의 batch 안에 함께 있어야 한다.
-  assert.equal(env.state.batches.length, 1);
-  const sqls = env.state.batches[0].map((statement) => statement.sql);
-  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_audit_logs")));
-  assert.ok(sqls.some((sql) => sql.includes("UPDATE document_checkouts")));
-
-  const noneEnv = recordingEnv({
-    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null),
-    batch: (statements) => statements.map(() => ({ meta: { changes: 0 } }))
-  });
-  const noneResult = await returnDocument(noneEnv, 1, "관리자", "Admin");
-  assert.equal(noneResult.ok, false);
-});
-
-test("disposeDocument refuses documents that are checked out", async () => {
-  const env = recordingEnv({
-    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ checkout_borrower: "홍길동" }) : null)
-  });
-
-  const result = await disposeDocument(env, 1, "관리자", "폐기 사유", "Admin");
-
-  assert.equal(result.ok, false);
-  assert.match(result.message, /반출 중/);
-  assert.equal(env.state.batches.length, 0);
 });
 
 test("upsertDocumentSet writes create and update logs", async () => {
@@ -321,26 +307,6 @@ test("updateDocument reports a conflict when the optimistic lock does not match"
   assert.match(result.message, /먼저 수정|변경/);
 });
 
-test("moveDocument records the movement log and audit alongside the location change in one batch", async () => {
-  const env = recordingEnv({
-    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null),
-    all: () => []
-  });
-
-  const result = await moveDocument(env, 1, {
-    rackSlotId: 9,
-    rackFace: "B",
-    note: "감사 대비 재배치"
-  }, "관리자", "Admin");
-
-  assert.equal(result.ok, true);
-  assert.equal(env.state.batches.length, 1);
-  const sqls = env.state.batches[0].map((s) => s.sql);
-  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO movement_logs")));
-  assert.ok(sqls.some((sql) => sql.includes("INSERT INTO document_audit_logs")));
-  assert.ok(sqls.some((sql) => sql.includes("UPDATE documents") && sql.includes("rack_slot_id")));
-});
-
 test("permanentlyDeleteDocument refuses active documents and preserves history before hard delete", async () => {
   const activeEnv = recordingEnv({
     first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ status: "active" }) : null)
@@ -352,7 +318,6 @@ test("permanentlyDeleteDocument refuses active documents and preserves history b
   const env = recordingEnv({
     first: (sql) => (sql.includes("FROM documents d") ? sampleDocument({ status: "disposed" }) : null),
     all: (sql) => {
-      if (sql.includes("FROM movement_logs")) return [{ id: 5, to_rack_code: "1-01" }];
       if (sql.includes("FROM disposal_logs")) return [{ id: 6, action: "disposed" }];
       return [];
     }
@@ -367,7 +332,7 @@ test("permanentlyDeleteDocument refuses active documents and preserves history b
   assert.ok(auditIdx >= 0 && deleteIdx >= 0 && auditIdx < deleteIdx);
   const detailsJson = statements[auditIdx].args.find((a) => typeof a === "string" && a.includes("history"));
   assert.ok(detailsJson, "감사 상세에 history 스냅샷이 포함되어야 한다");
-  assert.match(detailsJson, /movements/);
+  assert.match(detailsJson, /disposals/);
 });
 
 function sampleDocument(overrides = {}) {

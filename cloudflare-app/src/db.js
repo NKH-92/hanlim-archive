@@ -7,7 +7,7 @@ import {
   MAX_RACK_SHELVES,
   RACK_ZONES
 } from "./config.js";
-import { clean, locationLabel, logError } from "./utils.js";
+import { clean, locationLabel, logError, normalizeRackFace, rackFaceLabel } from "./utils.js";
 import { createSearchCore } from "./searchCore.js";
 
 // 검색 로직은 searchCore가 단일 출처. 서버는 여기서 인스턴스를 만들고,
@@ -44,7 +44,7 @@ export const DEFAULT_FLOOR_PLAN_REGIONS = Object.freeze([
     left_pct: 4.7,
     width_pct: 47.5,
     height_pct: 38.2,
-    default_rack_count: 10,
+    default_rack_count: 13,
     is_active: 1
   }),
   Object.freeze({
@@ -121,14 +121,11 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
       rs.column_number,
       rs.shelf_number,
       rs.slot_code,
-      co.borrower AS checkout_borrower,
-      co.checked_out_at AS checkout_at,
       GROUP_CONCAT(t.name, '; ') AS tag_names
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
-    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     LEFT JOIN document_tags dt ON dt.document_id = d.id
     LEFT JOIN tags t ON t.id = dt.tag_id
     ${where}
@@ -214,36 +211,6 @@ export async function recordSearchLog(env, query, resultCount) {
   }
 }
 
-export async function getPopularDocuments(env, limit = 5) {
-  try {
-    const result = await env.DB.prepare(`
-      SELECT
-        d.id,
-        d.document_number,
-        d.document_name,
-        d.rack_face,
-        r.code AS rack_code,
-        r.zone_number,
-        r.rack_number,
-        rs.column_number,
-        rs.shelf_number,
-        SUM(sc.hits) AS click_count
-      FROM search_clicks sc
-      JOIN documents d ON d.id = sc.document_id
-      JOIN rack_slots rs ON rs.id = d.rack_slot_id
-      JOIN racks r ON r.id = rs.rack_id
-      WHERE d.status = 'active'
-      GROUP BY d.id
-      ORDER BY click_count DESC, MAX(sc.last_clicked_at) DESC
-      LIMIT ?
-    `).bind(Math.max(1, Math.min(Number(limit) || 5, 10))).all();
-    return result.results ?? [];
-  } catch (error) {
-    logError("db.getPopularDocuments", error);
-    return [];
-  }
-}
-
 export async function getSearchReport(env) {
   try {
     const [top, failed, clicked] = await Promise.all([
@@ -312,6 +279,7 @@ export async function getDidYouMeanSuggestions(env, query, limit = 3) {
       r.code AS rack_code,
       r.zone_number,
       r.rack_number,
+      r.is_single_sided,
       rs.column_number,
       rs.shelf_number,
       GROUP_CONCAT(t.name, '; ') AS tag_names
@@ -362,15 +330,14 @@ export async function getSearchIndexDocuments(env) {
       r.code AS rack_code,
       r.zone_number,
       r.rack_number,
+      r.is_single_sided,
       rs.column_number,
       rs.shelf_number,
-      co.borrower AS checkout_borrower,
       GROUP_CONCAT(t.name, '; ') AS tag_names
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
-    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     LEFT JOIN document_tags dt ON dt.document_id = d.id
     LEFT JOIN tags t ON t.id = dt.tag_id
     GROUP BY d.id
@@ -433,15 +400,16 @@ export function documentToViewerItem(document) {
       zoneNumber: Number(document.zone_number || 0),
       rackNumber: Number(document.rack_number || 0),
       rackCode: clean(document.rack_code),
+      // 면 단위 랙 표기("13" 또는 "13-1"/"13-2"). 화면 표시는 이 값을 우선 쓴다.
+      rackLabel: rackFaceLabel(document),
+      isSingleSided: document.is_single_sided === 1 || document.is_single_sided === true,
       columnNumber: Number(document.column_number || 0),
       shelfNumber: Number(document.shelf_number || 0),
       rackFace: clean(document.rack_face)
     },
     matchReason: clean(document.match_reason),
     relevanceScore: Number(document.relevance_score || 0),
-    updatedAt: clean(document.updated_at),
-    checkedOut: Boolean(document.checkout_borrower),
-    checkoutBorrower: clean(document.checkout_borrower)
+    updatedAt: clean(document.updated_at)
   };
 }
 
@@ -576,13 +544,13 @@ function clampPercent(value, fallback) {
 }
 
 export function buildFloorPlanLayout(racks, regions = DEFAULT_FLOOR_PLAN_REGIONS) {
-  return regions.map((region) => {
+  const layout = regions.map((region) => {
     const zoneNumber = zoneFromRegion(region);
     const zoneRacks = racks
       .filter((rack) => Number(rack.zone_number) === zoneNumber)
       .sort((left, right) => Number(left.rack_number || 0) - Number(right.rack_number || 0));
     const count = Math.max(zoneRacks.length, Number(region.default_rack_count || 0), 1);
-    // 실제 문서고 구조: 세로로 긴 랙이 구역 안에 좌→우로 일렬 배치.
+    // 실제 문서고 구조: 세로로 긴 랙이 구역 안에 좌→우로 일렬 배치(좌측이 1번).
     // 각 랙은 자기 슬롯(구역 폭/count)의 중앙에 서고, 슬롯의 일부만 차지해 랙 사이 통로가 보인다.
     const slotWidth = 100 / count;
     const barWidthPct = Math.round(slotWidth * 62) / 100;
@@ -608,6 +576,9 @@ export function buildFloorPlanLayout(racks, regions = DEFAULT_FLOOR_PLAN_REGIONS
       }))
     };
   });
+
+  // 랙이 없는 구역(현재 2·3구역)은 도면에서 감춘다. 증설로 랙이 생기면 자동으로 다시 나타난다.
+  return layout.filter((region) => region.racks.length > 0);
 }
 
 export async function getCategoryDocumentIndex(env) {
@@ -716,6 +687,7 @@ export async function getDocumentsForExport(env) {
       r.code AS rack_code,
       r.zone_number,
       r.rack_number,
+      r.is_single_sided,
       rs.column_number,
       rs.shelf_number,
       rs.slot_code,
@@ -756,106 +728,13 @@ export async function getDocument(env, id) {
       r.shelf_count,
       rs.column_number,
       rs.shelf_number,
-      rs.slot_code,
-      co.borrower AS checkout_borrower,
-      co.purpose AS checkout_purpose,
-      co.checked_out_at AS checkout_at
+      rs.slot_code
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
-    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     WHERE d.id = ?
   `).bind(id).first();
-}
-
-// 같은 물리 슬롯(같은 rack_slot_id + 같은 면)에 꽂힌 문서들을 문서번호·개정 순으로 반환한다.
-// "이웃 앵커"(찾는 문서를 앞뒤 이웃 사이에 두고 손이 바로 가게)와 "개정판 함정 차단"의 단일 조회 소스.
-// "여기 없어요" 신고: 실물이 시스템 위치에 없다는 불일치를 감사 로그에 append-only로 기록한다.
-// 상태변경이 아니라 사후 동기화 근거가 되는 신고이며, 신고자에게 귀속된다(비관리자도 가능).
-export async function recordLocationMismatch(env, id, actor, actorRole = "User") {
-  const doc = await getDocument(env, id);
-  if (!doc) {
-    return { ok: false, message: "문서를 찾을 수 없습니다." };
-  }
-  await auditDocumentStatement(
-    env,
-    doc,
-    "location_mismatch",
-    actor,
-    actorRole,
-    "실물 위치 불일치 신고 (여기 없어요)",
-    null
-  ).run();
-  return { ok: true, document: doc };
-}
-
-// "여기 없어요" 이후 다음 수: 가능성 순으로 후보를 모은다.
-// (1) 반출 중이면 반출자 → (2) 같은 문서번호의 다른 사본/개정(오배치·개정 혼동) → (3) 직전 이동 위치.
-export async function getRecoveryCandidates(env, document) {
-  const checkout = document.checkout_borrower
-    ? { borrower: document.checkout_borrower, at: document.checkout_at || "" }
-    : null;
-
-  const others = await env.DB.prepare(`
-    SELECT
-      d.id,
-      d.revision_number,
-      d.status,
-      d.rack_face,
-      r.code AS rack_code,
-      r.zone_number,
-      r.rack_number,
-      rs.column_number,
-      rs.shelf_number
-    FROM documents d
-    JOIN rack_slots rs ON rs.id = d.rack_slot_id
-    JOIN racks r ON r.id = rs.rack_id
-    WHERE UPPER(d.document_number) = UPPER(?) AND d.id != ?
-    ORDER BY CASE d.status WHEN 'active' THEN 0 ELSE 1 END, d.revision_number
-    LIMIT 10
-  `).bind(document.document_number, document.id).all();
-
-  const lastFrom = await env.DB.prepare(`
-    SELECT
-      from_r.code AS rack_code,
-      from_r.zone_number,
-      from_r.rack_number,
-      from_s.column_number,
-      from_s.shelf_number,
-      ml.from_rack_face AS rack_face,
-      ml.created_at,
-      ml.performed_by
-    FROM movement_logs ml
-    LEFT JOIN rack_slots from_s ON from_s.id = ml.from_rack_slot_id
-    LEFT JOIN racks from_r ON from_r.id = from_s.rack_id
-    WHERE ml.document_id = ? AND ml.from_rack_slot_id IS NOT NULL
-    ORDER BY ml.created_at DESC, ml.id DESC
-    LIMIT 1
-  `).bind(document.id).first();
-
-  return { checkout, otherCopies: others.results ?? [], lastFrom: lastFrom || null };
-}
-
-export async function getSlotNeighbors(env, document) {
-  if (!document || !document.rack_slot_id || !document.rack_face) {
-    return [];
-  }
-  const result = await env.DB.prepare(`
-    SELECT
-      d.id,
-      d.document_number,
-      d.revision_number,
-      d.document_name,
-      d.status,
-      co.borrower AS checkout_borrower
-    FROM documents d
-    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
-    WHERE d.rack_slot_id = ? AND d.rack_face = ?
-    ORDER BY d.document_number COLLATE NOCASE, d.revision_number COLLATE NOCASE
-  `).bind(document.rack_slot_id, document.rack_face).all();
-
-  return result.results ?? [];
 }
 
 export async function getDocumentTags(env, documentId) {
@@ -913,39 +792,6 @@ async function getSlotDetails(env, id) {
     JOIN racks r ON r.id = rs.rack_id
     WHERE rs.id = ?
   `).bind(id).first();
-}
-
-export async function getDocumentMovementLogs(env, documentId) {
-  const result = await env.DB.prepare(`
-    SELECT
-      ml.id,
-      ml.from_rack_face,
-      ml.to_rack_face,
-      ml.performed_by,
-      ml.note,
-      ml.created_at,
-      from_r.code AS from_rack_code,
-      from_r.zone_number AS from_zone_number,
-      from_r.rack_number AS from_rack_number,
-      from_s.column_number AS from_column_number,
-      from_s.shelf_number AS from_shelf_number,
-      from_s.slot_code AS from_slot_code,
-      to_r.code AS to_rack_code,
-      to_r.zone_number AS to_zone_number,
-      to_r.rack_number AS to_rack_number,
-      to_s.column_number AS to_column_number,
-      to_s.shelf_number AS to_shelf_number,
-      to_s.slot_code AS to_slot_code
-    FROM movement_logs ml
-    LEFT JOIN rack_slots from_s ON from_s.id = ml.from_rack_slot_id
-    LEFT JOIN racks from_r ON from_r.id = from_s.rack_id
-    JOIN rack_slots to_s ON to_s.id = ml.to_rack_slot_id
-    JOIN racks to_r ON to_r.id = to_s.rack_id
-    WHERE ml.document_id = ?
-    ORDER BY ml.created_at DESC, ml.id DESC
-  `).bind(documentId).all();
-
-  return result.results ?? [];
 }
 
 export async function getDisposalLogs(env, documentId) {
@@ -1207,16 +1053,14 @@ export async function getRackDocuments(env, rackId) {
       r.code AS rack_code,
       r.zone_number,
       r.rack_number,
+      r.is_single_sided,
       rs.column_number,
       rs.shelf_number,
-      rs.slot_code,
-      co.borrower AS checkout_borrower,
-      co.checked_out_at AS checkout_at
+      rs.slot_code
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
-    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     WHERE r.id = ?
     ORDER BY d.rack_face, rs.column_number, rs.shelf_number, d.document_number
   `).bind(rackId).all();
@@ -1516,7 +1360,7 @@ export async function validateDocumentInput(env, values, existingId = 0, options
   }
 
   if (!["A", "B"].includes(values.rackFace)) {
-    return "보관 면은 A 또는 B만 가능합니다.";
+    return "보관 면은 1면 또는 2면만 선택할 수 있습니다.";
   }
 
   const category = await env.DB.prepare(`
@@ -1543,7 +1387,7 @@ export async function validateDocumentInput(env, values, existingId = 0, options
   }
 
   if (slot.is_single_sided && values.rackFace === "B") {
-    return "단면 랙은 B면을 선택할 수 없습니다.";
+    return "단면 랙은 면 구분 없이 사용합니다. 2면을 선택할 수 없습니다.";
   }
 
   return "";
@@ -1578,12 +1422,6 @@ export async function createDocument(env, values, actor, actorRole = "User") {
       values.rackFace
     ),
     ...insertDocumentTagStatementsByTempCode(env, temporaryStorageCode, values.tagIds),
-    env.DB.prepare(`
-      INSERT INTO movement_logs (document_id, to_rack_slot_id, to_rack_face, performed_by, note)
-      SELECT id, ?, ?, ?, ?
-      FROM documents
-      WHERE storage_code = ?
-    `).bind(values.rackSlotId, values.rackFace, actor, "초기 등록", temporaryStorageCode),
     createDocumentAuditStatement(env, temporaryStorageCode, actor, actorRole),
     env.DB.prepare(`
       UPDATE documents
@@ -1664,69 +1502,6 @@ export async function updateDocument(env, id, values, actor, actorRole = "Admin"
   return { ok: true };
 }
 
-export async function moveDocument(env, id, values, actor, actorRole = "Admin") {
-  const doc = await getDocument(env, id);
-  if (!doc) {
-    return { ok: false, message: "문서를 찾을 수 없습니다." };
-  }
-
-  if (doc.status === "disposed") {
-    return { ok: false, message: "폐기 상태 문서는 폐기를 해제하기 전까지 이동할 수 없습니다." };
-  }
-
-  const tags = await getDocumentTags(env, id);
-  const moved = await documentWithValues(env, doc, values);
-
-  const lock = optimisticLockClause(values.expectedUpdatedAt);
-  const guardClause = `id = ? AND status = 'active'${lock.sql}`;
-  const guardBinds = [id, ...lock.binds];
-
-  // 이동 기록·감사 로그를 상태변경과 하나의 batch로 원자화한다. 로그는 pre-state 가드에 묶여
-  // 가드 UPDATE와 함께 no-op이 되므로 이동기록 없는 위치변경(물리 이력 소실)을 막는다.
-  const statements = [
-    env.DB.prepare(`
-      INSERT INTO movement_logs (
-        document_id,
-        from_rack_slot_id,
-        from_rack_face,
-        to_rack_slot_id,
-        to_rack_face,
-        performed_by,
-        note
-      )
-      SELECT ?, ?, ?, ?, ?, ?, ?
-      FROM documents
-      WHERE ${guardClause}
-    `).bind(
-      id,
-      doc.rack_slot_id,
-      doc.rack_face,
-      values.rackSlotId,
-      values.rackFace,
-      actor,
-      values.note || null,
-      ...guardBinds
-    ),
-    conditionalAuditStatement(env, moved, "move", actor, actorRole, "문서 위치 이동", {
-      before: documentSnapshot(doc, tags),
-      after: documentSnapshot(moved, tags),
-      note: values.note || ""
-    }, guardClause, guardBinds),
-    env.DB.prepare(`
-      UPDATE documents
-      SET rack_slot_id = ?, rack_face = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE ${guardClause}
-    `).bind(values.rackSlotId, values.rackFace, ...guardBinds)
-  ];
-
-  const results = await env.DB.batch(statements);
-  if (!hasChanged(results[results.length - 1])) {
-    return { ok: false, message: "다른 사용자가 문서를 먼저 이동/수정했거나 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
-  }
-
-  return { ok: true };
-}
-
 export async function disposeDocument(env, id, actor, reason, actorRole = "Admin") {
   const doc = await getDocument(env, id);
   if (!doc) {
@@ -1735,10 +1510,6 @@ export async function disposeDocument(env, id, actor, reason, actorRole = "Admin
 
   if (doc.status === "disposed") {
     return { ok: true };
-  }
-
-  if (doc.checkout_borrower) {
-    return { ok: false, message: `반출 중인 문서(반출자: ${doc.checkout_borrower})는 반납 처리 후 폐기할 수 있습니다.` };
   }
 
   const tags = await getDocumentTags(env, id);
@@ -1816,96 +1587,6 @@ export async function restoreDocument(env, id, actor, actorRole = "Admin") {
   return { ok: true };
 }
 
-export async function checkoutDocument(env, id, values, actor, actorRole = "Admin") {
-  const doc = await getDocument(env, id);
-  if (!doc) {
-    return { ok: false, message: "문서를 찾을 수 없습니다." };
-  }
-
-  if (doc.status === "disposed") {
-    return { ok: false, message: "폐기 상태 문서는 반출할 수 없습니다." };
-  }
-
-  if (doc.checkout_borrower) {
-    return { ok: false, message: `이미 반출 중인 문서입니다(반출자: ${doc.checkout_borrower}). 먼저 반납 처리하세요.` };
-  }
-
-  const borrower = clean(values.borrower);
-  if (!borrower) {
-    return { ok: false, message: "반출자 이름을 입력하세요." };
-  }
-
-  const purpose = clean(values.purpose);
-
-  try {
-    await env.DB.batch([
-      env.DB.prepare(`
-        INSERT INTO document_checkouts (document_id, borrower, purpose, checked_out_by)
-        VALUES (?, ?, ?, ?)
-      `).bind(id, borrower, purpose || null, actor || "알 수 없음"),
-      auditDocumentStatement(env, doc, "checkout", actor, actorRole, `문서 반출 (반출자: ${borrower})`, {
-        borrower,
-        purpose
-      })
-    ]);
-  } catch (error) {
-    if (error.message.includes("UNIQUE")) {
-      return { ok: false, message: "이미 반출 중인 문서입니다. 먼저 반납 처리하세요." };
-    }
-    throw error;
-  }
-
-  return { ok: true };
-}
-
-export async function returnDocument(env, id, actor, actorRole = "Admin") {
-  const doc = await getDocument(env, id);
-  if (!doc) {
-    return { ok: false, message: "문서를 찾을 수 없습니다." };
-  }
-
-  // 반납(UPDATE)과 감사 로그를 하나의 batch로 원자화한다. 감사 로그는 '열린 반출이 있을 때'만
-  // 기록되도록 pre-state 가드에 묶어, 반납 UPDATE가 no-op이면 유령 반납 로그가 남지 않는다.
-  const summary = `문서 반납 (반출자: ${doc.checkout_borrower || "-"})`;
-  const details = JSON.stringify({
-    borrower: doc.checkout_borrower || "",
-    purpose: doc.checkout_purpose || ""
-  });
-  const statements = [
-    env.DB.prepare(`
-      INSERT INTO document_audit_logs (
-        document_id, storage_code, document_number, action, actor, actor_role, summary, details
-      )
-      SELECT ?, ?, ?, 'return', ?, ?, ?, ?
-      WHERE EXISTS (SELECT 1 FROM document_checkouts WHERE document_id = ? AND returned_at IS NULL)
-    `).bind(doc.id, doc.storage_code, doc.document_number, actor || "알 수 없음", actorRole || "Unknown", summary, details, id),
-    env.DB.prepare(`
-      UPDATE document_checkouts
-      SET returned_at = CURRENT_TIMESTAMP,
-          returned_by = ?
-      WHERE document_id = ? AND returned_at IS NULL
-    `).bind(actor || "알 수 없음", id)
-  ];
-
-  const results = await env.DB.batch(statements);
-  if (!hasChanged(results[results.length - 1])) {
-    return { ok: false, message: "반출 중인 문서가 아닙니다." };
-  }
-
-  return { ok: true };
-}
-
-export async function getDocumentCheckoutLogs(env, documentId) {
-  const result = await env.DB.prepare(`
-    SELECT id, borrower, purpose, checked_out_by, checked_out_at, returned_by, returned_at
-    FROM document_checkouts
-    WHERE document_id = ?
-    ORDER BY checked_out_at DESC, id DESC
-  `).bind(documentId).all();
-
-  return result.results ?? [];
-}
-
 export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음", actorRole = "Admin") {
   const doc = await getDocument(env, id);
   if (!doc) {
@@ -1916,14 +1597,12 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
     return { ok: false, message: "보관중 문서는 완전삭제할 수 없습니다. 먼저 폐기 처리해야 합니다." };
   }
 
-  // 하드삭제는 ON DELETE CASCADE로 이동/폐기/반출 이력을 함께 파괴한다. GMP 기록 보존을 위해
+  // 하드삭제는 ON DELETE CASCADE로 폐기 이력을 함께 파괴한다. GMP 기록 보존을 위해
   // 삭제 직전 전체 이력을 불변 감사 로그(document_audit_logs, documents FK 없음)의 details에
   // 스냅샷으로 보존한다(ALCOA Enduring/Complete). 감사·삭제를 하나의 batch로 원자화.
-  const [tags, movementLogs, disposalLogs, checkoutLogs] = await Promise.all([
+  const [tags, disposalLogs] = await Promise.all([
     getDocumentTags(env, id),
-    getDocumentMovementLogs(env, id),
-    getDisposalLogs(env, id),
-    getDocumentCheckoutLogs(env, id)
+    getDisposalLogs(env, id)
   ]);
   const guardClause = "id = ? AND status = 'disposed'";
   const guardBinds = [id];
@@ -1932,9 +1611,7 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
     conditionalAuditStatement(env, doc, "delete_permanent", actor, actorRole, "문서 완전삭제", {
       before: documentSnapshot(doc, tags),
       history: {
-        movements: movementLogs,
-        disposals: disposalLogs,
-        checkouts: checkoutLogs
+        disposals: disposalLogs
       }
     }, guardClause, guardBinds),
     env.DB.prepare(`DELETE FROM documents WHERE ${guardClause}`).bind(...guardBinds)
@@ -2171,11 +1848,17 @@ export async function configureRackCounts(env, counts) {
         AND rack_number BETWEEN 1 AND ?
     `).bind(counts[1], counts[2], counts[3], MAX_RACKS_PER_ZONE),
     env.DB.prepare(`
-      WITH RECURSIVE default_slots(shelf_number) AS (
-        VALUES(1)
-        UNION ALL
-        SELECT shelf_number + 1 FROM default_slots WHERE shelf_number < ?
-      )
+      WITH RECURSIVE
+        default_cols(column_number) AS (
+          VALUES(1)
+          UNION ALL
+          SELECT column_number + 1 FROM default_cols WHERE column_number < ?
+        ),
+        default_shelves(shelf_number) AS (
+          VALUES(1)
+          UNION ALL
+          SELECT shelf_number + 1 FROM default_shelves WHERE shelf_number < ?
+        )
       INSERT INTO rack_slots (
         rack_id,
         slot_code,
@@ -2187,14 +1870,15 @@ export async function configureRackCounts(env, counts) {
       )
       SELECT
         r.id,
-        printf('%d-%d', ?, default_slots.shelf_number),
-        ?,
-        default_slots.shelf_number,
-        printf('%d열 %d선반', ?, default_slots.shelf_number),
+        printf('%d-%d', default_cols.column_number, default_shelves.shelf_number),
+        default_cols.column_number,
+        default_shelves.shelf_number,
+        printf('%d열 %d선반', default_cols.column_number, default_shelves.shelf_number),
         1,
         CURRENT_TIMESTAMP
       FROM racks r
-      CROSS JOIN default_slots
+      CROSS JOIN default_cols
+      CROSS JOIN default_shelves
       WHERE r.zone_number IN (1, 2, 3)
         AND r.rack_number BETWEEN 1 AND ?
       ON CONFLICT(rack_id, slot_code) DO UPDATE SET
@@ -2203,7 +1887,7 @@ export async function configureRackCounts(env, counts) {
         description = excluded.description,
         is_active = 1,
         updated_at = CURRENT_TIMESTAMP
-    `).bind(DEFAULT_RACK_SHELVES, DEFAULT_RACK_COLUMNS, DEFAULT_RACK_COLUMNS, DEFAULT_RACK_COLUMNS, MAX_RACKS_PER_ZONE)
+    `).bind(DEFAULT_RACK_COLUMNS, DEFAULT_RACK_SHELVES, MAX_RACKS_PER_ZONE)
   ]);
 
   return { ok: true };
@@ -2252,17 +1936,15 @@ export async function getDocumentSetDocuments(env, setId) {
       r.code AS rack_code,
       r.zone_number,
       r.rack_number,
+      r.is_single_sided,
       rs.column_number,
       rs.shelf_number,
-      rs.slot_code,
-      co.borrower AS checkout_borrower,
-      co.checked_out_at AS checkout_at
+      rs.slot_code
     FROM document_set_items i
     JOIN documents d ON d.id = i.document_id
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
-    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
     WHERE i.set_id = ?
     ORDER BY r.zone_number, r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number
   `).bind(setId).all();
@@ -2488,49 +2170,6 @@ export async function findDocumentsByNumbers(env, numbers) {
   return { documents, missing };
 }
 
-// 붙여넣은 문서번호/보관코드를 세트 저장 없이 즉석 픽리스트로 해석한다.
-// 매칭된 문서를 동선순(구역→랙→면→열→선반)으로, 못 찾은 번호는 그대로 돌려줘 걷기 전에 드러나게 한다.
-export async function resolvePicklist(env, numbers) {
-  const parsed = [...new Set((numbers || []).map((value) => clean(value)).filter(Boolean))];
-  if (!parsed.length) {
-    return { documents: [], missing: [] };
-  }
-
-  const { documents: matched, missing } = await findDocumentsByNumbers(env, parsed);
-  const ids = matched.map((document) => Number(document.id)).filter((id) => Number.isInteger(id) && id > 0);
-  if (!ids.length) {
-    return { documents: [], missing };
-  }
-
-  const placeholders = ids.map(() => "?").join(", ");
-  const result = await env.DB.prepare(`
-    SELECT
-      d.id,
-      d.storage_code,
-      d.document_number,
-      d.revision_number,
-      d.document_name,
-      d.rack_face,
-      d.status,
-      c.name AS category_name,
-      r.code AS rack_code,
-      r.zone_number,
-      r.rack_number,
-      rs.column_number,
-      rs.shelf_number,
-      co.borrower AS checkout_borrower
-    FROM documents d
-    JOIN categories c ON c.id = d.category_id
-    JOIN rack_slots rs ON rs.id = d.rack_slot_id
-    JOIN racks r ON r.id = rs.rack_id
-    LEFT JOIN document_checkouts co ON co.document_id = d.id AND co.returned_at IS NULL
-    WHERE d.id IN (${placeholders})
-    ORDER BY r.zone_number, r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number
-  `).bind(...ids).all();
-
-  return { documents: result.results ?? [], missing };
-}
-
 export function valuesFromDocumentForm(form) {
   return {
     documentNumber: clean(form.get("documentNumber")),
@@ -2538,7 +2177,7 @@ export function valuesFromDocumentForm(form) {
     documentName: clean(form.get("documentName")),
     categoryId: Number(form.get("categoryId")),
     rackSlotId: Number(form.get("rackSlotId")),
-    rackFace: clean(form.get("rackFace")).toUpperCase(),
+    rackFace: normalizeRackFace(form.get("rackFace")),
     note: clean(form.get("note")),
     tagIds: form.getAll("tagIds").map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
     // 낙관적 잠금: 사용자가 수정 화면을 연 시점의 updated_at(hidden). 비어 있으면 잠금 없이 동작.

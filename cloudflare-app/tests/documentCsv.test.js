@@ -25,6 +25,8 @@ test("buildDocumentCsv creates deterministic filename and safe cells", () => {
   assert.equal(result.filename, "hanlim-archive-documents-2026-04-14.csv");
   assert.match(result.body, /documentNumber,revisionNumber/);
   assert.match(result.body, /'=DOC-1/);
+  // 면은 실물 표기(1/2)로 내보낸다: rackCode,rackColumn,shelfNumber,rackFace 순.
+  assert.match(result.body, /1-01,1,2,1,/);
 });
 
 test("readDocumentImportRows enforces configured row and byte limits", async () => {
@@ -74,4 +76,34 @@ test("prepareDocumentImportRows maps category, tags, slot, and disposed status",
     tagIds: [20, 21]
   });
   assert.equal(prepared.items[0].status, "disposed");
+});
+
+test("prepareDocumentImportRows accepts numeric faces and blocks face 2 on single-sided racks", () => {
+  const context = {
+    categories: [{ id: 10, name: "PV" }],
+    tags: [],
+    slots: [
+      { id: 30, code: "1-01", slot_code: "1-2", column_number: 1, shelf_number: 2, is_single_sided: 0 },
+      { id: 31, code: "2-09", slot_code: "1-2", column_number: 1, shelf_number: 2, is_single_sided: 1 }
+    ]
+  };
+  const base = { revisionNumber: "Rev.0", documentName: "문서", category: "PV", rackColumn: "1", shelfNumber: "2" };
+
+  const numeric = prepareDocumentImportRows([
+    { ...base, documentNumber: "DOC-2", rackCode: "1-01", rackFace: "2" }
+  ], context);
+  assert.deepEqual(numeric.errors, []);
+  assert.equal(numeric.items[0].values.rackFace, "B", "실물 표기 2는 저장값 B로 매핑된다");
+
+  const singleSided = prepareDocumentImportRows([
+    { ...base, documentNumber: "DOC-3", rackCode: "2-09", rackFace: "2" }
+  ], context);
+  assert.equal(singleSided.errors.length, 1);
+  assert.match(singleSided.errors[0], /단면 랙/);
+
+  const invalid = prepareDocumentImportRows([
+    { ...base, documentNumber: "DOC-4", rackCode: "1-01", rackFace: "3" }
+  ], context);
+  assert.equal(invalid.errors.length, 1);
+  assert.match(invalid.errors[0], /1 또는 2/);
 });

@@ -239,24 +239,39 @@ export function createSearchCore() {
       });
   }
 
+  // 랙 면 표기: 단면 랙은 "13", 양면 랙은 "13-1"(A면)/"13-2"(B면). utils.rackFaceLabel과 같은 규칙.
+  function rackFaceLabel(document) {
+    const rackNumber = Number(document.rack_number || 0);
+    if (!rackNumber) {
+      return "";
+    }
+    const single = document.is_single_sided === 1 || document.is_single_sided === true || document.is_single_sided === "1";
+    if (single) {
+      return String(rackNumber);
+    }
+    return rackNumber + "-" + (document.rack_face === "B" ? 2 : 1);
+  }
+
   function documentLocationText(document) {
     const zone = document.zone_number ? `${document.zone_number}구역` : "";
-    const rack = document.rack_number ? `${document.rack_number}번 랙` : document.rack_code || "";
+    const rack = rackFaceLabel(document) ? `${rackFaceLabel(document)}번 랙` : document.rack_code || "";
     const column = document.column_number ? `${document.column_number}열` : "";
     const shelf = document.shelf_number ? `${document.shelf_number}선반` : document.slot_code ? `칸 ${document.slot_code}` : "";
-    const face = document.rack_face ? `${document.rack_face}면` : "";
-    return [zone, rack, column, shelf, face].filter(Boolean).join(" ");
+    return [zone, rack, column, shelf].filter(Boolean).join(" ");
   }
 
   function searchFields(document) {
     const location = documentLocationText(document);
+    const faceLabel = rackFaceLabel(document);
     const locationAliases = [
       location,
       document.rack_code,
       document.zone_number ? `${document.zone_number}구역` : "",
       document.rack_number ? `${document.rack_number}랙 ${document.rack_number}번랙 ${document.rack_number}번 랙` : "",
+      faceLabel,
       document.column_number ? `${document.column_number}열` : "",
       document.shelf_number ? `${document.shelf_number}선반 ${document.shelf_number}행 ${document.shelf_number}칸` : "",
+      // 과거 표기(A면/B면) 검색 습관도 계속 받아준다.
       document.rack_face ? `${document.rack_face}면` : ""
     ].filter(Boolean).join(" ");
     return [
@@ -519,6 +534,7 @@ export function createSearchCore() {
     isChosungToken,
     qwertyToHangul,
     hangulToQwerty,
+    rackFaceLabel,
     documentLocationText,
     scoreDocumentMatch,
     compareSearchResults,

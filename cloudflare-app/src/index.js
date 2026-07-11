@@ -13,30 +13,23 @@ import {
   DEFAULT_RACK_COLUMNS,
   DEFAULT_RACK_SHELVES,
   getAppConfig,
-  MAX_RACK_COLUMNS,
   MAX_RACKS_PER_ZONE,
-  MAX_RACK_SHELVES,
   RACK_ZONES
 } from "./config.js";
 import {
   categoriesPage,
   adminDashboardPage,
   adminSettingsPage,
-  custodyCardPage,
   dashboardPage,
   documentDetailsPage,
   documentFormPage,
-  documentGuidePage,
   documentImportPage,
   documentsPage,
   errorPage,
   loginPage,
-  moveFormPage,
   notFoundPage,
   passwordPage,
-  picklistPage,
   qaPage,
-  recoveryPage,
   rackDetailsPage,
   rackFormPage,
   rackConfigurePage,
@@ -44,7 +37,6 @@ import {
   searchReportPage,
   setDetailsPage,
   setFormPage,
-  setPicklistPage,
   setsPage,
   signupPage,
   tagsPage,
@@ -54,7 +46,6 @@ import {
   addDocumentsToSet,
   approveUser,
   buildFloorPlanLayout,
-  checkoutDocument,
   createDocument,
   createSignupRequest,
   configureRackCounts,
@@ -71,8 +62,6 @@ import {
   getDisposalLogs,
   getDocument,
   getDocumentAuditLogs,
-  getDocumentCheckoutLogs,
-  getDocumentMovementLogs,
   getDocumentQualitySummary,
   getDocumentSet,
   getDocumentSetDocuments,
@@ -81,31 +70,24 @@ import {
   getDocumentTags,
   getDocumentsForExport,
   getFloorPlanRegions,
-  getPopularDocuments,
   getRackDetails,
-  getRecoveryCandidates,
   getRackDocuments,
   getRackSummaries,
   getSearchIndexDocuments,
   getSearchIndexMeta,
   getSearchReport,
   getSearchSuggestions,
-  getSlotNeighbors,
   getSlotOptions,
   getTags,
   MAX_SEARCH_RESULTS,
-  moveDocument,
   parseDocumentNumberList,
   parseSearchQuery,
   recordSearchClick,
   recordSearchLog,
   permanentlyDeleteDocument,
   rejectUser,
-  recordLocationMismatch,
   removeDocumentFromSet,
-  resolvePicklist,
   restoreDocument,
-  returnDocument,
   searchDocuments,
   updateDocument,
   upsertCategory,
@@ -291,14 +273,6 @@ async function route(request, env) {
     return handleDocumentRoute(request, env, session, documentRoute);
   }
 
-  if (path === "/picklist" && request.method === "GET") {
-    return picklistPage({ session });
-  }
-
-  if (path === "/picklist" && request.method === "POST") {
-    return handleAdhocPicklist(request, env, session);
-  }
-
   if (path === "/sets" && request.method === "GET") {
     return handleSets(env, session);
   }
@@ -324,11 +298,7 @@ async function route(request, env) {
   if (path === "/racks/new" && request.method === "GET") {
     return requireAdmin(session) ?? rackFormPage({
       session,
-      values: {
-        rackNumber: 1,
-        columnCount: DEFAULT_RACK_COLUMNS,
-        shelfCount: DEFAULT_RACK_SHELVES
-      },
+      values: { rackNumber: 1 },
       action: "/racks",
       title: "랙 추가"
     });
@@ -454,9 +424,12 @@ async function handleDashboard(request, env, session) {
     explicitFilters.categoryId || explicitFilters.zoneNumber || explicitFilters.tagId || explicitFilters.status
   );
 
-  // 검색엔진 셸: 검색어도 필터도 없으면 검색창만 있는 홈을 그린다.
+  // 검색엔진 셸: 검색어도 필터도 없으면 검색창 + 문서고 도면 홈을 그린다.
   if (!query && !hasExplicitFilter) {
-    const popular = await getPopularDocuments(env, 5);
+    const [homeRacks, homeRegions] = await Promise.all([
+      getRackSummaries(env),
+      getFloorPlanRegions(env)
+    ]);
     return dashboardPage({
       session,
       mode: "home",
@@ -464,7 +437,7 @@ async function handleDashboard(request, env, session) {
       categories,
       tags,
       filters: explicitFilters,
-      popular
+      floorPlan: buildFloorPlanLayout(homeRacks, homeRegions)
     });
   }
 
@@ -750,59 +723,27 @@ async function handleDocumentRoute(request, env, session, routeInfo) {
   const { id, action } = routeInfo;
 
   if (request.method === "GET" && action === "details") {
-    const [document, tags, movementLogs, disposalLogs, auditLogs, checkoutLogs] = await Promise.all([
+    const [document, tags, disposalLogs, auditLogs, racks, regions] = await Promise.all([
       getDocument(env, id),
       getDocumentTags(env, id),
-      getDocumentMovementLogs(env, id),
       getDisposalLogs(env, id),
       getDocumentAuditLogs(env, id),
-      getDocumentCheckoutLogs(env, id)
-    ]);
-
-    if (!document) {
-      return notFoundPage(session);
-    }
-
-    return documentDetailsPage({ session, document, tags, movementLogs, disposalLogs, auditLogs, checkoutLogs });
-  }
-
-  if (request.method === "GET" && action === "guide") {
-    const document = await getDocument(env, id);
-
-    if (!document) {
-      return notFoundPage(session);
-    }
-
-    const [racks, regions, neighbors] = await Promise.all([
       getRackSummaries(env),
-      getFloorPlanRegions(env),
-      getSlotNeighbors(env, document)
-    ]);
-
-    return documentGuidePage({ session, document, floorPlan: buildFloorPlanLayout(racks, regions), neighbors });
-  }
-
-  if (request.method === "GET" && action === "custody") {
-    const [document, movementLogs, checkoutLogs] = await Promise.all([
-      getDocument(env, id),
-      getDocumentMovementLogs(env, id),
-      getDocumentCheckoutLogs(env, id)
+      getFloorPlanRegions(env)
     ]);
 
     if (!document) {
       return notFoundPage(session);
     }
 
-    return custodyCardPage({ session, document, movementLogs, checkoutLogs });
-  }
-
-  if (request.method === "POST" && action === "not-here") {
-    const result = await recordLocationMismatch(env, id, session.displayName, session.role);
-    if (!result.ok) {
-      return errorPage(result.message, session, 400);
-    }
-    const candidates = await getRecoveryCandidates(env, result.document);
-    return recoveryPage({ session, document: result.document, candidates });
+    return documentDetailsPage({
+      session,
+      document,
+      tags,
+      disposalLogs,
+      auditLogs,
+      floorPlan: buildFloorPlanLayout(racks, regions)
+    });
   }
 
   if (request.method === "GET" && action === "edit") {
@@ -882,90 +823,6 @@ async function handleDocumentRoute(request, env, session, routeInfo) {
     return redirect(`/documents/${id}?toast=updated`);
   }
 
-  if (request.method === "GET" && action === "move") {
-    const denied = requireAdmin(session);
-    if (denied) {
-      return denied;
-    }
-
-    const [document, slots] = await Promise.all([getDocument(env, id), getSlotOptions(env)]);
-    if (!document) {
-      return notFoundPage(session);
-    }
-    if (document.status === "disposed") {
-      return errorPage("폐기 상태 문서는 폐기를 해제하기 전까지 이동할 수 없습니다.", session, 400);
-    }
-
-    return moveFormPage({ session, document, slots });
-  }
-
-  if (request.method === "POST" && action === "move") {
-    const denied = requireAdmin(session);
-    if (denied) {
-      return denied;
-    }
-
-    const form = await request.formData();
-    const document = await getDocument(env, id);
-    if (!document) {
-      return notFoundPage(session);
-    }
-
-    const values = {
-      documentNumber: document.document_number,
-      revisionNumber: document.revision_number,
-      documentName: document.document_name,
-      categoryId: document.category_id,
-      rackSlotId: Number(form.get("rackSlotId")),
-      rackFace: clean(form.get("rackFace")).toUpperCase(),
-      note: clean(form.get("note")),
-      expectedUpdatedAt: clean(form.get("expectedUpdatedAt"))
-    };
-    const validation = await validateDocumentInput(env, values, id);
-
-    if (validation) {
-      const slots = await getSlotOptions(env);
-      return moveFormPage({ session, document, slots, error: validation });
-    }
-
-    const result = await moveDocument(env, id, values, session.displayName, session.role);
-    if (!result.ok) {
-      return errorPage(result.message, session, 400);
-    }
-
-    return redirect(`/documents/${id}?toast=moved`);
-  }
-
-  if (request.method === "POST" && action === "checkout") {
-    const denied = requireAdmin(session);
-    if (denied) {
-      return denied;
-    }
-
-    const form = await request.formData();
-    const result = await checkoutDocument(env, id, {
-      borrower: clean(form.get("borrower")),
-      purpose: clean(form.get("purpose"))
-    }, session.displayName, session.role);
-    if (!result.ok) {
-      return errorPage(result.message, session, 400);
-    }
-    return redirect(`/documents/${id}?toast=checked-out`);
-  }
-
-  if (request.method === "POST" && action === "return") {
-    const denied = requireAdmin(session);
-    if (denied) {
-      return denied;
-    }
-
-    const result = await returnDocument(env, id, session.displayName, session.role);
-    if (!result.ok) {
-      return errorPage(result.message, session, 400);
-    }
-    return redirect(`/documents/${id}?toast=returned`);
-  }
-
   if (request.method === "POST" && action === "dispose") {
     const denied = requireAdmin(session);
     if (denied) {
@@ -1012,34 +869,6 @@ async function handleDocumentRoute(request, env, session, routeInfo) {
 async function handleSets(env, session) {
   const sets = await getDocumentSets(env);
   return setsPage({ session, sets });
-}
-
-async function handleAdhocPicklist(request, env, session) {
-  const form = await request.formData();
-  const raw = clean(form.get("numbers"));
-  const numbers = parseDocumentNumberList(raw);
-
-  if (!numbers.length) {
-    return picklistPage({ session, raw, error: "문서번호 또는 보관코드를 붙여넣으세요." });
-  }
-  if (numbers.length > 300) {
-    return picklistPage({ session, raw, error: "한 번에 300건 이하로 입력하세요. 나눠서 조회하세요." });
-  }
-
-  const [{ documents, missing }, racks, regions] = await Promise.all([
-    resolvePicklist(env, numbers),
-    getRackSummaries(env),
-    getFloorPlanRegions(env)
-  ]);
-
-  return picklistPage({
-    session,
-    raw,
-    requested: numbers.length,
-    documents,
-    missing,
-    floorPlan: buildFloorPlanLayout(racks, regions)
-  });
 }
 
 async function renderSetDetails(env, session, id, options = {}) {
@@ -1102,21 +931,6 @@ async function handleSetRoute(request, env, session, routeInfo) {
   if (request.method === "GET" && action === "details") {
     const url = new URL(request.url);
     return renderSetDetails(env, session, id, { addQuery: clean(url.searchParams.get("add-q")) });
-  }
-
-  if (request.method === "GET" && action === "picklist") {
-    const set = await getDocumentSet(env, id);
-    if (!set) {
-      return notFoundPage(session);
-    }
-
-    const [documents, racks, regions] = await Promise.all([
-      getDocumentSetDocuments(env, id),
-      getRackSummaries(env),
-      getFloorPlanRegions(env)
-    ]);
-
-    return setPicklistPage({ session, set, documents, floorPlan: buildFloorPlanLayout(racks, regions) });
   }
 
   if (request.method === "GET" && action === "edit") {
@@ -1284,8 +1098,10 @@ async function handleSaveRack(request, env, session, id = 0) {
     id,
     zoneNumber: Number(form.get("zoneNumber")),
     rackNumber: Number(form.get("rackNumber")),
-    columnCount: Number(form.get("columnCount")),
-    shelfCount: Number(form.get("shelfCount")),
+    // 랙 구조는 실물 규격(면당 7열×6선반=42칸)으로 고정한다. 폼 입력을 받지 않으며,
+    // 과거 규격으로 남아 있던 랙도 저장 시 이 값으로 정렬된다.
+    columnCount: DEFAULT_RACK_COLUMNS,
+    shelfCount: DEFAULT_RACK_SHELVES,
     name: clean(form.get("name")),
     description: clean(form.get("description")),
     isSingleSided: form.get("isSingleSided") === "1",
@@ -1299,16 +1115,6 @@ async function handleSaveRack(request, env, session, id = 0) {
       action: id ? `/racks/${id}/edit` : "/racks",
       title: id ? "랙 수정" : "랙 추가",
       error: `구역은 ${RACK_ZONES.join(", ")}, 랙 번호는 1~${MAX_RACKS_PER_ZONE} 사이여야 합니다.`
-    });
-  }
-
-  if (values.columnCount < 1 || values.columnCount > MAX_RACK_COLUMNS || values.shelfCount < 1 || values.shelfCount > MAX_RACK_SHELVES) {
-    return rackFormPage({
-      session,
-      values,
-      action: id ? `/racks/${id}/edit` : "/racks",
-      title: id ? "랙 수정" : "랙 추가",
-      error: `랙 구조는 1~${MAX_RACK_COLUMNS}열, 1~${MAX_RACK_SHELVES}선반 사이로 설정해야 합니다.`
     });
   }
 
@@ -1333,7 +1139,7 @@ async function handleSaveRack(request, env, session, id = 0) {
         values,
         action: `/racks/${id}/edit`,
         title: "랙 수정",
-        error: "B면에 문서가 있는 랙은 단면 랙으로 변경할 수 없습니다."
+        error: "2면에 문서가 있는 랙은 단면 랙으로 변경할 수 없습니다."
       });
     }
   }

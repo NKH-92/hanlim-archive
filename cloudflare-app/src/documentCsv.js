@@ -1,4 +1,4 @@
-import { clean, csvEscape, parseCsv } from "./utils.js";
+import { clean, csvEscape, normalizeRackFace, parseCsv } from "./utils.js";
 
 export const DOCUMENT_CSV_HEADER = Object.freeze([
   "documentNumber",
@@ -23,7 +23,8 @@ export function buildDocumentCsv(documents, now = new Date()) {
     document.rack_code,
     document.column_number,
     document.shelf_number,
-    document.rack_face,
+    // 면은 실물 표기(1/2)로 내보낸다. 가져오기는 1/2와 구표기 A/B를 모두 받는다.
+    document.rack_face === "B" ? 2 : 1,
     document.tag_names || "",
     document.note || "",
     document.status
@@ -121,7 +122,7 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
       documentName: clean(row.documentName),
       categoryId: category?.id ?? 0,
       rackSlotId: slot?.id ?? 0,
-      rackFace: clean(row.rackFace || "A").toUpperCase(),
+      rackFace: normalizeRackFace(row.rackFace || "A"),
       note: clean(row.note),
       tagIds: [...new Set(tagIds)]
     };
@@ -131,11 +132,11 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
     }
 
     if (!["A", "B"].includes(values.rackFace)) {
-      errors.push(`${rowNumber}행: 보관 면은 A 또는 B만 가능합니다.`);
+      errors.push(`${rowNumber}행: 보관 면은 1 또는 2만 가능합니다(구표기 A/B 허용).`);
     }
 
     if (slot?.is_single_sided && values.rackFace === "B") {
-      errors.push(`${rowNumber}행: 단면 랙은 B면을 선택할 수 없습니다.`);
+      errors.push(`${rowNumber}행: 단면 랙은 면 구분이 없어 2면을 선택할 수 없습니다.`);
     }
 
     const status = clean(row.status).toLowerCase();

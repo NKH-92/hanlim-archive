@@ -15,10 +15,20 @@ const sampleDocument = {
   note: "",
   zone_number: 2,
   rack_number: 1,
+  is_single_sided: 0,
   column_number: 3,
   shelf_number: 2,
   rack_face: "A"
 };
+
+test("rack face labels and location text follow the physical naming", () => {
+  assert.equal(core.rackFaceLabel({ rack_number: 13, rack_face: "A", is_single_sided: 0 }), "13-1");
+  assert.equal(core.rackFaceLabel({ rack_number: 13, rack_face: "B", is_single_sided: 0 }), "13-2");
+  assert.equal(core.rackFaceLabel({ rack_number: 13, rack_face: "A", is_single_sided: 1 }), "13");
+  assert.equal(core.documentLocationText(sampleDocument), "2구역 1-1번 랙 3열 2선반");
+  // 면 단위 표기("1-1")로 검색해도 해당 면의 문서가 잡혀야 한다.
+  assert.ok(core.scoreDocumentMatch(sampleDocument, "1-1").relevance_score > 0);
+});
 
 test("chosungOf extracts leading consonants from hangul text", () => {
   assert.equal(core.chosungOf("제조기록서"), "ㅈㅈㄱㄹㅅ");

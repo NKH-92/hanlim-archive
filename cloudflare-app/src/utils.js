@@ -135,14 +135,35 @@ export function equalsIgnoreCase(a, b) {
   return String(a).toLowerCase() === String(b).toLowerCase();
 }
 
+// 면 입력 정규화: 사용자 표기(1/2)와 저장값(A/B)을 모두 받아 저장값으로 통일한다.
+// 매핑되지 않는 값은 그대로 대문자로 돌려보내 검증 단계에서 걸리게 한다.
+export function normalizeRackFace(value) {
+  const raw = clean(value).toUpperCase();
+  if (raw === "1" || raw === "1면") return "A";
+  if (raw === "2" || raw === "2면") return "B";
+  return raw;
+}
+
+// 랙 면 표기: 실물 라벨 규칙을 따른다. 단면 랙은 랙 번호 그대로("13"),
+// 양면 랙은 랙번호-면번호("13-1"=A면, "13-2"=B면)로 부른다. 저장값은 A/B를 유지한다.
+export function rackFaceLabel(doc) {
+  const rackNumber = Number(doc.rack_number || 0);
+  if (!rackNumber) {
+    return "";
+  }
+  if (readBoolean(doc.is_single_sided)) {
+    return String(rackNumber);
+  }
+  return `${rackNumber}-${doc.rack_face === "B" ? 2 : 1}`;
+}
+
 export function locationLabel(doc) {
   const zone = doc.zone_number ? `${doc.zone_number}구역` : doc.rack_code;
-  const rack = doc.rack_number ? `${doc.rack_number}번 랙` : doc.rack_code;
+  const rack = rackFaceLabel(doc) ? `${rackFaceLabel(doc)}번 랙` : doc.rack_code;
   const column = doc.column_number ? `${doc.column_number}열` : "";
   const shelf = doc.shelf_number ? `${doc.shelf_number}선반` : doc.slot_code ? `칸 ${doc.slot_code}` : "";
-  const face = doc.rack_face ? `${doc.rack_face}면` : "";
 
-  return [zone, rack, column, shelf, face].filter(Boolean).join(" / ");
+  return [zone, rack, column, shelf].filter(Boolean).join(" / ");
 }
 
 export function readBoolean(value) {

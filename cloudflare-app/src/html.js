@@ -1,4 +1,4 @@
-import { bytesToBase64Url, escapeHtml, locationLabel, readBoolean } from "./utils.js";
+import { bytesToBase64Url, escapeHtml, locationLabel, rackFaceLabel, readBoolean } from "./utils.js";
 import { createSearchCore } from "./searchCore.js";
 import { htmlContentSecurityPolicy } from "./security.js";
 
@@ -144,7 +144,6 @@ export function dashboardPage({
   categories = [],
   tags = [],
   filters = {},
-  popular = [],
   parsedQuery = null,
   didYouMean = [],
   mode = "results"
@@ -154,9 +153,10 @@ export function dashboardPage({
     tags: tags.map((item) => ({ id: Number(item.id), name: String(item.name || "") }))
   }).replace(/</g, "\\u003c");
 
-  // 홈 모드: 검색엔진처럼 검색창이 화면의 전부다.
+  // 홈 모드: 검색창 + 문서고 도면. 즉시 검색 결과가 뜨면 도면 위 해당 랙이 파랗게 강조된다.
   if (mode === "home") {
     const isAdmin = session.role === "Admin";
+    const totalRacks = floorPlan.reduce((sum, region) => sum + region.racks.length, 0);
     return page("문서 검색", `
       <section class="search-home" data-search-home>
         <div class="search-home-hero">
@@ -177,20 +177,13 @@ export function dashboardPage({
           </article>
         </section>
 
+        ${floorPlan.length ? `
+        <section class="panel home-floor-plan" aria-labelledby="home-floor-plan-title">
+          <div class="section-title"><h2 id="home-floor-plan-title">문서고 도면</h2><span class="count-badge">${totalRacks}개 랙</span></div>
+          ${floorPlanView(floorPlan, new Set())}
+        </section>` : ""}
+
         <div class="search-home-extras" data-home-extras>
-          ${popular.length ? `
-          <section class="panel home-popular">
-            <div class="section-title"><h2>자주 찾는 문서</h2></div>
-            <div class="popular-list">
-              ${popular.map((doc) => `
-                <a class="popular-row" href="/documents/${doc.id}">
-                  <span class="loc-code">${escapeHtml(doc.rack_code)} · ${escapeHtml(doc.rack_face)}면</span>
-                  <span class="popular-name">${escapeHtml(doc.document_name)}</span>
-                  <small>${Number(doc.click_count || 0)}회</small>
-                </a>
-              `).join("")}
-            </div>
-          </section>` : ""}
           <nav class="search-home-links" aria-label="바로가기">
             <a href="/documents"><i class="fa-solid fa-file-lines"></i>전체 문서</a>
             <a href="/sets"><i class="fa-solid fa-list-check"></i>문서 세트</a>
@@ -291,13 +284,12 @@ function answerCard(item, query, grade = "likely") {
     <section class="answer-card" data-answer-card>
       <div class="answer-head"><small class="answer-label">가장 정확한 결과</small>${answerGradeChip(grade)}</div>
       <div class="answer-loc">
-        ${location.zoneNumber ? `${location.zoneNumber}구역 ` : ""}${location.rackNumber ? `${location.rackNumber}번 랙` : escapeHtml(location.rackCode || "")} · ${escapeHtml(location.rackFace || "")}면
+        ${location.zoneNumber ? `${location.zoneNumber}구역 ` : ""}${location.rackLabel ? `${escapeHtml(location.rackLabel)}번 랙` : escapeHtml(location.rackCode || "")}
         ${slot ? `<span>${slot}</span>` : ""}
       </div>
       <div class="answer-doc">
         <a href="/documents/${item.id}" data-doc-click="${item.id}">${highlight(item.documentName || "문서명 없음", query)}</a>
         ${item.status !== "active" ? statusBadge(item.status) : ""}
-        ${item.checkedOut ? checkoutBadge(item.checkoutBorrower || "확인 필요") : ""}
         <div class="answer-meta">
           <span class="mono">${highlight(item.documentNumber, query)}</span>
           <span>${escapeHtml(item.revisionNumber)}</span>
@@ -305,8 +297,7 @@ function answerCard(item, query, grade = "likely") {
         </div>
       </div>
       <div class="answer-actions">
-        <a class="button" href="/documents/${item.id}/guide" data-doc-click="${item.id}"><i class="fa-solid fa-route"></i>길찾기</a>
-        <a class="button secondary" href="/documents/${item.id}" data-doc-click="${item.id}">상세 정보</a>
+        <a class="button" href="/documents/${item.id}" data-doc-click="${item.id}"><i class="fa-solid fa-circle-info"></i>상세 정보</a>
         <button type="button" class="button secondary" data-copy-text="${escapeHtml(location.label || "")}">위치 복사</button>
       </div>
     </section>
@@ -453,7 +444,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null }) {
     ${quality ? dataQualityPanel(quality) : ""}
     <section class="admin-grid">
       <a class="panel admin-tile" href="/admin/settings"><small>가입 요청</small><strong>${pendingCount}건 대기</strong></a>
-      <a class="panel admin-tile" href="/documents"><small>문서 관리</small><strong>검색 / 수정 / 이동 / 폐기</strong></a>
+      <a class="panel admin-tile" href="/documents"><small>문서 관리</small><strong>검색 / 수정 / 폐기</strong></a>
       <a class="panel admin-tile" href="/admin/search-report"><small>검색 리포트</small><strong>자주 찾는 / 실패 검색어</strong></a>
       <a class="panel admin-tile" href="/documents/import"><small>CSV</small><strong>대량 등록 / 내보내기</strong></a>
       <a class="panel admin-tile" href="/racks/configure"><small>랙 설정</small><strong>구역별 랙 수 조정</strong></a>
@@ -489,7 +480,8 @@ export function documentFormPage({ session, title, action, values = {}, categori
         <label>문서명 <em>*</em><input name="documentName" value="${escapeHtml(formValue(values, "documentName", "document_name"))}" required></label>
         <label>대분류 <em>*</em><select name="categoryId" required>${categories.map((c) => option(c.id, c.name, formValue(values, "categoryId", "category_id"))).join("")}</select></label>
         ${showLocation ? `${locationPicker(slots, formValue(values, "rackSlotId", "rack_slot_id"))}
-        <label>보관 면 <em>*</em><select name="rackFace" required>${option("A", "A면", formValue(values, "rackFace", "rack_face") || "A")}${option("B", "B면", formValue(values, "rackFace", "rack_face"))}</select></label>` : ""}
+        <label>보관 면 <em>*</em><select name="rackFace" required data-rack-face>${option("A", "1면", formValue(values, "rackFace", "rack_face") || "A")}${option("B", "2면", formValue(values, "rackFace", "rack_face"))}</select></label>
+        <p class="muted" data-face-hint>양면 랙은 13-1(1면)/13-2(2면)처럼 면 단위로 표기합니다. 단면 랙은 면 구분이 없습니다.</p>` : ""}
         <fieldset class="check-grid">
           <legend>태그</legend>
           ${tags.map((tag) => `<label class="check-item"><input type="checkbox" name="tagIds" value="${tag.id}" ${selectedTags.includes(tag.id) ? "checked" : ""}><span>${escapeHtml(tag.name)}</span></label>`).join("")}
@@ -498,27 +490,139 @@ export function documentFormPage({ session, title, action, values = {}, categori
         <button type="submit" class="primary">저장</button>
       </form>
     </section>
+    ${showLocation ? locationPickerScript() : ""}
   `, session);
 }
 
-export function moveFormPage({ session, document, slots, error = "" }) {
-  return page("문서 이동", `
-    <section class="page-head"><div><h1>문서 이동</h1><p class="page-sub mono">${escapeHtml(document.storage_code)}</p></div></section>
-    <section class="panel narrow">
-      ${error ? alertDanger(error) : ""}
-      <form method="post" action="/documents/${document.id}/move" class="stack">
-        <input type="hidden" name="expectedUpdatedAt" value="${escapeHtml(document.updated_at || "")}">
-        <label>현재 위치<input value="${escapeHtml(locationLabel(document))}" readonly></label>
-        ${locationPicker(slots, document.rack_slot_id)}
-        <label>새 보관 면 <select name="rackFace" required>${option("A", "A면", document.rack_face)}${option("B", "B면", document.rack_face)}</select></label>
-        <label>이동 사유<textarea name="note" rows="3"></textarea></label>
-        <button type="submit" class="primary">이동</button>
-      </form>
-    </section>
-  `, session);
+// 위치 입력 편의 스크립트. 서버 검증(validateDocumentInput)이 최종 방어선이다.
+// 1) 랙당 42칸이 되면서 길어진 단일 목록 대신 랙 → 열 → 선반 3단으로 고른다(JS 미지원 시 원래 목록 사용).
+// 2) 선택된 랙에 맞춰 면 선택지를 실물 표기(13-1/13-2)로 바꾸고, 단면 랙이면 2면을 잠근다.
+function locationPickerScript() {
+  return `
+    <script>
+      (function () {
+        var slotSelect = document.querySelector('select[name="rackSlotId"]');
+        var faceSelect = document.querySelector('select[data-rack-face]');
+        if (!slotSelect) return;
+
+        var faceA = faceSelect ? faceSelect.querySelector('option[value="A"]') : null;
+        var faceB = faceSelect ? faceSelect.querySelector('option[value="B"]') : null;
+        var syncFace = function () {
+          if (!faceSelect) return;
+          var opt = slotSelect.options[slotSelect.selectedIndex];
+          var rackNumber = opt ? opt.getAttribute('data-rack-number') || '' : '';
+          var single = opt ? opt.getAttribute('data-single-sided') === '1' : false;
+          if (single) {
+            faceSelect.value = 'A';
+            faceB.disabled = true;
+            faceA.textContent = rackNumber ? rackNumber + ' (단면 · 면 구분 없음)' : '단면 · 면 구분 없음';
+            faceB.textContent = '단면 랙 · 2면 없음';
+          } else {
+            faceB.disabled = false;
+            faceA.textContent = rackNumber ? rackNumber + '-1 (1면)' : '1면';
+            faceB.textContent = rackNumber ? rackNumber + '-2 (2면)' : '2면';
+          }
+        };
+        slotSelect.addEventListener('change', syncFace);
+
+        var slotOptions = Array.prototype.slice.call(slotSelect.options).filter(function (o) { return o.value; });
+        var racks = [];
+        var rackByKey = {};
+        slotOptions.forEach(function (o) {
+          var key = o.getAttribute('data-zone') + ':' + o.getAttribute('data-rack-number');
+          var rack = rackByKey[key];
+          if (!rack) {
+            rack = {
+              key: key,
+              zone: o.getAttribute('data-zone'),
+              rackNumber: o.getAttribute('data-rack-number'),
+              single: o.getAttribute('data-single-sided') === '1',
+              columns: {},
+              shelves: {},
+              slots: {}
+            };
+            rackByKey[key] = rack;
+            racks.push(rack);
+          }
+          var column = o.getAttribute('data-column');
+          var shelf = o.getAttribute('data-shelf');
+          rack.columns[column] = true;
+          rack.shelves[shelf] = true;
+          rack.slots[column + ':' + shelf] = o.value;
+        });
+        if (!racks.length) { syncFace(); return; }
+
+        var numericKeys = function (map) {
+          return Object.keys(map).map(Number).sort(function (a, b) { return a - b; });
+        };
+        var fillSelect = function (select, placeholder, items, toLabel, selectedValue) {
+          select.innerHTML = '';
+          var blank = document.createElement('option');
+          blank.value = '';
+          blank.textContent = placeholder;
+          select.appendChild(blank);
+          items.forEach(function (item) {
+            var option = document.createElement('option');
+            option.value = String(item);
+            option.textContent = toLabel(item);
+            if (String(item) === String(selectedValue)) option.selected = true;
+            select.appendChild(option);
+          });
+        };
+
+        var row = document.createElement('div');
+        row.className = 'picker-row';
+        var rackSel = document.createElement('select');
+        var colSel = document.createElement('select');
+        var shelfSel = document.createElement('select');
+        [rackSel, colSel, shelfSel].forEach(function (select) {
+          select.required = true;
+          row.appendChild(select);
+        });
+
+        var currentRack = function () { return rackByKey[rackSel.value] || null; };
+        var refreshCells = function (selectedColumn, selectedShelf) {
+          var rack = currentRack();
+          colSel.disabled = shelfSel.disabled = !rack;
+          fillSelect(colSel, '열 선택', rack ? numericKeys(rack.columns) : [], function (n) { return n + '열 (왼쪽에서)'; }, selectedColumn);
+          fillSelect(shelfSel, '선반 선택', rack ? numericKeys(rack.shelves) : [], function (n) { return n + '선반 (아래에서)'; }, selectedShelf);
+        };
+        var apply = function () {
+          var rack = currentRack();
+          var slotId = rack && colSel.value && shelfSel.value ? rack.slots[colSel.value + ':' + shelfSel.value] || '' : '';
+          slotSelect.value = slotId;
+          syncFace();
+        };
+
+        fillSelect(rackSel, '랙 선택', racks.map(function (rack) { return rack.key; }), function (key) {
+          var rack = rackByKey[key];
+          return rack.zone + '구역 ' + rack.rackNumber + '번 랙 · ' + (rack.single ? '단면' : '양면 ' + rack.rackNumber + '-1/' + rack.rackNumber + '-2');
+        }, '');
+
+        var initial = slotSelect.options[slotSelect.selectedIndex];
+        if (initial && initial.value) {
+          rackSel.value = initial.getAttribute('data-zone') + ':' + initial.getAttribute('data-rack-number');
+          refreshCells(initial.getAttribute('data-column'), initial.getAttribute('data-shelf'));
+        } else {
+          refreshCells('', '');
+        }
+
+        rackSel.addEventListener('change', function () { refreshCells('', ''); apply(); });
+        colSel.addEventListener('change', apply);
+        shelfSel.addEventListener('change', apply);
+
+        // 원래 목록은 값 운반용으로만 남긴다. required를 3단 선택 쪽으로 옮겨
+        // 숨긴 select가 브라우저 필수 검증(포커스 불가 오류)에 걸리지 않게 한다.
+        slotSelect.required = false;
+        slotSelect.style.display = 'none';
+        slotSelect.insertAdjacentElement('afterend', row);
+        syncFace();
+      })();
+    </script>
+  `;
 }
 
-export function documentDetailsPage({ session, document, tags, movementLogs, disposalLogs, auditLogs, checkoutLogs = [] }) {
+export function documentDetailsPage({ session, document, tags, disposalLogs, auditLogs, floorPlan = [] }) {
   const isAdmin = session.role === "Admin";
   return page(document.document_name, `
     <section class="page-head">
@@ -528,7 +632,6 @@ export function documentDetailsPage({ session, document, tags, movementLogs, dis
       </div>
       <div class="head-actions">
         ${statusBadge(document.status)}
-        ${checkoutBadge(document.checkout_borrower)}
         ${isAdmin ? documentActions(document) : ""}
       </div>
     </section>
@@ -536,21 +639,16 @@ export function documentDetailsPage({ session, document, tags, movementLogs, dis
       <div>
         <small>보관 위치</small>
         <strong class="loc-label-lg">${escapeHtml(locationLabel(document))}</strong>
-        <span class="mono">${escapeHtml(document.rack_code)} · ${escapeHtml(document.rack_face)}면 · ${escapeHtml(document.storage_code)}</span>
+        <span class="mono">${escapeHtml(document.rack_code)} · ${escapeHtml(document.storage_code)}</span>
       </div>
       <div class="button-group">
-        <a class="button sm" href="/documents/${document.id}/guide"><i class="fa-solid fa-route"></i>길찾기</a>
-        <a class="button secondary sm" href="/documents/${document.id}/custody"><i class="fa-solid fa-clipboard-check"></i>감사 응답</a>
         <button type="button" class="button secondary sm" data-copy-text="${escapeHtml(locationLabel(document))}">위치 복사</button>
         <a class="button secondary sm" href="/documents?q=${encodeURIComponent(document.rack_code)}">같은 랙 문서 보기</a>
       </div>
     </section>
-    ${checkoutPanel(document, isAdmin)}
     <div class="tab-nav" role="tablist" aria-label="문서 상세 정보">
       <button role="tab" aria-selected="true" data-tab="info" id="tab-info" aria-controls="panel-info">기본 정보</button>
       <button role="tab" aria-selected="false" data-tab="audit" id="tab-audit" aria-controls="panel-audit">감사 이력 <span class="tab-count">${auditLogs.length}</span></button>
-      <button role="tab" aria-selected="false" data-tab="movement" id="tab-movement" aria-controls="panel-movement">이동 이력 <span class="tab-count">${movementLogs.length}</span></button>
-      <button role="tab" aria-selected="false" data-tab="checkout" id="tab-checkout" aria-controls="panel-checkout">반출 이력 <span class="tab-count">${checkoutLogs.length}</span></button>
       <button role="tab" aria-selected="false" data-tab="disposal" id="tab-disposal" aria-controls="panel-disposal">폐기 이력 <span class="tab-count">${disposalLogs.length}</span></button>
     </div>
     <div class="tab-panel" id="panel-info" role="tabpanel" aria-labelledby="tab-info">
@@ -560,58 +658,17 @@ export function documentDetailsPage({ session, document, tags, movementLogs, dis
         ${detail("보관코드", document.storage_code)}
         ${detail("대분류", document.category_name)}
         ${detail("태그", tags.length ? tags.map((t) => t.name).join(", ") : "-")}
-        ${detail("상태", document.status === "active" ? (document.checkout_borrower ? "보관중 (반출 중)" : "보관중") : "폐기")}
+        ${detail("상태", document.status === "active" ? "보관중" : "폐기")}
         ${detail("비고", document.note || "-")}
       </section>
+      ${renderDocumentFloorPlan(document, floorPlan)}
       ${renderMiniVisualizer(document)}
     </div>
     <div class="tab-panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" hidden><section class="panel">${timeline(auditLogs, renderAuditLog, "감사 이력이 없습니다.")}</section></div>
-    <div class="tab-panel" id="panel-movement" role="tabpanel" aria-labelledby="tab-movement" hidden><section class="panel">${timeline(movementLogs, renderMovementLog, "이동 이력이 없습니다.")}</section></div>
-    <div class="tab-panel" id="panel-checkout" role="tabpanel" aria-labelledby="tab-checkout" hidden><section class="panel">${timeline(checkoutLogs, renderCheckoutLog, "반출 이력이 없습니다.")}</section></div>
     <div class="tab-panel" id="panel-disposal" role="tabpanel" aria-labelledby="tab-disposal" hidden><section class="panel">${timeline(disposalLogs, renderDisposalLog, "폐기 이력이 없습니다.")}</section></div>
     ${isAdmin && document.status === "active" ? disposeModal(document) : ""}
     ${isAdmin && document.status !== "active" ? deleteModal(document) : ""}
   `, session);
-}
-
-function checkoutPanel(document, isAdmin) {
-  if (document.checkout_borrower) {
-    return `
-    <section class="panel checkout-panel is-out">
-      <div class="section-title">
-        <h2>반출 중 · 실물이 랙에 없습니다</h2>
-        <span class="count-badge">${escapeHtml(document.checkout_at || "")}</span>
-      </div>
-      <p>반출자 <strong>${escapeHtml(document.checkout_borrower)}</strong>${document.checkout_purpose ? ` · 용도: ${escapeHtml(document.checkout_purpose)}` : ""}</p>
-      ${isAdmin ? `<form method="post" action="/documents/${document.id}/return" data-confirm="이 문서를 반납 처리할까요?"><button type="submit" class="button">반납 처리</button></form>` : ""}
-    </section>`;
-  }
-
-  if (!isAdmin || document.status !== "active") {
-    return "";
-  }
-
-  return `
-    <section class="panel checkout-panel">
-      <div class="section-title"><h2>반출 기록</h2></div>
-      <form method="post" action="/documents/${document.id}/checkout" class="checkout-form">
-        <label>반출자 <em>*</em><input name="borrower" required placeholder="문서를 가져가는 사람"></label>
-        <label>용도<input name="purpose" placeholder="예: 불시감사 대응, 데이터 확인"></label>
-        <button type="submit" class="button">반출 기록</button>
-      </form>
-    </section>`;
-}
-
-function renderCheckoutLog(log) {
-  const title = log.returned_at
-    ? `반출 → 반납 완료: ${log.borrower}`
-    : `반출 중: ${log.borrower}`;
-  const meta = `기록: ${log.checked_out_by} / ${log.checked_out_at}`;
-  const bodyParts = [
-    log.purpose ? `용도: ${log.purpose}` : "",
-    log.returned_at ? `반납: ${log.returned_by || "-"} / ${log.returned_at}` : "아직 반납되지 않았습니다."
-  ].filter(Boolean);
-  return timelineItem(title, meta, bodyParts.join(" · "));
 }
 
 export function documentImportPage({ session, result = null, error = "" }) {
@@ -629,6 +686,7 @@ export function documentImportPage({ session, result = null, error = "" }) {
         <button type="submit" class="primary">가져오기</button>
       </form>
       <p class="muted">필수 열: documentNumber, revisionNumber, documentName, category, rackCode, rackColumn, shelfNumber, rackFace</p>
+      <p class="muted">rackFace는 1 또는 2로 적습니다(예: 13번 양면 랙 = 13-1/13-2, 구표기 A/B도 허용). 단면 랙은 1만 가능합니다. rackColumn은 1~7열, shelfNumber는 1~6선반입니다.</p>
     </section>
   `, session);
 }
@@ -641,7 +699,7 @@ export function racksPage({ session, racks }) {
         <a class="panel rack-card" href="/racks/${rack.id}">
           <small>${rack.zone_number}구역</small>
           <strong>${rack.rack_number}번 랙</strong>
-          <span>${escapeHtml(rack.code)} · ${rack.column_count || 1}열 ${rack.shelf_count || 3}행 · ${rack.active_document_count || 0}건</span>
+          <span>${escapeHtml(rack.code)} · ${readBoolean(rack.is_single_sided) ? "단면" : `양면 ${rack.rack_number}-1·${rack.rack_number}-2`} · ${rack.active_document_count || 0}건</span>
         </a>
       `).join("")}
     </section>
@@ -668,7 +726,7 @@ export function rackDetailsPage({ session, rack, documents }) {
       <a class="button" href="/racks/${rack.id}/edit">랙 수정</a>
     </section>
     <section class="locator-hero">
-      <div><strong class="mono">${escapeHtml(rack.code)}</strong><span>${rack.column_count || 1}열 ${rack.shelf_count || 3}행 · ${readBoolean(rack.is_single_sided) ? "단면" : "양면"} · 문서 ${documents.length}건</span></div>
+      <div><strong class="mono">${escapeHtml(rack.code)}</strong><span>${readBoolean(rack.is_single_sided) ? `단면 ${rack.rack_number}` : `양면 ${rack.rack_number}-1 / ${rack.rack_number}-2`} · 면당 ${rack.column_count || 7}열 × ${rack.shelf_count || 6}선반 = ${(rack.column_count || 7) * (rack.shelf_count || 6)}칸 · 문서 ${documents.length}건</span></div>
       <a class="button secondary" href="/documents?zone=${rack.zone_number}&sort=location">구역 문서 보기</a>
     </section>
     <section class="panel">${documentResults(documents, { emptyMessage: "이 랙에 등록된 문서가 없습니다." })}</section>
@@ -683,11 +741,11 @@ export function rackFormPage({ session, values = {}, action, title, error = "" }
       <form method="post" action="${escapeHtml(action)}" class="stack">
         <label>구역<input type="number" name="zoneNumber" min="1" max="3" value="${escapeHtml(values.zone_number ?? values.zoneNumber ?? 1)}" required></label>
         <label>랙 번호<input type="number" name="rackNumber" min="1" max="15" value="${escapeHtml(values.rack_number ?? values.rackNumber ?? 1)}" required></label>
-        <label>열 수<input type="number" name="columnCount" min="1" max="20" value="${escapeHtml(values.column_count ?? values.columnCount ?? 1)}" required></label>
-        <label>행 수<input type="number" name="shelfCount" min="1" max="20" value="${escapeHtml(values.shelf_count ?? values.shelfCount ?? 3)}" required></label>
+        <p class="muted">랙 구조는 면당 7열 × 6선반(42칸)으로 고정되어 있습니다.</p>
         <label>이름<input name="name" value="${escapeHtml(values.name || "")}"></label>
         <label>설명<textarea name="description" rows="3">${escapeHtml(values.description || "")}</textarea></label>
         <label class="check-inline"><input type="checkbox" name="isSingleSided" value="1" ${readBoolean(values.is_single_sided ?? values.isSingleSided) ? "checked" : ""}> 단면 랙</label>
+        <p class="muted">양면 랙은 13-1/13-2처럼 면 단위로, 단면 랙은 13처럼 번호만으로 표기됩니다.</p>
         <label class="check-inline"><input type="checkbox" name="isActive" value="1" ${readBoolean(values.is_active ?? values.isActive ?? 1) ? "checked" : ""}> 사용</label>
         <button type="submit" class="primary">저장</button>
       </form>
@@ -701,11 +759,10 @@ export function setsPage({ session, sets }) {
     <section class="page-head">
       <h1>문서 세트</h1>
       <div class="button-group">
-        <a class="button secondary" href="/picklist"><i class="fa-solid fa-paste"></i>붙여넣기 픽리스트</a>
         ${isAdmin ? `<a class="button" href="/sets/new">세트 만들기</a>` : ""}
       </div>
     </section>
-    <p class="muted">감사 준비문서 목록처럼 자주 찾는 문서 묶음을 저장해 두거나, 감사관이 부른 번호를 붙여넣어 즉석 회수 목록을 만듭니다.</p>
+    <p class="muted">감사 준비문서 목록처럼 자주 찾는 문서 묶음을 저장해 두고 한눈에 관리합니다.</p>
     ${sets.length ? `<section class="rack-grid">
       ${sets.map((set) => `
         <a class="panel rack-card" href="/sets/${set.id}">
@@ -735,7 +792,6 @@ export function setFormPage({ session, values = {}, action, title, error = "" })
 export function setDetailsPage({ session, set, documents, racks, logs = [], addQuery = "", addCandidates = null, addResult = null, error = "" }) {
   const isAdmin = session.role === "Admin";
   const disposedCount = documents.filter((doc) => doc.status !== "active").length;
-  const checkedOutCount = documents.filter((doc) => doc.checkout_borrower).length;
   const rackCount = new Set(documents.map((doc) => doc.rack_code)).size;
   const zoneCount = new Set(documents.map((doc) => doc.zone_number)).size;
   const hits = new Set(documents.map((doc) => `${doc.rack_code}:${doc.rack_face}`));
@@ -744,18 +800,15 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
     <section class="page-head">
       <div><h1>${escapeHtml(set.name)}</h1>${set.description ? `<p class="page-sub">${escapeHtml(set.description)}</p>` : ""}</div>
       <div class="button-group">
-        <a class="button" href="/sets/${set.id}/picklist"><i class="fa-solid fa-list-check"></i>픽리스트 시작</a>
         <button type="button" class="button secondary" data-print><i class="fa-solid fa-print"></i> 목록 인쇄</button>
         ${isAdmin ? `<a class="button secondary" href="/sets/${set.id}/edit">세트 수정</a>` : ""}
       </div>
     </section>
     ${error ? alertDanger(error) : ""}
     ${addResult ? setAddResultView(addResult) : ""}
-    ${checkedOutCount ? alertWarning(`반출 중 문서 ${checkedOutCount}건이 랙에 없습니다. 감사 전 회수가 필요하니 목록에서 반출자를 확인하세요.`) : ""}
     <section class="metric-strip" aria-label="세트 요약">
       ${metric("문서", documents.length, "세트에 등록된 문서")}
       ${metric("보관 랙", rackCount, `${zoneCount}개 구역`)}
-      ${metric("반출 중", checkedOutCount, checkedOutCount ? "회수 필요" : "없음")}
       ${metric("폐기 포함", disposedCount, disposedCount ? "목록 확인 필요" : "없음")}
     </section>
     <section class="panel">
@@ -797,7 +850,7 @@ function setDocumentTable(set, documents, isAdmin) {
           <td>${escapeHtml(doc.revision_number)}</td>
           <td><a href="/documents/${doc.id}">${escapeHtml(doc.document_name)}</a></td>
           <td>${escapeHtml(doc.category_name)}</td>
-          <td>${statusBadge(doc.status)}${checkoutBadge(doc.checkout_borrower)}</td>
+          <td>${statusBadge(doc.status)}</td>
           ${isAdmin ? `<td><form method="post" action="/sets/${set.id}/remove" data-confirm="세트에서 이 문서를 제외할까요?"><input type="hidden" name="documentId" value="${doc.id}"><button type="submit" class="danger-button sm">제외</button></form></td>` : ""}
         </tr>
       `).join("")}</tbody>
@@ -863,362 +916,6 @@ function setCandidateList(set, addQuery, candidates) {
       `}
     </div>
   `).join("")}</div>`;
-}
-
-// 길찾기 모드: 서고 안에서 폰을 들고 보는 화면. 위치가 주인공이다.
-export function documentGuidePage({ session, document, floorPlan = [], neighbors = [] }) {
-  const hits = new Set([document.rack_code]);
-  const zoneRack = [
-    document.zone_number ? `${document.zone_number}구역` : "",
-    document.rack_number ? `${document.rack_number}번 랙` : document.rack_code
-  ].filter(Boolean).join(" ");
-  const slot = [
-    document.column_number ? `${document.column_number}열` : "",
-    document.shelf_number ? `${document.shelf_number}선반` : ""
-  ].filter(Boolean).join(" ");
-  const bigLine1 = `${zoneRack} · ${document.rack_face}면`;
-
-  return page(`길찾기 - ${document.document_name}`, `
-    <section class="guide-shell">
-      <nav class="breadcrumb" aria-label="경로"><a href="/app">검색</a><span>/</span><a href="/documents/${document.id}">상세</a><span>/</span><span>길찾기</span></nav>
-      ${document.status !== "active" ? alertDanger("폐기 처리된 문서입니다. 실물이 랙에 없을 수 있습니다.") : ""}
-      ${document.checkout_borrower ? alertWarning(`반출 중입니다. 실물은 ${document.checkout_borrower}님이 보관하고 있습니다.`) : ""}
-
-      <section class="panel guide-loc-panel">
-        <small>보관 위치</small>
-        <strong class="guide-loc">${escapeHtml(zoneRack)} · ${escapeHtml(document.rack_face)}면</strong>
-        ${slot ? `<strong class="guide-slot">${escapeHtml(slot)}</strong>` : ""}
-        <span class="guide-code mono">${escapeHtml(document.rack_code)} · ${escapeHtml(document.storage_code)}</span>
-        <div class="button-group">
-          <button type="button" class="button" data-big-view><i class="fa-solid fa-up-right-and-down-left-from-center"></i>크게 보기</button>
-          <button type="button" class="button secondary" data-copy-text="${escapeHtml(locationLabel(document))}"><i class="fa-regular fa-copy"></i>위치 복사</button>
-          <a class="button secondary" href="/documents?q=${encodeURIComponent(document.rack_code)}&sort=location">같은 랙 문서</a>
-          <form method="post" action="/documents/${document.id}/not-here" class="inline-form"><button type="submit" class="danger-button"><i class="fa-solid fa-circle-question"></i>여기 없어요</button></form>
-        </div>
-      </section>
-
-      <section class="panel guide-doc-panel">
-        <div class="doc-row-title">
-          <a href="/documents/${document.id}">${escapeHtml(document.document_name)}</a>
-          ${document.status !== "active" ? statusBadge(document.status) : ""}
-          ${checkoutBadge(document.checkout_borrower)}
-        </div>
-        <div class="doc-row-meta">
-          <span class="mono">${escapeHtml(document.document_number)}</span>
-          <span>${escapeHtml(document.revision_number)}</span>
-          <span>${escapeHtml(document.category_name)}</span>
-        </div>
-      </section>
-
-      ${renderMiniVisualizer(document)}
-
-      ${slotNeighborsView(neighbors, document)}
-
-      <section class="panel">
-        <div class="section-title"><h2>문서고 도면</h2><span class="count-badge mono">${escapeHtml(document.rack_code)}</span></div>
-        ${floorPlanView(floorPlan, hits)}
-      </section>
-    </section>
-
-    <div class="big-view" data-big-view-overlay hidden role="dialog" aria-label="크게 보기 위치" aria-modal="true">
-      <div class="big-view-inner">
-        <span class="bv-code mono">${escapeHtml(document.rack_code)} · ${escapeHtml(document.rack_face)}면</span>
-        <strong class="bv-1 mono">${escapeHtml(bigLine1)}</strong>
-        ${slot ? `<strong class="bv-2 mono">${escapeHtml(slot)}</strong>` : ""}
-        <span class="bv-hint">아무 곳이나 눌러 닫기</span>
-      </div>
-    </div>
-  `, session);
-}
-
-// 이웃 앵커 + 개정판 함정: 같은 물리 슬롯의 문서를 문서번호 순으로 두고, 찾는 문서를 앞뒤 이웃 사이에
-// 강조한다. 같은 문서번호의 개정본이 여럿이면 유효본/폐기본을 색으로 구분해 구버전 제출을 막는다.
-function slotNeighborsView(neighbors, document) {
-  const list = Array.isArray(neighbors) ? neighbors : [];
-  if (list.length <= 1) return "";
-  const currentId = Number(document.id);
-  const index = list.findIndex((n) => Number(n.id) === currentId);
-  if (index < 0) return "";
-
-  const compact = (value) => searchCore.compactSearchText(value);
-  const sameNumber = list.filter((n) => compact(n.document_number) === compact(document.document_number));
-  const revisionTrap = sameNumber.length > 1 ? `
-    <div class="rev-trap" role="alert">
-      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
-      <div>
-        <span>이 자리에 <span class="mono">${escapeHtml(document.document_number)}</span> 개정본이 ${sameNumber.length}개 있습니다. 유효본만 뽑으세요.</span>
-        <div class="rev-chips">
-          ${sameNumber.map((r) => {
-            const current = Number(r.id) === currentId;
-            const voided = r.status !== "active";
-            return `<span class="rev-chip ${voided ? "void" : "valid"}${current ? " is-current" : ""}">${escapeHtml(r.revision_number)}${voided ? " · 폐기" : ""}${current ? " · 찾는 문서" : ""}</span>`;
-          }).join("")}
-        </div>
-      </div>
-    </div>` : "";
-
-  const from = Math.max(0, index - 2);
-  const to = Math.min(list.length, index + 3);
-  const rows = list.slice(from, to).map((n) => {
-    const current = Number(n.id) === currentId;
-    return `<li class="neighbor${current ? " is-current" : ""}${n.status !== "active" ? " is-void" : ""}">
-      <span class="n-num mono">${escapeHtml(n.document_number)}</span>
-      <span class="n-rev mono">${escapeHtml(n.revision_number)}</span>
-      <span class="n-name">${escapeHtml(n.document_name)}</span>
-      ${current ? `<span class="n-here"><i class="fa-solid fa-hand-point-right" aria-hidden="true"></i> 이 문서</span>` : ""}
-    </li>`;
-  }).join("");
-
-  return `
-    <section class="panel neighbor-panel">
-      <div class="section-title"><h2>이 자리 · 앞뒤 문서</h2><span class="count-badge">${index + 1} / ${list.length}번째</span></div>
-      ${revisionTrap}
-      <ol class="neighbor-list">${rows}</ol>
-      <p class="neighbor-hint">스파인을 한 권씩 읽지 말고 <b>강조된 문서의 앞뒤 사이</b>에서 찾으세요.</p>
-    </section>
-  `;
-}
-
-// 감사 응답 카드(chain-of-custody): "이 문서 어디 있고 누가 관리하냐, 증명해봐"에 한 화면으로 답한다.
-// 현재 소재 + 위치 + 최근 이동 담당자 + 상태 + 소재 이력. 감사관에게 그대로 보여주거나 인쇄한다.
-export function custodyCardPage({ session, document, movementLogs = [], checkoutLogs = [] }) {
-  const whereabouts = document.status === "disposed"
-    ? "폐기 처리됨 · 실물 없음"
-    : document.checkout_borrower
-      ? `반출 중 · ${document.checkout_borrower}님 보관`
-      : "제자리 · 랙에 보관 중";
-  const lastMove = movementLogs[0];
-  const custodyEvents = [
-    ...checkoutLogs.map((log) => ({ at: log.checked_out_at, render: () => renderCheckoutLog(log) })),
-    ...movementLogs.map((log) => ({ at: log.created_at, render: () => renderMovementLog(log) }))
-  ].sort((left, right) => String(right.at || "").localeCompare(String(left.at || "")));
-
-  return page(`감사 응답 - ${document.document_number}`, `
-    <section class="custody-shell">
-      <nav class="breadcrumb" aria-label="경로"><a href="/documents/${document.id}">상세</a><span>/</span><span>감사 응답</span></nav>
-
-      <section class="panel custody-card">
-        <div class="custody-head">
-          <span class="custody-label">문서 소재 증명</span>
-          <button type="button" class="button secondary sm" data-print><i class="fa-solid fa-print"></i>인쇄</button>
-        </div>
-        <h1 class="custody-num mono">${escapeHtml(document.document_number)} <span>${escapeHtml(document.revision_number)}</span></h1>
-        <p class="custody-name">${escapeHtml(document.document_name)}</p>
-        <dl class="custody-facts">
-          <div><dt>현재 상태</dt><dd>${statusBadge(document.status)}${checkoutBadge(document.checkout_borrower)}</dd></div>
-          <div><dt>소재</dt><dd><strong>${escapeHtml(whereabouts)}</strong></dd></div>
-          <div><dt>보관 위치</dt><dd class="mono">${escapeHtml(locationLabel(document))}</dd></div>
-          <div><dt>보관코드</dt><dd class="mono">${escapeHtml(document.storage_code)}</dd></div>
-          <div><dt>대분류</dt><dd>${escapeHtml(document.category_name || "-")}</dd></div>
-          ${document.checkout_borrower ? `<div><dt>반출 정보</dt><dd>${escapeHtml(document.checkout_borrower)} · ${escapeHtml(document.checkout_at || "")}${document.checkout_purpose ? ` · ${escapeHtml(document.checkout_purpose)}` : ""}</dd></div>` : ""}
-          <div><dt>최근 이동</dt><dd>${lastMove ? `${escapeHtml(lastMove.performed_by)} · ${escapeHtml(lastMove.created_at)}` : "이동 이력 없음"}</dd></div>
-        </dl>
-        <p class="custody-hint">이 화면을 감사자에게 그대로 보여주거나 인쇄해 제출하세요. 아래는 시스템에 기록된 소재 이력입니다.</p>
-      </section>
-
-      <section class="panel">
-        <div class="section-title"><h2>소재 이력</h2><span class="count-badge">${custodyEvents.length}건</span></div>
-        ${custodyEvents.length
-          ? `<div class="timeline-container">${custodyEvents.map((event) => event.render()).join("")}</div>`
-          : emptyState("기록된 반출·이동 이력이 없습니다.")}
-      </section>
-    </section>
-  `, session);
-}
-
-// "여기 없어요" 이후 복구 화면: 신고가 기록됐음을 알리고, 실물을 찾을 다음 수를 가능성 순으로 제시한다.
-export function recoveryPage({ session, document, candidates }) {
-  const { checkout, otherCopies = [], lastFrom } = candidates || {};
-  const locText = (item) => locationLabel({
-    rack_code: item.rack_code,
-    zone_number: item.zone_number,
-    rack_number: item.rack_number,
-    column_number: item.column_number,
-    shelf_number: item.shelf_number,
-    rack_face: item.rack_face
-  });
-  const hasCandidate = Boolean(checkout) || otherCopies.length > 0 || Boolean(lastFrom);
-
-  return page(`위치 확인 - ${document.document_number}`, `
-    <section class="recovery-shell">
-      <nav class="breadcrumb" aria-label="경로"><a href="/documents/${document.id}/guide">길찾기</a><span>/</span><span>위치 확인</span></nav>
-
-      <section class="panel recovery-head">
-        <span class="recovery-flag"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 실물 위치 불일치가 감사 이력에 기록되었습니다</span>
-        <h1 class="mono">${escapeHtml(document.document_number)} 실물 찾기</h1>
-        <p class="muted">시스템 위치에 실물이 없다고 신고했습니다. 아래 순서로 확인하세요.</p>
-      </section>
-
-      ${checkout ? `
-      <section class="panel recovery-lead">
-        <span class="lead-num">1</span>
-        <div>
-          <h2>반출 중일 가능성이 가장 높습니다</h2>
-          <p><strong>${escapeHtml(checkout.borrower)}</strong>님이 ${escapeHtml(checkout.at || "")}부터 보관 중입니다. 이 사람에게 먼저 문의하세요.</p>
-        </div>
-      </section>` : ""}
-
-      ${otherCopies.length ? `
-      <section class="panel">
-        <div class="section-title"><h2>같은 번호의 다른 사본 · 개정</h2><span class="count-badge">${otherCopies.length}건</span></div>
-        <p class="muted">오배치되었거나 다른 개정본을 찾고 있을 수 있습니다.</p>
-        <ul class="recovery-list">
-          ${otherCopies.map((copy) => `
-            <li>
-              <span class="mono rev">${escapeHtml(copy.revision_number)}</span>
-              <span class="mono loc">${escapeHtml(locText(copy))}</span>
-              ${copy.status !== "active" ? statusBadge(copy.status) : ""}
-              <a class="button secondary sm" href="/documents/${copy.id}/guide">길찾기</a>
-            </li>`).join("")}
-        </ul>
-      </section>` : ""}
-
-      ${lastFrom ? `
-      <section class="panel">
-        <div class="section-title"><h2>직전 위치</h2></div>
-        <p>이동되기 전 위치입니다: <span class="mono">${escapeHtml(locText(lastFrom))}</span> <span class="muted">(${escapeHtml(lastFrom.performed_by || "-")} · ${escapeHtml(lastFrom.created_at || "")})</span></p>
-      </section>` : ""}
-
-      ${hasCandidate ? "" : emptyState("자동으로 찾을 수 있는 후보가 없습니다. 관리자에게 문의하세요.")}
-
-      <div class="button-group">
-        <a class="button secondary" href="/documents/${document.id}/guide">길찾기로 돌아가기</a>
-        <a class="button secondary" href="/documents/${document.id}">문서 상세</a>
-      </div>
-    </section>
-  `, session);
-}
-
-// 감사 픽리스트: 세트 문서를 동선 순서로 걷어오는 체크리스트.
-export function setPicklistPage({ session, set, documents, floorPlan = [] }) {
-  const hits = new Set(documents.map((doc) => doc.rack_code));
-  const checkedOutCount = documents.filter((doc) => doc.checkout_borrower).length;
-
-  return page(`${set.name} 픽리스트`, `
-    <section class="page-head">
-      <div>
-        <nav class="breadcrumb" aria-label="경로"><a href="/sets">세트</a><span>/</span><a href="/sets/${set.id}">${escapeHtml(set.name)}</a><span>/</span><span>픽리스트</span></nav>
-        <h1>${escapeHtml(set.name)} 픽리스트</h1>
-      </div>
-      <div class="button-group">
-        <button type="button" class="button secondary" data-print><i class="fa-solid fa-print"></i>목록 인쇄</button>
-        <button type="button" class="button secondary" data-pick-reset>체크 초기화</button>
-      </div>
-    </section>
-
-    ${checkedOutCount ? alertWarning(`반출 중 문서 ${checkedOutCount}건은 랙에 없습니다. 반출자에게 회수하세요.`) : ""}
-
-    <section class="panel pick-progress-panel">
-      <div class="pick-progress">
-        <strong><span data-pick-count>0</span> / ${documents.length}건 회수</strong>
-        <div class="pick-bar" role="presentation"><span data-pick-bar></span></div>
-      </div>
-      <p class="muted">구역 → 랙 → 열 → 선반 순서로 정렬되어 있어 한 동선으로 돌며 꺼낼 수 있습니다. 체크 상태는 이 기기에만 저장됩니다.</p>
-    </section>
-
-    <section class="panel">
-      ${documents.length ? `
-      <div class="table-wrap">
-        <table class="pick-table" data-picklist data-pick-set="${set.id}">
-          <caption class="sr-only">${escapeHtml(set.name)} 픽리스트</caption>
-          <thead><tr><th class="check-col">회수</th><th>순번</th><th class="loc-col">보관 위치</th><th>문서번호</th><th>개정</th><th>문서명</th><th>상태</th></tr></thead>
-          <tbody>
-            ${documents.map((doc, index) => `
-              <tr data-pick-item data-pick-doc="${doc.id}" class="${doc.status !== "active" ? "is-disposed" : ""}">
-                <td class="check-col"><input type="checkbox" aria-label="${escapeHtml(doc.document_name)} 회수 체크"></td>
-                <td class="mono-cell">${index + 1}</td>
-                <td class="loc-cell"><span class="loc-cell-main">${escapeHtml(doc.rack_code)} · ${escapeHtml(doc.rack_face)}면</span><small class="loc-cell-sub">${escapeHtml(doc.column_number)}열 ${escapeHtml(doc.shelf_number)}선반</small></td>
-                <td class="mono-cell">${escapeHtml(doc.document_number)}</td>
-                <td>${escapeHtml(doc.revision_number)}</td>
-                <td class="name-cell"><a href="/documents/${doc.id}">${escapeHtml(doc.document_name)}</a></td>
-                <td class="status-cell">${statusBadge(doc.status)}${checkoutBadge(doc.checkout_borrower)}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>` : emptyState("세트에 담긴 문서가 없습니다. 세트 화면에서 문서를 추가하세요.")}
-    </section>
-
-    ${documents.length ? `<section class="panel">
-      <div class="section-title"><h2>회수 동선 도면</h2><span class="count-badge">${hits.size}개 랙</span></div>
-      ${floorPlanView(floorPlan, hits)}
-    </section>` : ""}
-  `, session);
-}
-
-// 붙여넣기 즉석 픽리스트: 감사관이 부른 문서번호를 세트 저장 없이 동선순 회수 목록으로.
-// 핵심은 못 찾은 번호를 상단에 크게 드러내 "이 번호는 문서고에 없다"를 걷기 전에 해명하게 하는 것.
-export function picklistPage({ session, raw = "", requested = 0, documents = null, missing = [], floorPlan = [], error = "" }) {
-  const hasResults = Array.isArray(documents);
-  const hits = hasResults ? new Set(documents.map((doc) => doc.rack_code)) : new Set();
-  const checkedOutCount = hasResults ? documents.filter((doc) => doc.checkout_borrower).length : 0;
-  const found = hasResults ? documents.length : 0;
-
-  return page("즉석 픽리스트", `
-    <section class="page-head">
-      <div>
-        <nav class="breadcrumb" aria-label="경로"><a href="/app">검색</a><span>/</span><span>즉석 픽리스트</span></nav>
-        <h1>즉석 픽리스트</h1>
-        <p class="page-sub">감사관이 부른 문서번호를 그대로 붙여넣으면 저장 없이 동선순 회수 목록을 만듭니다.</p>
-      </div>
-      ${found ? `<div class="button-group"><button type="button" class="button secondary" data-print><i class="fa-solid fa-print"></i>목록 인쇄</button><button type="button" class="button secondary" data-pick-reset>체크 초기화</button></div>` : ""}
-    </section>
-
-    <section class="panel narrow">
-      ${error ? alertDanger(error) : ""}
-      <form method="post" action="/picklist" class="stack">
-        <label>문서번호 · 보관코드 <span class="muted">(줄바꿈 · 쉼표 · 공백으로 구분)</span>
-          <textarea name="numbers" rows="4" placeholder="PV-2026-014, MR-2026-001&#10;NB-2026-102" required>${escapeHtml(raw)}</textarea>
-        </label>
-        <button type="submit" class="primary"><i class="fa-solid fa-list-check"></i>픽리스트 만들기</button>
-      </form>
-    </section>
-
-    ${hasResults ? `
-      ${missing.length ? `
-      <section class="panel picklist-missing" role="alert">
-        <h2><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> 문서고에서 못 찾은 번호 ${missing.length}건</h2>
-        <p class="muted">아래 번호는 시스템에 등록되어 있지 않습니다. 걷기 전에 감사관에게 확인하세요.</p>
-        <div class="missing-chips">${missing.map((number) => `<span class="missing-chip mono">${escapeHtml(number)}</span>`).join("")}</div>
-      </section>` : ""}
-
-      <section class="panel pick-progress-panel">
-        <div class="pick-summary"><strong>요청 ${requested}건 · 찾음 ${found}건${missing.length ? ` · 못 찾음 ${missing.length}건` : ""}</strong><span class="count-badge">${hits.size}개 랙</span></div>
-        <div class="pick-progress"><strong><span data-pick-count>0</span> / ${found}건 회수</strong><div class="pick-bar" role="presentation"><span data-pick-bar></span></div></div>
-        <p class="muted">구역 → 랙 → 열 → 선반 동선순으로 정렬되어 있습니다. 체크 상태는 이 기기에만 저장됩니다.</p>
-      </section>
-
-      ${checkedOutCount ? alertWarning(`반출 중 문서 ${checkedOutCount}건은 랙에 없습니다. 반출자에게 회수하세요.`) : ""}
-
-      <section class="panel">
-        ${found ? `
-        <div class="table-wrap">
-          <table class="pick-table" data-picklist data-pick-set="adhoc">
-            <caption class="sr-only">즉석 픽리스트</caption>
-            <thead><tr><th class="check-col">회수</th><th>순번</th><th class="loc-col">보관 위치</th><th>문서번호</th><th>개정</th><th>문서명</th><th>상태</th></tr></thead>
-            <tbody>
-              ${documents.map((doc, index) => `
-                <tr data-pick-item data-pick-doc="${doc.id}" class="${doc.status !== "active" ? "is-disposed" : doc.checkout_borrower ? "is-checked-out" : ""}">
-                  <td class="check-col"><input type="checkbox" aria-label="${escapeHtml(doc.document_name)} 회수 체크"></td>
-                  <td class="mono-cell">${index + 1}</td>
-                  <td class="loc-cell"><span class="loc-cell-main">${escapeHtml(doc.rack_code)} · ${escapeHtml(doc.rack_face)}면</span><small class="loc-cell-sub">${escapeHtml(doc.column_number)}열 ${escapeHtml(doc.shelf_number)}선반</small></td>
-                  <td class="mono-cell">${escapeHtml(doc.document_number)}</td>
-                  <td>${escapeHtml(doc.revision_number)}</td>
-                  <td class="name-cell"><a href="/documents/${doc.id}">${escapeHtml(doc.document_name)}</a></td>
-                  <td class="status-cell">${statusBadge(doc.status)}${checkoutBadge(doc.checkout_borrower)}</td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        </div>` : emptyState("입력한 번호와 일치하는 문서가 없습니다. 번호를 확인하세요.")}
-      </section>
-
-      ${found ? `<section class="panel">
-        <div class="section-title"><h2>회수 동선 도면</h2><span class="count-badge">${hits.size}개 랙</span></div>
-        ${floorPlanView(floorPlan, hits)}
-      </section>` : ""}
-    ` : ""}
-  `, session);
 }
 
 // 관리자 검색 리포트: 자주 찾는 검색어와 실패 검색어로 태그·문서명을 보강한다.
@@ -1430,10 +1127,10 @@ function viewerDocumentCard(document, query = "") {
     location.shelfNumber ? `${location.shelfNumber}선반` : ""
   ].filter(Boolean).join(" ");
   return `
-    <article class="doc-row ${document.status !== "active" ? "is-disposed" : document.checkedOut ? "is-checked-out" : ""}">
+    <article class="doc-row ${document.status !== "active" ? "is-disposed" : ""}">
       <div class="doc-row-loc">
         <div>
-          <span class="loc-code">${rackCode ? `${escapeHtml(rackCode)}${location.rackFace ? ` · ${escapeHtml(location.rackFace)}면` : ""}` : "위치 미지정"}</span>
+          <span class="loc-code">${location.rackLabel ? `${location.zoneNumber ? `${location.zoneNumber}구역 ` : ""}${escapeHtml(location.rackLabel)}` : rackCode ? escapeHtml(rackCode) : "위치 미지정"}</span>
           ${slot ? `<small class="loc-sub">${escapeHtml(slot)}</small>` : ""}
         </div>
         <button type="button" class="icon-button" data-copy-text="${escapeHtml(locationText)}" title="위치 복사" aria-label="위치 복사"><i class="fa-regular fa-copy"></i></button>
@@ -1442,7 +1139,6 @@ function viewerDocumentCard(document, query = "") {
         <div class="doc-row-title">
           <a href="/documents/${document.id}" data-doc-click="${document.id}">${highlight(document.documentName || "문서명 없음", query)}</a>
           ${document.status !== "active" ? statusBadge(document.status) : ""}
-          ${document.checkedOut ? checkoutBadge(document.checkoutBorrower || "확인 필요") : ""}
         </div>
         <div class="doc-row-meta">
           <span class="mono">${highlight(document.documentNumber, query)}</span>
@@ -1452,13 +1148,28 @@ function viewerDocumentCard(document, query = "") {
         </div>
       </div>
       <div class="doc-row-actions">
-        <a class="button secondary sm" href="/documents/${document.id}/guide" data-doc-click="${document.id}"><i class="fa-solid fa-route"></i>길찾기</a>
+        <a class="button secondary sm" href="/documents/${document.id}" data-doc-click="${document.id}"><i class="fa-solid fa-circle-info"></i>상세</a>
       </div>
     </article>
   `;
 }
 
-function floorPlanView(regions, hits) {
+// 도면 위 랙 실루엣 한 개. 양면 랙은 좌(N-1면)·우(N-2면) 두 칸을 세로 점선으로 나눈다.
+// hit: 랙 전체 강조(검색 일치), hitFace('A'|'B'): 양면 랙에서 해당 면(반쪽)만 강조(문서 상세).
+function floorRackMarkup(rack, { hit = false, hitFace = "" } = {}) {
+  const classes = ["floor-rack", rack.isSingleSided ? "is-single" : "is-double"];
+  if (hit) classes.push("is-hit");
+  const faceAttr = !rack.isSingleSided && hitFace ? ` data-face-hit="${escapeHtml(hitFace)}"` : "";
+  const faces = rack.isSingleSided
+    ? ""
+    : `<span class="rack-face rack-face-a"></span><span class="rack-face rack-face-b"></span>`;
+  const title = rack.isSingleSided
+    ? `${rack.code} · 단면 · ${rack.documentCount}건`
+    : `${rack.code} · 양면 (좌 ${rack.rackNumber}-1 / 우 ${rack.rackNumber}-2) · ${rack.documentCount}건`;
+  return `<a class="${classes.join(" ")}"${faceAttr} href="/documents?q=${encodeURIComponent(rack.code)}&sort=location" style="--rack-left:${rack.leftPct}%;--rack-width:${rack.widthPct}%;" data-rack-code="${escapeHtml(rack.code)}" title="${escapeHtml(title)}">${faces}<span class="rack-num">${escapeHtml(String(rack.rackNumber))}</span></a>`;
+}
+
+function floorPlanView(regions, hits, opts = {}) {
   const activeRackCount = regions.reduce((sum, region) => sum + region.racks.filter((rack) => hits.has(rack.code)).length, 0);
   return `
     <div class="floor-plan-shell">
@@ -1467,23 +1178,43 @@ function floorPlanView(regions, hits) {
         ${regions.map((region) => `
           <section class="floor-region" aria-label="${escapeHtml(region.label)}" style="--top:${region.topPct}%;--left:${region.leftPct}%;--width:${region.widthPct}%;--height:${region.heightPct}%;">
             <span class="floor-region-label">${escapeHtml(region.label)}</span>
-            ${region.racks.map((rack) => {
-              const isHit = hits.has(rack.code);
-              return `<a class="floor-rack ${isHit ? "is-hit" : ""} ${rack.isSingleSided ? "is-single" : ""}" href="/documents?q=${encodeURIComponent(rack.code)}&sort=location" style="--rack-left:${rack.leftPct}%;--rack-width:${rack.widthPct}%;" data-rack-code="${escapeHtml(rack.code)}" title="${escapeHtml(rack.code)} ${rack.documentCount}건${rack.isSingleSided ? " · 단면" : " · 양면"}">
-                <span>${escapeHtml(String(rack.rackNumber))}</span>
-              </a>`;
-            }).join("")}
+            ${region.racks.map((rack) => floorRackMarkup(rack, { hit: hits.has(rack.code) })).join("")}
           </section>
         `).join("")}
       </div>
+      ${opts.compact ? "" : `
       <div class="floor-plan-summary">
-        <span>일치 랙 ${activeRackCount}개</span>
+        ${activeRackCount ? `<span>일치 랙 ${activeRackCount}개</span>` : ""}
         <span><i class="legend-box"></i>양면 랙</span>
         <span><i class="legend-box single"></i>단면 랙</span>
-        <span><i class="legend-box hit"></i>검색 위치</span>
+        ${activeRackCount ? `<span><i class="legend-box hit"></i>검색 위치</span>` : ""}
       </div>
       <div class="zone-list">
         ${regions.map((region) => `<a href="/app?zone=${region.zoneNumber}&sort=location"><strong>${escapeHtml(region.label)}</strong><span>${region.racks.length}개 랙</span></a>`).join("")}
+      </div>`}
+    </div>
+  `;
+}
+
+// 한 구역만 확대한 도면. 전체 도면 이미지를 스케일·이동해 해당 구역이 뷰포트를 꽉 채운다.
+// 구역의 픽셀 비율(1024*W : 797*H)을 뷰포트 aspect-ratio로 두면 CSS 스케일이 왜곡 없이 맞아떨어진다.
+function zoneFloorPlanView(region, { hitCode = "", hitFace = "" } = {}) {
+  const aspectW = Math.max(1, Math.round(1024 * region.widthPct));
+  const aspectH = Math.max(1, Math.round(797 * region.heightPct));
+  return `
+    <div class="floor-zoom" style="--z-aw:${aspectW};--z-ah:${aspectH};">
+      <div class="floor-zoom-canvas" style="--zw:${region.widthPct};--zh:${region.heightPct};--zl:${region.leftPct};--zt:${region.topPct};">
+        <img class="floor-zoom-img" src="/images/Archive.png" alt="${escapeHtml(region.label)} 도면">
+        <section class="floor-region" aria-label="${escapeHtml(region.label)}" style="--top:${region.topPct}%;--left:${region.leftPct}%;--width:${region.widthPct}%;--height:${region.heightPct}%;">
+          <span class="floor-region-label">${escapeHtml(region.label)}</span>
+          ${region.racks.map((rack) => {
+            const isHitRack = rack.code === hitCode;
+            return floorRackMarkup(rack, {
+              hit: isHitRack && (rack.isSingleSided || !hitFace),
+              hitFace: isHitRack && !rack.isSingleSided ? hitFace : ""
+            });
+          }).join("")}
+        </section>
       </div>
     </div>
   `;
@@ -1525,7 +1256,7 @@ function dataQualityPanel(quality) {
     ["중복 문서번호", quality.duplicateDocumentNumbers],
     ["누락 위치", quality.missingLocation],
     ["비활성/누락 분류", quality.missingCategory],
-    ["단면 랙 B면", quality.invalidRackFace],
+    ["단면 랙 2면 문서", quality.invalidRackFace],
     ["문자 깨짐 의심", quality.suspiciousText],
     ["태그 없음", quality.documentsWithoutTags]
   ].filter(([, value]) => Number(value) > 0);
@@ -1538,19 +1269,25 @@ function dataQualityPanel(quality) {
 }
 
 function archiveMap(racks, hits) {
+  // 랙이 있는 구역만 그린다 (현재는 1구역뿐, 증설 시 자동 확장).
+  const zones = [...new Set(racks.map((rack) => Number(rack.zone_number)))].sort((a, b) => a - b);
   return `
     <div class="archive-map">
-      ${[1, 2, 3].map((zone) => {
-        const zoneRacks = racks.filter((rack) => rack.zone_number === zone);
+      ${zones.map((zone) => {
+        const zoneRacks = racks.filter((rack) => Number(rack.zone_number) === zone);
         return `<section class="rack-zone" aria-label="${zone}구역"><h3>${zone}구역</h3><div class="rack-zone-grid">
           ${zoneRacks.map((rack) => {
             const hitA = hits.has(`${rack.code}:A`);
             const hitB = hits.has(`${rack.code}:B`);
             const isHit = hitA || hitB;
+            const single = readBoolean(rack.is_single_sided);
+            const faceSummary = single
+              ? `단면${hitA ? " 일치" : ""}`
+              : `${rack.rack_number}-1${hitA ? " 일치" : ""} · ${rack.rack_number}-2${hitB ? " 일치" : ""}`;
             return `<a class="rack-tile ${isHit ? "is-hit" : ""}" href="/documents?q=${encodeURIComponent(rack.code)}" title="${escapeHtml(rack.code)} ${rack.document_count || 0}건">
               <strong>${rack.rack_number}</strong>
               <span>${escapeHtml(rack.code)}</span>
-              <small>${hitA ? "A면 일치" : "A"}${readBoolean(rack.is_single_sided) ? "" : ` · ${hitB ? "B면 일치" : "B"}`}</small>
+              <small>${faceSummary}</small>
             </a>`;
           }).join("")}
         </div></section>`;
@@ -1586,7 +1323,7 @@ function documentRow(doc, opts = {}) {
     <tr class="${doc.status !== "active" ? "is-disposed" : ""}">
       ${opts.bulk ? `<td class="check-col"><input type="checkbox" name="docId" value="${doc.id}" data-bulk-item aria-label="${escapeHtml(doc.document_name)} 선택"></td>` : ""}
       <td class="loc-cell" title="${escapeHtml(locationLabel(doc))}">
-        <span class="loc-cell-main">${escapeHtml(doc.rack_code)} · ${escapeHtml(doc.rack_face)}면</span>
+        <span class="loc-cell-main">${doc.zone_number ? `${doc.zone_number}구역 ` : ""}${escapeHtml(rackFaceLabel(doc) || doc.rack_code)}</span>
         <small class="loc-cell-sub">${escapeHtml(doc.column_number)}열 ${escapeHtml(doc.shelf_number)}선반</small>
       </td>
       <td class="mono-cell">${highlight(doc.document_number, opts.query || "")}</td>
@@ -1597,7 +1334,7 @@ function documentRow(doc, opts = {}) {
         ${opts.showScore && doc.match_reason ? `<small class="match-line">${escapeHtml(doc.match_reason)}</small>` : ""}
       </td>
       <td>${escapeHtml(doc.category_name)}</td>
-      <td class="status-cell">${statusBadge(doc.status)}${checkoutBadge(doc.checkout_borrower)}</td>
+      <td class="status-cell">${statusBadge(doc.status)}</td>
     </tr>
   `;
 }
@@ -1642,13 +1379,6 @@ function statusBadge(status) {
   return `<span class="status ${status === "active" ? "active" : "disposed"}">${status === "active" ? "보관중" : "폐기"}</span>`;
 }
 
-function checkoutBadge(borrower) {
-  if (!borrower) {
-    return "";
-  }
-  return `<span class="status checked-out" title="반출자: ${escapeHtml(borrower)}">반출 중 · ${escapeHtml(borrower)}</span>`;
-}
-
 function bulkActionBar() {
   return `
     <div class="bulk-bar" data-bulk-bar hidden>
@@ -1664,7 +1394,7 @@ function bulkActionBar() {
 
 function documentActions(document) {
   if (document.status === "active") {
-    return `<div class="button-group"><a class="button sm" href="/documents/${document.id}/edit">수정</a><a class="button sm" href="/documents/${document.id}/move">이동</a><button type="button" class="danger-button sm" data-open-modal="dispose-modal">폐기</button></div>`;
+    return `<div class="button-group"><a class="button sm" href="/documents/${document.id}/edit">수정</a><button type="button" class="danger-button sm" data-open-modal="dispose-modal">폐기</button></div>`;
   }
   return `<div class="button-group"><form method="post" action="/documents/${document.id}/restore"><button type="submit" class="button sm">폐기 해제</button></form><button type="button" class="danger-button sm" data-open-modal="delete-modal">완전 삭제</button></div>`;
 }
@@ -1681,28 +1411,6 @@ function timeline(rows, renderer, emptyMessage) {
   return rows.length ? `<div class="timeline-container">${rows.map(renderer).join("")}</div>` : emptyState(emptyMessage);
 }
 
-function renderMovementLog(log) {
-  const from = log.from_rack_code ? locationLabel({
-    rack_code: log.from_rack_code,
-    zone_number: log.from_zone_number,
-    rack_number: log.from_rack_number,
-    column_number: log.from_column_number,
-    shelf_number: log.from_shelf_number,
-    slot_code: log.from_slot_code,
-    rack_face: log.from_rack_face
-  }) : "최초 등록";
-  const to = locationLabel({
-    rack_code: log.to_rack_code,
-    zone_number: log.to_zone_number,
-    rack_number: log.to_rack_number,
-    column_number: log.to_column_number,
-    shelf_number: log.to_shelf_number,
-    slot_code: log.to_slot_code,
-    rack_face: log.to_rack_face
-  });
-  return timelineItem(`${from} → ${to}`, `${log.performed_by} / ${log.created_at}`, log.note || "이동 메모 없음");
-}
-
 function renderDisposalLog(log) {
   return timelineItem(log.action === "disposed" ? "문서 폐기" : "폐기 해제", `${log.performed_by} / ${log.created_at}`, log.reason || "-");
 }
@@ -1714,6 +1422,38 @@ function renderAuditLog(log) {
 
 function timelineItem(title, meta, body) {
   return `<div class="timeline-item"><div class="timeline-badge"></div><div class="timeline-content"><div class="timeline-header"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(meta)}</span></div>${body ? `<p>${escapeHtml(body)}</p>` : ""}</div></div>`;
+}
+
+// 문서 상세 기본정보: 문서 정보와 서가 위치 사이에, 해당 구역만 확대한 도면을 넣고
+// 문서가 보관된 랙(양면이면 그 면의 반쪽)만 파란색으로 강조한다.
+function renderDocumentFloorPlan(document, floorPlan = []) {
+  if (!floorPlan.length) {
+    return "";
+  }
+  const region = floorPlan.find((item) => item.racks.some((rack) => rack.code === document.rack_code));
+  const rackLabel = rackFaceLabel(document);
+  const badge = `${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙`;
+
+  if (!region) {
+    return `
+      <section class="panel doc-floor-plan">
+        <div class="section-title"><h2>문서고 도면</h2><span class="count-badge">${badge}</span></div>
+        <p class="muted">이 문서의 랙은 현재 도면에 표시되지 않는 구역에 있습니다.</p>
+      </section>
+    `;
+  }
+
+  const single = readBoolean(document.is_single_sided);
+  return `
+    <section class="panel doc-floor-plan">
+      <div class="section-title">
+        <h2>문서고 도면 · ${escapeHtml(region.label)}</h2>
+        <span class="count-badge">${badge}</span>
+      </div>
+      ${zoneFloorPlanView(region, { hitCode: document.rack_code, hitFace: document.rack_face })}
+      <p class="muted">파란색이 이 문서가 보관된 ${single ? "랙" : `${escapeHtml(rackLabel)} 면(양면 랙의 ${document.rack_face === "B" ? "우측" : "좌측"})`}입니다.</p>
+    </section>
+  `;
 }
 
 function renderMiniVisualizer(document) {
@@ -1736,14 +1476,15 @@ function renderMiniVisualizer(document) {
     activeCol ? `왼쪽에서 ${activeCol}번째 열` : ""
   ].filter(Boolean).join(" · ");
 
+  const rackLabel = rackFaceLabel(document);
   return `
     <section class="panel minimap-card">
-      <div class="section-title"><h2>서가 위치 · ${escapeHtml(document.rack_code)} ${escapeHtml(document.rack_face)}면</h2><span class="count-badge">${activeCol}열 ${activeRow}행</span></div>
+      <div class="section-title"><h2>서가 위치 · ${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙</h2><span class="count-badge">${activeCol}열 ${activeRow}행</span></div>
       <div class="mini-rack-stage">
         <div class="mini-axis" aria-hidden="true"><span>위 ↑</span><span>아래 ↓</span></div>
         <div class="mini-rack-grid" style="--cols:${cols};--rows:${rows}">${slots}</div>
       </div>
-      ${ordinal ? `<p class="mini-compass"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> ${escapeHtml(ordinal)} · ${escapeHtml(document.rack_face)}면</p>` : ""}
+      ${ordinal ? `<p class="mini-compass"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> ${escapeHtml(ordinal)}${readBoolean(document.is_single_sided) ? "" : ` · 양면 랙 ${escapeHtml(rackLabel)} 면`}</p>` : ""}
     </section>
   `;
 }
@@ -1828,11 +1569,24 @@ function userStatus(status) {
 }
 
 function locationPicker(slots, selectedRackSlotId) {
+  // 위치 선택 스크립트(locationPickerScript)가 랙 → 열 → 선반 3단 선택과 면 표기 동기화에
+  // 쓸 수 있도록 각 칸의 좌표·단면 여부를 data 속성으로 싣는다.
   return `
     <label>보관 위치 <em>*</em>
       <select name="rackSlotId" required>
         <option value="">위치 선택</option>
-        ${slots.map((slot) => option(slot.id, slot.label || `${slot.zone_number}구역 / ${slot.rack_number}번 랙 / ${slot.column_number}열 / ${slot.shelf_number}행`, selectedRackSlotId)).join("")}
+        ${slots.map((slot) => {
+          const selected = String(slot.id) === String(selectedRackSlotId ?? "") ? " selected" : "";
+          const label = slot.label || `${slot.zone_number}구역 / ${slot.rack_number}번 랙 / ${slot.column_number}열 / ${slot.shelf_number}선반`;
+          const data = [
+            `data-zone="${escapeHtml(String(slot.zone_number ?? ""))}"`,
+            `data-rack-number="${escapeHtml(String(slot.rack_number ?? ""))}"`,
+            `data-column="${escapeHtml(String(slot.column_number ?? ""))}"`,
+            `data-shelf="${escapeHtml(String(slot.shelf_number ?? ""))}"`,
+            `data-single-sided="${readBoolean(slot.is_single_sided) ? "1" : "0"}"`
+          ].join(" ");
+          return `<option value="${escapeHtml(String(slot.id))}" ${data}${selected}>${escapeHtml(label)}</option>`;
+        }).join("")}
       </select>
     </label>
   `;
@@ -1893,19 +1647,6 @@ function clientScript() {
       document.querySelectorAll('[data-print]').forEach(function (button) {
         button.addEventListener('click', function () { window.print(); });
       });
-
-      var bigViewOverlay = document.querySelector('[data-big-view-overlay]');
-      if (bigViewOverlay) {
-        var openBigView = function () { bigViewOverlay.hidden = false; document.body.style.overflow = 'hidden'; };
-        var closeBigView = function () { bigViewOverlay.hidden = true; document.body.style.overflow = ''; };
-        document.querySelectorAll('[data-big-view]').forEach(function (button) {
-          button.addEventListener('click', openBigView);
-        });
-        bigViewOverlay.addEventListener('click', closeBigView);
-        document.addEventListener('keydown', function (event) {
-          if (event.key === 'Escape' && !bigViewOverlay.hidden) closeBigView();
-        });
-      }
 
       document.querySelectorAll('[data-auto-submit] select').forEach(function (select) {
         select.addEventListener('change', function () {
@@ -2035,7 +1776,6 @@ function clientScript() {
         { title: '문서 전체', path: '/documents', icon: 'fa-file-lines' },
         { title: '문서 등록', path: '/documents/new', icon: 'fa-plus' },
         { title: '랙 목록', path: '/racks', icon: 'fa-box-archive' },
-        { title: '붙여넣기 픽리스트', path: '/picklist', icon: 'fa-paste' },
         { title: '대분류 관리', path: '/categories', icon: 'fa-layer-group' },
         { title: '태그 관리', path: '/tags', icon: 'fa-tags' }
       ];
@@ -2079,13 +1819,10 @@ function clientScript() {
         var toastMessages = {
           created: '문서가 등록되었습니다.',
           updated: '문서 정보가 수정되었습니다.',
-          moved: '보관 위치가 변경되었습니다.',
           disposed: '폐기 처리되었습니다.',
           restored: '폐기가 해제되었습니다.',
           deleted: '문서가 완전 삭제되었습니다.',
           saved: '저장되었습니다.',
-          'checked-out': '반출이 기록되었습니다.',
-          returned: '반납 처리되었습니다.',
           'bulk-disposed': '선택한 문서를 폐기 처리했습니다.',
           approved: '가입 요청을 승인했습니다.',
           rejected: '가입 요청을 거절했습니다.',
@@ -2125,39 +1862,6 @@ function clientScript() {
         navigator.sendBeacon('/api/search-click', payload);
       });
 
-      // 감사 픽리스트 체크오프 (아이디어 11): 체크 상태를 이 기기에 저장한다.
-      var picklist = document.querySelector('[data-picklist]');
-      if (picklist) {
-        var pickKey = 'hanlimPicklist:' + picklist.dataset.pickSet;
-        var pickRows = Array.prototype.slice.call(picklist.querySelectorAll('[data-pick-item]'));
-        var pickCount = document.querySelector('[data-pick-count]');
-        var pickBar = document.querySelector('[data-pick-bar]');
-        var syncPicklist = function (save) {
-          var checkedIds = [];
-          pickRows.forEach(function (row) {
-            var box = row.querySelector('input[type="checkbox"]');
-            row.classList.toggle('is-picked', box.checked);
-            if (box.checked) checkedIds.push(Number(row.dataset.pickDoc));
-          });
-          if (pickCount) pickCount.textContent = String(checkedIds.length);
-          if (pickBar) pickBar.style.transform = 'scaleX(' + (pickRows.length ? checkedIds.length / pickRows.length : 0) + ')';
-          if (save) { try { localStorage.setItem(pickKey, JSON.stringify(checkedIds)); } catch {} }
-        };
-        var savedPicks = [];
-        try { savedPicks = JSON.parse(localStorage.getItem(pickKey) || '[]'); } catch {}
-        pickRows.forEach(function (row) {
-          var box = row.querySelector('input[type="checkbox"]');
-          box.checked = savedPicks.indexOf(Number(row.dataset.pickDoc)) !== -1;
-          box.addEventListener('change', function () { syncPicklist(true); });
-        });
-        var pickReset = document.querySelector('[data-pick-reset]');
-        if (pickReset) pickReset.addEventListener('click', function () {
-          pickRows.forEach(function (row) { row.querySelector('input[type="checkbox"]').checked = false; });
-          syncPicklist(true);
-        });
-        syncPicklist(false);
-      }
-
       // 즉시 검색 (아이디어 3): /app에서 타이핑 즉시 로컬 인덱스를 스코어링해 렌더한다.
       var viewerApp = document.querySelector('[data-viewer-app]');
       var viewerForm = document.querySelector('[data-viewer-form]');
@@ -2184,15 +1888,15 @@ function clientScript() {
         var renderTimer = null;
 
         var instantLocation = function (doc) {
+          var faceLabel = core.rackFaceLabel(doc);
           return {
-            main: (doc.rack_code || '') + ' · ' + (doc.rack_face || '') + '면',
+            main: (doc.zone_number ? doc.zone_number + '구역 ' : '') + (faceLabel || doc.rack_code || ''),
             sub: (doc.column_number || '') + '열 ' + (doc.shelf_number || '') + '선반',
             label: [
               doc.zone_number ? doc.zone_number + '구역' : '',
-              doc.rack_number ? doc.rack_number + '번 랙' : doc.rack_code,
+              faceLabel ? faceLabel + '번 랙' : doc.rack_code,
               doc.column_number ? doc.column_number + '열' : '',
-              doc.shelf_number ? doc.shelf_number + '선반' : '',
-              doc.rack_face ? doc.rack_face + '면' : ''
+              doc.shelf_number ? doc.shelf_number + '선반' : ''
             ].filter(Boolean).join(' / ')
           };
         };
@@ -2200,13 +1904,12 @@ function clientScript() {
         var instantBadges = function (doc) {
           var html = '';
           if (doc.status !== 'active') html += '<span class="status disposed">폐기</span>';
-          if (doc.checkout_borrower) html += '<span class="status checked-out">반출 중 · ' + escapeHtmlClient(doc.checkout_borrower) + '</span>';
           return html;
         };
 
         var instantRow = function (doc, q) {
           var loc = instantLocation(doc);
-          var rail = doc.status !== 'active' ? ' is-disposed' : (doc.checkout_borrower ? ' is-checked-out' : '');
+          var rail = doc.status !== 'active' ? ' is-disposed' : '';
           return '<article class="doc-row' + rail + '">' +
             '<div class="doc-row-loc"><div>' +
             '<span class="loc-code">' + escapeHtmlClient(loc.main) + '</span>' +
@@ -2221,13 +1924,14 @@ function clientScript() {
             '<span>' + escapeHtmlClient(doc.category_name || '-') + '</span>' +
             (doc.match_reason ? '<span class="match-line">' + escapeHtmlClient(doc.match_reason) + '</span>' : '') +
             '</div></div>' +
-            '<div class="doc-row-actions"><a class="button secondary sm" href="/documents/' + doc.id + '/guide" data-doc-click="' + doc.id + '"><i class="fa-solid fa-route"></i>길찾기</a></div>' +
+            '<div class="doc-row-actions"><a class="button secondary sm" href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '"><i class="fa-solid fa-circle-info"></i>상세</a></div>' +
             '</article>';
         };
 
         var instantAnswer = function (doc, q, grade) {
           var loc = instantLocation(doc);
-          var head = (doc.zone_number ? doc.zone_number + '구역 ' : '') + (doc.rack_number ? doc.rack_number + '번 랙' : (doc.rack_code || '')) + ' · ' + (doc.rack_face || '') + '면';
+          var faceLabel = core.rackFaceLabel(doc);
+          var head = (doc.zone_number ? doc.zone_number + '구역 ' : '') + (faceLabel ? faceLabel + '번 랙' : (doc.rack_code || ''));
           var gradeChip = grade === 'certain'
             ? '<span class="answer-grade certain">확실</span>'
             : '<span class="answer-grade likely">유력 · 확인 권장</span>';
@@ -2237,8 +1941,7 @@ function clientScript() {
             '<div class="answer-doc"><a href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '">' + core.highlightHtml(doc.document_name || '', q, escapeHtmlClient) + '</a>' + instantBadges(doc) +
             '<div class="answer-meta"><span class="mono">' + core.highlightHtml(doc.document_number || '', q, escapeHtmlClient) + '</span><span>' + escapeHtmlClient(doc.revision_number || '') + '</span><span>' + escapeHtmlClient(doc.category_name || '-') + '</span></div></div>' +
             '<div class="answer-actions">' +
-            '<a class="button" href="/documents/' + doc.id + '/guide" data-doc-click="' + doc.id + '"><i class="fa-solid fa-route"></i>길찾기</a>' +
-            '<a class="button secondary" href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '">상세 정보</a>' +
+            '<a class="button" href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '"><i class="fa-solid fa-circle-info"></i>상세 정보</a>' +
             '<button type="button" class="button secondary" data-copy-text="' + escapeHtmlClient(loc.label) + '">위치 복사</button>' +
             '</div></section>';
         };
@@ -2565,6 +2268,7 @@ function styles() {
     .section-title { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); }
     .filter-row { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)); gap: var(--sp-2); }
     .stack { display: grid; gap: var(--sp-4); }
+    .picker-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2); margin-top: var(--sp-2); }
     .button-group { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
 
     .metric-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); margin-bottom: var(--sp-4); }
@@ -2584,9 +2288,8 @@ function styles() {
     .viewer-result-list { display: grid; border-top: 1px solid var(--gray-100); }
     .doc-row { display: grid; grid-template-columns: minmax(150px, 180px) minmax(0, 1fr) auto; gap: var(--sp-4); align-items: center; padding: var(--sp-3) var(--sp-2); border-bottom: 1px solid var(--gray-100); transition: background .15s ease; }
     .doc-row:hover { background: var(--gray-50); }
+    /* 폐기 문서만 좌측 회색 레일로 표시(레이아웃 불변 inset). 보관중은 무표시. */
     .doc-row.is-disposed { opacity: .55; box-shadow: inset 3px 0 0 var(--gray-300); }
-    /* 회수 신호등: 예외 상태(반출중=노랑, 폐기=회색)만 좌측 레일로 표시(레이아웃 불변 inset). 제자리는 무표시. */
-    .doc-row.is-checked-out { box-shadow: inset 3px 0 0 var(--warning); }
     .doc-row-loc { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-1); }
     .loc-code { display: block; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--primary); line-height: 1.5; }
     .loc-sub { display: block; margin-top: var(--sp-1); color: var(--gray-500); font-size: 11.5px; line-height: 1.4; }
@@ -2622,11 +2325,6 @@ function styles() {
     .status.active { background: var(--success-soft); color: var(--success); }
     .status.disposed { background: var(--danger-soft); color: var(--danger); }
     .status.pending { background: var(--warning-soft); color: var(--warning); }
-    .status.checked-out { background: var(--warning-soft); color: var(--warning); }
-    .checkout-panel.is-out { border-left: 4px solid var(--warning); }
-    .checkout-form { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: flex-end; }
-    .checkout-form label { flex: 1 1 200px; }
-    .checkout-form button { flex: 0 0 auto; }
 
     .index-list { display: grid; }
     .index-row { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-1); border-bottom: 1px solid var(--gray-100); text-decoration: none; font-size: 13.5px; font-weight: 600; color: var(--gray-700); transition: color .15s ease; }
@@ -2654,12 +2352,26 @@ function styles() {
     .floor-region { position: absolute; top: var(--top); left: var(--left); width: var(--width); height: var(--height); border: 1.5px solid rgba(30, 85, 196, .45); border-radius: var(--r-sm); background: rgba(30, 85, 196, .05); }
     .floor-region-label { position: absolute; top: var(--sp-1); left: var(--sp-1); padding: 0 var(--sp-2); line-height: 18px; border-radius: 999px; background: rgba(255, 255, 255, .92); color: var(--primary); font-size: 11px; font-weight: 700; }
     /* 랙 실루엣: 세로로 긴 막대가 구역 안에 좌→우로 늘어선다 (실제 배치 반영). */
-    .floor-rack { position: absolute; left: var(--rack-left); top: 50%; transform: translate(-50%, -50%); width: var(--rack-width, 6%); min-width: 7px; height: 76%; display: flex; align-items: flex-start; justify-content: center; padding-top: var(--sp-1); border-radius: 3px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--gray-300); color: var(--gray-600); text-decoration: none; font-size: 9px; font-weight: 700; line-height: 1.05; transition: box-shadow .12s ease, background .12s ease; }
-    .floor-rack span { writing-mode: vertical-rl; text-orientation: upright; letter-spacing: -.08em; }
+    .floor-rack { position: absolute; left: var(--rack-left); top: 50%; transform: translate(-50%, -50%); width: var(--rack-width, 6%); min-width: 8px; height: 76%; display: flex; align-items: flex-start; justify-content: center; padding-top: var(--sp-1); border-radius: 3px; overflow: hidden; background: var(--surface); box-shadow: inset 0 0 0 1px var(--gray-300); color: var(--gray-600); text-decoration: none; font-size: 9px; font-weight: 700; line-height: 1.05; transition: box-shadow .12s ease, background .12s ease; }
+    .floor-rack .rack-num { position: relative; z-index: 1; writing-mode: vertical-rl; text-orientation: upright; letter-spacing: -.08em; }
+    /* 양면 랙: 좌(N-1면)·우(N-2면)를 세로 점선으로 나눈다. */
+    .floor-rack .rack-face { position: absolute; top: 0; bottom: 0; width: 50%; pointer-events: none; transition: background .12s ease; }
+    .floor-rack .rack-face-a { left: 0; border-right: 1px dashed var(--gray-400); }
+    .floor-rack .rack-face-b { right: 0; }
+    /* 면 단위 강조(문서 상세): 문서가 있는 반쪽만 파랗게. */
+    .floor-rack[data-face-hit="A"] .rack-face-a,
+    .floor-rack[data-face-hit="B"] .rack-face-b { background: var(--primary); }
+    .floor-rack[data-face-hit] .rack-num { color: var(--ink); text-shadow: 0 0 2px var(--surface), 0 0 2px var(--surface); }
     .floor-rack:hover { background: var(--gray-100); box-shadow: inset 0 0 0 1.5px var(--gray-400); z-index: 2; }
     .floor-rack.is-single { box-shadow: inset 3px 0 0 var(--gray-300), inset 0 0 0 1px var(--gray-300); }
     .floor-rack.is-hit, .floor-rack.is-single.is-hit { background: var(--primary); color: var(--surface); box-shadow: 0 0 0 2px var(--ring); z-index: 1; }
+    .floor-rack.is-hit .rack-face-a { border-right-color: rgba(255, 255, 255, .6); }
     .floor-rack.is-hit:hover { background: var(--primary-strong); }
+
+    /* 구역 확대 도면(문서 상세): 전체 도면을 스케일·이동해 한 구역만 채운다. */
+    .floor-zoom { position: relative; width: 100%; overflow: hidden; border-radius: var(--r-md); border: 1px solid var(--gray-100); background: var(--surface); aspect-ratio: var(--z-aw) / var(--z-ah); }
+    .floor-zoom-canvas { position: absolute; width: calc(10000% / var(--zw)); height: calc(10000% / var(--zh)); left: calc(var(--zl) * -100% / var(--zw)); top: calc(var(--zt) * -100% / var(--zh)); }
+    .floor-zoom-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; display: block; }
     .floor-plan-summary, .zone-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; color: var(--gray-500); font-size: 12.5px; }
     .floor-plan-summary span, .zone-list a { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-3); border-radius: 999px; background: var(--gray-100); text-decoration: none; font-weight: 600; }
     .zone-list a:hover { background: var(--primary-soft); color: var(--primary); }
@@ -2705,61 +2417,6 @@ function styles() {
     .mini-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--gray-500); padding: var(--sp-1) 0; white-space: nowrap; }
     .mini-rack-stage .mini-rack-grid { flex: 1; }
     .mini-compass { margin: var(--sp-3) 0 0; display: inline-flex; align-items: center; gap: var(--sp-2); font-size: 13px; font-weight: 700; color: var(--primary); background: var(--primary-soft); border-radius: 999px; padding: var(--sp-2) var(--sp-3); font-variant-numeric: tabular-nums; }
-    /* 이웃 앵커 + 개정판 함정 */
-    .neighbor-panel { margin-top: var(--sp-4); }
-    .rev-trap { display: flex; gap: var(--sp-3); align-items: flex-start; background: var(--warning-soft); color: var(--warning); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-3); font-size: 13px; }
-    .rev-trap i { margin-top: 2px; }
-    .rev-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
-    .rev-chip { font-family: var(--font-mono); font-size: 12px; font-weight: 700; padding: 2px var(--sp-2); border-radius: var(--r-sm); border: 1px solid transparent; }
-    .rev-chip.valid { background: var(--success-soft); color: var(--success); }
-    .rev-chip.void { background: var(--gray-100); color: var(--gray-500); text-decoration: line-through; }
-    .rev-chip.is-current { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
-    .neighbor-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
-    .neighbor { display: grid; grid-template-columns: minmax(96px, auto) minmax(52px, auto) 1fr auto; gap: var(--sp-3); align-items: center; padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); min-height: 44px; color: var(--gray-500); }
-    .neighbor:first-child { border-top: 0; }
-    .neighbor .n-name { color: var(--gray-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .neighbor.is-void { opacity: .55; }
-    .neighbor.is-void .n-name { text-decoration: line-through; }
-    .neighbor.is-current { background: var(--primary-soft); color: var(--gray-900); border-left: 3px solid var(--primary); font-weight: 700; }
-    .neighbor.is-current .n-num, .neighbor.is-current .n-name { color: var(--gray-900); }
-    .neighbor .n-here { color: var(--primary); font-weight: 700; font-size: 12.5px; white-space: nowrap; }
-    .neighbor-hint { margin: var(--sp-3) 0 0; font-size: 12.5px; color: var(--gray-500); }
-    .neighbor-hint b { color: var(--gray-700); }
-    /* 크게 보기 오버레이 */
-    .big-view { position: fixed; inset: 0; z-index: 100; background: var(--gray-900); display: grid; place-items: center; padding: var(--sp-6); cursor: pointer; }
-    .big-view-inner { display: flex; flex-direction: column; align-items: center; gap: var(--sp-4); text-align: center; width: min(92vw, 820px); }
-    .bv-code { color: rgba(255, 255, 255, .7); font-size: 16px; letter-spacing: .04em; }
-    .bv-1 { width: 100%; text-align: center; word-break: keep-all; color: var(--surface); font-size: clamp(34px, 9vw, 92px); line-height: 1.1; font-weight: 700; letter-spacing: -.01em; }
-    .bv-2 { width: 100%; text-align: center; word-break: keep-all; color: var(--primary-soft); font-size: clamp(28px, 7vw, 68px); line-height: 1.1; font-weight: 700; }
-    .bv-hint { color: rgba(255, 255, 255, .55); font-size: 13px; margin-top: var(--sp-4); }
-    /* 감사 응답 카드 (chain-of-custody) */
-    .custody-shell { display: flex; flex-direction: column; gap: var(--sp-4); }
-    .custody-card { border-left: 4px solid var(--primary); }
-    .custody-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
-    .custody-label { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--primary); text-transform: uppercase; }
-    .custody-num { font-size: 22px; font-weight: 700; margin: var(--sp-3) 0 var(--sp-1); letter-spacing: -.01em; }
-    .custody-num span { color: var(--gray-500); font-size: 16px; }
-    .custody-name { font-size: 15px; color: var(--gray-700); margin: 0 0 var(--sp-4); }
-    .custody-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3) var(--sp-5); margin: 0; }
-    .custody-facts div { display: grid; gap: 2px; padding: var(--sp-2) 0; border-top: 1px solid var(--line); }
-    .custody-facts dt { font-size: 12px; font-weight: 600; color: var(--gray-500); }
-    .custody-facts dd { margin: 0; font-size: 14px; color: var(--gray-900); }
-    .custody-hint { margin: var(--sp-4) 0 0; font-size: 12.5px; color: var(--gray-500); }
-    /* 여기 없어요 복구 */
-    .inline-form { display: inline; margin: 0; }
-    .recovery-shell { display: flex; flex-direction: column; gap: var(--sp-4); }
-    .recovery-head { border-left: 4px solid var(--warning); }
-    .recovery-flag { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: 12.5px; font-weight: 700; color: var(--warning); }
-    .recovery-head h1 { font-size: 22px; margin: var(--sp-3) 0 var(--sp-1); }
-    .recovery-lead { display: flex; align-items: flex-start; gap: var(--sp-4); border-left: 4px solid var(--primary); }
-    .lead-num { flex-shrink: 0; width: 32px; height: 32px; border-radius: 999px; background: var(--primary); color: var(--surface); display: grid; place-items: center; font-weight: 700; font-family: var(--font-mono); }
-    .recovery-lead h2 { font-size: 15px; margin: 0 0 var(--sp-1); }
-    .recovery-list { list-style: none; margin: var(--sp-3) 0 0; padding: 0; display: flex; flex-direction: column; }
-    .recovery-list li { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: var(--sp-3) 0; border-top: 1px solid var(--line); min-height: 44px; }
-    .recovery-list li:first-child { border-top: 0; }
-    .recovery-list .rev { color: var(--gray-600); }
-    .recovery-list .loc { color: var(--primary); font-weight: 600; }
-    .recovery-list li .button { margin-left: auto; }
 
     .timeline-container { display: grid; gap: var(--sp-2); }
     .timeline-item { display: grid; grid-template-columns: 14px 1fr; gap: var(--sp-2); }
@@ -2836,7 +2493,9 @@ function styles() {
 
     mark { background: var(--primary-soft); color: var(--primary); border-radius: 2px; padding: 0; font-weight: inherit; }
 
-    .search-home { width: min(720px, 100%); margin: 0 auto; padding-top: clamp(16px, 7vh, 88px); display: grid; gap: var(--sp-4); }
+    .search-home { width: min(880px, 100%); margin: 0 auto; padding-top: clamp(16px, 6vh, 72px); display: grid; gap: var(--sp-4); }
+    .search-home .viewer-search-form.is-home { width: min(720px, 100%); justify-self: center; }
+    .home-floor-plan { width: 100%; }
     .search-home-hero { display: grid; gap: var(--sp-2); justify-items: center; text-align: center; }
     .search-home-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: var(--r-lg); background: var(--primary); color: var(--surface); font-size: 20px; }
     .search-home-hero h1 { font-size: 22px; }
@@ -2849,13 +2508,6 @@ function styles() {
     .search-home-links a:hover { background: var(--primary-soft); border-color: var(--primary-soft); color: var(--primary); }
     .search-home-links a i { font-size: .9em; }
     .viewer-workspace.is-home { grid-template-columns: 1fr; }
-    .popular-list { display: grid; }
-    .popular-row { display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto; gap: var(--sp-3); align-items: center; padding: var(--sp-2) var(--sp-1); border-bottom: 1px solid var(--gray-100); text-decoration: none; font-size: 13.5px; }
-    .popular-row:last-child { border-bottom: 0; }
-    .popular-row .loc-code { font-size: 12px; }
-    .popular-row .popular-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .popular-row small { color: var(--gray-500); font-size: 12px; }
-    .popular-row:hover .popular-name { color: var(--primary); }
 
     .parsed-chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--gray-500); font-size: 12.5px; font-weight: 600; }
     .chip-panel { padding: var(--sp-3) var(--sp-5); }
@@ -2882,32 +2534,6 @@ function styles() {
     .didyoumean a:hover strong { color: var(--primary); text-decoration: underline; }
     .didyoumean a .mono { color: var(--gray-500); font-size: 12px; }
     .didyoumean a small { color: var(--gray-500); font-size: 12px; }
-
-    .guide-shell { width: min(760px, 100%); margin: 0 auto; display: grid; gap: var(--sp-4); }
-    .guide-loc-panel { display: grid; gap: var(--sp-2); border-left: 4px solid var(--primary); margin-bottom: 0; }
-    .guide-loc-panel small { color: var(--gray-600); font-size: 12px; font-weight: 600; }
-    .guide-loc { font-family: var(--font-mono); font-size: 30px; font-weight: 700; line-height: 1.2; color: var(--primary); letter-spacing: -.01em; }
-    .guide-slot { font-family: var(--font-mono); font-size: 22px; font-weight: 700; line-height: 1.25; color: var(--gray-900); }
-    .guide-code { color: var(--gray-500); font-size: 13px; }
-    .guide-loc-panel .button-group { margin-top: var(--sp-2); }
-    .guide-doc-panel { display: grid; gap: var(--sp-2); margin-bottom: 0; }
-    .guide-shell .panel { margin-bottom: 0; }
-
-    .pick-progress-panel { display: grid; gap: var(--sp-2); }
-    .pick-progress { display: grid; gap: var(--sp-2); font-size: 14px; }
-    .pick-progress strong { font-weight: 700; }
-    .pick-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); font-size: 14px; font-weight: 700; margin-bottom: var(--sp-2); }
-    /* 즉석 픽리스트: 못 찾은 번호를 상단에 크게 드러낸다(걷기 전 해명). */
-    .picklist-missing { border-left: 4px solid var(--danger); }
-    .picklist-missing h2 { display: flex; align-items: center; gap: var(--sp-2); color: var(--danger); font-size: 15px; margin: 0 0 var(--sp-1); }
-    .missing-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
-    .missing-chip { background: var(--danger-soft); color: var(--danger); border-radius: var(--r-sm); padding: var(--sp-1) var(--sp-2); font-size: 13px; font-weight: 700; }
-    .pick-bar { height: 6px; border-radius: 999px; background: var(--gray-100); overflow: hidden; }
-    .pick-bar span { display: block; height: 100%; background: var(--primary); transform-origin: left center; transform: scaleX(0); transition: transform .18s ease; }
-    .pick-table .check-col { width: 44px; }
-    .pick-table input[type="checkbox"] { width: 18px; height: 18px; }
-    tr.is-picked td { background: var(--gray-50); opacity: .55; }
-    tr.is-picked .name-cell a { text-decoration: line-through; }
 
     @media (min-width: 1100px) {
       .topbar { position: fixed; inset: 0 auto 0 0; width: 240px; flex-direction: column; align-items: stretch; padding: var(--sp-4) var(--sp-3); border-right: 1px solid var(--line); border-bottom: 0; }
@@ -2943,8 +2569,6 @@ function styles() {
     }
     @media print {
       .topbar, .cmd-palette, .skip-nav, .nav-scrim, .button, button, form, .set-admin-tools, .archive-map, .app-toast { display: none !important; }
-      .pick-table input[type="checkbox"] { display: inline-block !important; }
-      .pick-bar { display: none; }
       body { background: var(--surface); }
       .app-shell { width: 100%; padding: 0; }
       .panel { border: 1px solid var(--gray-300); }
@@ -2969,8 +2593,6 @@ function styles() {
       .metric-card:nth-child(n+3) { border-top: 1px solid var(--line); }
       .panel { padding: var(--sp-4); }
       .floor-rack { font-size: 8px; }
-      .guide-loc { font-size: 26px; }
-      .guide-slot { font-size: 19px; }
       .answer-loc { font-size: 19px; }
       .answer-loc span { display: block; margin-left: 0; }
       .answer-actions .button { flex: 1 1 auto; justify-content: center; }
