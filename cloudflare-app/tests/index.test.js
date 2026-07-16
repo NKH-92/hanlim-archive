@@ -52,6 +52,33 @@ test("viewer search api returns paginated items, facets, and suggestions", async
   assert.ok(payload.suggestions.length >= 1);
 });
 
+test("document CSV import loads only active categories and tags", async () => {
+  const env = adminImportEnv();
+  const user = { username: "admin", displayName: "관리자", role: "Admin" };
+  const cookie = await createSessionCookie(user, env, false);
+  const csrfToken = csrfFromCookie(cookie);
+
+  const response = await worker.fetch(new Request("https://archive.example.com/documents/import", {
+    method: "POST",
+    headers: {
+      Cookie: cookie,
+      Origin: "https://archive.example.com"
+    },
+    body: new URLSearchParams({
+      csrf_token: csrfToken,
+      csvText: [
+        "documentNumber,revisionNumber,documentName,category,rackCode,rackColumn,shelfNumber,rackFace",
+        "DOC-1,Rev.0,문서,비활성분류,1-01,1,1,1"
+      ].join("\n")
+    })
+  }), env);
+
+  assert.equal(response.status, 200);
+  assert.ok(env.state.sql.some((sql) => sql.includes("FROM categories") && sql.includes("WHERE is_active = 1")));
+  assert.ok(env.state.sql.some((sql) => sql.includes("FROM tags") && sql.includes("WHERE is_active = 1")));
+  assert.ok(!env.state.sql.some((sql) => sql.includes("INSERT INTO documents")));
+});
+
 test("locked accounts are redirected with a lock message and no new failure is recorded", async () => {
   const env = loginThrottleEnv({ locked: true });
 
@@ -129,6 +156,61 @@ function loginThrottleEnv({ locked, user = null }) {
                 return { meta: { changes: 1 } };
               }
             };
+          }
+        };
+      }
+    }
+  };
+}
+
+function adminImportEnv() {
+  const state = { sql: [] };
+
+  function resultsFor(sql) {
+    if (sql.includes("FROM rack_slots")) {
+      return [{
+        id: 30,
+        slot_code: "1-1",
+        column_number: 1,
+        shelf_number: 1,
+        code: "1-01",
+        zone_number: 1,
+        rack_number: 1,
+        is_single_sided: 0
+      }];
+    }
+    return [];
+  }
+
+  return {
+    SESSION_SECRET,
+    state,
+    DB: {
+      prepare(sql) {
+        state.sql.push(sql);
+        const methods = {
+          async first() {
+            if (sql.includes("FROM app_users")) {
+              return {
+                username: "admin",
+                display_name: "관리자",
+                status: "approved",
+                role: "Admin"
+              };
+            }
+            return null;
+          },
+          async all() {
+            return { results: resultsFor(sql) };
+          },
+          async run() {
+            return { meta: { changes: 1 } };
+          }
+        };
+        return {
+          ...methods,
+          bind() {
+            return methods;
           }
         };
       }

@@ -70,6 +70,8 @@ export function styles() {
     .brand small { color: var(--gray-500); font-size: 11.5px; font-weight: 500; }
     .topbar nav { display: flex; align-items: center; gap: var(--sp-1); flex: 1; }
     .archive-nav-item, .nav-sub-link, .logout-link { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); text-decoration: none; color: var(--gray-600); font-weight: 600; font-size: 13.5px; transition: background .15s ease, color .15s ease; }
+    .logout-form { display: inline; margin: 0; }
+    button.logout-link { border: 0; background: transparent; cursor: pointer; font: inherit; }
     .archive-nav-item i, .nav-sub-link i, .logout-link i { font-size: .9em; opacity: .85; width: 16px; text-align: center; }
     .archive-nav-item:hover, .nav-sub-link:hover, .logout-link:hover { background: var(--gray-100); color: var(--gray-900); }
     .archive-nav-item.active { background: var(--primary-soft); color: var(--primary); }

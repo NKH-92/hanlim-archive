@@ -6,11 +6,11 @@ import { clientScript } from "./clientScript.js";
 import { styles } from "./styles.js";
 
 export function page(title, body, session, status = 200) {
-  const resolvedBody = session?.csrfToken ? withCsrfToken(body, session.csrfToken) : body;
   // 요청별 CSP nonce. 인라인 <script>/<style>에 주입하고 응답 헤더의 script-src와 짝을 맞춘다.
   const nonce = createNonce();
 
-  const html = applyNonce(`<!doctype html>
+  // CSRF는 헤더 로그아웃 폼까지 포함해 전체 HTML의 POST form에 주입한다.
+  let html = `<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
@@ -28,10 +28,15 @@ export function page(title, body, session, status = 200) {
 <body>
   <a href="#main-content" class="skip-nav">본문 바로가기</a>
   ${session ? header(session) : ""}
-  <main id="main-content" class="${session ? "app-shell" : "login-main"}">${resolvedBody}</main>
+  <main id="main-content" class="${session ? "app-shell" : "login-main"}">${body}</main>
   ${session ? commandPalette() : ""}
 </body>
-</html>`, nonce);
+</html>`;
+
+  if (session?.csrfToken) {
+    html = withCsrfToken(html, session.csrfToken);
+  }
+  html = applyNonce(html, nonce);
 
   return new Response(html, {
     status,
@@ -89,7 +94,9 @@ function header(session) {
         <div class="nav-user">
           <span class="session-pill">${escapeHtml(session.displayName)} · ${session.role === "Admin" ? "관리자" : "사용자"}</span>
           <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key"></i>비밀번호</a>
-          <a href="/logout" class="logout-link"><i class="fa-solid fa-right-from-bracket"></i>로그아웃</a>
+          <form method="post" action="/logout" class="logout-form">
+            <button type="submit" class="logout-link"><i class="fa-solid fa-right-from-bracket"></i>로그아웃</button>
+          </form>
         </div>
       </nav>
       <div class="nav-scrim" data-nav-scrim></div>

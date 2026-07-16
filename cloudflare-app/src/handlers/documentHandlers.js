@@ -3,9 +3,8 @@ import {
   buildFloorPlanLayout,
   createDocument,
   disposeDocument,
-  getActiveCategories,
-  getActiveTags,
-  getCategories,
+  disposeDocumentsBulk,
+  documentToFormValues,
   getDisposalLogs,
   getDocument,
   getDocumentAuditLogs,
@@ -13,13 +12,11 @@ import {
   getDocumentsForExport,
   getFloorPlanRegions,
   getRackSummaries,
-  getSearchSuggestions,
-  getSlotOptions,
-  getTags,
+  loadDocumentFormOptions,
   MAX_SEARCH_RESULTS,
   permanentlyDeleteDocument,
   restoreDocument,
-  searchDocuments,
+  searchDocumentsWithSuggestions,
   updateDocument,
   validateDocumentInput,
   valuesFromDocumentForm
@@ -33,7 +30,7 @@ import {
   errorPage,
   notFoundPage
 } from "../html.js";
-import { clean, logError, redirect } from "../utils.js";
+import { clean, logError, paginateSlice, redirect } from "../utils.js";
 import { requireAdmin } from "./guards.js";
 import { resolveSearchOutcome, resolveSearchRequest } from "./searchRequest.js";
 
@@ -42,27 +39,33 @@ export async function handleDocuments(request, env, session) {
   const search = await resolveSearchRequest(env, url);
   const { query, page, categories, tags, parsed, filters } = search;
   const pageSize = 30;
-  const [allDocuments, suggestions] = await Promise.all([
-    searchDocuments(env, parsed.text, MAX_SEARCH_RESULTS, filters),
-    getSearchSuggestions(env, parsed.text, 10)
-  ]);
-  const totalDocuments = allDocuments.length;
-  const totalPages = Math.max(1, Math.ceil(totalDocuments / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const documents = allDocuments.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const didYouMean = await resolveSearchOutcome(env, search, totalDocuments);
+  // 호환 필터면 검색 1회로 목록·자동완성을 함께 채운다(중복 D1·스코어링 제거).
+  const { documents: allDocuments, suggestions } = await searchDocumentsWithSuggestions(
+    env,
+    parsed.text,
+    MAX_SEARCH_RESULTS,
+    filters,
+    10
+  );
+  const sliced = paginateSlice(allDocuments, page, pageSize);
+  const didYouMean = await resolveSearchOutcome(env, search, sliced.totalItems);
 
   return documentsPage({
     session,
     query,
     parsedQuery: parsed,
-    documents,
+    documents: sliced.items,
     categories,
     tags,
     filters,
     suggestions,
     didYouMean,
-    pagination: { page: currentPage, pageSize, totalDocuments, totalPages }
+    pagination: {
+      page: sliced.page,
+      pageSize: sliced.pageSize,
+      totalDocuments: sliced.totalItems,
+      totalPages: sliced.totalPages
+    }
   });
 }
 
@@ -92,12 +95,8 @@ export async function handleDocumentImport(request, env, session) {
     return documentImportPage({ session, error: importRows.error });
   }
 
-  const [categories, tags, slots] = await Promise.all([
-    getCategories(env),
-    getTags(env),
-    getSlotOptions(env)
-  ]);
-  const prepared = prepareDocumentImportRows(importRows.rows, { categories, tags, slots });
+  const formOptions = await loadDocumentFormOptions(env, { activeOnly: true });
+  const prepared = prepareDocumentImportRows(importRows.rows, formOptions);
   if (prepared.errors.length) {
     return documentImportPage({
       session,
@@ -119,7 +118,10 @@ export async function handleDocumentImport(request, env, session) {
       created += 1;
 
       if (item.status === "disposed") {
-        await disposeDocument(env, id, session.displayName, "CSV 가져오기 폐기 상태 반영", session.role);
+        const result = await disposeDocument(env, id, session.displayName, "CSV 가져오기 폐기 상태 반영", session.role);
+        if (!result.ok) {
+          throw new Error(`문서는 등록되었지만 폐기 상태를 반영하지 못했습니다: ${result.message}`);
+        }
         disposed += 1;
       }
     } catch (error) {
@@ -132,11 +134,7 @@ export async function handleDocumentImport(request, env, session) {
 }
 
 export async function renderCreateDocument(env, session, values = {}, error = "") {
-  const [categories, tags, slots] = await Promise.all([
-    getActiveCategories(env),
-    getActiveTags(env),
-    getSlotOptions(env)
-  ]);
+  const { categories, tags, slots } = await loadDocumentFormOptions(env, { activeOnly: true });
 
   return documentFormPage({
     session,
@@ -163,22 +161,39 @@ export async function handleCreateDocument(request, env, session) {
   return redirect(`/documents/${id}?toast=created`);
 }
 
+async function renderEditDocumentForm(env, session, id, values, selectedTags, error = "") {
+  const { categories, tags, slots } = await loadDocumentFormOptions(env, { includeSlots: false });
+  return documentFormPage({
+    session,
+    title: "문서 수정",
+    action: `/documents/${id}/edit`,
+    values,
+    categories,
+    tags,
+    slots,
+    selectedTags,
+    error,
+    showLocation: false
+  });
+}
+
 export async function handleDocumentRoute(request, env, session, routeInfo) {
   const { id, action } = routeInfo;
 
   if (request.method === "GET" && action === "details") {
-    const [document, tags, disposalLogs, auditLogs, racks, regions] = await Promise.all([
-      getDocument(env, id),
+    // 404면 태그·이력·도면 조회를 건너 불필요한 D1 왕복을 막는다.
+    const document = await getDocument(env, id);
+    if (!document) {
+      return notFoundPage(session);
+    }
+
+    const [tags, disposalLogs, auditLogs, racks, regions] = await Promise.all([
       getDocumentTags(env, id),
       getDisposalLogs(env, id),
       getDocumentAuditLogs(env, id),
       getRackSummaries(env),
       getFloorPlanRegions(env)
     ]);
-
-    if (!document) {
-      return notFoundPage(session);
-    }
 
     return documentDetailsPage({
       session,
@@ -196,12 +211,9 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       return denied;
     }
 
-    const [document, tags, categories, activeTags, slots] = await Promise.all([
+    const [document, tags] = await Promise.all([
       getDocument(env, id),
-      getDocumentTags(env, id),
-      getCategories(env),
-      getTags(env),
-      getSlotOptions(env)
+      getDocumentTags(env, id)
     ]);
 
     if (!document) {
@@ -212,17 +224,13 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       return errorPage("폐기 상태 문서는 폐기를 해제하기 전까지 수정할 수 없습니다.", session, 400);
     }
 
-    return documentFormPage({
+    return renderEditDocumentForm(
+      env,
       session,
-      title: "문서 수정",
-      action: `/documents/${id}/edit`,
-      values: documentToFormValues(document),
-      categories,
-      tags: activeTags,
-      slots,
-      selectedTags: tags.map((tag) => tag.id),
-      showLocation: false
-    });
+      id,
+      documentToFormValues(document),
+      tags.map((tag) => tag.id)
+    );
   }
 
   if (request.method === "POST" && action === "edit") {
@@ -231,7 +239,10 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       return denied;
     }
 
-    const document = await getDocument(env, id);
+    const [document, currentTags] = await Promise.all([
+      getDocument(env, id),
+      getDocumentTags(env, id)
+    ]);
     if (!document) {
       return notFoundPage(session);
     }
@@ -240,23 +251,12 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
     values.rackSlotId = document.rack_slot_id;
     values.rackFace = document.rack_face;
     const validation = await validateDocumentInput(env, values, {
-      allowInactiveCategoryId: document.category_id
+      allowInactiveCategoryId: document.category_id,
+      allowInactiveTagIds: currentTags.map((tag) => tag.id)
     });
 
     if (validation) {
-      const [categories, tags, slots] = await Promise.all([getCategories(env), getTags(env), getSlotOptions(env)]);
-      return documentFormPage({
-        session,
-        title: "문서 수정",
-        action: `/documents/${id}/edit`,
-        values,
-        categories,
-        tags,
-        slots,
-        selectedTags: values.tagIds,
-        error: validation,
-        showLocation: false
-      });
+      return renderEditDocumentForm(env, session, id, values, values.tagIds, validation);
     }
 
     const result = await updateDocument(env, id, values, session.displayName, session.role);
@@ -319,28 +319,21 @@ export async function handleBulkDispose(request, env, session) {
     return redirect("/documents?toast=error");
   }
 
-  const ids = idsRaw.split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0);
+  const ids = [...new Set(idsRaw.split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0))];
 
   if (ids.length > 20) {
     return errorPage("일괄 폐기는 한 번에 20건 이하로 선택해 주세요.", session, 400);
   }
 
-  for (const id of ids) {
-    await disposeDocument(env, id, session.displayName, reason, session.role);
+  const result = await disposeDocumentsBulk(env, ids, session.displayName, reason, session.role);
+
+  if (result.failures.length) {
+    return errorPage(
+      `일괄 폐기 중 ${result.disposed}건 완료, ${result.failures.length}건 실패: ${result.failures.join(" / ")}`,
+      session,
+      409
+    );
   }
 
   return redirect(`/documents?toast=bulk-disposed`);
-}
-
-function documentToFormValues(document) {
-  return {
-    documentNumber: document.document_number,
-    revisionNumber: document.revision_number,
-    documentName: document.document_name,
-    categoryId: document.category_id,
-    rackSlotId: document.rack_slot_id,
-    rackFace: document.rack_face,
-    note: document.note || "",
-    updatedAt: document.updated_at
-  };
 }

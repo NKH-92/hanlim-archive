@@ -1,7 +1,7 @@
 // 보관 랙 화면.
 
 import { escapeHtml, readBoolean } from "../utils.js";
-import { documentResults } from "./documentViews.js";
+import { documentResults } from "./documentTableViews.js";
 import { alertDanger, page } from "./layout.js";
 
 export function racksPage({ session, racks }) {

@@ -4,20 +4,29 @@ import test from "node:test";
 import {
   addDocumentsToSet,
   buildFloorPlanLayout,
+  buildSearchSuggestions,
   buildViewerFacets,
   compactSearchText,
   deleteDocumentSet,
   documentToViewerItem,
   disposeDocument,
+  disposeDocumentsBulk,
+  getDocumentQualitySummary,
+  getSearchIndexMeta,
   levenshteinDistance,
+  MAX_SEARCH_RESULTS,
+  parseDocumentFilters,
   parseDocumentNumberList,
+  parseSearchQuery,
   permanentlyDeleteDocument,
   removeDocumentFromSet,
   restoreDocument,
   scoreDocumentMatch,
+  searchDocuments,
   searchTokens,
   updateDocument,
-  upsertDocumentSet
+  upsertDocumentSet,
+  validateDocumentInput
 } from "../src/db.js";
 
 test("parseDocumentNumberList splits, trims, and dedupes pasted numbers", () => {
@@ -57,6 +66,199 @@ test("search normalization supports partial numbers, spacing, and light typos", 
   // 면 단위 랙 표기(양면 1번 랙 A면 = "1-1")로도 찾을 수 있어야 한다.
   assert.ok(scoreDocumentMatch(document, "1-1").relevance_score > 0);
   assert.equal(scoreDocumentMatch(document, "완전히다른검색어").relevance_score, 0);
+});
+
+test("parseDocumentFilters supports URLSearchParams and normalizes invalid values", () => {
+  const params = new URLSearchParams({
+    q: "PV",
+    category: "2",
+    zoneNumber: "3",
+    tag: "4",
+    status: "disposed",
+    sort: "location"
+  });
+
+  assert.deepEqual(parseDocumentFilters(params), {
+    categoryId: 2,
+    zoneNumber: 3,
+    tagId: 4,
+    status: "disposed",
+    sort: "location"
+  });
+  assert.deepEqual(parseDocumentFilters({ category: "1.5", status: "unknown", sort: "drop-table", q: "검색" }), {
+    categoryId: 0,
+    zoneNumber: 0,
+    tagId: 0,
+    status: "",
+    sort: "relevance"
+  });
+});
+
+test("parseSearchQuery preserves the original token for removable filter chips", () => {
+  const parsed = parseSearchQuery("2구역 PV 폐기문서", {
+    categories: [{ id: 7, name: "PV" }],
+    tags: []
+  });
+
+  assert.equal(parsed.text, "");
+  assert.deepEqual(parsed.chips.map((chip) => chip.token), ["2구역", "PV", "폐기문서"]);
+});
+
+test("buildSearchSuggestions never exceeds the requested limit", () => {
+  const suggestions = buildSearchSuggestions([{
+    document_number: "PV-2026-014",
+    document_name: "충전 공정 밸리데이션 보고서",
+    category_name: "PV",
+    rack_code: "2-01"
+  }], 2);
+
+  assert.equal(suggestions.length, 2);
+  assert.deepEqual(suggestions.map((item) => item.type), ["document_number", "document_name"]);
+});
+
+test("authoritative searches score the full configured result window deterministically", async () => {
+  const env = recordingEnv({ all: () => [] });
+
+  await searchDocuments(env, "PV", MAX_SEARCH_RESULTS);
+
+  const documentQuery = env.state.calls.find((call) =>
+    call.type === "all" && call.sql.includes("FROM documents d") && call.sql.includes("LIMIT ?")
+  );
+  assert.ok(documentQuery);
+  assert.equal(documentQuery.args.at(-1), MAX_SEARCH_RESULTS);
+  assert.match(documentQuery.sql, /ORDER BY d\.updated_at DESC, d\.id DESC\s+LIMIT \?/);
+});
+
+test("getSearchIndexMeta preserves every master and rack update stamp in the version key", async () => {
+  let sql = "";
+  const row = {
+    count: 3,
+    max_id: 9,
+    documents_updated: "2026-07-10 10:00:00",
+    categories_updated: "2026-07-02 11:00:00",
+    tags_updated: "2026-06-30 09:00:00",
+    racks_updated: "2026-07-01 12:00:00",
+    slots_updated: "2026-07-01 08:00:00"
+  };
+  const env = {
+    DB: {
+      prepare(query) {
+        sql = query;
+        return { first: async () => row };
+      }
+    }
+  };
+
+  const before = await getSearchIndexMeta(env);
+  row.tags_updated = "2026-06-30 09:01:00";
+  const after = await getSearchIndexMeta(env);
+
+  assert.equal(before.count, 3);
+  assert.equal(before.maxId, 9);
+  // 문서가 가장 최신이어도 더 오래된 태그 시각 변경이 버전 키를 바꿔야 한다.
+  assert.equal(before.updated, "2026-07-10 10:00:00");
+  assert.equal(after.updated, before.updated);
+  assert.equal(before.versionKey, "20260710100000-20260702110000-20260630090000-20260701120000-20260701080000");
+  assert.equal(after.versionKey, "20260710100000-20260702110000-20260630090100-20260701120000-20260701080000");
+  assert.notEqual(after.versionKey, before.versionKey);
+  assert.match(sql, /FROM categories/);
+  assert.match(sql, /FROM tags/);
+  assert.match(sql, /FROM racks/);
+  assert.match(sql, /FROM rack_slots/);
+});
+
+test("validateDocumentInput rejects missing or inactive tags", async () => {
+  const env = recordingEnv({
+    first: (sql) => {
+      if (sql.includes("FROM categories")) return { id: 1, is_active: 1 };
+      if (sql.includes("FROM rack_slots")) return { id: 2, is_single_sided: 0 };
+      return null;
+    },
+    all: (sql) => {
+      if (sql.includes("FROM tags")) return [{ id: 10, is_active: 1 }, { id: 11, is_active: 0 }];
+      return [];
+    }
+  });
+
+  const base = {
+    documentNumber: "MR-001",
+    revisionNumber: "Rev.0",
+    documentName: "문서",
+    categoryId: 1,
+    rackSlotId: 2,
+    rackFace: "A",
+    note: "",
+    tagIds: [10, 11]
+  };
+
+  assert.match(await validateDocumentInput(env, base), /태그/);
+  assert.equal(await validateDocumentInput(env, base, { allowInactiveTagIds: [11] }), "");
+  assert.match(await validateDocumentInput(env, { ...base, tagIds: [10, 99] }), /존재/);
+  assert.match(
+    await validateDocumentInput(env, { ...base, tagIds: [10, 99] }, { allowInactiveTagIds: [99] }),
+    /존재/
+  );
+});
+
+test("validateDocumentInput rejects oversized text before database access", async () => {
+  const env = recordingEnv();
+  const values = {
+    documentNumber: "D".repeat(101),
+    revisionNumber: "Rev.0",
+    documentName: "문서",
+    categoryId: 1,
+    rackSlotId: 2,
+    rackFace: "A",
+    note: "",
+    tagIds: []
+  };
+
+  assert.match(await validateDocumentInput(env, values), /문서번호는 100자 이하/);
+  assert.equal(env.state.calls.length, 0, "순수 텍스트 검증 실패 시 D1 조회를 시작하지 않는다");
+});
+
+test("disposeDocumentsBulk packs per-document guards into one atomic batch", async () => {
+  const env = recordingEnv({
+    all: (sql) => {
+      if (sql.includes("WHERE d.id IN")) {
+        return [
+          sampleDocument({ id: 1 }),
+          sampleDocument({ id: 2, status: "disposed", document_number: "MR-002" }),
+          sampleDocument({ id: 3, document_number: "MR-003" })
+        ];
+      }
+      if (sql.includes("FROM document_tags")) {
+        return [
+          { document_id: 1, id: 7, name: "중요문서" },
+          { document_id: 3, id: 8, name: "원본보관" }
+        ];
+      }
+      return [];
+    }
+  });
+
+  const result = await disposeDocumentsBulk(env, [1, 2, 3, 99], "관리자", "일괄 폐기", "Admin");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.disposed, 2);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.failures.length, 1);
+  assert.match(result.failures[0], /99번/);
+  const lookupCalls = env.state.calls.filter((call) => call.type === "all");
+  assert.equal(lookupCalls.length, 2);
+  assert.match(lookupCalls[0].sql, /WHERE d\.id IN/);
+  assert.match(lookupCalls[1].sql, /FROM document_tags/);
+  assert.equal(env.state.batches.length, 1);
+  assert.equal(env.state.batches[0].length, 6); // active 2건 × (이력+감사+UPDATE)
+
+  const statements = env.state.batches[0];
+  for (let index = 0; index < 2; index += 1) {
+    const offset = index * 3;
+    assert.match(statements[offset].sql, /INSERT INTO disposal_logs/);
+    assert.match(statements[offset + 1].sql, /INSERT INTO document_audit_logs/);
+    assert.match(statements[offset + 2].sql, /UPDATE documents/);
+    assert.match(statements[offset + 2].sql, /status = 'active'/);
+  }
 });
 
 test("disposeDocument reports a conflict when the guarded update changes no rows", async () => {
@@ -144,6 +346,44 @@ test("viewer search item labels single-sided racks without a face suffix", () =>
 
   assert.equal(faceB.location.rackLabel, "13-2");
   assert.equal(faceB.location.label, "1구역 / 13-2번 랙 / 1열 / 1선반");
+});
+
+test("getDocumentQualitySummary uses one D1 aggregate round trip", async () => {
+  let calls = 0;
+  const env = {
+    DB: {
+      prepare(sql) {
+        assert.match(sql, /duplicate_document_numbers/);
+        return {
+          async first() {
+            calls += 1;
+            return {
+              duplicate_document_numbers: 2,
+              missing_location: 1,
+              missing_category: 3,
+              invalid_rack_face: 4,
+              suspicious_text: 5,
+              documents_without_tags: 6,
+              disposed_documents: 7
+            };
+          }
+        };
+      }
+    }
+  };
+
+  const summary = await getDocumentQualitySummary(env);
+
+  assert.equal(calls, 1);
+  assert.deepEqual(summary, {
+    duplicateDocumentNumbers: 2,
+    missingLocation: 1,
+    missingCategory: 3,
+    invalidRackFace: 4,
+    suspiciousText: 5,
+    documentsWithoutTags: 6,
+    disposedDocuments: 7
+  });
 });
 
 test("viewer facets count active filters from result rows", () => {
@@ -268,6 +508,8 @@ test("updateDocument binds the optimistic lock and guards tags + audit in one at
     revisionNumber: "Rev.1",
     documentName: "수정된 문서",
     categoryId: 1,
+    rackSlotId: 9,
+    rackFace: "B",
     tagIds: [2, 3],
     note: "메모",
     expectedUpdatedAt: "2026-07-01 09:00:00"
@@ -280,6 +522,11 @@ test("updateDocument binds the optimistic lock and guards tags + audit in one at
   // 낙관적 잠금: 가드 UPDATE에 updated_at 조건과 기대값 바인딩이 포함되어야 한다.
   assert.ok(update.sql.includes("updated_at = ?"));
   assert.ok(update.args.includes("2026-07-01 09:00:00"));
+  // 감사 스냅샷과 실제 저장값이 어긋나지 않도록 위치 변경값도 같은 가드 UPDATE에 포함한다.
+  assert.ok(update.sql.includes("rack_slot_id = ?"));
+  assert.ok(update.sql.includes("rack_face = ?"));
+  assert.ok(update.args.includes(9));
+  assert.ok(update.args.includes("B"));
   // 태그 교체와 감사 로그가 같은 batch 안에 있고, 태그 DELETE도 pre-state 가드(EXISTS)에 묶여야 한다.
   const tagDelete = statements.find((s) => s.sql.includes("DELETE FROM document_tags"));
   assert.ok(tagDelete && tagDelete.sql.includes("EXISTS"));
@@ -298,6 +545,8 @@ test("updateDocument reports a conflict when the optimistic lock does not match"
     revisionNumber: "Rev.1",
     documentName: "수정",
     categoryId: 1,
+    rackSlotId: 1,
+    rackFace: "A",
     tagIds: [],
     note: "",
     expectedUpdatedAt: "2000-01-01 00:00:00"

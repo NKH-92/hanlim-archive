@@ -4,6 +4,7 @@ import {
   getActiveCategories,
   getActiveTags,
   getDidYouMeanSuggestions,
+  parseDocumentFilters,
   parseSearchQuery,
   recordSearchLog
 } from "../db.js";
@@ -11,14 +12,16 @@ import { clean } from "../utils.js";
 
 export async function resolveSearchRequest(env, url) {
   const query = clean(url.searchParams.get("q"));
-  const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
-  const explicitFilters = {
-    categoryId: Number(url.searchParams.get("category")) || 0,
-    zoneNumber: Number(url.searchParams.get("zone")) || 0,
-    tagId: Number(url.searchParams.get("tag")) || 0,
-    status: clean(url.searchParams.get("status")),
-    sort: clean(url.searchParams.get("sort"))
-  };
+  const requestedPage = Number(url.searchParams.get("page"));
+  const page = Number.isFinite(requestedPage) && requestedPage >= 1 ? Math.floor(requestedPage) : 1;
+  // 명시 필터만 읽는다(sort 기본값은 아래 병합에서 결정).
+  const explicitFilters = parseDocumentFilters({
+    category: url.searchParams.get("category"),
+    zone: url.searchParams.get("zone"),
+    tag: url.searchParams.get("tag"),
+    status: url.searchParams.get("status"),
+    sort: url.searchParams.get("sort")
+  }, { emptySort: true, query });
   const [categories, tags] = await Promise.all([
     getActiveCategories(env),
     getActiveTags(env)

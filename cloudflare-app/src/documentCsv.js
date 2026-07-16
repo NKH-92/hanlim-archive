@@ -1,3 +1,4 @@
+import { validateDocumentTextFields } from "./documentRules.js";
 import { clean, csvEscape, normalizeRackFace, parseCsv } from "./utils.js";
 
 const DOCUMENT_CSV_HEADER = Object.freeze([
@@ -127,8 +128,9 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
       tagIds: [...new Set(tagIds)]
     };
 
-    if (!values.documentNumber || !values.revisionNumber || !values.documentName) {
-      errors.push(`${rowNumber}행: 문서번호, 개정번호, 문서명은 필수입니다.`);
+    const textError = validateDocumentTextFields(values);
+    if (textError) {
+      errors.push(`${rowNumber}행: ${textError}`);
     }
 
     if (!["A", "B"].includes(values.rackFace)) {

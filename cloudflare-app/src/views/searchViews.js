@@ -1,17 +1,21 @@
 // 검색 뷰어(/app)·Q&A·검색 리포트 화면.
 
 import { sharedSearchCore } from "../searchCore.js";
-import { escapeHtml, locationLabel } from "../utils.js";
+import { escapeHtml } from "../utils.js";
 import { searchCoreScript } from "./clientScript.js";
 import { floorPlanView } from "./floorPlanViews.js";
 import { alertWarning, emptyResult, emptyState, filterSelectRow, listUrl, page, paginationNav, sectionHeader, statusBadge } from "./layout.js";
+import {
+  didYouMeanView,
+  highlight,
+  parsedChipRow,
+  searchInputBlock
+} from "./searchFragments.js";
 
-// 서버 렌더 하이라이트와 클라이언트 즉시 검색이 같은 코어를 쓴다.
+export { didYouMeanView, highlight, parsedChipRow, searchInputBlock };
+
+// 정답 카드 판정에 compactSearchText를 쓴다(하이라이트는 searchFragments).
 const searchCore = sharedSearchCore;
-
-export function highlight(text, query) {
-  return query ? searchCore.highlightHtml(text, query, escapeHtml) : escapeHtml(text ?? "");
-}
 
 export function dashboardPage({
   session,
@@ -80,7 +84,10 @@ export function dashboardPage({
   const suggestions = viewerSearch.suggestions || [];
   const hits = new Set(documents.map((document) => document.location?.rackCode).filter(Boolean));
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
-  const answer = query && (filters.sort || "relevance") === "relevance" ? pickDominantAnswer(documents, query) : null;
+  const isFirstPage = Number(viewerSearch.pagination?.page || 1) === 1;
+  const answer = isFirstPage && query && (filters.sort || "relevance") === "relevance"
+    ? pickDominantAnswer(documents, query)
+    : null;
   const rest = answer ? documents.filter((item) => item.id !== answer.id) : documents;
 
   return page("문서 검색", `
@@ -98,7 +105,7 @@ export function dashboardPage({
           <span class="count-badge" data-results-count>${totalItems}건</span>
         </div>
         <div data-results-body>
-          ${answer ? answerCard(answer, query, dominantGrade(answer, documents, query)) : ""}
+          ${answer ? answerCard(answer, query, dominantGrade(answer, query)) : ""}
           ${answer && rest.length ? `<p class="rest-label">다른 결과 ${totalItems - 1}건</p>` : ""}
           ${answer && !rest.length ? "" : viewerDocumentResults(rest, query)}
           ${!documents.length && didYouMean.length ? didYouMeanView(didYouMean) : ""}
@@ -137,7 +144,7 @@ function pickDominantAnswer(items, query = "") {
 
 // 확신 등급: 문서번호·보관코드 정확 일치는 '확실'(초록), 관련도 우위로 뽑힌 답은 '유력·확인 권장'(노랑).
 // 애매한 답이 확실한 답처럼 보이는 거짓 확신을 없앤다.
-function dominantGrade(item, items, query) {
+function dominantGrade(item, query) {
   const compactQuery = searchCore.compactSearchText(query);
   const exact = compactQuery && [item.documentNumber, item.storageCode].some(
     (value) => value && searchCore.compactSearchText(value) === compactQuery
@@ -181,37 +188,6 @@ function answerCard(item, query, grade = "likely") {
   `;
 }
 
-// "2구역 PV"처럼 해석된 검색어를 칩으로 보여주고 클릭으로 해제한다.
-export function parsedChipRow(parsedQuery, query) {
-  const chips = parsedQuery?.chips || [];
-  if (!chips.length) return "";
-  const typeLabels = { zone: "구역", category: "대분류", tag: "태그", status: "상태" };
-  return `
-    <div class="parsed-chip-row" aria-label="검색어에서 인식한 조건">
-      <span>자동 적용</span>
-      ${chips.map((chip) => {
-        const remaining = String(query).split(/\s+/).filter((part) => part !== chip.token).join(" ");
-        return `<a class="chip active" href="/app?q=${encodeURIComponent(remaining)}" title="조건 해제">${escapeHtml(typeLabels[chip.type] || chip.type)}: ${escapeHtml(chip.label)} ×</a>`;
-      }).join("")}
-    </div>
-  `;
-}
-
-export function didYouMeanView(candidates) {
-  return `
-    <div class="didyoumean" data-didyoumean>
-      <p>혹시 이 문서를 찾으셨나요?</p>
-      ${candidates.map((doc) => `
-        <a href="/documents/${doc.id}">
-          <strong>${escapeHtml(doc.document_name)}</strong>
-          <span class="mono">${escapeHtml(doc.document_number)}</span>
-          <small>${escapeHtml(locationLabel(doc))}</small>
-        </a>
-      `).join("")}
-    </div>
-  `;
-}
-
 function viewerSearchForm({ query, suggestions, categories, tags, filters, home = false }) {
   const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status].filter(Boolean).length;
   return `
@@ -222,20 +198,6 @@ function viewerSearchForm({ query, suggestions, categories, tags, filters, home 
         ${filterSelectRow({ categories, tags, filters, viewer: true })}
       </details>
     </form>
-  `;
-}
-
-export function searchInputBlock(query, suggestions = []) {
-  const id = `searchSuggestions-${Math.random().toString(36).slice(2)}`;
-  return `
-    <div class="search-box">
-      <i class="fa-solid fa-magnifying-glass"></i>
-      <input name="q" value="${escapeHtml(query)}" placeholder="문서명, 문서번호, 키워드, 대분류, 랙 위치 검색" aria-label="검색어" list="${id}" autocomplete="off" data-suggest-input>
-      <datalist id="${id}" data-suggest-list>
-        ${suggestions.map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label || item.value)}</option>`).join("")}
-      </datalist>
-      <button type="submit" class="primary">검색</button>
-    </div>
   `;
 }
 

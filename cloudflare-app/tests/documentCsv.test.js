@@ -107,3 +107,36 @@ test("prepareDocumentImportRows accepts numeric faces and blocks face 2 on singl
   assert.equal(invalid.errors.length, 1);
   assert.match(invalid.errors[0], /1 또는 2/);
 });
+
+test("prepareDocumentImportRows enforces the same document text limits as the form", () => {
+  const context = {
+    categories: [{ id: 10, name: "PV" }],
+    tags: [],
+    slots: [{
+      id: 30,
+      code: "1-01",
+      slot_code: "1-1",
+      column_number: 1,
+      shelf_number: 1,
+      is_single_sided: 0
+    }]
+  };
+  const base = {
+    revisionNumber: "Rev.0",
+    documentName: "문서",
+    category: "PV",
+    rackCode: "1-01",
+    rackColumn: "1",
+    shelfNumber: "1",
+    rackFace: "1"
+  };
+
+  const prepared = prepareDocumentImportRows([
+    { ...base, documentNumber: "D".repeat(101) },
+    { ...base, documentNumber: "DOC-2", note: "N".repeat(2001) }
+  ], context);
+
+  assert.equal(prepared.errors.length, 2);
+  assert.match(prepared.errors[0], /^2행: 문서번호는 100자 이하/);
+  assert.match(prepared.errors[1], /^3행: 비고는 2000자 이하/);
+});

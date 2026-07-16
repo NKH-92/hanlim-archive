@@ -4,4 +4,5 @@ backups/
 output/
 .wrangler*/
 .superloopy/
+.tmp-web-ai/
 cloudflare-app/.dev.vars

@@ -36,8 +36,8 @@ export function createSearchCore() {
     if (!a.length) return b.length;
     if (!b.length) return a.length;
 
-    const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-    const current = Array.from({ length: b.length + 1 }, () => 0);
+    let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+    let current = Array.from({ length: b.length + 1 }, () => 0);
 
     for (let i = 1; i <= a.length; i += 1) {
       current[0] = i;
@@ -45,7 +45,10 @@ export function createSearchCore() {
         const cost = a[i - 1] === b[j - 1] ? 0 : 1;
         current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost);
       }
-      previous.splice(0, previous.length, ...current);
+      // splice 복사 대신 행 버퍼만 교환한다(오타 허용 스코어링 핫패스).
+      const swap = previous;
+      previous = current;
+      current = swap;
     }
 
     return previous[b.length];
@@ -254,7 +257,8 @@ export function createSearchCore() {
 
   function documentLocationText(document) {
     const zone = document.zone_number ? `${document.zone_number}구역` : "";
-    const rack = rackFaceLabel(document) ? `${rackFaceLabel(document)}번 랙` : document.rack_code || "";
+    const face = rackFaceLabel(document);
+    const rack = face ? `${face}번 랙` : document.rack_code || "";
     const column = document.column_number ? `${document.column_number}열` : "";
     const shelf = document.shelf_number ? `${document.shelf_number}선반` : document.slot_code ? `칸 ${document.slot_code}` : "";
     return [zone, rack, column, shelf].filter(Boolean).join(" ");
@@ -353,7 +357,8 @@ export function createSearchCore() {
   }
 
   function scoreDocumentMatch(document, query, options = {}) {
-    const tokens = searchTokens(query);
+    // 동일 검색어로 여러 문서를 채점할 때 토큰을 호출자가 한 번만 계산해 재사용할 수 있다.
+    const tokens = Array.isArray(options.tokens) ? options.tokens : searchTokens(query);
     if (!tokens.length) {
       return { relevance_score: 0, match_reason: "전체 목록" };
     }
@@ -439,17 +444,17 @@ export function createSearchCore() {
       const zoneMatch = part.match(/^(\d{1,2})구역$/);
       if (zoneMatch && !filters.zoneNumber && !explicit.zoneNumber) {
         filters.zoneNumber = Number(zoneMatch[1]);
-        chips.push({ type: "zone", label: `${filters.zoneNumber}구역`, value: filters.zoneNumber });
+        chips.push({ type: "zone", label: `${filters.zoneNumber}구역`, value: filters.zoneNumber, token: part });
         continue;
       }
       if ((part === "폐기" || part === "폐기문서") && !filters.status && !explicit.status) {
         filters.status = "disposed";
-        chips.push({ type: "status", label: "폐기", value: "disposed" });
+        chips.push({ type: "status", label: "폐기", value: "disposed", token: part });
         continue;
       }
       if (part === "보관중" && !filters.status && !explicit.status) {
         filters.status = "active";
-        chips.push({ type: "status", label: "보관중", value: "active" });
+        chips.push({ type: "status", label: "보관중", value: "active", token: part });
         continue;
       }
 
@@ -457,14 +462,14 @@ export function createSearchCore() {
       const category = categories.find((item) => compactSearchText(item.name) === compactPart);
       if (category && !filters.categoryId && !explicit.categoryId) {
         filters.categoryId = Number(category.id);
-        chips.push({ type: "category", label: clean(category.name), value: filters.categoryId });
+        chips.push({ type: "category", label: clean(category.name), value: filters.categoryId, token: part });
         continue;
       }
 
       const tag = tags.find((item) => compactSearchText(item.name) === compactPart);
       if (tag && !filters.tagId && !explicit.tagId) {
         filters.tagId = Number(tag.id);
-        chips.push({ type: "tag", label: clean(tag.name), value: filters.tagId });
+        chips.push({ type: "tag", label: clean(tag.name), value: filters.tagId, token: part });
         continue;
       }
 

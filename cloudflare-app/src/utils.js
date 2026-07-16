@@ -42,6 +42,37 @@ export function redirect(location, headers = {}) {
   });
 }
 
+// JSON API 응답. Cache-Control 기본은 no-store(검색 제안·뷰어 API).
+export function jsonResponse(body, { status = 200, cacheControl = "no-store", headers = {} } = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": cacheControl,
+      ...headers
+    }
+  });
+}
+
+// 배열 페이지네이션. page/pageSize를 안전한 범위로 맞춘 뒤 슬라이스한다.
+export function paginateSlice(items, page, pageSize) {
+  const parsedSize = Number(pageSize);
+  const size = Number.isFinite(parsedSize) && parsedSize >= 1 ? Math.floor(parsedSize) : 1;
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / size));
+  const parsedPage = Number(page);
+  const requestedPage = Number.isFinite(parsedPage) && parsedPage >= 1 ? Math.floor(parsedPage) : 1;
+  const currentPage = Math.min(requestedPage, totalPages);
+  const offset = (currentPage - 1) * size;
+  return {
+    items: items.slice(offset, offset + size),
+    page: currentPage,
+    pageSize: size,
+    totalItems,
+    totalPages
+  };
+}
+
 export function sanitizeReturnUrl(value) {
   const candidate = String(value ?? "");
   // 앱 내부 경로만 허용한다. 백슬래시(브라우저가 "/"로 정규화 → //evil.com 오픈 리다이렉트),
@@ -90,7 +121,7 @@ export async function isValidCsrfToken(request, session) {
 }
 
 export function parseCookies(header) {
-  return Object.fromEntries(header.split(";").map((part) => {
+  return Object.fromEntries(String(header ?? "").split(";").map((part) => {
     const [key, ...rest] = part.trim().split("=");
     return [key, rest.join("=")];
   }).filter(([key]) => key));
@@ -149,8 +180,9 @@ export function rackFaceLabel(doc) {
 }
 
 export function locationLabel(doc) {
-  const zone = doc.zone_number ? `${doc.zone_number}구역` : doc.rack_code;
-  const rack = rackFaceLabel(doc) ? `${rackFaceLabel(doc)}번 랙` : doc.rack_code;
+  const zone = doc.zone_number ? `${doc.zone_number}구역` : "";
+  const face = rackFaceLabel(doc);
+  const rack = face ? `${face}번 랙` : doc.rack_code;
   const column = doc.column_number ? `${doc.column_number}열` : "";
   const shelf = doc.shelf_number ? `${doc.shelf_number}선반` : doc.slot_code ? `칸 ${doc.slot_code}` : "";
 

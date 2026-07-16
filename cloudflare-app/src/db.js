@@ -10,6 +10,8 @@ export {
   parseSearchQuery,
   MAX_SEARCH_RESULTS,
   searchDocuments,
+  buildSearchSuggestions,
+  searchDocumentsWithSuggestions,
   recordSearchClick,
   recordSearchLog,
   getSearchReport,
@@ -23,6 +25,11 @@ export {
 } from "./data/searchData.js";
 
 export {
+  parseDocumentFilters,
+  buildDocumentFilterWhere
+} from "./data/searchFilters.js";
+
+export {
   getCategoryDocumentIndex,
   getDocumentQualitySummary,
   getDocumentsForExport,
@@ -31,15 +38,21 @@ export {
   getDisposalLogs,
   getDocumentAuditLogs,
   validateDocumentInput,
+  parseDocumentNumberList,
+  findDocumentsByNumbers,
+  valuesFromDocumentForm,
+  documentToFormValues,
+  loadDocumentFormOptions
+} from "./data/documentsData.js";
+
+export {
   createDocument,
   updateDocument,
   disposeDocument,
+  disposeDocumentsBulk,
   restoreDocument,
-  permanentlyDeleteDocument,
-  parseDocumentNumberList,
-  findDocumentsByNumbers,
-  valuesFromDocumentForm
-} from "./data/documentsData.js";
+  permanentlyDeleteDocument
+} from "./data/documentMutations.js";
 
 export {
   DEFAULT_FLOOR_PLAN_REGIONS,

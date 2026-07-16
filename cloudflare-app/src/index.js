@@ -127,8 +127,13 @@ async function route(request, env) {
     return errorPage("요청 보안 토큰이 유효하지 않습니다. 화면을 새로고침한 뒤 다시 시도하세요.", session, 403);
   }
 
-  if (path === "/logout") {
+  // 로그아웃은 POST+CSRF만 허용한다. GET은 세션을 건드리지 않고 홈으로 돌린다.
+  if (path === "/logout" && request.method === "POST") {
     return handleLogout(url);
+  }
+
+  if (path === "/logout") {
+    return redirect(session.role === "Admin" ? "/admin" : "/app");
   }
 
   if (path === "/" && request.method === "GET") {

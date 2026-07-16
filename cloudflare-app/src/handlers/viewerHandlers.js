@@ -10,7 +10,7 @@ import {
   recordSearchClick
 } from "../db.js";
 import { dashboardPage, qaPage, searchReportPage } from "../html.js";
-import { clean } from "../utils.js";
+import { clean, jsonResponse } from "../utils.js";
 import { resolveSearchOutcome, resolveSearchRequest } from "./searchRequest.js";
 
 export async function handleDashboard(request, env, session) {
@@ -75,53 +75,34 @@ export async function handleSearchSuggestions(request, env) {
   const url = new URL(request.url);
   const query = clean(url.searchParams.get("q"));
   const suggestions = await getSearchSuggestions(env, query, 8);
-
-  return new Response(JSON.stringify({ suggestions }), {
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store"
-    }
-  });
+  return jsonResponse({ suggestions });
 }
 
 export async function handleViewerSearch(request, env) {
   const url = new URL(request.url);
   const payload = await getViewerSearchPayload(env, Object.fromEntries(url.searchParams));
-
-  return new Response(JSON.stringify(payload), {
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store"
-    }
-  });
+  return jsonResponse(payload);
 }
 
 export async function handleSearchIndex(request, env) {
   const meta = await getSearchIndexMeta(env);
-  const etag = `"idx-${meta.count}-${meta.maxId}-${meta.updated.replace(/[^0-9]/g, "")}"`;
+  const etag = `"idx-${meta.count}-${meta.maxId}-${meta.versionKey}"`;
 
   if (request.headers.get("If-None-Match") === etag) {
     return new Response(null, { status: 304, headers: { ETag: etag } });
   }
 
   const documents = await getSearchIndexDocuments(env);
-  return new Response(JSON.stringify({ updated: meta.updated, documents }), {
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "private, no-cache",
-      ETag: etag
-    }
-  });
+  return jsonResponse(
+    { updated: meta.updated, documents },
+    { cacheControl: "private, no-cache", headers: { ETag: etag } }
+  );
 }
 
 export async function handleSearchClick(request, env) {
   const form = await request.formData();
   const result = await recordSearchClick(env, clean(form.get("q")), Number(form.get("documentId")));
-
-  return new Response(JSON.stringify(result), {
-    status: result.ok ? 200 : 400,
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
-  });
+  return jsonResponse(result, { status: result.ok ? 200 : 400 });
 }
 
 export async function handleAdminSearchReport(env, session) {

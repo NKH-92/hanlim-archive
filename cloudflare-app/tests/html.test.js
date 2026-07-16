@@ -18,7 +18,9 @@ test("page injects csrf token into authenticated post forms", async () => {
   const html = await response.text();
 
   assert.match(html, /name="csrf_token" value="csrf-token-123"/);
-  assert.equal(html.match(/name="csrf_token"/g).length, 1);
+  // 본문 POST 폼 1개 + 헤더 로그아웃 POST 폼 1개
+  assert.equal(html.match(/name="csrf_token"/g).length, 2);
+  assert.match(html, /method="post" action="\/logout"/);
 });
 
 test("dashboard page renders viewer-first search and floor plan landmarks", async () => {
