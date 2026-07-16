@@ -9,12 +9,15 @@ import {
   getDocument,
   getDocumentAuditLogs,
   getDocumentTags,
+  getDisposalCandidates,
+  getDisposalDueYears,
   getDocumentsForExport,
   getFloorPlanRegions,
   getRackSummaries,
   loadDocumentFormOptions,
   MAX_SEARCH_RESULTS,
   permanentlyDeleteDocument,
+  parseDisposalFilters,
   restoreDocument,
   searchDocumentsWithSuggestions,
   updateDocument,
@@ -26,6 +29,7 @@ import {
   documentDetailsPage,
   documentFormPage,
   documentImportPage,
+  disposalWorkspacePage,
   documentsPage,
   errorPage,
   notFoundPage
@@ -66,6 +70,25 @@ export async function handleDocuments(request, env, session) {
       totalDocuments: sliced.totalItems,
       totalPages: sliced.totalPages
     }
+  });
+}
+
+export async function handleDisposalWorkspace(request, env, session) {
+  const filters = parseDisposalFilters(new URL(request.url).searchParams);
+  const [{ categories }, racks, years, candidates] = await Promise.all([
+    loadDocumentFormOptions(env, { activeOnly: true, includeSlots: false }),
+    getRackSummaries(env),
+    getDisposalDueYears(env),
+    getDisposalCandidates(env, filters, 201)
+  ]);
+  return disposalWorkspacePage({
+    session,
+    categories,
+    racks,
+    years,
+    filters,
+    documents: candidates.slice(0, 200),
+    capped: candidates.length > 200
   });
 }
 
@@ -314,18 +337,19 @@ export async function handleBulkDispose(request, env, session) {
   const form = await request.formData();
   const idsRaw = clean(form.get("ids"));
   const reason = clean(form.get("reason"));
+  const returnTo = safeDisposalReturn(form.get("returnTo"));
 
   if (!idsRaw || !reason) {
-    return redirect("/documents?toast=error");
+    return redirect(withToast(returnTo, "error"));
   }
 
   const ids = [...new Set(idsRaw.split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0))];
 
-  if (ids.length > 20) {
-    return errorPage("일괄 폐기는 한 번에 20건 이하로 선택해 주세요.", session, 400);
+  if (ids.length > 200) {
+    return errorPage("일괄 폐기는 한 번에 200건 이하로 처리해 주세요.", session, 400);
   }
 
-  const result = await disposeDocumentsBulk(env, ids, session.displayName, reason, session.role);
+  const result = await disposeInChunks(env, ids, session, reason);
 
   if (result.failures.length) {
     return errorPage(
@@ -335,5 +359,48 @@ export async function handleBulkDispose(request, env, session) {
     );
   }
 
-  return redirect(`/documents?toast=bulk-disposed`);
+  return redirect(withToast(returnTo, "bulk-disposed"));
+}
+
+export async function handleFilteredDispose(request, env, session) {
+  const form = await request.formData();
+  const filters = parseDisposalFilters({
+    categoryId: form.get("categoryId"),
+    rackId: form.get("rackId"),
+    disposalDueYear: form.get("disposalDueYear")
+  });
+  const reason = clean(form.get("reason"));
+  const returnTo = safeDisposalReturn(form.get("returnTo"));
+  if (!reason || (!filters.categoryId && !filters.rackId && !filters.disposalDueYear)) {
+    return errorPage("폐기 사유와 하나 이상의 필터가 필요합니다.", session, 400);
+  }
+  const candidates = await getDisposalCandidates(env, filters, 201);
+  if (candidates.length > 200) {
+    return errorPage("대상이 200건을 초과합니다. 필터를 더 좁혀 주세요.", session, 400);
+  }
+  const result = await disposeInChunks(env, candidates.map((item) => Number(item.id)), session, reason);
+  if (result.failures.length) {
+    return errorPage(`일괄 폐기 중 ${result.disposed}건 완료, ${result.failures.length}건 실패: ${result.failures.join(" / ")}`, session, 409);
+  }
+  return redirect(withToast(returnTo, "bulk-disposed"));
+}
+
+async function disposeInChunks(env, ids, session, reason) {
+  const total = { disposed: 0, skipped: 0, failures: [] };
+  for (let offset = 0; offset < ids.length; offset += 20) {
+    const result = await disposeDocumentsBulk(env, ids.slice(offset, offset + 20), session.displayName, reason, session.role);
+    total.disposed += result.disposed;
+    total.skipped += result.skipped;
+    total.failures.push(...result.failures);
+  }
+  return total;
+}
+
+function safeDisposalReturn(value) {
+  const path = clean(value);
+  return path.startsWith("/documents/disposal") ? path : "/documents";
+}
+
+function withToast(path, toast) {
+  return `${path}${path.includes("?") ? "&" : "?"}toast=${encodeURIComponent(toast)}`;
 }

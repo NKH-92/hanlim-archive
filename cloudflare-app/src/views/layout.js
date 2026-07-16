@@ -71,6 +71,7 @@ function header(session) {
     ["/admin", "fa-user-shield", "관리자"],
     ["/app", "fa-magnifying-glass", "검색"],
     ["/documents", "fa-file-lines", "문서"],
+    ["/documents/disposal", "fa-trash-can", "문서 폐기"],
     ["/sets", "fa-list-check", "세트"],
     ["/racks", "fa-box-archive", "랙"],
     ["/categories", "fa-layer-group", "대분류"],
@@ -170,7 +171,7 @@ export function timelineItem(title, meta, body) {
   return `<div class="timeline-item"><div class="timeline-badge"></div><div class="timeline-content"><div class="timeline-header"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(meta)}</span></div>${body ? `<p>${escapeHtml(body)}</p>` : ""}</div></div>`;
 }
 
-// 문서 목록(/documents)과 뷰어 검색 폼(/app)이 같은 필터 select 5종을 공유한다.
+// 문서 목록(/documents)과 뷰어 검색 폼(/app)이 같은 검색 필터를 공유한다.
 // viewer 변형은 라벨 노출·placeholder 문구·정렬 항목 순서만 다르고 구조는 동일하다.
 export function filterSelectRow({ categories, tags, filters, viewer = false }) {
   const label = (text) => (viewer ? text : `<span class="sr-only">${text}</span>`);
@@ -199,13 +200,7 @@ export function filterSelectRow({ categories, tags, filters, viewer = false }) {
               ${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}
             </select>
           </label>
-          <label>${label("상태")}
-            <select name="status">
-              <option value="">${blank("상태")}</option>
-              ${option("active", "보관중", filters.status)}
-              ${option("disposed", "폐기", filters.status)}
-            </select>
-          </label>
+          <label class="check-item"><input type="checkbox" name="includeDisposed" value="1"${filters.includeDisposed ? " checked" : ""}><span>폐기문서 포함</span></label>
           <label>${label("정렬")}
             <select name="sort">
               ${option("relevance", "정확도순", filters.sort || "relevance")}
@@ -232,7 +227,7 @@ export function listUrl(basePath, { query, filters = {}, page = 1 }, paramOrder)
   const params = new URLSearchParams();
   if (query) params.set("q", query);
   for (const [param, key] of paramOrder) {
-    if (filters[key]) params.set(param, filters[key]);
+    if (filters[key]) params.set(param, key === "includeDisposed" ? "1" : filters[key]);
   }
   if (page > 1) params.set("page", page);
   const text = params.toString();

@@ -11,6 +11,8 @@ test("buildDocumentCsv creates deterministic filename and safe cells", () => {
   const result = buildDocumentCsv([{
     document_number: "=DOC-1",
     revision_number: "Rev.0",
+    revision_date: "2026-04-14",
+    disposal_due_year: 2031,
     document_name: "문서",
     category_name: "PV",
     rack_code: "1-01",
@@ -23,10 +25,11 @@ test("buildDocumentCsv creates deterministic filename and safe cells", () => {
   }], new Date("2026-04-14T00:00:00Z"));
 
   assert.equal(result.filename, "hanlim-archive-documents-2026-04-14.csv");
-  assert.match(result.body, /documentNumber,revisionNumber/);
+  assert.match(result.body, /^\uFEFF문서명,문서번호,개정번호,제\/개정일,폐기 예정 년도,보관위치\r\n/);
   assert.match(result.body, /'=DOC-1/);
   // 면은 실물 표기(1/2)로 내보낸다: rackCode,rackColumn,shelfNumber,rackFace 순.
-  assert.match(result.body, /1-01,1,2,1,/);
+  assert.match(result.body, /2026-04-14,2031,/);
+  assert.match(result.body, /1-01 \/ 1.* \/ 2/);
 });
 
 test("readDocumentImportRows enforces configured row and byte limits", async () => {
@@ -43,6 +46,8 @@ test("prepareDocumentImportRows maps category, tags, slot, and disposed status",
   const prepared = prepareDocumentImportRows([{
     documentNumber: "DOC-1",
     revisionNumber: "Rev.0",
+    revisionDate: "",
+    disposalDueYear: "",
     documentName: "문서",
     category: "PV",
     rackCode: "1-01",
@@ -68,6 +73,8 @@ test("prepareDocumentImportRows maps category, tags, slot, and disposed status",
   assert.deepEqual(prepared.items[0].values, {
     documentNumber: "DOC-1",
     revisionNumber: "Rev.0",
+    revisionDate: "",
+    disposalDueYear: "",
     documentName: "문서",
     categoryId: 10,
     rackSlotId: 30,

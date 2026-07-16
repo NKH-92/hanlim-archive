@@ -22,17 +22,19 @@ function positiveInteger(value) {
 
 // params: URLSearchParams 값 또는 plain object (category|categoryId 등 별칭 허용).
 // emptySort: true면 sort 기본값을 넣지 않는다(명시 필터만 읽을 때).
-export function parseDocumentFilters(params = {}, { emptySort = false, query = "" } = {}) {
+export function parseDocumentFilters(params = {}, { emptySort = false, query = "", defaultActive = true } = {}) {
   const q = clean(query || readParam(params, "q", "query"));
   const sortRaw = clean(readParam(params, "sort"));
-  const statusRaw = clean(readParam(params, "status"));
+  const includeDisposed = ["1", "true", "on", "yes"].includes(clean(readParam(params, "includeDisposed")).toLowerCase());
   const sort = VALID_SORTS.has(sortRaw) ? sortRaw : "";
+  const status = defaultActive && !includeDisposed ? "active" : "";
 
   return {
     categoryId: positiveInteger(readParam(params, "category", "categoryId")),
     zoneNumber: positiveInteger(readParam(params, "zone", "zoneNumber")),
     tagId: positiveInteger(readParam(params, "tag", "tagId")),
-    status: statusRaw === "active" || statusRaw === "disposed" ? statusRaw : "",
+    status,
+    includeDisposed,
     sort: emptySort ? sort : (sort || (q ? "relevance" : "updated"))
   };
 }

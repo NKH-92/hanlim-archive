@@ -279,6 +279,8 @@ export function documentToViewerItem(document) {
     documentNumber: clean(document.document_number),
     storageCode: clean(document.storage_code),
     revisionNumber: clean(document.revision_number),
+    revisionDate: clean(document.revision_date),
+    disposalDueYear: document.disposal_due_year === null || document.disposal_due_year === undefined ? null : Number(document.disposal_due_year),
     documentName: clean(document.document_name),
     categoryName: clean(document.category_name),
     tags,

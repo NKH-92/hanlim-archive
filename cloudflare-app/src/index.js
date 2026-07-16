@@ -23,6 +23,8 @@ import {
   handleDocumentImport,
   handleDocumentRoute,
   handleDocuments,
+  handleDisposalWorkspace,
+  handleFilteredDispose,
   renderCreateDocument,
   renderDocumentImport
 } from "./handlers/documentHandlers.js";
@@ -194,8 +196,16 @@ async function route(request, env) {
     return handleDocuments(request, env, session);
   }
 
+  if (path === "/documents/disposal" && request.method === "GET") {
+    return requireAdmin(session) ?? handleDisposalWorkspace(request, env, session);
+  }
+
   if (path === "/documents/bulk-dispose" && request.method === "POST") {
     return requireAdmin(session) ?? handleBulkDispose(request, env, session);
+  }
+
+  if (path === "/documents/dispose-filtered" && request.method === "POST") {
+    return requireAdmin(session) ?? handleFilteredDispose(request, env, session);
   }
 
   if (path === "/documents/export.csv" && request.method === "GET") {

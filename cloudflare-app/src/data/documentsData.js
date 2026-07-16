@@ -1,4 +1,4 @@
-import { validateDocumentTextFields } from "../documentRules.js";
+import { validateDocumentRecordFields, validateDocumentTextFields } from "../documentRules.js";
 import { clean, normalizeRackFace } from "../utils.js";
 import {
   DOCUMENT_BASE_JOINS,
@@ -105,6 +105,8 @@ export async function getDocument(env, id) {
       d.category_id,
       d.document_number,
       d.revision_number,
+      d.revision_date,
+      d.disposal_due_year,
       d.document_name,
       d.note,
       d.rack_slot_id,
@@ -161,6 +163,10 @@ export async function validateDocumentInput(env, values, options = {}) {
   const textError = validateDocumentTextFields(values);
   if (textError) {
     return textError;
+  }
+  const recordError = validateDocumentRecordFields(values, { required: true });
+  if (recordError) {
+    return recordError;
   }
 
   if (!Number.isInteger(values.categoryId) || values.categoryId <= 0) {
@@ -288,6 +294,8 @@ export function documentToFormValues(document) {
   return {
     documentNumber: document.document_number,
     revisionNumber: document.revision_number,
+    revisionDate: document.revision_date || "",
+    disposalDueYear: document.disposal_due_year ?? "",
     documentName: document.document_name,
     categoryId: document.category_id,
     rackSlotId: document.rack_slot_id,
@@ -301,6 +309,8 @@ export function valuesFromDocumentForm(form) {
   return {
     documentNumber: clean(form.get("documentNumber")),
     revisionNumber: clean(form.get("revisionNumber")),
+    revisionDate: clean(form.get("revisionDate")),
+    disposalDueYear: clean(form.get("disposalDueYear")),
     documentName: clean(form.get("documentName")),
     categoryId: Number(form.get("categoryId")),
     rackSlotId: Number(form.get("rackSlotId")),
@@ -319,4 +329,61 @@ export async function loadDocumentFormOptions(env, { activeOnly = false, include
     includeSlots ? getSlotOptions(env) : Promise.resolve([])
   ]);
   return { categories, tags, slots };
+}
+
+export function parseDisposalFilters(params = {}) {
+  const read = (name) => typeof params?.get === "function" ? params.get(name) : params?.[name];
+  const positive = (value) => {
+    const number = Number(value);
+    return Number.isInteger(number) && number > 0 ? number : 0;
+  };
+  const year = positive(read("disposalDueYear"));
+  return {
+    categoryId: positive(read("category") || read("categoryId")),
+    rackId: positive(read("rack") || read("rackId")),
+    disposalDueYear: year >= 1900 && year <= 9999 ? year : 0
+  };
+}
+
+export async function getDisposalDueYears(env) {
+  const result = await env.DB.prepare(`
+    SELECT DISTINCT disposal_due_year AS year
+    FROM documents
+    WHERE status = 'active' AND disposal_due_year IS NOT NULL
+    ORDER BY disposal_due_year
+  `).all();
+  return (result.results ?? []).map((row) => Number(row.year)).filter(Boolean);
+}
+
+export async function getDisposalCandidates(env, filters = {}, limit = 201) {
+  const clauses = ["d.status = 'active'"];
+  const binds = [];
+  if (filters.categoryId) {
+    clauses.push("d.category_id = ?");
+    binds.push(filters.categoryId);
+  }
+  if (filters.rackId) {
+    clauses.push("r.id = ?");
+    binds.push(filters.rackId);
+  }
+  if (filters.disposalDueYear) {
+    clauses.push("d.disposal_due_year = ?");
+    binds.push(filters.disposalDueYear);
+  }
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 201, 201));
+  const result = await env.DB.prepare(`
+    SELECT
+      d.id,
+      ${DOCUMENT_CORE_COLUMNS}
+      d.updated_at,
+      ${DOCUMENT_LOCATION_COLUMNS}
+      rs.column_number,
+      rs.shelf_number,
+      rs.slot_code
+    ${DOCUMENT_BASE_JOINS}
+    WHERE ${clauses.join(" AND ")}
+    ORDER BY d.disposal_due_year, c.name, r.zone_number, r.rack_number, rs.column_number, rs.shelf_number, d.document_number
+    LIMIT ?
+  `).bind(...binds, safeLimit).all();
+  return result.results ?? [];
 }

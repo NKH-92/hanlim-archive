@@ -3,7 +3,7 @@
 export { page } from "./views/layout.js";
 export { accessDeniedPage, errorPage, loginPage, notFoundPage, signupPage } from "./views/authViews.js";
 export { dashboardPage, qaPage, searchReportPage } from "./views/searchViews.js";
-export { documentDetailsPage, documentFormPage, documentImportPage, documentsPage } from "./views/documentViews.js";
+export { disposalWorkspacePage, documentDetailsPage, documentFormPage, documentImportPage, documentsPage } from "./views/documentViews.js";
 export { setDetailsPage, setFormPage, setsPage } from "./views/setViews.js";
 export { rackConfigurePage, rackDetailsPage, rackFormPage, racksPage } from "./views/rackViews.js";
 export { adminDashboardPage, adminSettingsPage, categoriesPage, passwordPage, tagsPage } from "./views/adminViews.js";

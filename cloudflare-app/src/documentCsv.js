@@ -1,34 +1,23 @@
-import { validateDocumentTextFields } from "./documentRules.js";
-import { clean, csvEscape, normalizeRackFace, parseCsv } from "./utils.js";
+import { validateDocumentRecordFields, validateDocumentTextFields } from "./documentRules.js";
+import { clean, csvEscape, locationLabel, normalizeRackFace, parseCsv } from "./utils.js";
 
 const DOCUMENT_CSV_HEADER = Object.freeze([
-  "documentNumber",
-  "revisionNumber",
-  "documentName",
-  "category",
-  "rackCode",
-  "rackColumn",
-  "shelfNumber",
-  "rackFace",
-  "tags",
-  "note",
-  "status"
+  "문서명",
+  "문서번호",
+  "개정번호",
+  "제/개정일",
+  "폐기 예정 년도",
+  "보관위치"
 ]);
 
 export function buildDocumentCsv(documents, now = new Date()) {
   const rows = documents.map((document) => [
+    document.document_name,
     document.document_number,
     document.revision_number,
-    document.document_name,
-    document.category_name,
-    document.rack_code,
-    document.column_number,
-    document.shelf_number,
-    // 면은 실물 표기(1/2)로 내보낸다. 가져오기는 1/2와 구표기 A/B를 모두 받는다.
-    document.rack_face === "B" ? 2 : 1,
-    document.tag_names || "",
-    document.note || "",
-    document.status
+    document.revision_date || "",
+    document.disposal_due_year ?? "",
+    locationLabel(document)
   ]);
   const csv = [DOCUMENT_CSV_HEADER, ...rows]
     .map((row) => row.map(csvEscape).join(","))
@@ -120,6 +109,8 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
     const values = {
       documentNumber: clean(row.documentNumber),
       revisionNumber: clean(row.revisionNumber || "Rev.0"),
+      revisionDate: clean(row.revisionDate),
+      disposalDueYear: clean(row.disposalDueYear),
       documentName: clean(row.documentName),
       categoryId: category?.id ?? 0,
       rackSlotId: slot?.id ?? 0,
@@ -131,6 +122,10 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
     const textError = validateDocumentTextFields(values);
     if (textError) {
       errors.push(`${rowNumber}행: ${textError}`);
+    }
+    const recordError = validateDocumentRecordFields(values);
+    if (recordError) {
+      errors.push(`${rowNumber}행: ${recordError}`);
     }
 
     if (!["A", "B"].includes(values.rackFace)) {

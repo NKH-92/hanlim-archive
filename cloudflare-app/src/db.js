@@ -42,7 +42,10 @@ export {
   findDocumentsByNumbers,
   valuesFromDocumentForm,
   documentToFormValues,
-  loadDocumentFormOptions
+  loadDocumentFormOptions,
+  parseDisposalFilters,
+  getDisposalDueYears,
+  getDisposalCandidates
 } from "./data/documentsData.js";
 
 export {

@@ -12,10 +12,12 @@ import {
   disposeDocument,
   disposeDocumentsBulk,
   getDocumentQualitySummary,
+  getDisposalCandidates,
   getSearchIndexMeta,
   levenshteinDistance,
   MAX_SEARCH_RESULTS,
   parseDocumentFilters,
+  parseDisposalFilters,
   parseDocumentNumberList,
   parseSearchQuery,
   permanentlyDeleteDocument,
@@ -44,6 +46,8 @@ test("search normalization supports partial numbers, spacing, and light typos", 
     storage_code: "ARC-000123",
     document_number: "PV-2026-014",
     revision_number: "Rev.1",
+    revision_date: "2026-04-14",
+    disposal_due_year: 2031,
     document_name: "충전 공정 밸리데이션 보고서",
     category_name: "PV",
     tag_names: "중요문서; 원본보관",
@@ -82,16 +86,65 @@ test("parseDocumentFilters supports URLSearchParams and normalizes invalid value
     categoryId: 2,
     zoneNumber: 3,
     tagId: 4,
-    status: "disposed",
+    status: "active",
+    includeDisposed: false,
     sort: "location"
   });
   assert.deepEqual(parseDocumentFilters({ category: "1.5", status: "unknown", sort: "drop-table", q: "검색" }), {
     categoryId: 0,
     zoneNumber: 0,
     tagId: 0,
-    status: "",
+    status: "active",
+    includeDisposed: false,
     sort: "relevance"
   });
+  assert.deepEqual(parseDocumentFilters({ includeDisposed: "1" }), {
+    categoryId: 0,
+    zoneNumber: 0,
+    tagId: 0,
+    status: "",
+    includeDisposed: true,
+    sort: "updated"
+  });
+});
+
+test("parseDisposalFilters accepts only positive ids and valid disposal years", () => {
+  assert.deepEqual(parseDisposalFilters({
+    category: "3",
+    rack: "7",
+    disposalDueYear: "2031"
+  }), {
+    categoryId: 3,
+    rackId: 7,
+    disposalDueYear: 2031
+  });
+  assert.deepEqual(parseDisposalFilters({
+    categoryId: "-1",
+    rackId: "1.5",
+    disposalDueYear: "1899"
+  }), {
+    categoryId: 0,
+    rackId: 0,
+    disposalDueYear: 0
+  });
+});
+
+test("getDisposalCandidates always limits results to active documents and selected filters", async () => {
+  const env = recordingEnv({ all: () => [] });
+
+  await getDisposalCandidates(env, {
+    categoryId: 3,
+    rackId: 7,
+    disposalDueYear: 2031
+  }, 500);
+
+  const query = env.state.calls.find((call) => call.type === "all");
+  assert.ok(query);
+  assert.match(query.sql, /d\.status = 'active'/);
+  assert.match(query.sql, /d\.category_id = \?/);
+  assert.match(query.sql, /r\.id = \?/);
+  assert.match(query.sql, /d\.disposal_due_year = \?/);
+  assert.deepEqual(query.args, [3, 7, 2031, 201]);
 });
 
 test("parseSearchQuery preserves the original token for removable filter chips", () => {
@@ -183,6 +236,8 @@ test("validateDocumentInput rejects missing or inactive tags", async () => {
   const base = {
     documentNumber: "MR-001",
     revisionNumber: "Rev.0",
+    revisionDate: "2026-07-17",
+    disposalDueYear: "2031",
     documentName: "문서",
     categoryId: 1,
     rackSlotId: 2,
@@ -205,6 +260,8 @@ test("validateDocumentInput rejects oversized text before database access", asyn
   const values = {
     documentNumber: "D".repeat(101),
     revisionNumber: "Rev.0",
+    revisionDate: "2026-07-17",
+    disposalDueYear: "2031",
     documentName: "문서",
     categoryId: 1,
     rackSlotId: 2,
@@ -279,6 +336,8 @@ test("viewer search item exposes location-first api shape", () => {
     id: 7,
     document_number: "PV-2026-014",
     revision_number: "Rev.1",
+    revision_date: "2026-04-14",
+    disposal_due_year: 2031,
     document_name: "충전 공정 밸리데이션 보고서",
     category_name: "PV",
     tag_names: "중요문서; 원본보관",
@@ -297,6 +356,8 @@ test("viewer search item exposes location-first api shape", () => {
 
   assert.equal(item.id, 7);
   assert.equal(item.documentNumber, "PV-2026-014");
+  assert.equal(item.revisionDate, "2026-04-14");
+  assert.equal(item.disposalDueYear, 2031);
   assert.deepEqual(item.tags, ["중요문서", "원본보관"]);
   // 양면 랙은 면 단위 표기(1-1 = 1번 랙 A면)로 위치를 안내한다.
   assert.equal(item.location.label, "2구역 / 1-1번 랙 / 3열 / 2선반");
@@ -506,6 +567,8 @@ test("updateDocument binds the optimistic lock and guards tags + audit in one at
   const result = await updateDocument(env, 1, {
     documentNumber: "MR-002",
     revisionNumber: "Rev.1",
+    revisionDate: "2026-07-17",
+    disposalDueYear: "2031",
     documentName: "수정된 문서",
     categoryId: 1,
     rackSlotId: 9,
@@ -543,6 +606,8 @@ test("updateDocument reports a conflict when the optimistic lock does not match"
   const result = await updateDocument(env, 1, {
     documentNumber: "MR-002",
     revisionNumber: "Rev.1",
+    revisionDate: "2026-07-17",
+    disposalDueYear: "2031",
     documentName: "수정",
     categoryId: 1,
     rackSlotId: 1,
@@ -590,6 +655,8 @@ function sampleDocument(overrides = {}) {
     storage_code: "ARC-000001",
     document_number: "MR-001",
     revision_number: "Rev.0",
+    revision_date: "2026-07-17",
+    disposal_due_year: 2031,
     document_name: "문서",
     category_name: "제조기록서",
     category_id: 1,

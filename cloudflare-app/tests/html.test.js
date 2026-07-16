@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { dashboardPage, documentDetailsPage, page, setDetailsPage } from "../src/html.js";
+import {
+  dashboardPage,
+  disposalWorkspacePage,
+  documentDetailsPage,
+  documentFormPage,
+  page,
+  setDetailsPage
+} from "../src/html.js";
 
 test("page injects csrf token into authenticated post forms", async () => {
   const response = page("Test", `
@@ -21,6 +28,86 @@ test("page injects csrf token into authenticated post forms", async () => {
   // 본문 POST 폼 1개 + 헤더 로그아웃 POST 폼 1개
   assert.equal(html.match(/name="csrf_token"/g).length, 2);
   assert.match(html, /method="post" action="\/logout"/);
+});
+
+test("disposal workspace renders category, rack, year filters and both bulk actions", async () => {
+  const html = await disposalWorkspacePage({
+    session: {
+      username: "admin",
+      displayName: "관리자",
+      role: "Admin",
+      csrfToken: "csrf-token-123"
+    },
+    documents: [{
+      id: 7,
+      document_name: "밸리데이션 보고서",
+      document_number: "PV-2026-014",
+      revision_number: "Rev.1",
+      revision_date: "2026-04-14",
+      disposal_due_year: 2031,
+      status: "active",
+      rack_code: "1-03",
+      zone_number: 1,
+      rack_number: 3,
+      column_number: 2,
+      shelf_number: 3,
+      rack_face: "A"
+    }],
+    categories: [{ id: 2, name: "PV" }],
+    racks: [{ id: 3, zone_number: 1, rack_number: 3 }],
+    years: [2031],
+    filters: { categoryId: 2, rackId: 3, disposalDueYear: 2031 }
+  }).text();
+
+  assert.match(html, /action="\/documents\/disposal"/);
+  assert.match(html, /name="category"/);
+  assert.match(html, /name="rack"/);
+  assert.match(html, /name="disposalDueYear"/);
+  assert.match(html, /action="\/documents\/bulk-dispose"/);
+  assert.match(html, /action="\/documents\/dispose-filtered"/);
+  assert.match(html, /name="returnTo" value="\/documents\/disposal\?/);
+  assert.match(html, /name="csrf_token" value="csrf-token-123"/);
+  assert.match(html, /class="danger-button">필터 결과 1건 일괄 폐기/);
+
+  const unfilteredHtml = await disposalWorkspacePage({
+    session: {
+      username: "admin",
+      displayName: "관리자",
+      role: "Admin",
+      csrfToken: "csrf-token-123"
+    },
+    documents: [{
+      id: 7,
+      document_name: "밸리데이션 보고서",
+      document_number: "PV-2026-014",
+      revision_number: "Rev.1",
+      status: "active"
+    }]
+  }).text();
+  assert.match(unfilteredHtml, /class="danger-button" disabled>필터 결과 1건 일괄 폐기/);
+});
+
+test("document form includes the revised document information fields", async () => {
+  const html = await documentFormPage({
+    session: {
+      username: "admin",
+      displayName: "관리자",
+      role: "Admin",
+      csrfToken: "csrf-token-123"
+    },
+    title: "문서 등록",
+    action: "/documents",
+    categories: [{ id: 2, name: "PV" }],
+    tags: [],
+    slots: [],
+    showLocation: false
+  }).text();
+
+  assert.match(html, /name="documentName"[^>]*required/);
+  assert.match(html, /name="documentNumber"[^>]*required/);
+  assert.match(html, /name="revisionNumber"[^>]*required/);
+  assert.match(html, /type="date" name="revisionDate"[^>]*required/);
+  assert.match(html, /type="number" name="disposalDueYear"[^>]*required/);
 });
 
 test("dashboard page renders viewer-first search and floor plan landmarks", async () => {

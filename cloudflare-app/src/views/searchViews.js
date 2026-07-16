@@ -177,6 +177,8 @@ function answerCard(item, query, grade = "likely") {
         <div class="answer-meta">
           <span class="mono">${highlight(item.documentNumber, query)}</span>
           <span>${escapeHtml(item.revisionNumber)}</span>
+          <span>${escapeHtml(item.revisionDate || "제/개정일 미입력")}</span>
+          <span>${escapeHtml(item.disposalDueYear ? `${item.disposalDueYear}년 폐기 예정` : "폐기 예정 년도 미입력")}</span>
           <span>${escapeHtml(item.categoryName || "-")}</span>
         </div>
       </div>
@@ -189,7 +191,7 @@ function answerCard(item, query, grade = "likely") {
 }
 
 function viewerSearchForm({ query, suggestions, categories, tags, filters, home = false }) {
-  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status].filter(Boolean).length;
+  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.includeDisposed].filter(Boolean).length;
   return `
     <form method="get" action="/app" class="viewer-search-form ${home ? "is-home" : ""}" data-search-form data-viewer-form data-auto-submit>
       ${searchInputBlock(query, suggestions)}
@@ -233,6 +235,8 @@ function viewerDocumentCard(document, query = "") {
         <div class="doc-row-meta">
           <span class="mono">${highlight(document.documentNumber, query)}</span>
           <span>${escapeHtml(document.revisionNumber)}</span>
+          <span>${escapeHtml(document.revisionDate || "제/개정일 미입력")}</span>
+          <span>${escapeHtml(document.disposalDueYear ? `${document.disposalDueYear}년 폐기 예정` : "폐기 예정 년도 미입력")}</span>
           <span>${escapeHtml(document.categoryName || "-")}</span>
           ${document.matchReason ? `<span class="match-line">${escapeHtml(document.matchReason)}</span>` : ""}
         </div>
@@ -259,7 +263,7 @@ function viewerUrl({ query, filters = {}, patch = {}, page = 1 }) {
     ["category", "categoryId"],
     ["tag", "tagId"],
     ["zone", "zoneNumber"],
-    ["status", "status"],
+    ["includeDisposed", "includeDisposed"],
     ["sort", "sort"]
   ]);
 }

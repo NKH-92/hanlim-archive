@@ -43,7 +43,7 @@ export async function handleDashboard(request, env, session) {
       category: filters.categoryId,
       zone: filters.zoneNumber,
       tag: filters.tagId,
-      status: filters.status,
+      includeDisposed: filters.includeDisposed,
       sort: filters.sort,
       page,
       pageSize: 12

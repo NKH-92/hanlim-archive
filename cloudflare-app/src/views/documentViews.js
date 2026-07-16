@@ -50,6 +50,61 @@ export function documentsPage({
   `, session);
 }
 
+export function disposalWorkspacePage({
+  session,
+  documents = [],
+  categories = [],
+  racks = [],
+  years = [],
+  filters = {},
+  capped = false
+}) {
+  const returnTo = disposalListUrl(filters);
+  const hasFilters = Boolean(filters.categoryId || filters.rackId || filters.disposalDueYear);
+  return page("문서 폐기 작업", `
+    <section class="page-head">
+      <div><h1>문서 폐기 작업</h1><p class="muted">보관중 문서만 표시됩니다. 조건을 좁힌 뒤 선택 또는 필터 결과 전체를 폐기할 수 있습니다.</p></div>
+      <a class="button secondary" href="/documents">문서 목록</a>
+    </section>
+    <section class="panel">
+      <form method="get" action="/documents/disposal" class="filter-row">
+        <label><span class="sr-only">대분류</span><select name="category"><option value="">전체 대분류</option>${categories.map((item) => option(item.id, item.name, filters.categoryId)).join("")}</select></label>
+        <label><span class="sr-only">랙</span><select name="rack"><option value="">전체 랙</option>${racks.map((item) => option(item.id, `${item.zone_number}구역 ${item.rack_number}번 랙`, filters.rackId)).join("")}</select></label>
+        <label><span class="sr-only">폐기 예정 년도</span><select name="disposalDueYear"><option value="">전체 폐기 예정 년도</option>${years.map((year) => option(year, `${year}년`, filters.disposalDueYear)).join("")}</select></label>
+        <button type="submit" class="button secondary">필터 적용</button>
+        <a class="button secondary" href="/documents/disposal">초기화</a>
+      </form>
+    </section>
+    <section class="panel results-panel">
+      <div class="section-title"><h2>폐기 대상 후보</h2><span class="count-badge">${documents.length}${capped ? "+" : ""}건</span></div>
+      ${capped ? `<div class="alert warning">한 번에 최대 200건까지만 처리할 수 있습니다. 필터를 더 좁혀 주세요.</div>` : ""}
+      ${documentResults(documents, { bulk: true, emptyMessage: "조건에 맞는 보관중 문서가 없습니다." })}
+      ${bulkActionBar("/documents/bulk-dispose", returnTo)}
+    </section>
+    <section class="panel narrow">
+      <h2>필터 결과 일괄 폐기</h2>
+      <p class="muted">안전을 위해 대분류·랙·폐기 예정 년도 중 하나 이상을 선택해야 합니다.</p>
+      <form method="post" action="/documents/dispose-filtered" class="stack" data-filtered-dispose-form>
+        <input type="hidden" name="categoryId" value="${escapeHtml(filters.categoryId || "")}">
+        <input type="hidden" name="rackId" value="${escapeHtml(filters.rackId || "")}">
+        <input type="hidden" name="disposalDueYear" value="${escapeHtml(filters.disposalDueYear || "")}">
+        <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+        <label>폐기 사유 <em>*</em><textarea name="reason" rows="3" required></textarea></label>
+        <button type="submit" class="danger-button"${capped || !documents.length || !hasFilters ? " disabled" : ""}>필터 결과 ${documents.length}건 일괄 폐기</button>
+      </form>
+    </section>
+  `, session);
+}
+
+function disposalListUrl(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.categoryId) params.set("category", filters.categoryId);
+  if (filters.rackId) params.set("rack", filters.rackId);
+  if (filters.disposalDueYear) params.set("disposalDueYear", filters.disposalDueYear);
+  const query = params.toString();
+  return query ? `/documents/disposal?${query}` : "/documents/disposal";
+}
+
 export function documentFormPage({ session, title, action, values = {}, categories, tags, slots, selectedTags = [], error = "", showLocation = true }) {
   return page(title, `
     <section class="page-head"><h1>${escapeHtml(title)}</h1></section>
@@ -60,6 +115,8 @@ export function documentFormPage({ session, title, action, values = {}, categori
         <label>문서번호 <em>*</em><input name="documentNumber" value="${escapeHtml(formValue(values, "documentNumber", "document_number"))}" required></label>
         <label>개정번호 <em>*</em><input name="revisionNumber" value="${escapeHtml(formValue(values, "revisionNumber", "revision_number") || "Rev.0")}" required></label>
         <label>문서명 <em>*</em><input name="documentName" value="${escapeHtml(formValue(values, "documentName", "document_name"))}" required></label>
+        <label>제/개정일 <em>*</em><input type="date" name="revisionDate" value="${escapeHtml(formValue(values, "revisionDate", "revision_date"))}" required></label>
+        <label>폐기 예정 년도 <em>*</em><input type="number" name="disposalDueYear" min="1900" max="9999" step="1" value="${escapeHtml(formValue(values, "disposalDueYear", "disposal_due_year"))}" required></label>
         <label>대분류 <em>*</em><select name="categoryId" required>${categories.map((c) => option(c.id, c.name, formValue(values, "categoryId", "category_id"))).join("")}</select></label>
         ${showLocation ? `${locationPicker(slots, formValue(values, "rackSlotId", "rack_slot_id"))}
         <label>보관 면 <em>*</em><select name="rackFace" required data-rack-face>${option("A", "1면", formValue(values, "rackFace", "rack_face") || "A")}${option("B", "2면", formValue(values, "rackFace", "rack_face"))}</select></label>
@@ -108,8 +165,14 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
     </div>
     <div class="tab-panel" id="panel-info" role="tabpanel" aria-labelledby="tab-info">
       <section class="panel detail-grid">
+        ${detail("문서명", document.document_name)}
         ${detail("문서번호", document.document_number)}
         ${detail("개정번호", document.revision_number)}
+        ${detail("제/개정일", document.revision_date || "미입력")}
+        ${detail("폐기 예정 년도", document.disposal_due_year ?? "미입력")}
+        ${detail("보관위치", location)}
+      </section>
+      <section class="panel detail-grid">
         ${detail("보관코드", document.storage_code)}
         ${detail("대분류", document.category_name)}
         ${detail("태그", tags.length ? tags.map((t) => t.name).join(", ") : "-")}
@@ -230,10 +293,10 @@ export function documentImportPage({ session, result = null, error = "" }) {
       ${result ? importResult(result) : ""}
       <form method="post" action="/documents/import" class="stack" enctype="multipart/form-data">
         <label>CSV 파일<input type="file" name="csvFile" accept=".csv,text/csv"></label>
-        <label>또는 CSV 붙여넣기<textarea name="csvText" rows="10" placeholder="documentNumber,revisionNumber,documentName,category,rackCode,rackColumn,shelfNumber,rackFace,tags,note,status"></textarea></label>
+        <label>또는 CSV 붙여넣기<textarea name="csvText" rows="10" placeholder="documentNumber,revisionNumber,revisionDate,disposalDueYear,documentName,category,rackCode,rackColumn,shelfNumber,rackFace,tags,note,status"></textarea></label>
         <button type="submit" class="primary">가져오기</button>
       </form>
-      <p class="muted">필수 열: documentNumber, revisionNumber, documentName, category, rackCode, rackColumn, shelfNumber, rackFace</p>
+      <p class="muted">필수 열: documentNumber, revisionNumber, documentName, category, rackCode, rackColumn, shelfNumber, rackFace. 선택 열: revisionDate, disposalDueYear.</p>
       <p class="muted">rackFace는 1 또는 2로 적습니다(예: 13번 양면 랙 = 13-1/13-2, 구표기 A/B도 허용). 단면 랙은 1만 가능합니다. rackColumn은 1~7열, shelfNumber는 1~6선반입니다.</p>
     </section>
   `, session);
@@ -265,17 +328,18 @@ function documentListUrl({ query, filters = {}, page = 1 }) {
     ["category", "categoryId"],
     ["zone", "zoneNumber"],
     ["tag", "tagId"],
-    ["status", "status"],
+    ["includeDisposed", "includeDisposed"],
     ["sort", "sort"]
   ]);
 }
 
-function bulkActionBar() {
+function bulkActionBar(action = "/documents/bulk-dispose", returnTo = "/documents") {
   return `
     <div class="bulk-bar" data-bulk-bar hidden>
       <span data-bulk-count>0건 선택</span>
-      <form method="post" action="/documents/bulk-dispose" data-bulk-form>
+      <form method="post" action="${escapeHtml(action)}" data-bulk-form>
         <input type="hidden" name="ids" data-bulk-ids>
+        <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
         <label class="bulk-reason"><input name="reason" placeholder="폐기 사유" required></label>
         <button type="submit" class="danger-button sm">일괄 폐기</button>
       </form>
@@ -285,5 +349,5 @@ function bulkActionBar() {
 
 function documentToolbar(session) {
   if (session.role !== "Admin") return "";
-  return `<div class="button-group"><a class="button" href="/documents/new">문서 등록</a><a class="button secondary" href="/documents/import">CSV 가져오기</a><a class="button secondary" href="/documents/export.csv">CSV 내보내기</a></div>`;
+  return `<div class="button-group"><a class="button" href="/documents/new">문서 등록</a><a class="button secondary" href="/documents/disposal">문서 폐기 작업</a><a class="button secondary" href="/documents/import">CSV 가져오기</a><a class="button secondary" href="/documents/export.csv">엑셀 목록 내보내기</a></div>`;
 }

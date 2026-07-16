@@ -6,7 +6,7 @@ import { createPasswordRecord, createSessionCookie } from "../src/auth.js";
 
 const SESSION_SECRET = "test-session-secret-with-at-least-32-characters";
 
-test("regular users cannot open or post the document creation route", async () => {
+test("regular users cannot access document administration or disposal routes", async () => {
   const env = userSessionEnv();
   const user = { username: "viewer", displayName: "Viewer", role: "User" };
   const cookie = await createSessionCookie(user, env, false);
@@ -25,8 +25,27 @@ test("regular users cannot open or post the document creation route", async () =
     body: new URLSearchParams({ csrf_token: csrfToken })
   }), env);
 
+  const disposalGetResponse = await worker.fetch(new Request("https://archive.example.com/documents/disposal", {
+    headers: { Cookie: cookie }
+  }), env);
+
+  const disposalPostResponse = await worker.fetch(new Request("https://archive.example.com/documents/dispose-filtered", {
+    method: "POST",
+    headers: {
+      Cookie: cookie,
+      Origin: "https://archive.example.com"
+    },
+    body: new URLSearchParams({
+      csrf_token: csrfToken,
+      categoryId: "1",
+      reason: "test"
+    })
+  }), env);
+
   assert.equal(getResponse.status, 403);
   assert.equal(postResponse.status, 403);
+  assert.equal(disposalGetResponse.status, 403);
+  assert.equal(disposalPostResponse.status, 403);
 });
 
 test("viewer search api returns paginated items, facets, and suggestions", async () => {
@@ -50,6 +69,38 @@ test("viewer search api returns paginated items, facets, and suggestions", async
   assert.equal(payload.pagination.totalItems, 1);
   assert.equal(payload.facets.categories[0].label, "PV");
   assert.ok(payload.suggestions.length >= 1);
+});
+
+test("dashboard includes disposed documents only when the checkbox is explicit", async () => {
+  const user = { username: "viewer", displayName: "Viewer", role: "User" };
+
+  const defaultEnv = dashboardSearchEnv();
+  const defaultCookie = await createSessionCookie(user, defaultEnv, false);
+  const defaultResponse = await worker.fetch(new Request("https://archive.example.com/app?q=PV", {
+    headers: { Cookie: defaultCookie }
+  }), defaultEnv);
+  const defaultHtml = await defaultResponse.text();
+  const defaultSearch = authoritativeDocumentSearch(defaultEnv.state.calls);
+
+  assert.equal(defaultResponse.status, 200);
+  assert.ok(defaultSearch);
+  assert.match(defaultSearch.sql, /d\.status = \?/);
+  assert.equal(defaultSearch.args[0], "active");
+  assert.doesNotMatch(defaultHtml, /폐기된 공정 밸리데이션 보고서/);
+
+  const includedEnv = dashboardSearchEnv();
+  const includedCookie = await createSessionCookie(user, includedEnv, false);
+  const includedResponse = await worker.fetch(new Request("https://archive.example.com/app?q=PV&includeDisposed=1", {
+    headers: { Cookie: includedCookie }
+  }), includedEnv);
+  const includedHtml = await includedResponse.text();
+  const includedSearch = authoritativeDocumentSearch(includedEnv.state.calls);
+
+  assert.equal(includedResponse.status, 200);
+  assert.ok(includedSearch);
+  assert.doesNotMatch(includedSearch.sql, /d\.status = \?/);
+  assert.ok(!includedSearch.args.includes("active"));
+  assert.match(includedHtml, /폐기된 공정 밸리데이션 보고서/);
 });
 
 test("document CSV import loads only active categories and tags", async () => {
@@ -297,6 +348,98 @@ function viewerSearchEnv() {
       }
     }
   };
+}
+
+function dashboardSearchEnv() {
+  const state = { calls: [] };
+  const document = {
+    id: 7,
+    storage_code: "ARC-000007",
+    document_number: "PV-2026-014",
+    revision_number: "Rev.1",
+    revision_date: "2026-04-14",
+    disposal_due_year: 2031,
+    document_name: "충전 공정 밸리데이션 보고서",
+    note: "",
+    rack_face: "A",
+    status: "active",
+    updated_at: "2026-06-28",
+    category_name: "PV",
+    category_id: 1,
+    rack_code: "1-01",
+    zone_number: 1,
+    rack_number: 1,
+    is_single_sided: 0,
+    column_count: 3,
+    shelf_count: 4,
+    column_number: 2,
+    shelf_number: 3,
+    slot_code: "2-3",
+    tag_names: "중요문서"
+  };
+  const disposedDocument = {
+    ...document,
+    id: 8,
+    storage_code: "ARC-000008",
+    document_number: "PV-2025-008",
+    document_name: "폐기된 공정 밸리데이션 보고서",
+    status: "disposed",
+    updated_at: "2026-06-29"
+  };
+
+  return {
+    SESSION_SECRET,
+    state,
+    DB: {
+      prepare(sql) {
+        const execution = (args = []) => ({
+          async first() {
+            state.calls.push({ type: "first", sql, args });
+            if (sql.includes("FROM app_users")) {
+              return {
+                username: "viewer",
+                display_name: "Viewer",
+                status: "approved",
+                role: "User"
+              };
+            }
+            return null;
+          },
+          async all() {
+            state.calls.push({ type: "all", sql, args });
+            if (sql.includes("FROM documents d") && sql.includes("LIMIT ?")) {
+              return {
+                results: args.includes("active")
+                  ? [{ ...document }]
+                  : [{ ...document }, { ...disposedDocument }]
+              };
+            }
+            return { results: [] };
+          },
+          async run() {
+            state.calls.push({ type: "run", sql, args });
+            return { meta: { changes: 1 } };
+          }
+        });
+        return {
+          ...execution(),
+          bind(...args) {
+            return execution(args);
+          }
+        };
+      }
+    }
+  };
+}
+
+function authoritativeDocumentSearch(calls) {
+  return calls.find((call) =>
+    call.type === "all" &&
+    call.sql.includes("FROM documents d") &&
+    call.sql.includes("GROUP BY d.id") &&
+    call.sql.includes("ORDER BY d.updated_at DESC, d.id DESC") &&
+    call.sql.includes("LIMIT ?")
+  );
 }
 
 function csrfFromCookie(cookie) {

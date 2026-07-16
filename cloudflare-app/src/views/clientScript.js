@@ -39,9 +39,9 @@ export function clientScript() {
         button.addEventListener('click', function () { window.print(); });
       });
 
-      document.querySelectorAll('[data-auto-submit] select').forEach(function (select) {
-        select.addEventListener('change', function () {
-          if (select.form) select.form.submit();
+      document.querySelectorAll('[data-auto-submit] select, [data-auto-submit] input[type="checkbox"]').forEach(function (control) {
+        control.addEventListener('change', function () {
+          if (control.form) control.form.submit();
         });
       });
 
@@ -154,6 +154,14 @@ export function clientScript() {
         bulkForm.addEventListener('submit', function (event) {
           var count = document.querySelectorAll('[data-bulk-item]:checked').length;
           if (!window.confirm('선택한 ' + count + '건을 일괄 폐기 처리할까요? 폐기 후에는 관리자만 해제할 수 있습니다.')) {
+            event.preventDefault();
+          }
+        });
+      }
+      var filteredDisposeForm = document.querySelector('[data-filtered-dispose-form]');
+      if (filteredDisposeForm) {
+        filteredDisposeForm.addEventListener('submit', function (event) {
+          if (!window.confirm('현재 필터 결과를 일괄 폐기 처리할까요? 이 작업은 감사 이력에 기록됩니다.')) {
             event.preventDefault();
           }
         });
@@ -312,6 +320,8 @@ export function clientScript() {
             '</div><div class="doc-row-meta">' +
             '<span class="mono">' + core.highlightHtml(doc.document_number || '', q, escapeHtmlClient) + '</span>' +
             '<span>' + escapeHtmlClient(doc.revision_number || '') + '</span>' +
+            '<span>' + escapeHtmlClient(doc.revision_date || '제/개정일 미입력') + '</span>' +
+            '<span>' + escapeHtmlClient(doc.disposal_due_year ? doc.disposal_due_year + '년 폐기 예정' : '폐기 예정 년도 미입력') + '</span>' +
             '<span>' + escapeHtmlClient(doc.category_name || '-') + '</span>' +
             (doc.match_reason ? '<span class="match-line">' + escapeHtmlClient(doc.match_reason) + '</span>' : '') +
             '</div></div>' +
@@ -330,7 +340,7 @@ export function clientScript() {
             '<div class="answer-head"><small class="answer-label">가장 정확한 결과</small>' + gradeChip + '</div>' +
             '<div class="answer-loc">' + escapeHtmlClient(head) + '<span>' + escapeHtmlClient(loc.sub) + '</span></div>' +
             '<div class="answer-doc"><a href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '">' + core.highlightHtml(doc.document_name || '', q, escapeHtmlClient) + '</a>' + instantBadges(doc) +
-            '<div class="answer-meta"><span class="mono">' + core.highlightHtml(doc.document_number || '', q, escapeHtmlClient) + '</span><span>' + escapeHtmlClient(doc.revision_number || '') + '</span><span>' + escapeHtmlClient(doc.category_name || '-') + '</span></div></div>' +
+            '<div class="answer-meta"><span class="mono">' + core.highlightHtml(doc.document_number || '', q, escapeHtmlClient) + '</span><span>' + escapeHtmlClient(doc.revision_number || '') + '</span><span>' + escapeHtmlClient(doc.revision_date || '제/개정일 미입력') + '</span><span>' + escapeHtmlClient(doc.disposal_due_year ? doc.disposal_due_year + '년 폐기 예정' : '폐기 예정 년도 미입력') + '</span><span>' + escapeHtmlClient(doc.category_name || '-') + '</span></div></div>' +
             '<div class="answer-actions">' +
             '<a class="button" href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '"><i class="fa-solid fa-circle-info"></i>상세 정보</a>' +
             '<button type="button" class="button secondary" data-copy-text="' + escapeHtmlClient(loc.label) + '">위치 복사</button>' +
@@ -342,13 +352,14 @@ export function clientScript() {
             var el = viewerForm.querySelector('select[name="' + name + '"]');
             return el ? Number(el.value) || 0 : 0;
           };
-          var statusEl = viewerForm.querySelector('select[name="status"]');
+          var includeDisposedEl = viewerForm.querySelector('input[name="includeDisposed"]');
           var sortEl = viewerForm.querySelector('select[name="sort"]');
           return {
             categoryId: num('category'),
             tagId: num('tag'),
             zoneNumber: num('zone'),
-            status: statusEl ? statusEl.value : '',
+            status: includeDisposedEl && includeDisposedEl.checked ? '' : 'active',
+            includeDisposed: Boolean(includeDisposedEl && includeDisposedEl.checked),
             sort: sortEl ? sortEl.value : 'relevance'
           };
         };
@@ -397,13 +408,13 @@ export function clientScript() {
           var parsed = core.parseSearchQuery(q, {
             categories: searchContext.categories,
             tags: searchContext.tags,
-            explicit: f
+            explicit: Object.assign({}, f, { status: 'active' })
           });
           var merged = {
             categoryId: f.categoryId || parsed.filters.categoryId || 0,
             tagId: f.tagId || parsed.filters.tagId || 0,
             zoneNumber: f.zoneNumber || parsed.filters.zoneNumber || 0,
-            status: f.status || parsed.filters.status || '',
+            status: f.includeDisposed ? '' : 'active',
             sort: f.sort || 'relevance'
           };
           var text = parsed.text;

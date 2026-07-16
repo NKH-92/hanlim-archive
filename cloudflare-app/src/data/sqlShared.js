@@ -7,6 +7,8 @@ import { clean } from "../utils.js";
 export const DOCUMENT_CORE_COLUMNS = `d.storage_code,
       d.document_number,
       d.revision_number,
+      d.revision_date,
+      d.disposal_due_year,
       d.document_name,
       d.note,
       d.rack_face,

@@ -164,6 +164,8 @@ export async function getRackDocuments(env, rackId) {
       d.storage_code,
       d.document_number,
       d.revision_number,
+      d.revision_date,
+      d.disposal_due_year,
       d.document_name,
       d.rack_face,
       d.status,
