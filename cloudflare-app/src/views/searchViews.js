@@ -114,15 +114,13 @@ export function dashboardPage({
   `, session);
 }
 
-// 정답 판정: 문서번호/보관코드 정확 일치는 무조건, 그 외엔 1위가 2위의 1.5배 이상일 때.
+// 정답 판정: 문서번호 정확 일치는 무조건, 그 외엔 1위가 2위의 1.5배 이상일 때.
 function pickDominantAnswer(items, query = "") {
   if (!items.length) return null;
   const first = items[0];
   if (!Number(first.relevanceScore || 0)) return null;
   const compactQuery = searchCore.compactSearchText(query);
-  if (compactQuery && [first.documentNumber, first.storageCode].some(
-    (value) => value && searchCore.compactSearchText(value) === compactQuery
-  )) {
+  if (compactQuery && first.documentNumber && searchCore.compactSearchText(first.documentNumber) === compactQuery) {
     return first;
   }
   if (items.length === 1) return first;
@@ -130,13 +128,11 @@ function pickDominantAnswer(items, query = "") {
   return Number(first.relevanceScore) >= second * 1.5 ? first : null;
 }
 
-// 확신 등급: 문서번호·보관코드 정확 일치는 '확실'(초록), 관련도 우위로 뽑힌 답은 '유력·확인 권장'(노랑).
+// 확신 등급: 문서번호 정확 일치는 '확실'(초록), 관련도 우위로 뽑힌 답은 '유력·확인 권장'(노랑).
 // 애매한 답이 확실한 답처럼 보이는 거짓 확신을 없앤다.
 function dominantGrade(item, query) {
   const compactQuery = searchCore.compactSearchText(query);
-  const exact = compactQuery && [item.documentNumber, item.storageCode].some(
-    (value) => value && searchCore.compactSearchText(value) === compactQuery
-  );
+  const exact = compactQuery && item.documentNumber && searchCore.compactSearchText(item.documentNumber) === compactQuery;
   return exact ? "certain" : "likely";
 }
 

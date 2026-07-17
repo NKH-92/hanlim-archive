@@ -124,7 +124,7 @@ function setAdminTools(set, addQuery, addCandidates) {
       <div class="set-add-grid">
         <form method="post" action="/sets/${set.id}/add" class="stack">
           <label>문서번호 일괄 추가
-            <textarea name="numbers" rows="4" placeholder="문서번호 또는 보관코드를 줄바꿈이나 쉼표로 구분해 붙여넣으세요.&#10;예) MR-2026-001, PV-2026-014"></textarea>
+            <textarea name="numbers" rows="4" placeholder="문서번호를 줄바꿈이나 쉼표로 구분해 붙여넣으세요.&#10;예) MR-2026-001, PV-2026-014"></textarea>
           </label>
           <button type="submit" class="primary">일괄 추가</button>
         </form>

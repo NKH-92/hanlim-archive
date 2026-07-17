@@ -246,7 +246,7 @@ export function parseDocumentNumberList(text) {
   const seen = new Set();
   const numbers = [];
 
-  // 문서번호/보관코드는 공백 없는 코드이므로 공백·줄바꿈·쉼표·세미콜론·탭을 모두 구분자로 본다.
+  // 문서번호는 공백 없는 코드이므로 공백·줄바꿈·쉼표·세미콜론·탭을 모두 구분자로 본다.
   for (const token of String(text ?? "").split(/[\s,;]+/)) {
     const value = clean(token);
     if (!value) {
@@ -273,17 +273,15 @@ export async function findDocumentsByNumbers(env, numbers) {
   const upperNumbers = numbers.map((number) => number.toUpperCase());
   const placeholders = upperNumbers.map(() => "?").join(", ");
   const result = await env.DB.prepare(`
-    SELECT id, document_number, storage_code
+    SELECT id, document_number
     FROM documents
     WHERE UPPER(document_number) IN (${placeholders})
-       OR UPPER(storage_code) IN (${placeholders})
-  `).bind(...upperNumbers, ...upperNumbers).all();
+  `).bind(...upperNumbers).all();
   const documents = result.results ?? [];
   const matched = new Set();
 
   for (const document of documents) {
     matched.add(String(document.document_number).toUpperCase());
-    matched.add(String(document.storage_code).toUpperCase());
   }
 
   const missing = numbers.filter((number) => !matched.has(number.toUpperCase()));

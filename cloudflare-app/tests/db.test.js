@@ -11,8 +11,10 @@ import {
   documentToViewerItem,
   disposeDocument,
   disposeDocumentsBulk,
+  findDocumentsByNumbers,
   getDocumentQualitySummary,
   getDisposalCandidates,
+  getSearchIndexDocuments,
   getSearchIndexMeta,
   levenshteinDistance,
   MAX_SEARCH_RESULTS,
@@ -39,6 +41,31 @@ test("parseDocumentNumberList splits, trims, and dedupes pasted numbers", () => 
   assert.deepEqual(parseDocumentNumberList(null), []);
   // 공백 구분도 지원한다(감사관이 부른 번호를 공백으로 붙여넣는 경우).
   assert.deepEqual(parseDocumentNumberList("NOPE-999  ARC-000001 PV-2026-014"), ["NOPE-999", "ARC-000001", "PV-2026-014"]);
+});
+
+test("document set number lookup never matches internal storage codes", async () => {
+  let executedSql = "";
+  let executedArgs = [];
+  const env = {
+    DB: {
+      prepare(sql) {
+        executedSql = sql;
+        return {
+          bind(...args) {
+            executedArgs = args;
+            return { all: async () => ({ results: [{ id: 7, document_number: "PV-2026-014" }] }) };
+          }
+        };
+      }
+    }
+  };
+
+  const result = await findDocumentsByNumbers(env, ["PV-2026-014", "ARC-000007"]);
+
+  assert.deepEqual(result.documents, [{ id: 7, document_number: "PV-2026-014" }]);
+  assert.deepEqual(result.missing, ["ARC-000007"]);
+  assert.doesNotMatch(executedSql, /storage_code/);
+  assert.deepEqual(executedArgs, ["PV-2026-014", "ARC-000007"]);
 });
 
 test("search normalization supports partial numbers, spacing, and light typos", () => {
@@ -342,6 +369,7 @@ test("disposeDocument reports a conflict when the guarded update changes no rows
 test("viewer search item exposes location-first api shape", () => {
   const item = documentToViewerItem({
     id: 7,
+    storage_code: "ARC-000007",
     document_number: "PV-2026-014",
     revision_number: "Rev.1",
     revision_date: "2026-04-14",
@@ -364,6 +392,7 @@ test("viewer search item exposes location-first api shape", () => {
 
   assert.equal(item.id, 7);
   assert.equal(item.documentNumber, "PV-2026-014");
+  assert.equal("storageCode" in item, false);
   assert.equal(item.revisionDate, "2026-04-14");
   assert.equal(item.disposalDueYear, 2031);
   assert.deepEqual(item.tags, ["중요문서", "원본보관"]);
@@ -372,6 +401,28 @@ test("viewer search item exposes location-first api shape", () => {
   assert.equal(item.location.rackLabel, "1-1");
   assert.equal(item.location.isSingleSided, false);
   assert.equal(item.matchReason, "문서번호 부분 일치");
+});
+
+test("browser search index omits internal storage codes", async () => {
+  const env = {
+    DB: {
+      prepare(sql) {
+        return {
+          async all() {
+            if (sql.includes("FROM documents d")) {
+              return { results: [{ id: 7, storage_code: "ARC-000007", document_number: "PV-2026-014" }] };
+            }
+            return { results: [{ document_id: 7, total: 3 }] };
+          }
+        };
+      }
+    }
+  };
+
+  const documents = await getSearchIndexDocuments(env);
+
+  assert.deepEqual(documents, [{ id: 7, document_number: "PV-2026-014", popularity: 3 }]);
+  assert.equal("storage_code" in documents[0], false);
 });
 
 test("viewer search item labels single-sided racks without a face suffix", () => {

@@ -77,6 +77,7 @@ test("viewer search api returns paginated items, facets, and suggestions", async
   assert.equal(response.status, 200);
   assert.equal(payload.items.length, 1);
   assert.equal(payload.items[0].documentNumber, "PV-2026-014");
+  assert.equal("storageCode" in payload.items[0], false);
   assert.equal(payload.items[0].location.label, "1구역 / 1-1번 랙 / 2열 / 3선반");
   assert.equal(payload.items[0].location.rackLabel, "1-1");
   assert.equal(payload.pagination.totalItems, 1);

@@ -430,10 +430,7 @@ export function clientScript() {
           var answerGrade = 'likely';
           if (hasText && (merged.sort || 'relevance') === 'relevance' && top.length) {
             var compactQ = core.compactSearchText(text);
-            var exactCode = compactQ && (
-              core.compactSearchText(top[0].document_number || '') === compactQ ||
-              core.compactSearchText(top[0].storage_code || '') === compactQ
-            );
+            var exactCode = compactQ && core.compactSearchText(top[0].document_number || '') === compactQ;
             if (exactCode || top.length === 1 || Number(top[0].relevance_score) >= Number(top[1].relevance_score || 0) * 1.5) {
               answer = top[0];
               answerGrade = exactCode ? 'certain' : 'likely';

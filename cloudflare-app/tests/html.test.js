@@ -357,6 +357,7 @@ test("set details page lists documents in location order with admin tools", asyn
   assert.match(adminHtml, /action="\/sets\/5\/add"/);
   assert.match(adminHtml, /action="\/sets\/5\/remove"/);
   assert.match(adminHtml, /data-print/);
+  assert.doesNotMatch(adminHtml, /보관코드|ARC-00000[12]/);
   assert.ok(adminHtml.indexOf("MR-2026-001") < adminHtml.indexOf("PV-2026-014"));
 
   const userHtml = await setDetailsPage({
@@ -441,6 +442,8 @@ test("document details page keeps location tools, collapses the floor plan, and 
   assert.match(adminHtml, /id="tab-audit"[^>]*>Audit Trail/);
   assert.doesNotMatch(adminHtml, /id="tab-disposal"/);
   assert.doesNotMatch(adminHtml, /<small>보관코드<\/small>/);
+  assert.doesNotMatch(adminHtml, /ARC-000007/);
+  assert.match(adminHtml, /<span class="mono">1-03<\/span>/);
   assert.doesNotMatch(adminHtml, /<small>폐기사유<\/small>/);
   assert.ok(
     adminHtml.indexOf("<small>상태</small>") <
@@ -478,6 +481,26 @@ test("document details page keeps location tools, collapses the floor plan, and 
   // 실물 취급 기능은 남아있지 않아야 한다.
   assert.doesNotMatch(adminHtml, /\/checkout"|\/return"|\/move"|\/guide"|\/custody"/);
   assert.doesNotMatch(adminHtml, /반출|이동 이력/);
+
+  const auditHtml = await documentDetailsPage({
+    session,
+    document: baseDocument,
+    tags: [],
+    disposalLogs: [],
+    auditLogs: [{
+      action: "update",
+      summary: "문서 정보 수정",
+      actor: "관리자",
+      actor_role: "Admin",
+      created_at: "2026-07-17",
+      details: JSON.stringify({
+        before: { storageCode: "ARC-000007", documentNumber: "PV-2026-013" },
+        after: { storage_code: "ARC-000007", documentNumber: "PV-2026-014" }
+      })
+    }]
+  }).text();
+  assert.match(auditHtml, /documentNumber/);
+  assert.doesNotMatch(auditHtml, /storageCode|storage_code|ARC-000007/);
 
   const rightFaceHtml = await documentDetailsPage({
     session,

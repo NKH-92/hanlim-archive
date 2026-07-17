@@ -198,8 +198,10 @@ export async function getSearchIndexDocuments(env) {
   ]);
 
   return (result.results ?? []).map((row) => {
-    row.popularity = popularity.get(Number(row.id)) || 0;
-    return row;
+    // 보관코드는 DB 내부 식별자로만 사용하며 브라우저 검색 인덱스에는 전달하지 않는다.
+    const { storage_code: _storageCode, ...document } = row;
+    document.popularity = popularity.get(Number(row.id)) || 0;
+    return document;
   });
 }
 
@@ -277,7 +279,6 @@ export function documentToViewerItem(document) {
   return {
     id: Number(document.id),
     documentNumber: clean(document.document_number),
-    storageCode: clean(document.storage_code),
     revisionNumber: clean(document.revision_number),
     revisionDate: clean(document.revision_date),
     disposalDueYear: document.disposal_due_year === null || document.disposal_due_year === undefined ? null : Number(document.disposal_due_year),

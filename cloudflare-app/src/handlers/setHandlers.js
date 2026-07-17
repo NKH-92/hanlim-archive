@@ -163,7 +163,7 @@ async function handleAddSetDocuments(request, env, session, setId) {
   const numbers = parseDocumentNumberList(form.get("numbers"));
 
   if (!numbers.length) {
-    return renderSetDetails(env, session, setId, { error: "추가할 문서번호 또는 보관코드를 입력하세요." });
+    return renderSetDetails(env, session, setId, { error: "추가할 문서번호를 입력하세요." });
   }
 
   if (numbers.length > 200) {

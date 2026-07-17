@@ -281,7 +281,6 @@ export function createSearchCore() {
     return [
       { label: "문서번호", value: document.document_number, weight: 120 },
       { label: "문서명", value: document.document_name, weight: 110 },
-      { label: "보관코드", value: document.storage_code, weight: 90 },
       { label: "개정번호", value: document.revision_number, weight: 55 },
       { label: "대분류", value: document.category_name, weight: 65 },
       { label: "태그", value: document.tag_names, weight: 50 },

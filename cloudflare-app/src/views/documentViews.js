@@ -170,7 +170,7 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
       <div>
         <small>보관 위치</small>
         <strong class="loc-label-lg">${escapeHtml(location)}</strong>
-        <span class="mono">${escapeHtml(document.rack_code)} · ${escapeHtml(document.storage_code)}</span>
+        <span class="mono">${escapeHtml(document.rack_code)}</span>
       </div>
       <div class="button-group">
         <button type="button" class="button secondary sm" data-copy-text="${escapeHtml(location)}">위치 복사</button>
@@ -294,7 +294,31 @@ function rackViewOrientation(document) {
 
 function renderAuditLog(log) {
   const labels = { legacy_import: "기존 데이터", create: "등록", update: "수정", move: "이동", dispose: "폐기", restore: "폐기 해제", delete_permanent: "완전 삭제" };
-  return timelineItem(`${labels[log.action] || log.action}: ${log.summary}`, `${log.actor} (${log.actor_role}) / ${log.created_at}`, log.details || "");
+  return timelineItem(`${labels[log.action] || log.action}: ${log.summary}`, `${log.actor} (${log.actor_role}) / ${log.created_at}`, publicAuditDetails(log.details));
+}
+
+function publicAuditDetails(details) {
+  if (!details) return "";
+
+  try {
+    return JSON.stringify(removeInternalStorageCodes(JSON.parse(details)));
+  } catch {
+    // 과거 자유형식 감사 내용에도 ARC 코드가 있으면 화면에서는 가린다.
+    return String(details).replace(/\bARC-\d+\b/gi, "[내부 식별자 숨김]");
+  }
+}
+
+function removeInternalStorageCodes(value) {
+  if (Array.isArray(value)) return value.map(removeInternalStorageCodes);
+  if (!value || typeof value !== "object") {
+    return typeof value === "string"
+      ? value.replace(/\bARC-\d+\b/gi, "[내부 식별자 숨김]")
+      : value;
+  }
+
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => key.replace(/[_-]/g, "").toLowerCase() !== "storagecode")
+    .map(([key, item]) => [key, removeInternalStorageCodes(item)]));
 }
 
 export function documentImportPage({ session, result = null, error = "" }) {
