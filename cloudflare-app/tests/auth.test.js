@@ -27,6 +27,25 @@ test("readSession rejects revoked users before cookie expiry", async () => {
   const request = requestWithCookie(cookie);
 
   assert.equal(await readSession(request, envWithUser({ status: "rejected" })), null);
+  assert.equal(await readSession(request, envWithUser({ status: "disabled" })), null);
+});
+
+test("readSession refreshes granular permissions from app_users on every request", async () => {
+  const cookie = await createSessionCookie({
+    username: "user@example.com",
+    displayName: "사용자",
+    role: "User"
+  }, envWithUser(), true);
+  const session = await readSession(requestWithCookie(cookie), envWithUser({
+    id: 9,
+    canManageDocuments: 1,
+    canViewAudit: 1
+  }));
+
+  assert.equal(session.userId, 9);
+  assert.equal(session.can_manage_documents, true);
+  assert.equal(session.can_view_audit, true);
+  assert.equal(session.can_manage_users, false);
 });
 
 test("readSession revalidates admin sessions against the database role", async () => {
@@ -73,11 +92,19 @@ function requestWithCookie(cookie) {
 }
 
 function envWithUser({
+  id = 1,
   username = "user@example.com",
   displayName = "사용자",
   role = "User",
   status = "approved",
-  passwordRecord = { salt: "salt", hash: "hash" }
+  passwordRecord = { salt: "salt", hash: "hash" },
+  canManageDocuments = 0,
+  canMoveDocuments = 0,
+  canManageDisposals = 0,
+  canManageSets = 0,
+  canManageMasters = 0,
+  canManageUsers = 0,
+  canViewAudit = 0
 } = {}) {
   return {
     SESSION_SECRET,
@@ -88,12 +115,20 @@ function envWithUser({
             return {
               async first() {
                 return {
+                  id,
                   username,
                   display_name: displayName,
                   password_salt: passwordRecord.salt,
                   password_hash: passwordRecord.hash,
                   role,
-                  status
+                  status,
+                  can_manage_documents: canManageDocuments,
+                  can_move_documents: canMoveDocuments,
+                  can_manage_disposals: canManageDisposals,
+                  can_manage_sets: canManageSets,
+                  can_manage_masters: canManageMasters,
+                  can_manage_users: canManageUsers,
+                  can_view_audit: canViewAudit
                 };
               }
             };

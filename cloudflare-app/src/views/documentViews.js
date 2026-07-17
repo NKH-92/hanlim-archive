@@ -1,6 +1,7 @@
 // 문서 목록·등록/수정·상세·CSV 가져오기 화면.
 
 import { escapeHtml, locationLabel, rackFaceLabel, readBoolean } from "../utils.js";
+import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { locationPicker, locationPickerScript } from "./documentLocationPicker.js";
 import { documentResults } from "./documentTableViews.js";
 import { zoneFloorPlanView } from "./floorPlanViews.js";
@@ -57,6 +58,7 @@ export function disposalWorkspacePage({
   years = [],
   filters = {},
   capped = false,
+  legacyLimit = 10,
   feedback = null
 }) {
   const returnTo = disposalListUrl(filters);
@@ -77,7 +79,7 @@ export function disposalWorkspacePage({
     </section>
     <section class="panel results-panel">
       <div class="section-title"><h2>폐기 대상 후보</h2><span class="count-badge">${documents.length}${capped ? "+" : ""}건</span></div>
-      ${capped ? `<div class="alert warning">한 번에 최대 200건까지만 처리할 수 있습니다. 표시된 문서를 선택하거나 필터를 더 좁혀 주세요.</div>` : ""}
+      ${capped ? `<div class="alert warning">소량 긴급 폐기는 한 번에 최대 ${legacyLimit}건만 처리할 수 있습니다. 더 많은 대상은 폐기 캠페인을 사용해 주세요.</div>` : ""}
       ${documentResults(documents, { bulk: true, selectAll: true, emptyMessage: "조건에 맞는 보관중 문서가 없습니다." })}
       ${bulkActionBar("/documents/bulk-dispose", returnTo)}
     </section>
@@ -106,7 +108,9 @@ export function documentFormPage({ session, title, action, values = {}, categori
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="${escapeHtml(action)}" class="stack">
+        ${formValue(values, "returnTo", "return_to") ? `<input type="hidden" name="returnTo" value="${escapeHtml(formValue(values, "returnTo", "return_to"))}">` : ""}
         ${formValue(values, "updatedAt", "updated_at") ? `<input type="hidden" name="expectedUpdatedAt" value="${escapeHtml(formValue(values, "updatedAt", "updated_at"))}">` : ""}
+        ${formValue(values, "rowVersion", "row_version") ? `<input type="hidden" name="expectedRowVersion" value="${escapeHtml(formValue(values, "rowVersion", "row_version"))}">` : ""}
         <label>문서번호 <em>*</em><input name="documentNumber" value="${escapeHtml(formValue(values, "documentNumber", "document_number"))}" required></label>
         <label>개정번호 <em>*</em><input name="revisionNumber" value="${escapeHtml(formValue(values, "revisionNumber", "revision_number") || "Rev.0")}" required></label>
         <label>문서명 <em>*</em><input name="documentName" value="${escapeHtml(formValue(values, "documentName", "document_name"))}" required></label>
@@ -128,8 +132,13 @@ export function documentFormPage({ session, title, action, values = {}, categori
   `, session);
 }
 
-export function documentDetailsPage({ session, document, tags, disposalLogs, auditLogs, floorPlan = [] }) {
-  const isAdmin = session.role === "Admin";
+export function documentDetailsPage({ session, document, tags, disposalLogs, auditLogs, movements = [], floorPlan = [] }) {
+  const canManageDocuments = hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS);
+  const canMoveDocuments = hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS);
+  const canManageDisposals = hasPermission(session, PERMISSIONS.MANAGE_DISPOSALS);
+  const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
+  const canViewMovements = canViewAudit || canMoveDocuments;
+  const hasDetailTabs = canViewAudit || canViewMovements;
   const location = locationLabel(document);
   const latestDisposal = disposalLogs.find((log) => log.action === "disposed");
   const information = `
@@ -151,9 +160,7 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
     ${renderDocumentFloorPlan(document, floorPlan)}
   `;
 
-  const breadcrumb = isAdmin
-    ? `<a href="/app">검색</a><span>/</span><a href="/documents">문서 관리</a><span>/</span><span>상세</span>`
-    : `<a href="/app">문서 검색</a><span>/</span><span>상세</span>`;
+  const breadcrumb = `<a href="/app">검색</a><span>/</span><a href="/documents">전체 문서</a><span>/</span><span>상세</span>`;
 
   return page(document.document_name, `
     <section class="page-head">
@@ -163,7 +170,7 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
       </div>
       <div class="head-actions">
         ${statusBadge(document.status)}
-        ${isAdmin ? documentActions(document) : ""}
+        ${documentActions(document, { canManageDocuments, canMoveDocuments, canManageDisposals })}
       </div>
     </section>
     <section class="locator-hero">
@@ -174,18 +181,20 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
       </div>
       <div class="button-group">
         <button type="button" class="button secondary sm" data-copy-text="${escapeHtml(location)}">위치 복사</button>
-        <a class="button secondary sm" href="${isAdmin ? "/documents" : "/app"}?q=${encodeURIComponent(document.rack_code)}">같은 랙 문서 보기</a>
+        <a class="button secondary sm" href="/documents?q=${encodeURIComponent(document.rack_code)}">같은 랙 문서 보기</a>
       </div>
     </section>
-    ${isAdmin ? `
+    ${hasDetailTabs ? `
       <div class="tab-nav" role="tablist" aria-label="문서 상세 정보">
         <button role="tab" aria-selected="true" data-tab="info" id="tab-info" aria-controls="panel-info">기본 정보</button>
-        <button role="tab" aria-selected="false" data-tab="audit" id="tab-audit" aria-controls="panel-audit">Audit Trail <span class="tab-count">${auditLogs.length}</span></button>
+        ${canViewAudit ? `<button role="tab" aria-selected="false" data-tab="audit" id="tab-audit" aria-controls="panel-audit">감사 이력 <span class="tab-count">${auditLogs.length}</span></button>` : ""}
+        ${canViewMovements ? `<button role="tab" aria-selected="false" data-tab="movements" id="tab-movements" aria-controls="panel-movements">위치 이동 <span class="tab-count">${movements.length}</span></button>` : ""}
       </div>
       <div class="tab-panel" id="panel-info" role="tabpanel" aria-labelledby="tab-info">${information}</div>
-      <div class="tab-panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" hidden><section class="panel">${timeline(auditLogs, renderAuditLog, "Audit Trail이 없습니다.")}</section></div>
+      ${canViewAudit ? `<div class="tab-panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" hidden><section class="panel">${timeline(auditLogs, renderAuditLog, "감사 이력이 없습니다.")}</section></div>` : ""}
+      ${canViewMovements ? `<div class="tab-panel" id="panel-movements" role="tabpanel" aria-labelledby="tab-movements" hidden><section class="panel">${timeline(movements, renderMovementLog, "위치 이동 이력이 없습니다.")}</section></div>` : ""}
     ` : `<div class="document-info">${information}</div>`}
-    ${isAdmin && document.status === "active" ? disposeModal(document) : ""}
+    ${canManageDisposals && document.status === "active" ? disposeModal(document) : ""}
   `, session);
 }
 
@@ -193,11 +202,18 @@ function detail(label, value) {
   return `<div class="detail-item"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`;
 }
 
-function documentActions(document) {
+function documentActions(document, capabilities) {
   if (document.status === "active") {
-    return `<div class="button-group"><a class="button sm" href="/documents/${document.id}/edit">수정</a><button type="button" class="danger-button sm" data-open-modal="dispose-modal">폐기</button></div>`;
+    const actions = [
+      capabilities.canManageDocuments ? `<a class="button sm" href="/documents/${document.id}/edit">수정</a>` : "",
+      capabilities.canMoveDocuments ? `<a class="button secondary sm" href="/documents/${document.id}/move">위치 이동</a>` : "",
+      capabilities.canManageDisposals ? `<button type="button" class="danger-button sm" data-open-modal="dispose-modal">폐기</button>` : ""
+    ].filter(Boolean);
+    return actions.length ? `<div class="button-group">${actions.join("")}</div>` : "";
   }
-  return `<div class="button-group"><form method="post" action="/documents/${document.id}/restore"><button type="submit" class="button sm">폐기 해제</button></form></div>`;
+  return capabilities.canManageDisposals
+    ? `<div class="button-group"><form method="post" action="/documents/${document.id}/restore" class="inline-form"><label class="sr-only" for="restore-reason-${document.id}">폐기 해제 사유</label><input id="restore-reason-${document.id}" name="reason" placeholder="폐기 해제 사유" required><button type="submit" class="button sm">폐기 해제</button></form></div>`
+    : "";
 }
 
 function disposeModal(document) {
@@ -297,6 +313,15 @@ function renderAuditLog(log) {
   return timelineItem(`${labels[log.action] || log.action}: ${log.summary}`, `${log.actor} (${log.actor_role}) / ${log.created_at}`, publicAuditDetails(log.details));
 }
 
+function renderMovementLog(log) {
+  const actor = log.performed_by_name || log.performed_by_username || "알 수 없음";
+  return timelineItem(
+    `${log.from_location_snapshot} → ${log.to_location_snapshot}`,
+    `${actor} / ${log.created_at}`,
+    log.reason
+  );
+}
+
 function publicAuditDetails(details) {
   if (!details) return "";
 
@@ -321,37 +346,6 @@ function removeInternalStorageCodes(value) {
     .map(([key, item]) => [key, removeInternalStorageCodes(item)]));
 }
 
-export function documentImportPage({ session, result = null, error = "" }) {
-  return page("CSV 가져오기", `
-    <section class="page-head">
-      <h1>문서 대량 등록</h1>
-      <a class="button secondary" href="/documents/export.csv">CSV 내보내기</a>
-    </section>
-    <section class="panel narrow">
-      ${error ? alertDanger(error) : ""}
-      ${result ? importResult(result) : ""}
-      <form method="post" action="/documents/import" class="stack" enctype="multipart/form-data">
-        <label>CSV 파일<input type="file" name="csvFile" accept=".csv,text/csv"></label>
-        <label>또는 CSV 붙여넣기<textarea name="csvText" rows="10" placeholder="documentNumber,revisionNumber,revisionDate,disposalDueYear,documentName,category,rackCode,rackColumn,shelfNumber,rackFace,tags,note,status"></textarea></label>
-        <button type="submit" class="primary">가져오기</button>
-      </form>
-      <p class="muted">필수 열: documentNumber, revisionNumber, documentName, category, rackCode, rackColumn, shelfNumber, rackFace. 선택 열: revisionDate, disposalDueYear.</p>
-      <p class="muted">rackFace는 1 또는 2로 적습니다(예: 13번 양면 랙 = 13-1/13-2, 구표기 A/B도 허용). 단면 랙은 1만 가능합니다. rackColumn은 1~7열, shelfNumber는 1~6선반입니다.</p>
-    </section>
-  `, session);
-}
-
-function importResult(result) {
-  const failures = Array.isArray(result.failures) ? result.failures : [];
-  const summary = `<div class="alert ${failures.length ? "warning" : "success"}">${result.created}건 가져오기 완료${result.disposed ? `, 폐기 ${result.disposed}건 반영` : ""}${failures.length ? `, 실패 ${failures.length}건` : ""}</div>`;
-  if (!failures.length) {
-    return summary;
-  }
-  const items = failures.slice(0, 20).map((message) => `<li>${escapeHtml(message)}</li>`).join("");
-  const more = failures.length > 20 ? `<li>… 외 ${failures.length - 20}건</li>` : "";
-  return `${summary}<ul class="import-failures">${items}${more}</ul>`;
-}
-
 function paginationView(pagination, { query, filters }) {
   if (pagination.totalPages <= 1) return "";
   const previous = pagination.page > 1 ? pagination.page - 1 : 1;
@@ -367,6 +361,10 @@ function documentListUrl({ query, filters = {}, page = 1 }) {
     ["category", "categoryId"],
     ["zone", "zoneNumber"],
     ["tag", "tagId"],
+    ["rack", "rackId"],
+    ["face", "rackFace"],
+    ["column", "columnNumber"],
+    ["shelf", "shelfNumber"],
     ["status", "status"],
     ["sort", "sort"]
   ]);
@@ -387,6 +385,14 @@ function bulkActionBar(action = "/documents/bulk-dispose", returnTo = "/document
 }
 
 function documentToolbar(session) {
-  if (session.role !== "Admin") return "";
-  return `<div class="button-group document-toolbar"><a class="button" href="/documents/new">문서 등록</a><a class="button secondary" href="/documents/disposal">폐기 작업</a><a class="button secondary" href="/documents/import">CSV 가져오기</a><a class="button secondary" href="/documents/export.csv">엑셀 목록 내보내기</a></div>`;
+  const actions = [];
+  if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
+    actions.push(`<a class="button" href="/documents/new">문서 등록</a>`);
+    actions.push(`<a class="button secondary" href="/documents/import">CSV 가져오기</a>`);
+    actions.push(`<a class="button secondary" href="/documents/export.csv">CSV 내보내기</a>`);
+  }
+  if (hasPermission(session, PERMISSIONS.MANAGE_DISPOSALS)) {
+    actions.push(`<a class="button secondary" href="/disposal-batches">폐기 캠페인</a>`);
+  }
+  return actions.length ? `<div class="button-group document-toolbar">${actions.join("")}</div>` : "";
 }

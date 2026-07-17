@@ -43,18 +43,37 @@ export const AUDIT_LOG_INSERT = `INSERT INTO document_audit_logs (
       details
     )`;
 
+// 0021 이후 신규 변경 경로는 표시 이름뿐 아니라 안정적인 사용자 식별자도 함께 기록한다.
+// 기존 호출부는 AUDIT_LOG_INSERT를 유지해 배치 문장 순서·바인딩 계약을 깨지 않는다.
+export const AUDIT_LOG_INSERT_WITH_ACTOR = `INSERT INTO document_audit_logs (
+      document_id,
+      storage_code,
+      document_number,
+      action,
+      actor,
+      actor_role,
+      actor_user_id,
+      actor_username,
+      summary,
+      details
+    )`;
+
 export function hasChanged(result) {
   return Number(result?.meta?.changes ?? 0) > 0;
 }
 
-// 낙관적 잠금 절: 사용자가 화면을 연 시점의 updated_at과 현재가 다르면(다른 관리자가 먼저 수정)
-// 가드에 걸려 no-op이 된다. expectedUpdatedAt이 비어 있으면 잠금 없이 기존 동작(하위호환).
-export function optimisticLockClause(expectedUpdatedAt) {
+// 낙관적 잠금 절: 사용자가 화면을 연 시점의 updated_at/row_version과 현재가 다르면
+// 가드에 걸려 no-op이 된다. 토큰 필수 여부는 이 헬퍼를 호출하는 도메인 함수가 결정한다.
+export function optimisticLockClause(expectedUpdatedAt, expectedRowVersion) {
   const expected = clean(expectedUpdatedAt);
-  if (!expected) {
+  const version = Number(expectedRowVersion);
+  if (!expected && !(Number.isInteger(version) && version > 0)) {
     return { sql: "", binds: [] };
   }
-  return { sql: " AND updated_at = ?", binds: [expected] };
+  return {
+    sql: `${expected ? " AND updated_at = ?" : ""}${Number.isInteger(version) && version > 0 ? " AND row_version = ?" : ""}`,
+    binds: [...(expected ? [expected] : []), ...(Number.isInteger(version) && version > 0 ? [version] : [])]
+  };
 }
 
 // UNIQUE 제약 위반을 친화 메시지로 변환. label 예: "카테고리", "태그", "세트".

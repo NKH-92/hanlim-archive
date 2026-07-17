@@ -32,7 +32,11 @@ export function rackConfigurePage({ session, counts, error = "" }) {
   `, session);
 }
 
-export function rackDetailsPage({ session, rack, documents }) {
+export function rackDetailsPage({ session, rack, documents, grid = [], selectedFace = "A", selectedColumn = 0, selectedShelf = 0 }) {
+  const face = readBoolean(rack.is_single_sided) || selectedFace !== "B" ? "A" : "B";
+  const faceDocuments = readBoolean(rack.is_single_sided)
+    ? documents
+    : documents.filter((document) => document.rack_face === face);
   return page(`${rack.code} 랙`, `
     <section class="page-head">
       <h1>${rack.zone_number}구역 ${rack.rack_number}번 랙</h1>
@@ -40,10 +44,60 @@ export function rackDetailsPage({ session, rack, documents }) {
     </section>
     <section class="locator-hero">
       <div><strong class="mono">${escapeHtml(rack.code)}</strong><span>${readBoolean(rack.is_single_sided) ? `단면 ${rack.rack_number}` : `양면 ${rack.rack_number}-1 / ${rack.rack_number}-2`} · 면당 ${rack.column_count || 7}열 × ${rack.shelf_count || 6}선반 = ${(rack.column_count || 7) * (rack.shelf_count || 6)}칸 · 문서 ${documents.length}건</span></div>
-      <a class="button secondary" href="/documents?zone=${rack.zone_number}&sort=location">구역 문서 보기</a>
+      <a class="button secondary" href="/documents?rack=${rack.id}&face=${face}&status=active&sort=location">이 면의 문서 보기</a>
     </section>
-    <section class="panel">${documentResults(documents, { emptyMessage: "이 랙에 등록된 문서가 없습니다." })}</section>
+    ${rackGridView({ rack, grid, face, selectedColumn, selectedShelf })}
+    <section class="panel">${documentResults(faceDocuments, { emptyMessage: "이 면에 등록된 문서가 없습니다." })}</section>
   `, session);
+}
+
+function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
+  const single = readBoolean(rack.is_single_sided);
+  const columns = Array.from({ length: 7 }, (_, index) => index + 1);
+  const origin = rackColumnOrigin(rack, face);
+  if (origin === "right") columns.reverse();
+  const byCell = new Map(grid.map((row) => [
+    `${row.rack_face}:${Number(row.column_number)}:${Number(row.shelf_number)}`,
+    row
+  ]));
+  const cells = [];
+
+  // 실제 표기 규칙: 화면 위가 6선반, 아래가 1선반이다.
+  for (let shelf = 6; shelf >= 1; shelf -= 1) {
+    for (const column of columns) {
+      const row = byCell.get(`${face}:${column}:${shelf}`) || {};
+      const active = Number(row.active_count || 0);
+      const disposed = Number(row.disposed_count || 0);
+      const selected = column === selectedColumn && shelf === selectedShelf;
+      const base = `/documents?rack=${rack.id}&face=${face}&column=${column}&shelf=${shelf}&sort=location`;
+      cells.push(`
+        <div class="rack-cell${selected ? " is-selected" : ""}${active + disposed === 0 ? " is-empty" : ""}" role="gridcell">
+          <a href="${base}&status=active" aria-label="${column}열 ${shelf}선반 보관중 ${active}건">
+            <span>${column}열 · ${shelf}선반</span><strong>${active}건</strong>
+          </a>
+          ${disposed ? `<a class="rack-cell-disposed" href="${base}&status=disposed">폐기 ${disposed}건</a>` : ""}
+        </div>`);
+    }
+  }
+
+  const faceTabs = single ? "" : `<nav class="rack-face-tabs" aria-label="랙 면 선택">
+    <a href="/racks/${rack.id}?face=A" class="${face === "A" ? "active" : ""}" aria-current="${face === "A" ? "page" : "false"}">${rack.rack_number}-1면</a>
+    <a href="/racks/${rack.id}?face=B" class="${face === "B" ? "active" : ""}" aria-current="${face === "B" ? "page" : "false"}">${rack.rack_number}-2면</a>
+  </nav>`;
+  return `<section class="panel rack-digital-twin">
+    <div class="section-title"><h2>${single ? `${rack.rack_number}번 단면` : `${rack.rack_number}-${face === "B" ? "2" : "1"}면`} 위치 격자</h2><span class="count-badge">7열 × 6선반</span></div>
+    ${faceTabs}
+    <div class="rack-column-guide" data-column-origin="${origin}"><span>${origin === "left" ? "1열" : "7열"}</span><strong>정면에서 본 모습</strong><span>${origin === "right" ? "1열" : "7열"}</span></div>
+    <div class="rack-grid-scroll" tabindex="0" aria-label="랙 위치 격자. 가로로 스크롤할 수 있습니다.">
+      <div class="rack-digital-grid" role="grid" aria-rowcount="6" aria-colcount="7" style="--cols:7">${cells.join("")}</div>
+    </div>
+    <p class="muted">위에서 6선반 → 아래에서 1선반 순서입니다. 숫자를 선택하면 해당 위치의 문서 목록으로 이동합니다.</p>
+  </section>`;
+}
+
+function rackColumnOrigin(rack, face) {
+  if (Number(rack.zone_number) === 1 && readBoolean(rack.is_single_sided) && Number(rack.rack_number) === 1) return "right";
+  return face === "B" ? "right" : "left";
 }
 
 export function rackFormPage({ session, values = {}, action, title, error = "" }) {

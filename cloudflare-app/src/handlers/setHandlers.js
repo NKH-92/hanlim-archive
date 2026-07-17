@@ -10,11 +10,14 @@ import {
   parseDocumentNumberList,
   removeDocumentFromSet,
   searchDocuments,
+  setDocumentSetLock,
   upsertDocumentSet
 } from "../db.js";
+import { buildDocumentSetCsv } from "../documentCsv.js";
 import { errorPage, notFoundPage, setDetailsPage, setFormPage, setsPage } from "../html.js";
+import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { clean, redirect } from "../utils.js";
-import { requireAdmin } from "./guards.js";
+import { requireManageSets } from "./permissionGuards.js";
 
 export async function handleSets(env, session) {
   const sets = await getDocumentSets(env);
@@ -38,7 +41,7 @@ async function renderSetDetails(env, session, id, options = {}) {
   ]);
 
   let addCandidates = null;
-  if (session.role === "Admin" && options.addQuery) {
+  if (hasPermission(session, PERMISSIONS.MANAGE_SETS) && options.addQuery && !Number(set.is_locked)) {
     const memberIds = new Set(documents.map((document) => document.id));
     const results = await searchDocuments(env, options.addQuery, 20);
     addCandidates = results.map((document) => ({ ...document, inSet: memberIds.has(document.id) }));
@@ -87,8 +90,22 @@ export async function handleSetRoute(request, env, session, routeInfo) {
     return renderSetDetails(env, session, id, { addQuery: clean(url.searchParams.get("add-q")) });
   }
 
+  if (request.method === "GET" && (action === "export" || action === "export.csv")) {
+    const set = await getDocumentSet(env, id);
+    if (!set) return notFoundPage(session);
+    const documents = await getDocumentSetDocuments(env, id);
+    const csv = buildDocumentSetCsv(set, documents);
+    return new Response(csv.body, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${csv.filename}"`,
+        "Cache-Control": "no-store"
+      }
+    });
+  }
+
   if (request.method === "GET" && action === "edit") {
-    const denied = requireAdmin(session);
+    const denied = requireManageSets(session);
     if (denied) {
       return denied;
     }
@@ -102,11 +119,11 @@ export async function handleSetRoute(request, env, session, routeInfo) {
   }
 
   if (request.method === "POST" && action === "edit") {
-    return requireAdmin(session) ?? handleSaveSet(request, env, session, id);
+    return requireManageSets(session) ?? handleSaveSet(request, env, session, id);
   }
 
   if (request.method === "POST" && action === "delete") {
-    const denied = requireAdmin(session);
+    const denied = requireManageSets(session);
     if (denied) {
       return denied;
     }
@@ -120,11 +137,11 @@ export async function handleSetRoute(request, env, session, routeInfo) {
   }
 
   if (request.method === "POST" && action === "add") {
-    return requireAdmin(session) ?? handleAddSetDocuments(request, env, session, id);
+    return requireManageSets(session) ?? handleAddSetDocuments(request, env, session, id);
   }
 
   if (request.method === "POST" && action === "remove") {
-    const denied = requireAdmin(session);
+    const denied = requireManageSets(session);
     if (denied) {
       return denied;
     }
@@ -140,6 +157,17 @@ export async function handleSetRoute(request, env, session, routeInfo) {
     return redirect(`/sets/${id}`);
   }
 
+  if (request.method === "POST" && (action === "lock" || action === "unlock")) {
+    const denied = requireManageSets(session);
+    if (denied) return denied;
+    const form = await request.formData();
+    const result = await setDocumentSetLock(env, id, action === "lock", form.get("reason"), session);
+    if (!result.ok) {
+      return renderSetDetails(env, session, id, { error: result.message });
+    }
+    return redirect(`/sets/${id}?toast=${action === "lock" ? "set-locked" : "set-unlocked"}`);
+  }
+
   return notFoundPage(session);
 }
 
@@ -147,6 +175,9 @@ async function handleAddSetDocuments(request, env, session, setId) {
   const set = await getDocumentSet(env, setId);
   if (!set) {
     return notFoundPage(session);
+  }
+  if (Number(set.is_locked) === 1) {
+    return renderSetDetails(env, session, setId, { error: "잠긴 세트는 문서를 추가할 수 없습니다." });
   }
 
   const form = await request.formData();

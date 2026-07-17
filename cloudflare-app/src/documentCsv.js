@@ -29,6 +29,46 @@ export function buildDocumentCsv(documents, now = new Date()) {
   };
 }
 
+const DOCUMENT_SET_CSV_HEADER = Object.freeze([
+  "순번",
+  "문서번호",
+  "개정번호",
+  "문서명",
+  "대분류",
+  "상태",
+  "구역",
+  "랙",
+  "면",
+  "열",
+  "선반",
+  "보관 위치 전체 문자열"
+]);
+
+export function buildDocumentSetCsv(set, documents, now = new Date()) {
+  const rows = documents.map((document, index) => [
+    index + 1,
+    document.document_number,
+    document.revision_number,
+    document.document_name,
+    document.category_name,
+    document.status === "disposed" ? "폐기" : "보관중",
+    document.zone_number,
+    document.rack_number,
+    Number(document.is_single_sided) === 1 ? "단면" : (document.rack_face === "B" ? "2면" : "1면"),
+    document.column_number,
+    document.shelf_number,
+    locationLabel(document)
+  ]);
+  const csv = [DOCUMENT_SET_CSV_HEADER, ...rows]
+    .map((row) => row.map(csvEscape).join(","))
+    .join("\r\n");
+  const setId = Number(set?.id) || 0;
+  return {
+    body: `\uFEFF${csv}\r\n`,
+    filename: `hanlim-archive-set-${setId}-${now.toISOString().slice(0, 10)}.csv`
+  };
+}
+
 export async function readDocumentImportRows(form, limits) {
   const uploaded = form.get("csvFile");
 

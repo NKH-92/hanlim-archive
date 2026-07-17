@@ -8,12 +8,13 @@ import {
   configureRackCounts,
   getRackDetails,
   getRackDocuments,
+  getRackGrid,
   getRackSummaries,
   upsertRack
 } from "../db.js";
 import { notFoundPage, rackConfigurePage, rackDetailsPage, rackFormPage, racksPage } from "../html.js";
 import { clean, redirect } from "../utils.js";
-import { requireAdmin } from "./guards.js";
+import { requireManageMasters } from "./permissionGuards.js";
 
 export async function handleRacks(env, session) {
   const racks = await getRackSummaries(env);
@@ -33,20 +34,33 @@ export async function handleRackRoute(request, env, session, routeInfo) {
   const { id, action } = routeInfo;
 
   if (request.method === "GET" && action === "details") {
-    const [rack, documents] = await Promise.all([
+    const [rack, documents, grid] = await Promise.all([
       getRackDetails(env, id),
-      getRackDocuments(env, id)
+      getRackDocuments(env, id),
+      getRackGrid(env, id)
     ]);
 
     if (!rack) {
       return notFoundPage(session);
     }
 
-    return rackDetailsPage({ session, rack, documents });
+    const url = new URL(request.url);
+    const selectedFace = url.searchParams.get("face") === "B" ? "B" : "A";
+    const selectedColumn = Number(url.searchParams.get("column"));
+    const selectedShelf = Number(url.searchParams.get("shelf"));
+    return rackDetailsPage({
+      session,
+      rack,
+      documents,
+      grid,
+      selectedFace,
+      selectedColumn: Number.isInteger(selectedColumn) && selectedColumn > 0 ? selectedColumn : 0,
+      selectedShelf: Number.isInteger(selectedShelf) && selectedShelf > 0 ? selectedShelf : 0
+    });
   }
 
   if (request.method === "GET" && action === "edit") {
-    const denied = requireAdmin(session);
+    const denied = requireManageMasters(session);
     if (denied) {
       return denied;
     }
@@ -59,7 +73,7 @@ export async function handleRackRoute(request, env, session, routeInfo) {
   }
 
   if (request.method === "POST" && action === "edit") {
-    const denied = requireAdmin(session);
+    const denied = requireManageMasters(session);
     if (denied) {
       return denied;
     }
@@ -85,7 +99,7 @@ export async function handleRackConfigure(request, env, session) {
   const counts = Object.fromEntries(
     RACK_ZONES.map((zone) => [zone, Number(form.get(`zone${zone}Count`))])
   );
-  const result = await configureRackCounts(env, counts);
+  const result = await configureRackCounts(env, counts, session);
 
   if (!result.ok) {
     return renderRackConfigure(env, session, result.message);
@@ -147,7 +161,7 @@ export async function handleSaveRack(request, env, session, id = 0) {
   }
 
   try {
-    const rackId = await upsertRack(env, values);
+    const rackId = await upsertRack(env, values, session);
     return redirect(`/racks/${rackId}?toast=saved`);
   } catch (error) {
     return rackFormPage({

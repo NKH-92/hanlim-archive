@@ -1,11 +1,14 @@
 import {
-  AUDIT_LOG_INSERT,
+  AUDIT_LOG_INSERT_WITH_ACTOR,
   DOCUMENT_BASE_JOINS,
   DOCUMENT_LOCATION_COLUMNS,
   hasChanged,
   optimisticLockClause
 } from "./sqlShared.js";
+import { FREE_TIER_BUDGET } from "../freeTierBudget.js";
+import { clean } from "../utils.js";
 import { getDocument, getDocumentTags, getDisposalLogs } from "./documentsData.js";
+import { createSystemAuditStatement } from "./systemAuditData.js";
 
 async function getTagsByIds(env, tagIds) {
   const uniqueTagIds = [...new Set(tagIds || [])].filter((id) => Number.isInteger(id) && id > 0);
@@ -57,9 +60,10 @@ async function getSlotDetails(env, id) {
 // 감사 로그도 함께 0행이 된다 — 감사기록 없는 상태변경(2차 쓰기 실패)과 유령 로그를 모두 막는다.
 // 반드시 가드 UPDATE/DELETE '앞'에 두어 pre-state를 읽게 한다.
 function conditionalAuditStatement(env, document, action, actor, actorRole, summary, details, guardClause, guardBinds = []) {
+  const actorInfo = normalizeActor(actor, actorRole);
   return env.DB.prepare(`
-    ${AUDIT_LOG_INSERT}
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?
+    ${AUDIT_LOG_INSERT_WITH_ACTOR}
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     FROM documents
     WHERE ${guardClause}
   `).bind(
@@ -67,12 +71,31 @@ function conditionalAuditStatement(env, document, action, actor, actorRole, summ
     document.storage_code,
     document.document_number,
     action,
-    actor || "알 수 없음",
-    actorRole || "Unknown",
+    actorInfo.displayName,
+    actorInfo.role,
+    actorInfo.userId,
+    actorInfo.username,
     summary,
     details ? JSON.stringify(details) : null,
     ...guardBinds
   );
+}
+
+function normalizeActor(actor, fallbackRole = "Unknown") {
+  if (actor && typeof actor === "object") {
+    return {
+      displayName: String(actor.displayName ?? actor.display_name ?? actor.username ?? "알 수 없음"),
+      username: String(actor.username ?? "unknown"),
+      userId: Number.isInteger(Number(actor.userId ?? actor.id)) ? Number(actor.userId ?? actor.id) : null,
+      role: String(actor.role ?? fallbackRole ?? "Unknown")
+    };
+  }
+  return {
+    displayName: String(actor || "알 수 없음"),
+    username: "unknown",
+    userId: null,
+    role: String(fallbackRole || "Unknown")
+  };
 }
 
 function documentSnapshot(document, tags = []) {
@@ -140,13 +163,16 @@ function insertDocumentTagStatementsByTempCode(env, temporaryStorageCode, tagIds
 }
 
 function createDocumentAuditStatement(env, temporaryStorageCode, actor, actorRole) {
+  const actorInfo = normalizeActor(actor, actorRole);
   return env.DB.prepare(`
-    ${AUDIT_LOG_INSERT}
+    ${AUDIT_LOG_INSERT_WITH_ACTOR}
     SELECT
       d.id,
       'ARC-' || printf('%06d', d.id),
       d.document_number,
       'create',
+      ?,
+      ?,
       ?,
       ?,
       '문서 등록',
@@ -183,7 +209,13 @@ function createDocumentAuditStatement(env, temporaryStorageCode, actor, actorRol
       )
     ${DOCUMENT_BASE_JOINS}
     WHERE d.storage_code = ?
-  `).bind(actor || "알 수 없음", actorRole || "Unknown", temporaryStorageCode);
+  `).bind(
+    actorInfo.displayName,
+    actorInfo.role,
+    actorInfo.userId,
+    actorInfo.username,
+    temporaryStorageCode
+  );
 }
 
 export async function createDocument(env, values, actor, actorRole = "User") {
@@ -248,6 +280,11 @@ export async function updateDocument(env, id, values, actor, actorRole = "Admin"
     return { ok: false, message: "폐기 상태 문서는 폐기를 해제하기 전까지 수정할 수 없습니다." };
   }
 
+  const expectedRowVersion = Number(values.expectedRowVersion);
+  if (!clean(values.expectedUpdatedAt) || !Number.isInteger(expectedRowVersion) || expectedRowVersion <= 0) {
+    return { ok: false, message: "문서 수정 잠금 정보가 없습니다. 새로고침 후 다시 시도하세요." };
+  }
+
   // 기존 내부 호출자가 위치 값을 생략해도 현재 위치를 보존한다. 명시된 값은 감사 스냅샷과
   // 실제 UPDATE에 동일하게 사용해 기록과 저장 상태가 어긋나지 않게 한다.
   const nextValues = {
@@ -261,7 +298,7 @@ export async function updateDocument(env, id, values, actor, actorRole = "Admin"
     documentWithValues(env, doc, nextValues)
   ]);
 
-  const lock = optimisticLockClause(values.expectedUpdatedAt);
+  const lock = optimisticLockClause(values.expectedUpdatedAt, values.expectedRowVersion);
   const guardClause = `id = ? AND status = 'active'${lock.sql}`;
   const guardBinds = [id, ...lock.binds];
   const existsGuard = `EXISTS (SELECT 1 FROM documents WHERE ${guardClause})`;
@@ -290,6 +327,7 @@ export async function updateDocument(env, id, values, actor, actorRole = "Admin"
         note = ?,
         rack_slot_id = ?,
         rack_face = ?,
+        row_version = row_version + 1,
         updated_at = CURRENT_TIMESTAMP
       WHERE ${guardClause}
     `).bind(
@@ -329,8 +367,9 @@ async function transitionDocumentStatus(env, id, spec, actor, actorRole) {
 
   const tags = await getDocumentTags(env, id);
   const next = { ...doc, status: spec.toStatus };
-  const guardClause = `id = ? AND status = '${spec.fromStatus}'`;
-  const guardBinds = [id];
+  const guardClause = `id = ? AND status = '${spec.fromStatus}' AND updated_at = ? AND row_version = ?`;
+  const guardBinds = [id, doc.updated_at, Number(doc.row_version)];
+  const actorInfo = normalizeActor(actor, actorRole);
 
   const statements = [
     env.DB.prepare(`
@@ -338,15 +377,26 @@ async function transitionDocumentStatus(env, id, spec, actor, actorRole) {
       SELECT ?, '${spec.logAction}', ?, ?
       FROM documents
       WHERE ${guardClause}
-    `).bind(id, actor, spec.logReason, ...guardBinds),
+    `).bind(id, actorInfo.displayName, spec.logReason, ...guardBinds),
     conditionalAuditStatement(env, next, spec.auditAction, actor, actorRole, spec.auditSummary,
-      spec.auditDetails(documentSnapshot(doc, tags), documentSnapshot(next, tags)), guardClause, guardBinds),
-    env.DB.prepare(`
-      UPDATE documents
-      SET status = '${spec.toStatus}', updated_at = CURRENT_TIMESTAMP
-      WHERE ${guardClause}
-    `).bind(...guardBinds)
+      spec.auditDetails(documentSnapshot(doc, tags), documentSnapshot(next, tags)), guardClause, guardBinds)
   ];
+  if (spec.systemAudit) {
+    statements.push(createSystemAuditStatement(env, {
+      entityType: "document",
+      entityId: id,
+      entityReference: doc.document_number,
+      action: spec.auditAction,
+      actor,
+      summary: spec.auditSummary,
+      details: spec.auditDetails(documentSnapshot(doc, tags), documentSnapshot(next, tags))
+    }, { guardSql: `FROM documents WHERE ${guardClause}`, guardBinds }));
+  }
+  statements.push(env.DB.prepare(`
+      UPDATE documents
+      SET status = '${spec.toStatus}', row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
+      WHERE ${guardClause}
+    `).bind(...guardBinds));
 
   const results = await env.DB.batch(statements);
   if (!hasChanged(results[results.length - 1])) {
@@ -375,6 +425,14 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
   if (!uniqueIds.length) {
     return { ok: true, disposed: 0, skipped: 0, failures: [] };
   }
+  if (uniqueIds.length > FREE_TIER_BUDGET.legacyBulkDisposeMaxItems) {
+    return {
+      ok: false,
+      disposed: 0,
+      skipped: 0,
+      failures: [`소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.legacyBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`]
+    };
+  }
 
   const placeholders = uniqueIds.map(() => "?").join(", ");
   const [docsResult, tagsResult] = await Promise.all([
@@ -393,6 +451,7 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
         d.rack_face,
         d.status,
         d.updated_at,
+        d.row_version,
         ${DOCUMENT_LOCATION_COLUMNS}
         r.column_count,
         r.shelf_count,
@@ -424,6 +483,7 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
   const activeIds = [];
   const failures = [];
   let skipped = 0;
+  const actorInfo = normalizeActor(actor, actorRole);
 
   for (const id of uniqueIds) {
     const doc = docsById.get(id);
@@ -438,8 +498,8 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
 
     const tags = tagsByDoc.get(id) || [];
     const next = { ...doc, status: "disposed" };
-    const guardClause = "id = ? AND status = 'active'";
-    const guardBinds = [id];
+    const guardClause = "id = ? AND status = 'active' AND updated_at = ? AND row_version = ?";
+    const guardBinds = [id, doc.updated_at, Number(doc.row_version)];
 
     statements.push(
       env.DB.prepare(`
@@ -447,7 +507,7 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
         SELECT ?, 'disposed', ?, ?
         FROM documents
         WHERE ${guardClause}
-      `).bind(id, actor, reason || null, ...guardBinds),
+      `).bind(id, actorInfo.displayName, reason || null, ...guardBinds),
       conditionalAuditStatement(
         env,
         next,
@@ -465,7 +525,7 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
       ),
       env.DB.prepare(`
         UPDATE documents
-        SET status = 'disposed', updated_at = CURRENT_TIMESTAMP
+        SET status = 'disposed', row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
         WHERE ${guardClause}
       `).bind(...guardBinds)
     );
@@ -478,6 +538,16 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
       disposed: 0,
       skipped,
       failures
+    };
+  }
+
+  // 위의 문서·태그 집합 조회 2회까지 포함해 요청 내부 statement 예산을 방어한다.
+  if (statements.length + 2 > FREE_TIER_BUDGET.maxD1StatementsPerRequest) {
+    return {
+      ok: false,
+      disposed: 0,
+      skipped,
+      failures: ["한 번에 처리할 수 있는 무료티어 내부 예산을 초과했습니다."]
     };
   }
 
@@ -500,15 +570,20 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
   };
 }
 
-export async function restoreDocument(env, id, actor, actorRole = "Admin") {
+export async function restoreDocument(env, id, actor, reason, actorRole = "Admin") {
+  const restoreReason = String(reason ?? "").trim();
+  if (!restoreReason) {
+    return { ok: false, message: "폐기 해제 사유를 입력해 주세요." };
+  }
   return transitionDocumentStatus(env, id, {
     fromStatus: "disposed",
     toStatus: "active",
     logAction: "restored",
-    logReason: "관리자 폐기 해제",
+    logReason: restoreReason,
     auditAction: "restore",
     auditSummary: "문서 폐기 해제",
-    auditDetails: (before, after) => ({ before, after })
+    auditDetails: (before, after) => ({ before, after, reason: restoreReason }),
+    systemAudit: true
   }, actor, actorRole);
 }
 
@@ -529,8 +604,8 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
     getDocumentTags(env, id),
     getDisposalLogs(env, id)
   ]);
-  const guardClause = "id = ? AND status = 'disposed'";
-  const guardBinds = [id];
+  const guardClause = "id = ? AND status = 'disposed' AND updated_at = ? AND row_version = ?";
+  const guardBinds = [id, doc.updated_at, Number(doc.row_version)];
 
   const statements = [
     conditionalAuditStatement(env, doc, "delete_permanent", actor, actorRole, "문서 완전삭제", {
@@ -539,6 +614,15 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
         disposals: disposalLogs
       }
     }, guardClause, guardBinds),
+    createSystemAuditStatement(env, {
+      entityType: "document",
+      entityId: id,
+      entityReference: doc.document_number,
+      action: "delete_permanent",
+      actor,
+      summary: "문서 완전삭제",
+      details: { before: documentSnapshot(doc, tags), history: { disposals: disposalLogs } }
+    }, { guardSql: `FROM documents WHERE ${guardClause}`, guardBinds }),
     env.DB.prepare(`DELETE FROM documents WHERE ${guardClause}`).bind(...guardBinds)
   ];
 

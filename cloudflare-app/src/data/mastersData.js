@@ -1,5 +1,6 @@
 import { clean } from "../utils.js";
 import { uniqueViolationMessage } from "./sqlShared.js";
+import { createSystemAuditStatement } from "./systemAuditData.js";
 
 export async function getCategories(env) {
   const result = await env.DB.prepare(`
@@ -45,7 +46,7 @@ export async function getActiveTags(env) {
 
 // 카테고리/태그 공통 upsert. spec.update/insert가 이름 검증 통과 후의 SQL과 바인딩을 결정한다.
 // (SQL 문자열 들여쓰기는 기존 인라인 버전과 바이트 동일하게 유지)
-async function upsertMaster(env, values, spec) {
+async function upsertMaster(env, values, actor, spec) {
   const name = clean(values.name);
   if (!name) {
     return { ok: false, message: `${spec.noun} 이름은 필수입니다.` };
@@ -53,14 +54,42 @@ async function upsertMaster(env, values, spec) {
 
   try {
     if (values.id) {
+      const before = await env.DB.prepare(`SELECT * FROM ${spec.table} WHERE id = ?`).bind(values.id).first();
+      if (!before) return { ok: false, message: `${spec.noun}를 찾을 수 없습니다.` };
       const update = spec.update(name);
-      const result = await env.DB.prepare(update.sql).bind(...update.binds).run();
+      const nextActive = values.isActive ? 1 : 0;
+      const action = Number(before.is_active) !== nextActive
+        ? (nextActive ? "reactivate" : "deactivate")
+        : "update";
+      const results = await env.DB.batch([
+        createSystemAuditStatement(env, {
+          entityType: spec.entityType,
+          entityId: values.id,
+          entityReference: before.name,
+          action,
+          actor,
+          summary: `${spec.noun} ${action === "reactivate" ? "다시 사용" : action === "deactivate" ? "사용중지" : "수정"}`,
+          details: { before: spec.snapshot(before), after: spec.nextSnapshot(values, name) }
+        }, { guardSql: `FROM ${spec.table} WHERE id = ?`, guardBinds: [values.id] }),
+        env.DB.prepare(update.sql).bind(...update.binds)
+      ]);
+      const result = results[1];
 
       return result.meta.changes > 0 ? { ok: true } : { ok: false, message: `${spec.noun}를 찾을 수 없습니다.` };
     }
 
     const insert = spec.insert(name);
-    await env.DB.prepare(insert.sql).bind(...insert.binds).run();
+    await env.DB.batch([
+      env.DB.prepare(insert.sql).bind(...insert.binds),
+      createSystemAuditStatement(env, {
+        entityType: spec.entityType,
+        entityReference: name,
+        action: "create",
+        actor,
+        summary: `${spec.noun} 생성`,
+        details: { after: spec.nextSnapshot({ ...values, isActive: true }, name) }
+      }, { guardSql: `FROM ${spec.table} WHERE name = ?`, guardBinds: [name] })
+    ]);
 
     return { ok: true };
   } catch (error) {
@@ -71,22 +100,42 @@ async function upsertMaster(env, values, spec) {
   }
 }
 
-async function softDeleteMaster(env, id, table, noun) {
-  const result = await env.DB.prepare(`
-    UPDATE ${table}
-    SET is_active = 0,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).bind(id).run();
+async function softDeleteMaster(env, id, actor, { table, noun, entityType, snapshot }) {
+  const before = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first();
+  if (!before) return { ok: false, message: `${noun}를 찾을 수 없습니다.` };
+  if (Number(before.is_active) === 0) return { ok: true };
+  const guardSql = `FROM ${table} WHERE id = ? AND is_active = 1`;
+  const results = await env.DB.batch([
+    createSystemAuditStatement(env, {
+      entityType,
+      entityId: id,
+      entityReference: before.name,
+      action: "deactivate",
+      actor,
+      summary: `${noun} 사용중지`,
+      details: { before: snapshot(before), after: { ...snapshot(before), isActive: false } }
+    }, { guardSql, guardBinds: [id] }),
+    env.DB.prepare(`
+      UPDATE ${table}
+      SET is_active = 0,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND is_active = 1
+    `).bind(id)
+  ]);
+  const result = results[1];
 
   return result.meta.changes > 0 ? { ok: true } : { ok: false, message: `${noun}를 찾을 수 없습니다.` };
 }
 
-export async function upsertCategory(env, values) {
+export async function upsertCategory(env, values, actor = {}) {
   const sortOrder = Number.isFinite(values.sortOrder) ? values.sortOrder : 0;
 
-  return upsertMaster(env, values, {
+  return upsertMaster(env, values, actor, {
     noun: "카테고리",
+    table: "categories",
+    entityType: "category",
+    snapshot: (row) => ({ name: row.name, description: row.description || "", sortOrder: Number(row.sort_order || 0), isActive: Boolean(row.is_active) }),
+    nextSnapshot: (next, name) => ({ name, description: clean(next.description), sortOrder, isActive: Boolean(next.isActive) }),
     update: (name) => ({
       sql: `
         UPDATE categories
@@ -109,13 +158,22 @@ export async function upsertCategory(env, values) {
   });
 }
 
-export async function deleteCategory(env, id) {
-  return softDeleteMaster(env, id, "categories", "카테고리");
+export async function deleteCategory(env, id, actor = {}) {
+  return softDeleteMaster(env, id, actor, {
+    table: "categories",
+    noun: "카테고리",
+    entityType: "category",
+    snapshot: (row) => ({ name: row.name, description: row.description || "", sortOrder: Number(row.sort_order || 0), isActive: Boolean(row.is_active) })
+  });
 }
 
-export async function upsertTag(env, values) {
-  return upsertMaster(env, values, {
+export async function upsertTag(env, values, actor = {}) {
+  return upsertMaster(env, values, actor, {
     noun: "태그",
+    table: "tags",
+    entityType: "tag",
+    snapshot: (row) => ({ name: row.name, description: row.description || "", isActive: Boolean(row.is_active) }),
+    nextSnapshot: (next, name) => ({ name, description: clean(next.description), isActive: Boolean(next.isActive) }),
     update: (name) => ({
       sql: `
         UPDATE tags
@@ -137,6 +195,11 @@ export async function upsertTag(env, values) {
   });
 }
 
-export async function deleteTag(env, id) {
-  return softDeleteMaster(env, id, "tags", "태그");
+export async function deleteTag(env, id, actor = {}) {
+  return softDeleteMaster(env, id, actor, {
+    table: "tags",
+    noun: "태그",
+    entityType: "tag",
+    snapshot: (row) => ({ name: row.name, description: row.description || "", isActive: Boolean(row.is_active) })
+  });
 }

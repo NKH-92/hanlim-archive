@@ -51,7 +51,7 @@ Do / Don't
 
 ## 3. Typography
 
-- 본문 스택: `"Pretendard Variable", Pretendard, system-ui, -apple-system, "Segoe UI", sans-serif`
+- 본문 스택: `system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`
   (한국어 전문 표준 서체. Inter 기본값 대체가 아니라 한글 가독성을 위한 의도적 선택)
 - 코드 스택 `--font-mono`: `ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace`
   (위치 코드, 문서번호, 보관코드 전용)

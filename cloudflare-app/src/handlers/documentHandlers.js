@@ -1,6 +1,8 @@
-import { getAppConfig } from "../config.js";
+import { FREE_TIER_BUDGET } from "../config.js";
 import {
+  buildSearchSuggestions,
   buildFloorPlanLayout,
+  createDisposalBatch,
   createDocument,
   disposeDocument,
   disposeDocumentsBulk,
@@ -8,6 +10,9 @@ import {
   getDisposalLogs,
   getDocument,
   getDocumentAuditLogs,
+  getDocumentCount,
+  getDocumentMovements,
+  getDocumentPage,
   getDocumentTags,
   getDisposalCandidates,
   getDisposalDueYears,
@@ -24,25 +29,54 @@ import {
   validateDocumentInput,
   valuesFromDocumentForm
 } from "../db.js";
-import { buildDocumentCsv, prepareDocumentImportRows, readDocumentImportRows } from "../documentCsv.js";
+import { buildDocumentCsv } from "../documentCsv.js";
 import {
   documentDetailsPage,
   documentFormPage,
-  documentImportPage,
   disposalWorkspacePage,
   documentsPage,
   errorPage,
   notFoundPage
 } from "../html.js";
-import { clean, logError, paginateSlice, redirect } from "../utils.js";
-import { requireAdmin } from "./guards.js";
+import { hasPermission, PERMISSIONS } from "../permissions.js";
+import { clean, paginateSlice, redirect } from "../utils.js";
+import { requireManageDisposals, requireManageDocuments } from "./permissionGuards.js";
 import { resolveSearchOutcome, resolveSearchRequest } from "./searchRequest.js";
 
 export async function handleDocuments(request, env, session) {
   const url = new URL(request.url);
   const search = await resolveSearchRequest(env, url);
   const { query, page, categories, tags, parsed, filters } = search;
-  const pageSize = 30;
+  const pageSize = FREE_TIER_BUDGET.documentPageSize;
+  if (!parsed.text) {
+    // 필터 전용 브라우즈는 전체 후보를 Worker 메모리로 가져오지 않는다. COUNT 뒤 실제
+    // 페이지를 SQL LIMIT/OFFSET으로 읽고, 자동완성은 그 30행에서만 만든다.
+    const totalDocuments = await getDocumentCount(env, filters);
+    const totalPages = Math.max(1, Math.ceil(totalDocuments / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const documents = await getDocumentPage(env, filters, safePage, pageSize);
+    const suggestions = filters.status === "disposed" ? [] : buildSearchSuggestions(documents, 10);
+    const didYouMean = await resolveSearchOutcome(env, { ...search, page: safePage }, totalDocuments);
+
+    return documentsPage({
+      session,
+      query,
+      parsedQuery: parsed,
+      documents,
+      categories,
+      tags,
+      filters,
+      suggestions,
+      didYouMean,
+      pagination: {
+        page: safePage,
+        pageSize,
+        totalDocuments,
+        totalPages
+      }
+    });
+  }
+
   // 호환 필터면 검색 1회로 목록·자동완성을 함께 채운다(중복 D1·스코어링 제거).
   const { documents: allDocuments, suggestions } = await searchDocumentsWithSuggestions(
     env,
@@ -83,7 +117,7 @@ async function renderDisposalWorkspace(env, session, filters, feedback = null) {
     loadDocumentFormOptions(env, { activeOnly: true, includeSlots: false }),
     getRackSummaries(env),
     getDisposalDueYears(env),
-    getDisposalCandidates(env, filters, 201)
+    getDisposalCandidates(env, filters, FREE_TIER_BUDGET.legacyBulkDisposeMaxItems + 1)
   ]);
   return disposalWorkspacePage({
     session,
@@ -91,8 +125,9 @@ async function renderDisposalWorkspace(env, session, filters, feedback = null) {
     racks,
     years,
     filters,
-    documents: candidates.slice(0, 200),
-    capped: candidates.length > 200,
+    documents: candidates.slice(0, FREE_TIER_BUDGET.legacyBulkDisposeMaxItems),
+    capped: candidates.length > FREE_TIER_BUDGET.legacyBulkDisposeMaxItems,
+    legacyLimit: FREE_TIER_BUDGET.legacyBulkDisposeMaxItems,
     feedback
   });
 }
@@ -110,87 +145,39 @@ export async function handleDocumentExport(env) {
   });
 }
 
-export function renderDocumentImport(session) {
-  return documentImportPage({ session });
-}
-
-export async function handleDocumentImport(request, env, session) {
-  const config = getAppConfig(env);
-  const form = await request.formData();
-  const importRows = await readDocumentImportRows(form, config.csvImport);
-
-  if (!importRows.ok) {
-    return documentImportPage({ session, error: importRows.error });
-  }
-
-  const formOptions = await loadDocumentFormOptions(env, { activeOnly: true });
-  const prepared = prepareDocumentImportRows(importRows.rows, formOptions);
-  if (prepared.errors.length) {
-    return documentImportPage({
-      session,
-      error: `가져오기 전 검증 오류가 있습니다: ${prepared.errors.slice(0, 8).join(" / ")}${prepared.errors.length > 8 ? " ..." : ""}`
-    });
-  }
-
-  let created = 0;
-  let disposed = 0;
-  const failures = [];
-
-  // 행별로 독립 처리하고 실패를 집계한다. 중간 한 행이 실패해도 일반 500 대신
-  // "생성 N · 폐기반영 M · 실패 K" 요약을 돌려줘 운영자가 후속 조치할 수 있게 한다.
-  for (let index = 0; index < prepared.items.length; index += 1) {
-    const item = prepared.items[index];
-    const rowNumber = index + 2; // 헤더(1행) 다음부터
-    try {
-      const id = await createDocument(env, item.values, session.displayName, session.role);
-      created += 1;
-
-      if (item.status === "disposed") {
-        const result = await disposeDocument(env, id, session.displayName, "CSV 가져오기 폐기 상태 반영", session.role);
-        if (!result.ok) {
-          throw new Error(`문서는 등록되었지만 폐기 상태를 반영하지 못했습니다: ${result.message}`);
-        }
-        disposed += 1;
-      }
-    } catch (error) {
-      logError("import.row", error, { row: rowNumber });
-      failures.push(`${rowNumber}행: ${error.message || "등록 실패"}`);
-    }
-  }
-
-  return documentImportPage({ session, result: { created, disposed, failures } });
-}
-
 export async function renderCreateDocument(env, session, values = {}, error = "") {
   const { categories, tags, slots } = await loadDocumentFormOptions(env, { activeOnly: true });
+  const safeValues = { ...values, returnTo: safeDocumentReturn(values.returnTo) };
 
   return documentFormPage({
     session,
     title: "문서 등록",
     action: "/documents",
-    values,
+    values: safeValues,
     categories,
     tags,
     slots,
-    selectedTags: values.tagIds || [],
+    selectedTags: safeValues.tagIds || [],
     error
   });
 }
 
 export async function handleCreateDocument(request, env, session) {
-  const values = valuesFromDocumentForm(await request.formData());
+  const form = await request.formData();
+  const values = valuesFromDocumentForm(form);
+  values.returnTo = safeDocumentReturn(form.get("returnTo"));
   const validation = await validateDocumentInput(env, values);
 
   if (validation) {
     return renderCreateDocument(env, session, values, validation);
   }
 
-  const id = await createDocument(env, values, session.displayName, session.role);
-  return redirect(`/documents/${id}?toast=created`);
+  const id = await createDocument(env, values, session, session.role);
+  return redirect(values.returnTo ? withToast(values.returnTo, "document-created") : `/documents/${id}?toast=created`);
 }
 
 async function renderEditDocumentForm(env, session, id, values, selectedTags, error = "") {
-  const { categories, tags, slots } = await loadDocumentFormOptions(env, { includeSlots: true });
+  const { categories, tags, slots } = await loadDocumentFormOptions(env, { includeSlots: false });
   return documentFormPage({
     session,
     title: "문서 수정",
@@ -201,7 +188,7 @@ async function renderEditDocumentForm(env, session, id, values, selectedTags, er
     slots,
     selectedTags,
     error,
-    showLocation: true
+    showLocation: false
   });
 }
 
@@ -215,10 +202,13 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       return notFoundPage(session);
     }
 
-    const [tags, disposalLogs, auditLogs, racks, regions] = await Promise.all([
+    const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
+    const canViewMovements = canViewAudit || hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS);
+    const [tags, disposalLogs, auditLogs, movements, racks, regions] = await Promise.all([
       getDocumentTags(env, id),
       getDisposalLogs(env, id),
-      session.role === "Admin" ? getDocumentAuditLogs(env, id) : Promise.resolve([]),
+      canViewAudit ? getDocumentAuditLogs(env, id) : Promise.resolve([]),
+      canViewMovements ? getDocumentMovements(env, id) : Promise.resolve([]),
       getRackSummaries(env),
       getFloorPlanRegions(env)
     ]);
@@ -229,12 +219,13 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       tags,
       disposalLogs,
       auditLogs,
+      movements,
       floorPlan: buildFloorPlanLayout(racks, regions)
     });
   }
 
   if (request.method === "GET" && action === "edit") {
-    const denied = requireAdmin(session);
+    const denied = requireManageDocuments(session);
     if (denied) {
       return denied;
     }
@@ -262,7 +253,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
   }
 
   if (request.method === "POST" && action === "edit") {
-    const denied = requireAdmin(session);
+    const denied = requireManageDocuments(session);
     if (denied) {
       return denied;
     }
@@ -276,6 +267,10 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
     }
 
     const values = valuesFromDocumentForm(await request.formData());
+    // 일반정보 수정에서는 위치 입력을 받지 않는다. 기존 위치를 검증·저장 값에 다시
+    // 결합해 위치 변경이 반드시 전용 이동 흐름을 거치도록 한다.
+    values.rackSlotId = Number(document.rack_slot_id);
+    values.rackFace = document.rack_face;
     const validation = await validateDocumentInput(env, values, {
       allowInactiveCategoryId: document.category_id,
       allowInactiveTagIds: currentTags.map((tag) => tag.id)
@@ -285,7 +280,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       return renderEditDocumentForm(env, session, id, values, values.tagIds, validation);
     }
 
-    const result = await updateDocument(env, id, values, session.displayName, session.role);
+    const result = await updateDocument(env, id, values, session, session.role);
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
@@ -294,13 +289,13 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
   }
 
   if (request.method === "POST" && action === "dispose") {
-    const denied = requireAdmin(session);
+    const denied = requireManageDisposals(session);
     if (denied) {
       return denied;
     }
 
     const form = await request.formData();
-    const result = await disposeDocument(env, id, session.displayName, clean(form.get("reason")), session.role);
+    const result = await disposeDocument(env, id, session, clean(form.get("reason")), session.role);
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
@@ -308,12 +303,13 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
   }
 
   if (request.method === "POST" && action === "restore") {
-    const denied = requireAdmin(session);
+    const denied = requireManageDisposals(session);
     if (denied) {
       return denied;
     }
 
-    const result = await restoreDocument(env, id, session.displayName, session.role);
+    const form = await request.formData();
+    const result = await restoreDocument(env, id, session, clean(form.get("reason")), session.role);
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
@@ -321,12 +317,12 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
   }
 
   if (request.method === "POST" && action === "delete-permanent") {
-    const denied = requireAdmin(session);
+    const denied = requireManageDisposals(session);
     if (denied) {
       return denied;
     }
 
-    const result = await permanentlyDeleteDocument(env, id, session.displayName, session.role);
+    const result = await permanentlyDeleteDocument(env, id, session, session.role);
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
@@ -365,10 +361,10 @@ export async function handleBulkDispose(request, env, session) {
     });
   }
 
-  if (ids.length > 200) {
+  if (ids.length > FREE_TIER_BUDGET.legacyBulkDisposeMaxItems) {
     return renderDisposalWorkspace(env, session, disposalFiltersFromReturn(returnTo), {
       type: "error",
-      message: "일괄 폐기는 한 번에 200건 이하로 처리해 주세요."
+      message: `소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.legacyBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`
     });
   }
 
@@ -395,33 +391,24 @@ export async function handleFilteredDispose(request, env, session) {
     disposalDueYear: form.get("disposalDueYear")
   });
   const reason = clean(form.get("reason"));
-  const returnTo = safeDisposalReturn(form.get("returnTo"));
   if (!reason || (!filters.categoryId && !filters.rackId && !filters.disposalDueYear)) {
     return errorPage("폐기 사유와 하나 이상의 필터가 필요합니다.", session, 400);
   }
-  const candidates = await getDisposalCandidates(env, filters, 201);
-  if (candidates.length > 200) {
-    return errorPage("대상이 200건을 초과합니다. 필터를 더 좁혀 주세요.", session, 400);
+  // 필터 전체 즉시 폐기는 금지한다. 같은 조건을 가진 캠페인 초안만 만들고,
+  // 사용자가 후보 검토·동결을 마친 뒤 분할 처리하도록 넘긴다.
+  const result = await createDisposalBatch(env, {
+    title: "필터 기반 폐기 캠페인",
+    disposalReason: reason,
+    criteria: { ...filters, yearMode: "exact" }
+  }, session);
+  if (!result.ok) {
+    return errorPage(result.message, session, 400);
   }
-  const result = await disposeInChunks(env, candidates.map((item) => Number(item.id)), session, reason);
-  if (result.failures.length) {
-    return errorPage(`일괄 폐기 중 ${result.disposed}건 완료, ${result.failures.length}건 실패: ${result.failures.join(" / ")}`, session, 409);
-  }
-  return redirect(withToast(returnTo, "bulk-disposed", {
-    disposed: result.disposed,
-    skipped: result.skipped
-  }));
+  return redirect(`/disposal-batches/${result.id}/edit`);
 }
 
 async function disposeInChunks(env, ids, session, reason) {
-  const total = { disposed: 0, skipped: 0, failures: [] };
-  for (let offset = 0; offset < ids.length; offset += 20) {
-    const result = await disposeDocumentsBulk(env, ids.slice(offset, offset + 20), session.displayName, reason, session.role);
-    total.disposed += result.disposed;
-    total.skipped += result.skipped;
-    total.failures.push(...result.failures);
-  }
-  return total;
+  return disposeDocumentsBulk(env, ids, session, reason, session.role);
 }
 
 function safeDisposalReturn(value) {
@@ -434,6 +421,11 @@ function safeDisposalReturn(value) {
   } catch {
     return "/documents/disposal";
   }
+}
+
+function safeDocumentReturn(value) {
+  const path = clean(value);
+  return /^\/sets\/\d+$/.test(path) ? path : "";
 }
 
 function disposalFiltersFromReturn(path) {

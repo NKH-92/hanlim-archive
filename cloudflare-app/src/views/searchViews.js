@@ -247,16 +247,22 @@ function viewerUrl({ query, filters = {}, patch = {}, page = 1 }) {
     ["category", "categoryId"],
     ["tag", "tagId"],
     ["zone", "zoneNumber"],
+    ["rack", "rackId"],
+    ["face", "rackFace"],
+    ["column", "columnNumber"],
+    ["shelf", "shelfNumber"],
     ["status", "status"],
     ["sort", "sort"]
   ]);
 }
 
-export function qaPage({ session }) {
+export function qaPage({ session, support = {} }) {
+  const contactName = [support.department, support.name].filter(Boolean).join(" / ");
+  const contactEmail = support.email || "";
   return page("Q&A", `
     <section class="page-head">
       <h1>Q&amp;A</h1>
-      <a class="button secondary" href="mailto:nkh92@hanlim.com">담당자 문의</a>
+      ${contactEmail ? `<a class="button secondary" href="mailto:${escapeHtml(contactEmail)}">담당자 문의</a>` : ""}
     </section>
     <section class="content-grid">
       <article class="panel">
@@ -270,8 +276,8 @@ export function qaPage({ session }) {
       <article class="panel">
         <h2>담당자</h2>
         <dl class="contact-list">
-          <div><dt>부서 / 이름</dt><dd>SQA팀 담당자</dd></div>
-          <div><dt>이메일</dt><dd><a href="mailto:nkh92@hanlim.com">nkh92@hanlim.com</a></dd></div>
+          <div><dt>부서 / 이름</dt><dd>${escapeHtml(contactName || "운영 관리자에게 문의하세요.")}</dd></div>
+          ${contactEmail ? `<div><dt>이메일</dt><dd><a href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a></dd></div>` : ""}
         </dl>
       </article>
     </section>
@@ -314,7 +320,7 @@ export function searchReportPage({ session, report }) {
               <td>${escapeHtml(row.query_text)}</td>
               <td>${Number(row.hits || 0)}회</td>
               <td>${escapeHtml(row.last_searched_at || "-")}</td>
-              <td><a class="button secondary sm" href="/tags">태그 보강</a></td>
+              <td><a class="button secondary sm" href="/tags?name=${encodeURIComponent(row.query_text)}">태그 보강</a></td>
             </tr>
           `).join("")}</tbody>
         </table></div>` : emptyState("실패한 검색이 없습니다.")}

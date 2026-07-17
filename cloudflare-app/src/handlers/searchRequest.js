@@ -19,6 +19,10 @@ export async function resolveSearchRequest(env, url) {
     category: url.searchParams.get("category"),
     zone: url.searchParams.get("zone"),
     tag: url.searchParams.get("tag"),
+    rack: url.searchParams.get("rack"),
+    face: url.searchParams.get("face"),
+    column: url.searchParams.get("column"),
+    shelf: url.searchParams.get("shelf"),
     status: url.searchParams.get("status"),
     includeDisposed: url.searchParams.get("includeDisposed"),
     sort: url.searchParams.get("sort")
@@ -28,7 +32,8 @@ export async function resolveSearchRequest(env, url) {
     getActiveTags(env)
   ]);
   const hasExplicitFilter = Boolean(
-    explicitFilters.categoryId || explicitFilters.zoneNumber || explicitFilters.tagId ||
+    explicitFilters.categoryId || explicitFilters.zoneNumber || explicitFilters.tagId || explicitFilters.rackId ||
+    explicitFilters.rackFace || explicitFilters.columnNumber || explicitFilters.shelfNumber ||
     explicitFilters.status === "disposed"
   );
 
@@ -43,6 +48,10 @@ export async function resolveSearchRequest(env, url) {
     categoryId: explicitFilters.categoryId || parsed.filters.categoryId || 0,
     zoneNumber: explicitFilters.zoneNumber || parsed.filters.zoneNumber || 0,
     tagId: explicitFilters.tagId || parsed.filters.tagId || 0,
+    rackId: explicitFilters.rackId || 0,
+    rackFace: explicitFilters.rackFace || "",
+    columnNumber: explicitFilters.columnNumber || 0,
+    shelfNumber: explicitFilters.shelfNumber || 0,
     status: explicitFilters.status || "active",
     includeDisposed: explicitFilters.status === "disposed",
     sort: explicitFilters.sort || (parsed.text ? "relevance" : "updated")

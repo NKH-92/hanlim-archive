@@ -1,28 +1,29 @@
 // 문서 세트 화면.
 
+import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { escapeHtml, locationLabel } from "../utils.js";
 import { archiveMap } from "./floorPlanViews.js";
 import { alertDanger, alertWarning, emptyState, metric, page, sectionHeader, statusBadge, timeline, timelineItem } from "./layout.js";
 
 export function setsPage({ session, sets }) {
-  const isAdmin = session.role === "Admin";
+  const canManage = hasPermission(session, PERMISSIONS.MANAGE_SETS);
   return page("문서 세트", `
     <section class="page-head">
       <h1>문서 세트</h1>
       <div class="button-group">
-        ${isAdmin ? `<a class="button" href="/sets/new">세트 만들기</a>` : ""}
+        ${canManage ? `<a class="button" href="/sets/new">세트 만들기</a>` : ""}
       </div>
     </section>
     <p class="muted">감사 준비문서 목록처럼 자주 찾는 문서 묶음을 저장해 두고 한눈에 관리합니다.</p>
     ${sets.length ? `<section class="rack-grid">
       ${sets.map((set) => `
         <a class="panel rack-card" href="/sets/${set.id}">
-          <small>문서 ${Number(set.document_count || 0)}건${Number(set.disposed_count || 0) ? ` · 폐기 ${Number(set.disposed_count)}건 포함` : ""}</small>
+          <small>문서 ${Number(set.document_count || 0)}건${Number(set.disposed_count || 0) ? ` · 폐기 ${Number(set.disposed_count)}건 포함` : ""}${Number(set.is_locked) ? " · 잠김" : ""}</small>
           <strong>${escapeHtml(set.name)}</strong>
           <span>${escapeHtml(set.description || "설명 없음")}</span>
         </a>
       `).join("")}
-    </section>` : emptyState(isAdmin ? "아직 세트가 없습니다. 세트를 만들고 준비문서를 등록하세요." : "아직 등록된 세트가 없습니다.")}
+    </section>` : emptyState(canManage ? "아직 세트가 없습니다. 세트를 만들고 준비문서를 등록하세요." : "아직 등록된 세트가 없습니다.")}
   `, session);
 }
 
@@ -40,8 +41,9 @@ export function setFormPage({ session, values = {}, action, title, error = "" })
   `, session);
 }
 
-export function setDetailsPage({ session, set, documents, racks, logs = [], addQuery = "", addCandidates = null, addResult = null, error = "" }) {
-  const isAdmin = session.role === "Admin";
+export function setDetailsPage({ session, set, documents, racks, logs = [], addQuery = "", addCandidates = null, addResult = null, error = "", printedAt = new Date() }) {
+  const canManage = hasPermission(session, PERMISSIONS.MANAGE_SETS);
+  const isLocked = Number(set.is_locked) === 1;
   const disposedCount = documents.filter((doc) => doc.status !== "active").length;
   const rackCount = new Set(documents.map((doc) => doc.rack_code)).size;
   const zoneCount = new Set(documents.map((doc) => doc.zone_number)).size;
@@ -52,11 +54,14 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
       <div><h1>${escapeHtml(set.name)}</h1>${set.description ? `<p class="page-sub">${escapeHtml(set.description)}</p>` : ""}</div>
       <div class="button-group">
         <button type="button" class="button secondary" data-print><i class="fa-solid fa-print"></i> 목록 인쇄</button>
-        ${isAdmin ? `<a class="button secondary" href="/sets/${set.id}/edit">세트 수정</a>` : ""}
+        <a class="button secondary" href="/sets/${set.id}/export.csv">CSV 내보내기</a>
+        ${canManage && !isLocked ? `<a class="button secondary" href="/sets/${set.id}/edit">세트 수정</a>` : ""}
       </div>
     </section>
     ${error ? alertDanger(error) : ""}
-    ${addResult ? setAddResultView(addResult) : ""}
+    ${isLocked ? alertWarning(`이 세트는 편집 잠금 상태입니다.${set.lock_reason ? ` 사유: ${set.lock_reason}` : ""}`) : ""}
+    ${addResult ? setAddResultView(addResult, set) : ""}
+    ${setPrintHeader({ set, session, documents, printedAt })}
     <section class="metric-strip" aria-label="세트 요약">
       ${metric("문서", documents.length, "세트에 등록된 문서")}
       ${metric("보관 랙", rackCount, `${zoneCount}개 구역`)}
@@ -65,17 +70,19 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
     <section class="panel">
       ${sectionHeader("보관 위치 목록", `${documents.length}건`)}
       ${documents.length ? `<p class="muted">구역 → 랙 → 열 → 선반 순으로 정렬되어 있어 문서고에서 한 번에 돌며 꺼낼 수 있습니다.</p>` : ""}
-      ${setDocumentTable(set, documents, isAdmin)}
+      ${setDocumentTable(set, documents, canManage && !isLocked)}
     </section>
     ${documents.length ? `<section class="panel">
       ${sectionHeader("랙 지도", `${rackCount}개 랙`)}
       ${archiveMap(racks, hits)}
     </section>` : ""}
-    ${isAdmin ? setAdminTools(set, addQuery, addCandidates) : ""}
+    ${canManage ? setLockControls(set, isLocked) : ""}
+    ${canManage && !isLocked ? setAdminTools(set, addQuery, addCandidates) : ""}
     ${logs.length ? `<section class="panel">
       ${sectionHeader("세트 변경 이력", `${logs.length}건`)}
       ${timeline(logs, renderSetLog, "변경 이력이 없습니다.")}
     </section>` : ""}
+    ${setPrintFooter()}
   `, session);
 }
 
@@ -84,17 +91,18 @@ function renderSetLog(log) {
   return timelineItem(labels[log.action] || log.action, `${log.actor} / ${log.created_at}`, log.details || "");
 }
 
-function setDocumentTable(set, documents, isAdmin) {
+function setDocumentTable(set, documents, canEdit) {
   if (!documents.length) {
-    return emptyState(isAdmin ? "아직 세트에 담긴 문서가 없습니다. 아래에서 문서를 추가하세요." : "아직 세트에 담긴 문서가 없습니다.");
+    return emptyState(canEdit ? "아직 세트에 담긴 문서가 없습니다. 아래에서 문서를 추가하세요." : "아직 세트에 담긴 문서가 없습니다.");
   }
 
   return `
     <div class="table-wrap"><table class="set-doc-table">
       <caption class="sr-only">${escapeHtml(set.name)} 세트 문서 위치 목록</caption>
-      <thead><tr><th>순번</th><th>보관 위치</th><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>상태</th>${isAdmin ? "<th>관리</th>" : ""}</tr></thead>
+      <thead><tr><th class="print-only print-check-column">확인</th><th>순번</th><th>보관 위치</th><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>상태</th>${canEdit ? "<th class=\"screen-only\">관리</th>" : ""}</tr></thead>
       <tbody>${documents.map((doc, index) => `
         <tr class="${doc.status !== "active" ? "is-disposed" : ""}">
+          <td class="print-only print-check-cell">□</td>
           <td>${index + 1}</td>
           <td><strong>${escapeHtml(locationLabel(doc))}</strong></td>
           <td>${escapeHtml(doc.document_number)}</td>
@@ -102,19 +110,47 @@ function setDocumentTable(set, documents, isAdmin) {
           <td><a href="/documents/${doc.id}">${escapeHtml(doc.document_name)}</a></td>
           <td>${escapeHtml(doc.category_name)}</td>
           <td>${statusBadge(doc.status)}</td>
-          ${isAdmin ? `<td><form method="post" action="/sets/${set.id}/remove" data-confirm="세트에서 이 문서를 제외할까요?"><input type="hidden" name="documentId" value="${doc.id}"><button type="submit" class="danger-button sm">제외</button></form></td>` : ""}
+          ${canEdit ? `<td class="screen-only"><form method="post" action="/sets/${set.id}/remove" data-confirm="세트에서 이 문서를 제외할까요?"><input type="hidden" name="documentId" value="${doc.id}"><button type="submit" class="danger-button sm">제외</button></form></td>` : ""}
         </tr>
       `).join("")}</tbody>
     </table></div>
   `;
 }
 
-function setAddResultView(result) {
+function setAddResultView(result, set) {
   const added = `<div class="alert success" role="status">${result.added}건을 세트에 추가했습니다.</div>`;
   const missing = result.missing.length
-    ? alertWarning(`찾지 못한 번호 ${result.missing.length}건: ${result.missing.join(", ")}`)
+    ? `<div class="alert warning"><strong>찾지 못한 번호 ${result.missing.length}건</strong><div class="missing-document-links">${result.missing.map((number) => `<a href="/documents/new?documentNumber=${encodeURIComponent(number)}&returnTo=${encodeURIComponent(`/sets/${set.id}`)}">${escapeHtml(number)} 등록</a>`).join("")}</div></div>`
     : "";
   return `${added}${missing}`;
+}
+
+function setLockControls(set, isLocked) {
+  const action = isLocked ? "unlock" : "lock";
+  const title = isLocked ? "세트 잠금 해제" : "세트 편집 잠금";
+  return `<section class="panel set-lock-panel">
+    ${sectionHeader(title, isLocked ? "잠김" : "편집 가능")}
+    <form method="post" action="/sets/${set.id}/${action}" class="lock-form">
+      <label>${isLocked ? "잠금 해제 사유" : "잠금 사유"}<input name="reason" maxlength="500" required></label>
+      <button type="submit" class="button secondary">${title}</button>
+    </form>
+    ${isLocked ? `<p class="muted">${escapeHtml(set.locked_by_name || "알 수 없음")} · ${escapeHtml(set.locked_at || "-")}</p>` : `<p class="muted">잠금 후에는 문서 추가·제외와 세트 정보 수정을 할 수 없습니다.</p>`}
+  </section>`;
+}
+
+function setPrintHeader({ set, session, documents, printedAt }) {
+  const date = printedAt instanceof Date && !Number.isNaN(printedAt.valueOf())
+    ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "long", timeStyle: "short" }).format(printedAt)
+    : String(printedAt || "");
+  return `<section class="print-only set-print-header">
+    <h1>${escapeHtml(set.name)}</h1>
+    <p>${escapeHtml(set.description || "설명 없음")}</p>
+    <dl><div><dt>출력일시</dt><dd>${escapeHtml(date)}</dd></div><div><dt>출력자</dt><dd>${escapeHtml(session.displayName || session.username)}</dd></div><div><dt>총 문서 수</dt><dd>${documents.length}건</dd></div></dl>
+  </section>`;
+}
+
+function setPrintFooter() {
+  return `<section class="print-only set-print-signatures"><div>작성자 서명 <span></span></div><div>검토자 서명 <span></span></div></section><div class="print-only set-print-page">페이지 <span></span></div>`;
 }
 
 function setAdminTools(set, addQuery, addCandidates) {

@@ -93,29 +93,31 @@ export function clientScript() {
         } catch {}
       }
 
-      document.querySelectorAll('[data-copy-text]').forEach(function (button) {
-        button.addEventListener('click', function () {
-          var text = button.dataset.copyText || '';
-          if (!text) return;
-          function done() {
-            var original = button.textContent;
-            button.textContent = '복사됨';
-            setTimeout(function () { button.textContent = original; }, 1400);
-          }
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(done).catch(function () {});
-          } else {
-            var input = document.createElement('textarea');
-            input.value = text;
-            input.setAttribute('readonly', '');
-            input.style.position = 'fixed';
-            input.style.left = '-9999px';
-            document.body.appendChild(input);
-            input.select();
-            try { document.execCommand('copy'); done(); } catch {}
-            input.remove();
-          }
-        });
+      // 즉시검색은 결과 버튼을 innerHTML로 나중에 만든다. 문서에 한 번만 위임해 서버 렌더,
+      // 문서 상세, 동적 결과가 모두 같은 복사 동작을 쓰게 한다.
+      document.addEventListener('click', function (event) {
+        var button = event.target && event.target.closest ? event.target.closest('[data-copy-text]') : null;
+        if (!button) return;
+        var text = button.dataset.copyText || '';
+        if (!text) return;
+        var originalHtml = button.innerHTML;
+        function done() {
+          button.textContent = '복사됨';
+          setTimeout(function () { button.innerHTML = originalHtml; }, 1400);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () {});
+        } else {
+          var input = document.createElement('textarea');
+          input.value = text;
+          input.setAttribute('readonly', '');
+          input.style.position = 'fixed';
+          input.style.left = '-9999px';
+          document.body.appendChild(input);
+          input.select();
+          try { document.execCommand('copy'); done(); } catch {}
+          input.remove();
+        }
       });
 
       document.querySelectorAll('[data-suggest-input]').forEach(function (input) {
@@ -125,7 +127,12 @@ export function clientScript() {
           clearTimeout(timer);
           var q = input.value.trim();
           if (!datalist || q.length < 2) return;
+          if (input.closest('[data-viewer-form]') && window.__hanlimSearchIndexReady) {
+            datalist.innerHTML = '';
+            return;
+          }
           timer = setTimeout(function () {
+            if (input.closest('[data-viewer-form]') && window.__hanlimSearchIndexReady) return;
             var statusControl = input.form ? input.form.querySelector('select[name="status"]') : null;
             var suggestionUrl = '/api/search-suggestions?q=' + encodeURIComponent(q);
             if (statusControl && statusControl.value === 'disposed') suggestionUrl += '&status=disposed';
@@ -166,6 +173,39 @@ export function clientScript() {
         });
       }
       syncBulk();
+
+      var commandPalette = document.querySelector('[data-command-palette]');
+      var commandInput = document.querySelector('[data-command-input]');
+      var commandItems = Array.prototype.slice.call(document.querySelectorAll('[data-command-item]'));
+      var filterCommands = function () {
+        var query = (commandInput ? commandInput.value : '').trim().toLocaleLowerCase('ko-KR');
+        commandItems.forEach(function (item) {
+          var label = (item.getAttribute('data-command-label') || item.textContent || '').toLocaleLowerCase('ko-KR');
+          item.hidden = Boolean(query && label.indexOf(query) === -1);
+        });
+      };
+      var openCommands = function () {
+        if (!commandPalette || typeof commandPalette.showModal !== 'function') return;
+        if (!commandPalette.open) commandPalette.showModal();
+        if (commandInput) {
+          commandInput.value = '';
+          filterCommands();
+          setTimeout(function () { commandInput.focus(); }, 0);
+        }
+      };
+      document.querySelectorAll('[data-command-open]').forEach(function (button) {
+        button.addEventListener('click', openCommands);
+      });
+      document.querySelectorAll('[data-command-close]').forEach(function (button) {
+        button.addEventListener('click', function () { if (commandPalette && commandPalette.open) commandPalette.close(); });
+      });
+      if (commandInput) commandInput.addEventListener('input', filterCommands);
+      document.addEventListener('keydown', function (event) {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase('en-US') === 'k') {
+          event.preventDefault();
+          openCommands();
+        }
+      });
 
       var bulkForm = document.querySelector('[data-bulk-form]');
       if (bulkForm) {
@@ -487,6 +527,7 @@ export function clientScript() {
             .then(function (response) { return response.ok ? response.json() : null; })
             .then(function (data) {
               searchIndex = data && data.documents ? data.documents : [];
+              window.__hanlimSearchIndexReady = true;
               indexLoading = false;
               renderInstant();
             })

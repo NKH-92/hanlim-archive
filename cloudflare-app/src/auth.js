@@ -4,6 +4,7 @@ import {
   constantTimeEqual,
   parseCookies
 } from "./utils.js";
+import { permissionFlags } from "./permissions.js";
 
 export const SESSION_COOKIE = "hanlim_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
@@ -166,7 +167,19 @@ export async function readSession(request, env) {
     }
 
     const user = await env.DB.prepare(`
-      SELECT username, display_name, status, role
+      SELECT
+        id,
+        username,
+        display_name,
+        status,
+        role,
+        can_manage_documents,
+        can_move_documents,
+        can_manage_disposals,
+        can_manage_sets,
+        can_manage_masters,
+        can_manage_users,
+        can_view_audit
       FROM app_users
       WHERE username = ?
       LIMIT 1
@@ -178,9 +191,11 @@ export async function readSession(request, env) {
 
     return {
       ...session,
+      userId: Number(user.id) || null,
       username: user.username,
       displayName: user.display_name,
-      role: normalizeRole(user.role)
+      role: normalizeRole(user.role),
+      ...permissionFlags(user)
     };
   } catch {
     return null;

@@ -6,6 +6,7 @@ import {
   getAppUsers,
   getCategories,
   getDocumentQualitySummary,
+  getSearchIndexStats,
   getTags,
   rejectUser,
   upsertCategory,
@@ -19,16 +20,21 @@ import {
   passwordPage,
   tagsPage
 } from "../html.js";
+import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { clean, redirect } from "../utils.js";
 
 export async function handleAdminDashboard(env, session) {
-  const [users, quality] = await Promise.all([
-    getAppUsers(env),
-    getDocumentQualitySummary(env)
+  const canManageUsers = hasPermission(session, PERMISSIONS.MANAGE_USERS);
+  const canManageDocuments = hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS);
+  const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
+  const [users, quality, searchIndex] = await Promise.all([
+    canManageUsers ? getAppUsers(env) : Promise.resolve([]),
+    canManageDocuments ? getDocumentQualitySummary(env) : Promise.resolve(null),
+    canViewAudit ? getSearchIndexStats(env) : Promise.resolve(null)
   ]);
   const pendingCount = users.filter((user) => user.status === "pending").length;
 
-  return adminDashboardPage({ session, pendingCount, quality });
+  return adminDashboardPage({ session, pendingCount, quality, searchIndex });
 }
 
 export async function handleAdminSettings(env, session) {
@@ -39,8 +45,8 @@ export async function handleAdminSettings(env, session) {
 
 export async function handleAdminUserAction(env, session, routeInfo) {
   const result = routeInfo.action === "approve"
-    ? await approveUser(env, routeInfo.id, session.username)
-    : await rejectUser(env, routeInfo.id, session.username);
+    ? await approveUser(env, routeInfo.id, session)
+    : await rejectUser(env, routeInfo.id, session);
 
   if (!result.ok) {
     return errorPage("처리할 수 있는 가입 신청을 찾지 못했습니다.", session, 400);
@@ -63,7 +69,7 @@ export async function handleSaveCategory(request, env, session, id = 0) {
     sortOrder: Number(form.get("sortOrder") || 0),
     isActive: id ? form.get("isActive") === "1" : true
   };
-  const result = await upsertCategory(env, values);
+  const result = await upsertCategory(env, values, session);
 
   if (!result.ok) {
     return renderCategories(env, session, result.message, values);
@@ -77,7 +83,7 @@ export async function handleCategoryAction(request, env, session, routeInfo) {
     return handleSaveCategory(request, env, session, routeInfo.id);
   }
 
-  const result = await deleteCategory(env, routeInfo.id);
+  const result = await deleteCategory(env, routeInfo.id, session);
   if (!result.ok) {
     return renderCategories(env, session, result.message);
   }
@@ -97,7 +103,7 @@ export async function handleSaveTag(request, env, session, id = 0) {
     description: clean(form.get("description")),
     isActive: id ? form.get("isActive") === "1" : true
   };
-  const result = await upsertTag(env, values);
+  const result = await upsertTag(env, values, session);
 
   if (!result.ok) {
     return renderTags(env, session, result.message, values);
@@ -111,7 +117,7 @@ export async function handleTagAction(request, env, session, routeInfo) {
     return handleSaveTag(request, env, session, routeInfo.id);
   }
 
-  const result = await deleteTag(env, routeInfo.id);
+  const result = await deleteTag(env, routeInfo.id, session);
   if (!result.ok) {
     return renderTags(env, session, result.message);
   }

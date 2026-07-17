@@ -8,6 +8,7 @@ import {
 } from "../config.js";
 import { clean, logError, readBoolean } from "../utils.js";
 import { DOCUMENT_BASE_JOINS, DOCUMENT_LOCATION_COLUMNS } from "./sqlShared.js";
+import { createSystemAuditStatement } from "./systemAuditData.js";
 
 // 좌표는 Archive.png(1024x797) 회색 구역 실측 비율. 컨테이너 aspect-ratio가
 // 이미지 비율과 일치해야 오버레이가 어긋나지 않는다 (html.js .floor-plan-media 참조).
@@ -181,6 +182,33 @@ export async function getRackDocuments(env, rackId) {
   return result.results ?? [];
 }
 
+// 랙 상세 격자는 셀마다 질의하지 않고 한 번의 집계로 면·열·선반별 상태 건수를 만든다.
+export async function getRackGrid(env, rackId) {
+  const result = await env.DB.prepare(`
+    SELECT
+      faces.rack_face,
+      rs.column_number,
+      rs.shelf_number,
+      SUM(CASE WHEN d.status = 'active' THEN 1 ELSE 0 END) AS active_count,
+      SUM(CASE WHEN d.status = 'disposed' THEN 1 ELSE 0 END) AS disposed_count
+    FROM racks r
+    JOIN rack_slots rs ON rs.rack_id = r.id AND rs.is_active = 1
+    JOIN (
+      SELECT 'A' AS rack_face
+      UNION ALL
+      SELECT 'B' AS rack_face
+    ) faces ON faces.rack_face = 'A' OR r.is_single_sided = 0
+    LEFT JOIN documents d
+      ON d.rack_slot_id = rs.id
+      AND d.rack_face = faces.rack_face
+    WHERE r.id = ? AND r.is_active = 1
+    GROUP BY faces.rack_face, rs.column_number, rs.shelf_number
+    ORDER BY faces.rack_face, rs.shelf_number DESC, rs.column_number
+  `).bind(rackId).all();
+
+  return result.results ?? [];
+}
+
 export async function getSlotOptions(env) {
   const result = await env.DB.prepare(`
     SELECT
@@ -204,7 +232,7 @@ export async function getSlotOptions(env) {
   }));
 }
 
-export async function upsertRack(env, values) {
+export async function upsertRack(env, values, actor = {}) {
   if (values.rackNumber < 1 || values.rackNumber > MAX_RACKS_PER_ZONE) {
     throw new Error(`랙 번호는 구역당 1~${MAX_RACKS_PER_ZONE} 사이여야 합니다.`);
   }
@@ -214,8 +242,21 @@ export async function upsertRack(env, values) {
   }
 
   const code = `${values.zoneNumber}-${String(values.rackNumber).padStart(2, "0")}`;
+  const after = rackAuditSnapshot({
+    zone_number: values.zoneNumber,
+    rack_number: values.rackNumber,
+    code,
+    name: values.name,
+    description: values.description,
+    is_single_sided: values.isSingleSided ? 1 : 0,
+    is_active: values.isActive ? 1 : 0,
+    column_count: values.columnCount,
+    shelf_count: values.shelfCount
+  });
 
   if (values.id) {
+    const before = await getRackDetails(env, values.id);
+    if (!before) throw new Error("랙을 찾을 수 없습니다.");
     const blocked = await env.DB.prepare(`
       SELECT COUNT(*) AS count
       FROM documents d
@@ -228,20 +269,68 @@ export async function upsertRack(env, values) {
       throw new Error("줄이려는 열/선반 범위 밖에 문서가 있어 랙 구조를 변경할 수 없습니다.");
     }
 
-    await env.DB.prepare(`
-      UPDATE racks
-      SET
-        zone_number = ?,
-        rack_number = ?,
-        code = ?,
-        name = ?,
-        description = ?,
-        is_single_sided = ?,
-        is_active = ?,
-        column_count = ?,
-        shelf_count = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
+    const nextActive = values.isActive ? 1 : 0;
+    const action = Number(before.is_active) !== nextActive
+      ? (nextActive ? "reactivate" : "deactivate")
+      : "update";
+    const results = await env.DB.batch([
+      createSystemAuditStatement(env, {
+        entityType: "rack",
+        entityId: values.id,
+        entityReference: before.code,
+        action,
+        actor,
+        summary: `랙 ${action === "reactivate" ? "다시 사용" : action === "deactivate" ? "사용중지" : "수정"}`,
+        details: { before: rackAuditSnapshot(before), after }
+      }, { guardSql: "FROM racks WHERE id = ?", guardBinds: [values.id] }),
+      env.DB.prepare(`
+        UPDATE racks
+        SET
+          zone_number = ?,
+          rack_number = ?,
+          code = ?,
+          name = ?,
+          description = ?,
+          is_single_sided = ?,
+          is_active = ?,
+          column_count = ?,
+          shelf_count = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(
+        values.zoneNumber,
+        values.rackNumber,
+        code,
+        values.name || null,
+        values.description || null,
+        values.isSingleSided ? 1 : 0,
+        nextActive,
+        values.columnCount,
+        values.shelfCount,
+        values.id
+      )
+    ]);
+    if (!Number(results[1]?.meta?.changes || 0)) throw new Error("랙을 찾을 수 없습니다.");
+
+    await syncRackSlots(env, values.id, values.columnCount, values.shelfCount);
+    return values.id;
+  }
+
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO racks (
+        zone_number,
+        rack_number,
+        code,
+        name,
+        description,
+        is_single_sided,
+        is_active,
+        column_count,
+        shelf_count,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP)
     `).bind(
       values.zoneNumber,
       values.rackNumber,
@@ -249,41 +338,20 @@ export async function upsertRack(env, values) {
       values.name || null,
       values.description || null,
       values.isSingleSided ? 1 : 0,
-      values.isActive ? 1 : 0,
       values.columnCount,
-      values.shelfCount,
-      values.id
-    ).run();
-
-    await syncRackSlots(env, values.id, values.columnCount, values.shelfCount);
-    return values.id;
-  }
-
-  const row = await env.DB.prepare(`
-    INSERT INTO racks (
-      zone_number,
-      rack_number,
-      code,
-      name,
-      description,
-      is_single_sided,
-      is_active,
-      column_count,
-      shelf_count,
-      updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP)
-    RETURNING id
-  `).bind(
-    values.zoneNumber,
-    values.rackNumber,
-    code,
-    values.name || null,
-    values.description || null,
-    values.isSingleSided ? 1 : 0,
-    values.columnCount,
-    values.shelfCount
-  ).first();
+      values.shelfCount
+    ),
+    createSystemAuditStatement(env, {
+      entityType: "rack",
+      entityReference: code,
+      action: "create",
+      actor,
+      summary: "랙 생성",
+      details: { after: { ...after, isActive: true } }
+    }, { guardSql: "FROM racks WHERE code = ?", guardBinds: [code] })
+  ]);
+  const row = await env.DB.prepare("SELECT id FROM racks WHERE code = ?").bind(code).first();
+  if (!row?.id) throw new Error("생성한 랙을 확인할 수 없습니다.");
 
   await syncRackSlots(env, row.id, values.columnCount, values.shelfCount);
   return row.id;
@@ -343,7 +411,7 @@ async function syncRackSlots(env, rackId, columnCount, shelfCount) {
   ]);
 }
 
-export async function configureRackCounts(env, counts) {
+export async function configureRackCounts(env, counts, actor = {}) {
   for (const zone of RACK_ZONES) {
     if (!Number.isInteger(counts[zone]) || counts[zone] < 0 || counts[zone] > MAX_RACKS_PER_ZONE) {
       return { ok: false, message: `구역별 랙 수는 0~${MAX_RACKS_PER_ZONE} 사이여야 합니다.` };
@@ -367,7 +435,24 @@ export async function configureRackCounts(env, counts) {
     }
   }
 
+  const beforeCounts = await env.DB.prepare(`
+    SELECT zone_number, COUNT(*) AS count
+    FROM racks
+    WHERE is_active = 1 AND zone_number IN (1, 2, 3)
+    GROUP BY zone_number
+  `).all();
+  const before = Object.fromEntries(RACK_ZONES.map((zone) => [zone, 0]));
+  for (const row of beforeCounts.results ?? []) before[row.zone_number] = Number(row.count || 0);
+
   await env.DB.batch([
+    createSystemAuditStatement(env, {
+      entityType: "rack_configuration",
+      entityReference: "zones-1-3",
+      action: "update",
+      actor,
+      summary: "구역별 랙 구성 변경",
+      details: { before, after: counts }
+    }, { guardSql: "FROM (SELECT 1 AS audit_guard)" }),
     env.DB.prepare(`
       WITH RECURSIVE nums(rack_number) AS (
         VALUES(1)
@@ -466,4 +551,18 @@ export async function configureRackCounts(env, counts) {
   ]);
 
   return { ok: true };
+}
+
+function rackAuditSnapshot(row = {}) {
+  return {
+    zoneNumber: Number(row.zone_number || 0),
+    rackNumber: Number(row.rack_number || 0),
+    code: clean(row.code),
+    name: clean(row.name),
+    description: clean(row.description),
+    isSingleSided: Boolean(row.is_single_sided),
+    isActive: Boolean(row.is_active),
+    columnCount: Number(row.column_count || 0),
+    shelfCount: Number(row.shelf_count || 0)
+  };
 }

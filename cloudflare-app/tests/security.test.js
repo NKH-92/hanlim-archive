@@ -58,8 +58,10 @@ test("page() emits a CSP whose nonce matches every inline script and style tag",
   // 모든 인라인 script/style에 nonce가 있어야 한다(누락 시 CSP가 해당 태그를 차단).
   assert.equal((html.match(/<script(?![^>]*nonce=)/g) || []).length, 0);
   assert.equal((html.match(/<style(?![^>]*nonce=)/g) || []).length, 0);
-  // CDN 스타일시트는 SRI로 고정되어야 한다.
-  assert.ok(html.includes('integrity="sha384-'));
+  // 외부 CDN 없이 로컬 아이콘 스타일만 사용한다.
+  assert.ok(!html.includes("cdn.jsdelivr.net"));
+  assert.ok(!html.includes("cdnjs.cloudflare.com"));
+  assert.match(html, /--icon-mask:/);
 });
 
 test("sanitizeReturnUrl blocks open-redirect vectors but keeps internal paths", () => {

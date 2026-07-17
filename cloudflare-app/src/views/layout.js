@@ -1,6 +1,7 @@
 // 페이지 골격(page)과 여러 화면이 공유하는 범용 프래그먼트.
 
 import { bytesToBase64Url, escapeHtml } from "../utils.js";
+import { hasPermission, PERMISSIONS, sessionHasManagementAccess } from "../permissions.js";
 import { htmlContentSecurityPolicy } from "../security.js";
 import { clientScript } from "./clientScript.js";
 import { styles } from "./styles.js";
@@ -18,10 +19,6 @@ export function page(title, body, session, status = 200) {
   <title>${escapeHtml(title)} - 한림문서고</title>
   <meta name="description" content="한림문서고 문서 검색 및 보관 위치 안내 시스템">
   ${session?.csrfToken ? `<meta name="csrf-token" content="${escapeHtml(session.csrfToken)}">` : ""}
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" integrity="sha384-GIdEBaqGN9mNkDkMkzMHW8EKUqtpPIe/sLj1X7DIrnc9uPtLROJgmuDlh+3rBw0j" crossorigin="anonymous" referrerpolicy="no-referrer">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha384-PPIZEGYM1v8zp5Py7UjFb79S58UeqCL9pYVnVPURKEqvioPROaVAJKKLzvH2rDnI" crossorigin="anonymous" referrerpolicy="no-referrer">
   <style>${styles()}</style>
   <script>${clientScript()}</script>
 </head>
@@ -65,24 +62,51 @@ function withCsrfToken(body, token) {
 }
 
 function header(session) {
-  const adminLinks = [
+  const links = [
     ["/app", "fa-magnifying-glass", "검색"],
-    ["/documents", "fa-file-lines", "문서 관리"],
-    ["/documents/disposal", "fa-box-archive", "폐기 작업"],
-    ["/admin", "fa-gear", "관리 설정"]
+    ["/documents", "fa-file-lines", "전체 문서"],
+    ["/sets", "fa-layer-group", "문서 세트"],
+    ["/qa", "fa-circle-info", "Q&A"]
   ];
-  const userLinks = [
-    ["/app", "fa-magnifying-glass", "검색"]
-  ];
-  const links = session.role === "Admin" ? adminLinks : userLinks;
+  if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
+    links.push(["/documents/new", "fa-file-lines", "문서 등록"]);
+    links.push(["/documents/import", "fa-file-csv", "CSV 가져오기"]);
+  }
+  if (hasPermission(session, PERMISSIONS.MANAGE_DISPOSALS)) {
+    links.push(["/disposal-batches", "fa-box-archive", "폐기 캠페인"]);
+  }
+  if (hasPermission(session, PERMISSIONS.MANAGE_MASTERS)) {
+    links.push(["/racks", "fa-table-cells-large", "랙"]);
+    links.push(["/categories", "fa-list-check", "대분류"]);
+    links.push(["/tags", "fa-tags", "태그"]);
+  }
+  if (hasPermission(session, PERMISSIONS.MANAGE_USERS)) {
+    links.push(["/admin/settings", "fa-users-gear", "사용자·권한"]);
+  }
+  if (hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
+    links.push(["/admin/audit", "fa-list-check", "감사 이력"]);
+  }
+  if (hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS) || hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
+    links.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
+  }
+  if (sessionHasManagementAccess(session)) {
+    links.push(["/admin", "fa-gear", "운영 관리"]);
+  }
+  const primaryPaths = new Set(["/app", "/documents", "/sets", "/qa", "/admin"]);
+  const navigationLinks = links
+    .filter(([href]) => primaryPaths.has(href))
+    .map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item"><i class="fa-solid ${icon}"></i>${text}</a>`)
+    .join("");
+  const commandLinks = links.map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
 
   return `
     <header class="topbar">
       <a href="/app" class="brand"><span class="brand-mark"><i class="fa-solid fa-building-columns"></i></span><span><strong>한림문서고</strong><small>통합 문서 위치 검색</small></span></a>
+      <button type="button" class="command-trigger" data-command-open aria-haspopup="dialog"><i class="fa-solid fa-magnifying-glass"></i><span>메뉴 찾기</span><kbd>Ctrl+K</kbd></button>
       <button type="button" class="hamburger" aria-label="메뉴 열기" data-hamburger><span></span><span></span><span></span></button>
       <nav aria-label="주 메뉴" data-nav-menu>
         <button type="button" class="drawer-close" data-drawer-close aria-label="메뉴 닫기">×</button>
-        ${links.map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item"><i class="fa-solid ${icon}"></i>${text}</a>`).join("")}
+        ${navigationLinks}
         <div class="nav-user">
           <span class="session-pill">${escapeHtml(session.displayName)} · ${session.role === "Admin" ? "관리자" : "사용자"}</span>
           <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key"></i>비밀번호</a>
@@ -92,6 +116,13 @@ function header(session) {
         </div>
       </nav>
       <div class="nav-scrim" data-nav-scrim></div>
+      <dialog class="command-palette" data-command-palette aria-labelledby="command-title">
+        <div class="command-palette-head"><strong id="command-title">메뉴 찾기</strong><button type="button" class="icon-button" data-command-close aria-label="닫기">×</button></div>
+        <label class="sr-only" for="command-filter">메뉴 검색</label>
+        <input id="command-filter" type="search" placeholder="이동할 메뉴를 입력하세요" autocomplete="off" data-command-input>
+        <div class="command-palette-list" data-command-list>${commandLinks}</div>
+        <p class="muted">Ctrl+K로 열기 · Esc로 닫기</p>
+      </dialog>
     </header>
   `;
 }

@@ -1,0 +1,13 @@
+// Cloudflare 공식 한도와 별개로 이 애플리케이션이 지키는 보수적 내부 예산이다.
+// 대량 작업은 이 값을 넘기지 않고 여러 요청으로 나누며, UI와 테스트도 같은 값을 쓴다.
+export const FREE_TIER_BUDGET = Object.freeze({
+  maxD1StatementsPerRequest: 40,
+  legacyBulkDisposeMaxItems: 10,
+  disposalBatchMaxItems: 200,
+  disposalProcessChunkSize: 25,
+  csvImportMaxItems: 50,
+  csvImportProcessChunkSize: 1,
+  documentPageSize: 30,
+  searchIndexWarningCount: 4000,
+  searchIndexReviewCount: 5000
+});

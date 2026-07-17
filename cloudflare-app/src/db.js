@@ -18,6 +18,7 @@ export {
   getDidYouMeanSuggestions,
   getSearchIndexMeta,
   getSearchIndexDocuments,
+  getSearchIndexStats,
   getSearchSuggestions,
   documentToViewerItem,
   buildViewerFacets,
@@ -32,6 +33,8 @@ export {
 export {
   getCategoryDocumentIndex,
   getDocumentQualitySummary,
+  getDocumentPage,
+  getDocumentCount,
   getDocumentsForExport,
   getDocument,
   getDocumentTags,
@@ -64,6 +67,7 @@ export {
   getRackSummaries,
   getRackDetails,
   getRackDocuments,
+  getRackGrid,
   getSlotOptions,
   upsertRack,
   configureRackCounts
@@ -82,9 +86,13 @@ export {
 
 export {
   getAppUsers,
+  getAppUser,
   createSignupRequest,
   approveUser,
-  rejectUser
+  rejectUser,
+  disableUser,
+  enableUser,
+  updateUserPermissions
 } from "./data/usersData.js";
 
 export {
@@ -95,5 +103,52 @@ export {
   deleteDocumentSet,
   addDocumentsToSet,
   removeDocumentFromSet,
-  getDocumentSetLogs
+  getDocumentSetLogs,
+  setDocumentSetLock
 } from "./data/setsData.js";
+
+export {
+  createSystemAuditStatement,
+  getSystemAuditPage,
+  normalizeAuditFilters
+} from "./data/systemAuditData.js";
+
+export {
+  normalizeDisposalCriteria,
+  validateDisposalBatchDraft,
+  listDisposalBatches,
+  getDisposalBatch,
+  getDisposalBatchItems,
+  previewDisposalCandidates,
+  createDisposalBatch,
+  updateDisposalBatch,
+  freezeDisposalBatch,
+  setDisposalBatchItemExcluded,
+  startDisposalBatch,
+  processDisposalBatch,
+  cancelDisposalBatch,
+  getDisposalBatchExportRows
+} from "./data/disposalBatchData.js";
+
+export {
+  listDocumentImportJobs,
+  getDocumentImportJob,
+  getDocumentImportItems,
+  createDocumentImportJob,
+  processDocumentImportJob,
+  failDocumentImportItem,
+  cancelDocumentImportJob,
+  getDocumentImportFailureRows
+} from "./data/importJobData.js";
+
+export {
+  moveDocument,
+  getDocumentMovements,
+  getDocumentMovementPage
+} from "./data/movementData.js";
+
+export {
+  DATA_QUALITY_ISSUES,
+  normalizeDataQualityIssue,
+  getDataQualityPage
+} from "./data/dataQualityData.js";

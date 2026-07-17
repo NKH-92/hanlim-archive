@@ -2,22 +2,14 @@
 // HTML 응답은 page()가 nonce 기반 CSP를 직접 설정하고, 그 밖의 응답(JSON/리다이렉트/CSV/정적자산)은
 // withSecurityHeaders가 제한적 폴백 CSP를 붙인다. 공통 헤더는 모든 응답에 일괄 주입한다.
 
-// 폰트/아이콘을 아직 CDN에서 받으므로 style-src/font-src에 두 호스트만 명시적으로 허용한다.
-// self-host로 전환하면 이 목록을 지우고 default-src 'self'만으로 충분하다.
-const CDN_HOSTS = Object.freeze([
-  "https://cdn.jsdelivr.net",
-  "https://cdnjs.cloudflare.com"
-]);
-
 // 인라인 <style> 블록과 동적 위치용 style="--var" 속성 때문에 style-src는 'unsafe-inline'이 필요하다.
 // script-src는 인라인 이벤트 핸들러가 전혀 없어 nonce로 엄격하게 잠근다(XSS 방어심층의 핵심).
 export function htmlContentSecurityPolicy(nonce) {
-  const cdn = CDN_HOSTS.join(" ");
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}'`,
-    `style-src 'self' 'unsafe-inline' ${cdn}`,
-    `font-src 'self' data: ${cdn}`,
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
     "img-src 'self' data:",
     "connect-src 'self'",
     "object-src 'none'",

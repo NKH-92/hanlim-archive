@@ -9,6 +9,7 @@ import {
 } from "./sqlShared.js";
 import { getActiveCategories, getActiveTags, getCategories, getTags } from "./mastersData.js";
 import { getSlotOptions } from "./racksData.js";
+import { buildDocumentFilterWhere } from "./searchFilters.js";
 
 export async function getCategoryDocumentIndex(env) {
   const result = await env.DB.prepare(`
@@ -60,6 +61,7 @@ export async function getDocumentQualitySummary(env) {
           OR d.note LIKE '%Â%'
         THEN 1 ELSE 0 END), 0) AS suspicious_text,
       COALESCE(SUM(CASE WHEN td.document_id IS NULL THEN 1 ELSE 0 END), 0) AS documents_without_tags,
+      COALESCE(SUM(CASE WHEN d.disposal_due_year IS NULL THEN 1 ELSE 0 END), 0) AS missing_disposal_year,
       COALESCE(SUM(CASE WHEN d.status = 'disposed' THEN 1 ELSE 0 END), 0) AS disposed_documents
     FROM documents d
     LEFT JOIN rack_slots rs ON rs.id = d.rack_slot_id
@@ -75,6 +77,7 @@ export async function getDocumentQualitySummary(env) {
     invalidRackFace: Number(row?.invalid_rack_face || 0),
     suspiciousText: Number(row?.suspicious_text || 0),
     documentsWithoutTags: Number(row?.documents_without_tags || 0),
+    missingDisposalYear: Number(row?.missing_disposal_year || 0),
     disposedDocuments: Number(row?.disposed_documents || 0)
   };
 }
@@ -97,6 +100,56 @@ export async function getDocumentsForExport(env) {
   return result.results ?? [];
 }
 
+// 검색어가 없거나 검색어가 필터 토큰으로만 해석된 일반 목록은 필요한 페이지 행만 D1에서
+// 읽는다. 오타·초성·자판 보정이 필요한 검색은 기존 searchCore 경로를 계속 사용한다.
+export async function getDocumentPage(env, filters = {}, page = 1, pageSize = 30) {
+  const safePage = Math.max(1, Math.floor(Number(page) || 1));
+  const safePageSize = Math.max(1, Math.min(Math.floor(Number(pageSize) || 30), 100));
+  const offset = (safePage - 1) * safePageSize;
+  const { where, binds } = buildDocumentFilterWhere(filters);
+  const orderBy = documentPageOrder(filters.sort);
+  const result = await env.DB.prepare(`
+    SELECT
+      d.id,
+      ${DOCUMENT_CORE_COLUMNS}
+      d.updated_at,
+      ${DOCUMENT_LOCATION_COLUMNS}
+      r.column_count,
+      r.shelf_count,
+      rs.column_number,
+      rs.shelf_number,
+      rs.slot_code,
+      ${DOCUMENT_TAG_CONCAT}
+    ${DOCUMENT_BASE_JOINS}
+    ${DOCUMENT_TAG_JOINS}
+    ${where}
+    GROUP BY d.id
+    ORDER BY ${orderBy}
+    LIMIT ? OFFSET ?
+  `).bind(...binds, safePageSize, offset).all();
+
+  return result.results ?? [];
+}
+
+export async function getDocumentCount(env, filters = {}) {
+  const { where, binds } = buildDocumentFilterWhere(filters);
+  const row = await env.DB.prepare(`
+    SELECT COUNT(*) AS count
+    ${DOCUMENT_BASE_JOINS}
+    ${where}
+  `).bind(...binds).first();
+  return Number(row?.count || 0);
+}
+
+function documentPageOrder(sort) {
+  if (sort === "docnum") return "d.document_number, d.revision_number, d.id";
+  if (sort === "category") return "c.name, d.document_number, d.revision_number, d.id";
+  if (sort === "location") {
+    return "r.zone_number, r.rack_number, d.rack_face, rs.column_number, rs.shelf_number DESC, d.document_number, d.id";
+  }
+  return "d.updated_at DESC, d.id DESC";
+}
+
 export async function getDocument(env, id) {
   return env.DB.prepare(`
     SELECT
@@ -113,6 +166,7 @@ export async function getDocument(env, id) {
       d.rack_face,
       d.status,
       d.updated_at,
+      d.row_version,
       ${DOCUMENT_LOCATION_COLUMNS}
       r.column_count,
       r.shelf_count,
@@ -299,11 +353,14 @@ export function documentToFormValues(document) {
     rackSlotId: document.rack_slot_id,
     rackFace: document.rack_face,
     note: document.note || "",
-    updatedAt: document.updated_at
+    updatedAt: document.updated_at,
+    rowVersion: document.row_version
   };
 }
 
 export function valuesFromDocumentForm(form) {
+  const expectedUpdatedAt = clean(form.get("expectedUpdatedAt"));
+  const expectedRowVersion = Number(form.get("expectedRowVersion"));
   return {
     documentNumber: clean(form.get("documentNumber")),
     revisionNumber: clean(form.get("revisionNumber")),
@@ -315,8 +372,11 @@ export function valuesFromDocumentForm(form) {
     rackFace: normalizeRackFace(form.get("rackFace")),
     note: clean(form.get("note")),
     tagIds: form.getAll("tagIds").map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
-    // 낙관적 잠금: 사용자가 수정 화면을 연 시점의 updated_at(hidden). 비어 있으면 잠금 없이 동작.
-    expectedUpdatedAt: clean(form.get("expectedUpdatedAt"))
+    // 검증 실패로 수정 폼을 다시 그려도 잠금 토큰을 잃지 않도록 뷰용 이름도 함께 보존한다.
+    expectedUpdatedAt,
+    expectedRowVersion,
+    updatedAt: expectedUpdatedAt,
+    rowVersion: expectedRowVersion
   };
 }
 

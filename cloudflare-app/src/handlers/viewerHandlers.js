@@ -1,3 +1,4 @@
+import { getAppConfig } from "../config.js";
 import {
   buildFloorPlanLayout,
   getFloorPlanRegions,
@@ -44,6 +45,10 @@ export async function handleDashboard(request, env, session) {
       category: filters.categoryId,
       zone: filters.zoneNumber,
       tag: filters.tagId,
+      rack: filters.rackId,
+      face: filters.rackFace,
+      column: filters.columnNumber,
+      shelf: filters.shelfNumber,
       status: filters.status,
       sort: filters.sort,
       page,
@@ -68,8 +73,8 @@ export async function handleDashboard(request, env, session) {
   });
 }
 
-export function renderQa(session) {
-  return qaPage({ session });
+export function renderQa(session, env) {
+  return qaPage({ session, support: getAppConfig(env).support });
 }
 
 export async function handleSearchSuggestions(request, env) {
