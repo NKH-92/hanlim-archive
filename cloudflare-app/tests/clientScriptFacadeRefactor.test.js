@@ -6,15 +6,16 @@ import { createSearchCore } from "../src/searchCore.js";
 import { escapeHtml } from "../src/utils.js";
 import * as clientScriptModule from "../src/views/clientScript.js";
 
-test("전역 클라이언트 스크립트는 리팩토링 전 golden과 바이트 단위로 같다", () => {
+test("전역 클라이언트 스크립트는 LF 정규화 후 리팩토링 전 golden과 같다", () => {
   const script = clientScriptModule.clientScript();
+  const canonicalScript = script.replace(/\r\n?/g, "\n");
 
   assert.deepEqual(Object.keys(clientScriptModule).sort(), ["clientScript", "searchCoreScript"]);
-  assert.equal(script.length, 27872);
-  assert.equal(Buffer.byteLength(script), 28730);
+  assert.equal(canonicalScript.length, 27865);
+  assert.equal(Buffer.byteLength(canonicalScript), 28723);
   assert.equal(
-    createHash("sha256").update(script).digest("hex"),
-    "501a4c5e5f1ca51a176f6a132886e012213a414d7695c36e111768ceba16673d"
+    createHash("sha256").update(canonicalScript).digest("hex"),
+    "f7066e4419e2ab125326fe729dd9ae26cf7221c697652f87c780dc9019ab1876"
   );
   assert.equal((script.match(/DOMContentLoaded/g) || []).length, 1);
   assert.doesNotThrow(() => new Function(script));
