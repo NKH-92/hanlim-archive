@@ -1,5 +1,5 @@
 import { sharedSearchCore } from "../searchCore.js";
-import { FREE_TIER_BUDGET } from "../freeTierBudget.js";
+import { FREE_TIER_BUDGET } from "../config.js";
 import { clean, locationLabel, paginateSlice, rackFaceLabel, readBoolean } from "../utils.js";
 import { getDocumentCount, getDocumentPage } from "./documentsData.js";
 import {

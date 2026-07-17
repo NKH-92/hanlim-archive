@@ -7,6 +7,7 @@ import {
   DOCUMENT_TAG_CONCAT,
   DOCUMENT_TAG_JOINS
 } from "./sqlShared.js";
+import { DATA_QUALITY_ISSUES } from "./dataQualityData.js";
 import { getActiveCategories, getActiveTags, getCategories, getTags } from "./mastersData.js";
 import { getSlotOptions } from "./racksData.js";
 import { buildDocumentFilterWhere } from "./searchFilters.js";
@@ -35,33 +36,22 @@ export async function getCategoryDocumentIndex(env) {
 }
 
 export async function getDocumentQualitySummary(env) {
-  // 문서별 품질 지표는 한 번의 본문 스캔으로 계산하고, 중복 키 집계만 CTE로 분리한다.
+  // 대시보드 숫자는 상세 작업목록의 totalItems와 같은 "수정 대상 문서 행 수"다.
+  // 따라서 중복도 그룹 수가 아니라 중복 그룹에 속한 각 문서를 세며, 모든 분기는
+  // dataQualityData의 조건을 직접 재사용해 집계와 목록의 의미가 다시 갈라지지 않게 한다.
   const row = await env.DB.prepare(`
-    WITH duplicate_keys AS (
-      SELECT document_number, revision_number
-      FROM documents
-      GROUP BY document_number, revision_number
-      HAVING COUNT(*) > 1
-    ),
-    tagged_documents AS (
+    WITH tagged_documents AS (
       SELECT DISTINCT document_id
       FROM document_tags
     )
     SELECT
-      (SELECT COUNT(*) FROM duplicate_keys) AS duplicate_document_numbers,
-      COALESCE(SUM(CASE WHEN rs.id IS NULL OR r.id IS NULL THEN 1 ELSE 0 END), 0) AS missing_location,
-      COALESCE(SUM(CASE WHEN c.id IS NULL OR c.is_active = 0 THEN 1 ELSE 0 END), 0) AS missing_category,
-      COALESCE(SUM(CASE WHEN r.is_single_sided = 1 AND d.rack_face = 'B' THEN 1 ELSE 0 END), 0) AS invalid_rack_face,
-      COALESCE(SUM(CASE
-        WHEN d.document_name LIKE '%�%'
-          OR d.document_name LIKE '%Ã%'
-          OR d.document_name LIKE '%Â%'
-          OR d.note LIKE '%�%'
-          OR d.note LIKE '%Ã%'
-          OR d.note LIKE '%Â%'
-        THEN 1 ELSE 0 END), 0) AS suspicious_text,
+      COALESCE(SUM(CASE WHEN ${DATA_QUALITY_ISSUES["duplicate-number"].condition} THEN 1 ELSE 0 END), 0) AS duplicate_document_numbers,
+      COALESCE(SUM(CASE WHEN ${DATA_QUALITY_ISSUES["missing-location"].condition} THEN 1 ELSE 0 END), 0) AS missing_location,
+      COALESCE(SUM(CASE WHEN ${DATA_QUALITY_ISSUES["inactive-category"].condition} THEN 1 ELSE 0 END), 0) AS missing_category,
+      COALESCE(SUM(CASE WHEN ${DATA_QUALITY_ISSUES["invalid-face"].condition} THEN 1 ELSE 0 END), 0) AS invalid_rack_face,
+      COALESCE(SUM(CASE WHEN ${DATA_QUALITY_ISSUES["suspicious-text"].condition} THEN 1 ELSE 0 END), 0) AS suspicious_text,
       COALESCE(SUM(CASE WHEN td.document_id IS NULL THEN 1 ELSE 0 END), 0) AS documents_without_tags,
-      COALESCE(SUM(CASE WHEN d.disposal_due_year IS NULL THEN 1 ELSE 0 END), 0) AS missing_disposal_year,
+      COALESCE(SUM(CASE WHEN ${DATA_QUALITY_ISSUES["missing-disposal-year"].condition} THEN 1 ELSE 0 END), 0) AS missing_disposal_year,
       COALESCE(SUM(CASE WHEN d.status = 'disposed' THEN 1 ELSE 0 END), 0) AS disposed_documents
     FROM documents d
     LEFT JOIN rack_slots rs ON rs.id = d.rack_slot_id

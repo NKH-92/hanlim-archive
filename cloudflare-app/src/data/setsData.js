@@ -70,31 +70,52 @@ export async function upsertDocumentSet(env, values, actor = "") {
 
   try {
     if (values.id) {
-      const result = await env.DB.prepare(`
-        UPDATE document_sets
-        SET name = ?,
-            description = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND is_locked = 0
-      `).bind(name, clean(values.description) || null, values.id).run();
+      // 이력 INSERT를 상태 변경보다 먼저 두고 같은 batch에서 실행해 이력 없는 수정과
+      // 수정 없는 이력이 모두 생기지 않도록 한다.
+      const results = await env.DB.batch([
+        env.DB.prepare(`
+          INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
+          SELECT id, ?, 'update', ?, ?
+          FROM document_sets
+          WHERE id = ? AND is_locked = 0
+        `).bind(name, actor || "알 수 없음", "세트 정보 수정", values.id),
+        env.DB.prepare(`
+          UPDATE document_sets
+          SET name = ?,
+              description = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND is_locked = 0
+        `).bind(name, clean(values.description) || null, values.id)
+      ]);
 
-      if (result.meta.changes === 0) {
+      if (Number(results[1]?.meta?.changes || 0) === 0) {
         const current = await getDocumentSet(env, values.id);
         return { ok: false, message: current?.is_locked ? "잠긴 세트는 정보를 수정할 수 없습니다." : "세트를 찾을 수 없습니다." };
       }
 
-      await logDocumentSetAction(env, values.id, name, "update", actor, "세트 정보 수정");
       return { ok: true, id: values.id };
     }
 
-    const result = await env.DB.prepare(`
-      INSERT INTO document_sets (name, description, created_by, updated_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-      RETURNING id
-    `).bind(name, clean(values.description) || null, actor || null).first();
-
-    await logDocumentSetAction(env, result.id, name, "create", actor, "세트 생성");
-    return { ok: true, id: result.id };
+    // 생성 ID는 INSERT의 RETURNING 결과로 받고, 생성과 생성 이력을 한 batch에 둔다.
+    // 생성 이력은 새 ID가 있어야 기록할 수 있으므로 이 경우에만 INSERT 다음에 위치한다.
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO document_sets (name, description, created_by, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        RETURNING id
+      `).bind(name, clean(values.description) || null, actor || null),
+      env.DB.prepare(`
+        INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
+        SELECT id, name, 'create', ?, ?
+        FROM document_sets
+        WHERE name = ?
+      `).bind(actor || "알 수 없음", "세트 생성", name)
+    ]);
+    const id = Number(results[0]?.results?.[0]?.id || results[0]?.meta?.last_row_id || 0);
+    if (!id) {
+      throw new Error("생성한 세트를 확인할 수 없습니다.");
+    }
+    return { ok: true, id };
   } catch (error) {
     return {
       ok: false,
@@ -142,64 +163,102 @@ export async function addDocumentsToSet(env, setId, documentIds, actor = "") {
     return { added: 0 };
   }
 
-  const requestedRows = ids.map(() => "(?)").join(", ");
-  // 최대 200개 ID도 한 INSERT statement로 처리해 요청당 D1 statement 예산을 지킨다.
-  const results = await env.DB.batch([env.DB.prepare(`
-    WITH requested(document_id) AS (VALUES ${requestedRows})
-    INSERT OR IGNORE INTO document_set_items (set_id, document_id)
-    SELECT s.id, d.id
-    FROM requested requested
-    JOIN documents d ON d.id = requested.document_id
-    JOIN document_sets s ON s.id = ? AND s.is_locked = 0
-    RETURNING document_id
-  `).bind(...ids, setId)]);
-  const insertResult = results[0] || {};
-  const added = Number(insertResult.meta?.changes || insertResult.results?.length || 0);
-  const returnedIds = (insertResult.results || [])
-    .map((row) => Number(row.document_id))
-    .filter((id) => Number.isInteger(id) && id > 0);
-  // 오래된 D1/mock가 RETURNING rows를 제공하지 않아도 changes 수만큼 보수적으로 기록한다.
-  const addedIds = returnedIds.length ? returnedIds : ids.slice(0, added);
-
-  if (added > 0) {
-    await touchDocumentSet(env, setId);
-
-    const [set, numbers] = await Promise.all([
-      getDocumentSet(env, setId),
-      getDocumentNumbersByIds(env, addedIds)
-    ]);
-    await logDocumentSetAction(env, setId, set?.name ?? "", "add", actor, `문서 ${added}건 추가: ${summarizeNumbers(numbers)}`);
+  const addable = await getAddableSetDocuments(env, setId, ids);
+  if (!addable.length) {
+    return { added: 0 };
   }
 
+  const addableIds = addable.map((row) => Number(row.id));
+  const requestedRows = addableIds.map(() => "(?)").join(", ");
+  const details = `문서 ${addableIds.length}건 추가: ${summarizeNumbers(addable.map((row) => row.document_number))}`;
+
+  // 후보 확인은 사용자에게 남길 문서번호를 만들기 위한 읽기다. 실제 batch의 각 문장은
+  // 동일한 미등록 문서 가드를 다시 검사하므로, 읽기와 batch 사이에 상태가 바뀌어도
+  // 로그·touch·연결이 따로 반영되지 않는다.
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      WITH requested(document_id) AS (VALUES ${requestedRows})
+      INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
+      SELECT s.id, s.name, 'add', ?, ?
+      FROM document_sets s
+      WHERE s.id = ? AND s.is_locked = 0
+        AND EXISTS (
+          SELECT 1
+          FROM requested requested
+          JOIN documents d ON d.id = requested.document_id
+          LEFT JOIN document_set_items i ON i.set_id = s.id AND i.document_id = d.id
+          WHERE i.document_id IS NULL
+        )
+    `).bind(...addableIds, actor || "알 수 없음", details, setId),
+    env.DB.prepare(`
+      WITH requested(document_id) AS (VALUES ${requestedRows})
+      UPDATE document_sets
+      SET updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND is_locked = 0
+        AND EXISTS (
+          SELECT 1
+          FROM requested requested
+          JOIN documents d ON d.id = requested.document_id
+          LEFT JOIN document_set_items i ON i.set_id = document_sets.id AND i.document_id = d.id
+          WHERE i.document_id IS NULL
+        )
+    `).bind(...addableIds, setId),
+    // 최대 200개 ID도 한 INSERT statement로 처리해 요청당 D1 statement 예산을 지킨다.
+    env.DB.prepare(`
+      WITH requested(document_id) AS (VALUES ${requestedRows})
+      INSERT OR IGNORE INTO document_set_items (set_id, document_id)
+      SELECT s.id, d.id
+      FROM requested requested
+      JOIN documents d ON d.id = requested.document_id
+      JOIN document_sets s ON s.id = ? AND s.is_locked = 0
+      RETURNING document_id
+    `).bind(...addableIds, setId)
+  ]);
+  const insertResult = results[2] || {};
+  const added = Number(insertResult.meta?.changes || insertResult.results?.length || 0);
   return { added };
 }
 
 export async function removeDocumentFromSet(env, setId, documentId, actor = "") {
-  const result = await env.DB.prepare(`
-    DELETE FROM document_set_items
-    WHERE set_id = ? AND document_id = ?
-      AND EXISTS (SELECT 1 FROM document_sets WHERE id = ? AND is_locked = 0)
-  `).bind(setId, documentId, setId).run();
-
-  if (result.meta.changes > 0) {
-    await touchDocumentSet(env, setId);
-
-    const [set, numbers] = await Promise.all([
-      getDocumentSet(env, setId),
-      getDocumentNumbersByIds(env, [documentId])
-    ]);
-    await logDocumentSetAction(env, setId, set?.name ?? "", "remove", actor, `문서 제외: ${numbers[0] ?? `문서 ID ${documentId}`}`);
-    return { ok: true };
+  const target = await env.DB.prepare(`
+    SELECT s.name AS set_name, d.document_number
+    FROM document_set_items i
+    JOIN document_sets s ON s.id = i.set_id AND s.is_locked = 0
+    JOIN documents d ON d.id = i.document_id
+    WHERE i.set_id = ? AND i.document_id = ?
+  `).bind(setId, documentId).first();
+  if (!target) {
+    return { ok: false, message: "세트에서 해당 문서를 찾을 수 없습니다." };
   }
 
-  return { ok: false, message: "세트에서 해당 문서를 찾을 수 없습니다." };
-}
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
+      SELECT s.id, s.name, 'remove', ?, ?
+      FROM document_sets s
+      JOIN document_set_items i ON i.set_id = s.id AND i.document_id = ?
+      WHERE s.id = ? AND s.is_locked = 0
+    `).bind(actor || "알 수 없음", `문서 제외: ${target.document_number ?? `문서 ID ${documentId}`}`, documentId, setId),
+    env.DB.prepare(`
+      UPDATE document_sets
+      SET updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND is_locked = 0
+        AND EXISTS (
+          SELECT 1 FROM document_set_items
+          WHERE set_id = ? AND document_id = ?
+        )
+    `).bind(setId, setId, documentId),
+    env.DB.prepare(`
+      DELETE FROM document_set_items
+      WHERE set_id = ? AND document_id = ?
+        AND EXISTS (SELECT 1 FROM document_sets WHERE id = ? AND is_locked = 0)
+    `).bind(setId, documentId, setId)
+  ]);
 
-async function logDocumentSetAction(env, setId, setName, action, actor, details = "") {
-  await env.DB.prepare(`
-    INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
-    VALUES (?, ?, ?, ?, ?)
-  `).bind(setId, setName || "이름 없는 세트", action, actor || "알 수 없음", details || null).run();
+  if (Number(results[2]?.meta?.changes || 0) === 0) {
+    return { ok: false, message: "세트에서 해당 문서를 찾을 수 없습니다." };
+  }
+  return { ok: true };
 }
 
 export async function getDocumentSetLogs(env, setId, limit = 50) {
@@ -214,21 +273,18 @@ export async function getDocumentSetLogs(env, setId, limit = 50) {
   return result.results ?? [];
 }
 
-async function getDocumentNumbersByIds(env, documentIds) {
-  const ids = [...new Set(documentIds)].filter((id) => Number.isInteger(id) && id > 0);
-  if (!ids.length) {
-    return [];
-  }
-
+async function getAddableSetDocuments(env, setId, ids) {
   const placeholders = ids.map(() => "?").join(", ");
   const result = await env.DB.prepare(`
-    SELECT document_number
-    FROM documents
-    WHERE id IN (${placeholders})
-    ORDER BY document_number
-  `).bind(...ids).all();
+    SELECT d.id, d.document_number
+    FROM documents d
+    JOIN document_sets s ON s.id = ? AND s.is_locked = 0
+    LEFT JOIN document_set_items i ON i.set_id = s.id AND i.document_id = d.id
+    WHERE d.id IN (${placeholders}) AND i.document_id IS NULL
+    ORDER BY d.document_number, d.id
+  `).bind(setId, ...ids).all();
 
-  return (result.results ?? []).map((row) => row.document_number);
+  return (result.results ?? []).filter((row) => Number.isInteger(Number(row.id)) && Number(row.id) > 0);
 }
 
 function summarizeNumbers(numbers, max = 30) {
@@ -236,14 +292,6 @@ function summarizeNumbers(numbers, max = 30) {
     return numbers.join(", ");
   }
   return `${numbers.slice(0, max).join(", ")} 외 ${numbers.length - max}건`;
-}
-
-async function touchDocumentSet(env, setId) {
-  await env.DB.prepare(`
-    UPDATE document_sets
-    SET updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).bind(setId).run();
 }
 
 export async function setDocumentSetLock(env, setId, locked, reason, actor = {}) {

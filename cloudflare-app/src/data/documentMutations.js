@@ -5,7 +5,7 @@ import {
   hasChanged,
   optimisticLockClause
 } from "./sqlShared.js";
-import { FREE_TIER_BUDGET } from "../freeTierBudget.js";
+import { FREE_TIER_BUDGET } from "../config.js";
 import { clean } from "../utils.js";
 import { getDocument, getDocumentTags, getDisposalLogs } from "./documentsData.js";
 import { createSystemAuditStatement } from "./systemAuditData.js";

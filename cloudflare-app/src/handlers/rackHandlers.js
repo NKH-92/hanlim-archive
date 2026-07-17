@@ -13,7 +13,7 @@ import {
   upsertRack
 } from "../db.js";
 import { notFoundPage, rackConfigurePage, rackDetailsPage, rackFormPage, racksPage } from "../html.js";
-import { clean, redirect } from "../utils.js";
+import { clean, logError, redirect } from "../utils.js";
 import { requireManageMasters } from "./permissionGuards.js";
 
 export async function handleRacks(env, session) {
@@ -164,12 +164,16 @@ export async function handleSaveRack(request, env, session, id = 0) {
     const rackId = await upsertRack(env, values, session);
     return redirect(`/racks/${rackId}?toast=saved`);
   } catch (error) {
+    const duplicate = error instanceof Error && error.message.includes("UNIQUE");
+    if (!duplicate) {
+      logError("rack.save", error, { rackId: id || null });
+    }
     return rackFormPage({
       session,
       values,
       action: id ? `/racks/${id}/edit` : "/racks",
       title: id ? "랙 수정" : "랙 추가",
-      error: error.message.includes("UNIQUE") ? "같은 구역에 동일한 랙 번호가 이미 있습니다." : error.message
+      error: duplicate ? "같은 구역에 동일한 랙 번호가 이미 있습니다." : "랙을 저장하는 중 오류가 발생했습니다."
     });
   }
 }

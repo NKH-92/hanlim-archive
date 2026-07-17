@@ -17,6 +17,7 @@ import {
   adminSettingsPage,
   categoriesPage,
   errorPage,
+  notFoundPage,
   passwordPage,
   tagsPage
 } from "../html.js";
@@ -44,9 +45,14 @@ export async function handleAdminSettings(env, session) {
 }
 
 export async function handleAdminUserAction(env, session, routeInfo) {
-  const result = routeInfo.action === "approve"
-    ? await approveUser(env, routeInfo.id, session)
-    : await rejectUser(env, routeInfo.id, session);
+  let result;
+  if (routeInfo.action === "approve") {
+    result = await approveUser(env, routeInfo.id, session);
+  } else if (routeInfo.action === "reject") {
+    result = await rejectUser(env, routeInfo.id, session);
+  } else {
+    return notFoundPage(session);
+  }
 
   if (!result.ok) {
     return errorPage("처리할 수 있는 가입 신청을 찾지 못했습니다.", session, 400);
@@ -83,6 +89,10 @@ export async function handleCategoryAction(request, env, session, routeInfo) {
     return handleSaveCategory(request, env, session, routeInfo.id);
   }
 
+  if (routeInfo.action !== "delete") {
+    return notFoundPage(session);
+  }
+
   const result = await deleteCategory(env, routeInfo.id, session);
   if (!result.ok) {
     return renderCategories(env, session, result.message);
@@ -117,6 +127,10 @@ export async function handleTagAction(request, env, session, routeInfo) {
     return handleSaveTag(request, env, session, routeInfo.id);
   }
 
+  if (routeInfo.action !== "delete") {
+    return notFoundPage(session);
+  }
+
   const result = await deleteTag(env, routeInfo.id, session);
   if (!result.ok) {
     return renderTags(env, session, result.message);
@@ -126,7 +140,7 @@ export async function handleTagAction(request, env, session, routeInfo) {
 }
 
 export function renderPasswordPage(session) {
-  return passwordPage({ session });
+  return renderPasswordResult(session);
 }
 
 export async function handleChangePassword(request, env, session) {
@@ -136,21 +150,29 @@ export async function handleChangePassword(request, env, session) {
   const confirmPassword = String(form.get("confirmPassword") ?? "");
 
   if (!currentPassword || !newPassword) {
-    return passwordPage({ session, error: "모든 필드를 입력하세요." });
+    return renderPasswordResult(session, { error: "모든 필드를 입력하세요." });
   }
 
   if (newPassword.length < 8) {
-    return passwordPage({ session, error: "새 비밀번호는 8자 이상이어야 합니다." });
+    return renderPasswordResult(session, { error: "새 비밀번호는 8자 이상이어야 합니다." });
   }
 
   if (newPassword !== confirmPassword) {
-    return passwordPage({ session, error: "새 비밀번호가 일치하지 않습니다." });
+    return renderPasswordResult(session, { error: "새 비밀번호가 일치하지 않습니다." });
   }
 
   const result = await changeUserPassword(env, session.username, currentPassword, newPassword);
   if (!result.ok) {
-    return passwordPage({ session, error: result.message });
+    return renderPasswordResult(session, { error: result.message });
   }
 
-  return passwordPage({ session, success: true });
+  if (session.mustChangePassword) {
+    return redirect("/app?toast=password-changed");
+  }
+
+  return renderPasswordResult(session, { success: true });
+}
+
+function renderPasswordResult(session, options = {}) {
+  return passwordPage({ session, required: Boolean(session.mustChangePassword), ...options });
 }

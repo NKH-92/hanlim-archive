@@ -698,63 +698,79 @@ test("restoreDocument requires a real reason and writes document plus system aud
 
 test("upsertDocumentSet writes create and update logs", async () => {
   const createEnv = recordingEnv({
-    first: (sql) => (sql.includes("INSERT INTO document_sets") ? { id: 9 } : null)
+    batch: (statements) => statements.map((_, index) => index === 0
+      ? { meta: { changes: 1 }, results: [{ id: 9 }] }
+      : { meta: { changes: 1 } })
   });
   const created = await upsertDocumentSet(createEnv, { name: "정기감사 준비문서" }, "관리자");
   assert.equal(created.ok, true);
-  const createLog = createEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
-  assert.ok(createLog);
-  assert.equal(createLog.args[2], "create");
+  assert.equal(createEnv.state.batches.length, 1);
+  assert.equal(createEnv.state.batches[0].length, 2);
+  assert.match(createEnv.state.batches[0][0].sql, /INSERT INTO document_sets/);
+  assert.match(createEnv.state.batches[0][1].sql, /INSERT INTO document_set_logs/);
+  assert.match(createEnv.state.batches[0][1].sql, /'create'/);
 
-  const updateEnv = recordingEnv({ run: () => 1 });
+  const updateEnv = recordingEnv();
   const updated = await upsertDocumentSet(updateEnv, { id: 9, name: "정기감사 준비문서" }, "관리자");
   assert.equal(updated.ok, true);
-  const updateLog = updateEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
-  assert.ok(updateLog);
-  assert.equal(updateLog.args[2], "update");
+  assert.equal(updateEnv.state.batches.length, 1);
+  assert.equal(updateEnv.state.batches[0].length, 2);
+  assert.match(updateEnv.state.batches[0][0].sql, /INSERT INTO document_set_logs/);
+  assert.match(updateEnv.state.batches[0][0].sql, /'update'/);
+  assert.match(updateEnv.state.batches[0][1].sql, /UPDATE document_sets/);
 });
 
 test("addDocumentsToSet logs which document numbers were actually added", async () => {
   const env = recordingEnv({
-    batch: (statements) => statements.map((_, index) => ({ meta: { changes: index === 0 ? 1 : 0 } })),
-    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null),
-    all: (sql) => (sql.includes("FROM documents") ? [{ document_number: "MR-2026-001" }] : [])
+    batch: (statements) => statements.map(() => ({ meta: { changes: 1 } })),
+    all: (sql) => (sql.includes("FROM documents") ? [{ id: 10, document_number: "MR-2026-001" }] : [])
   });
 
   const { added } = await addDocumentsToSet(env, 3, [10, 11], "관리자");
 
   assert.equal(added, 1);
-  const log = env.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
-  assert.ok(log);
-  assert.equal(log.args[2], "add");
-  assert.match(log.args[4], /MR-2026-001/);
+  assert.equal(env.state.batches.length, 1);
+  assert.equal(env.state.batches[0].length, 3);
+  const log = env.state.batches[0][0];
+  assert.match(log.sql, /INSERT INTO document_set_logs/);
+  assert.match(log.sql, /'add'/);
+  assert.ok(log.args.some((value) => String(value).includes("MR-2026-001")));
 });
 
 test("addDocumentsToSet keeps 200 requested ids in one D1 insert statement", async () => {
   const env = recordingEnv({
-    batch: (statements) => statements.map(() => ({ meta: { changes: 200 }, results: [] })),
-    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "대량세트" } : null),
-    all: () => []
+    batch: (statements) => statements.map((_, index) => ({
+      meta: { changes: index === 2 ? 200 : 1 },
+      results: []
+    })),
+    all: () => Array.from({ length: 200 }, (_, index) => ({
+      id: index + 1,
+      document_number: `DOC-${String(index + 1).padStart(3, "0")}`
+    }))
   });
 
   const result = await addDocumentsToSet(env, 3, Array.from({ length: 200 }, (_, index) => index + 1), "관리자");
 
   assert.equal(result.added, 200);
-  assert.equal(env.state.batches[0].length, 1);
-  assert.match(env.state.batches[0][0].sql, /WITH requested\(document_id\) AS \(VALUES/);
+  assert.equal(env.state.batches[0].length, 3);
+  assert.match(env.state.batches[0][2].sql, /WITH requested\(document_id\) AS \(VALUES/);
+  assert.match(env.state.batches[0][2].sql, /INSERT OR IGNORE INTO document_set_items/);
 });
 
 test("removeDocumentFromSet and deleteDocumentSet write remove and delete logs", async () => {
   const removeEnv = recordingEnv({
-    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null),
-    all: (sql) => (sql.includes("FROM documents") ? [{ document_number: "PV-2026-014" }] : []),
-    run: () => 1
+    first: (sql) => (sql.includes("FROM document_set_items")
+      ? { set_name: "감사세트", document_number: "PV-2026-014" }
+      : null)
   });
   const removed = await removeDocumentFromSet(removeEnv, 3, 10, "관리자");
   assert.equal(removed.ok, true);
-  const removeLog = removeEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
-  assert.equal(removeLog.args[2], "remove");
-  assert.match(removeLog.args[4], /PV-2026-014/);
+  assert.equal(removeEnv.state.batches.length, 1);
+  assert.equal(removeEnv.state.batches[0].length, 3);
+  const removeLog = removeEnv.state.batches[0][0];
+  assert.match(removeLog.sql, /INSERT INTO document_set_logs/);
+  assert.match(removeLog.sql, /'remove'/);
+  assert.ok(removeLog.args.some((value) => String(value).includes("PV-2026-014")));
 
   const deleteEnv = recordingEnv({
     first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null)

@@ -18,6 +18,7 @@ import { errorPage, notFoundPage, setDetailsPage, setFormPage, setsPage } from "
 import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { clean, redirect } from "../utils.js";
 import { requireManageSets } from "./permissionGuards.js";
+import { csvDownloadResponse } from "./responseHelpers.js";
 
 export async function handleSets(env, session) {
   const sets = await getDocumentSets(env);
@@ -95,13 +96,7 @@ export async function handleSetRoute(request, env, session, routeInfo) {
     if (!set) return notFoundPage(session);
     const documents = await getDocumentSetDocuments(env, id);
     const csv = buildDocumentSetCsv(set, documents);
-    return new Response(csv.body, {
-      headers: {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${csv.filename}"`,
-        "Cache-Control": "no-store"
-      }
-    });
+    return csvDownloadResponse(csv.body, csv.filename);
   }
 
   if (request.method === "GET" && action === "edit") {

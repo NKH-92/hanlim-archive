@@ -2,7 +2,7 @@
 
 import { escapeHtml, readBoolean } from "../utils.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
-import { alertDanger, emptyState, page, sectionHeader } from "./layout.js";
+import { alertDanger, alertWarning, emptyState, page, sectionHeader } from "./layout.js";
 
 export function adminDashboardPage({ session, pendingCount, quality = null, searchIndex = null }) {
   const groups = [];
@@ -195,10 +195,11 @@ function masterRow(row, type) {
   `;
 }
 
-export function passwordPage({ session, error = "", success = false }) {
+export function passwordPage({ session, error = "", success = false, required = false }) {
   return page("비밀번호 변경", `
     <section class="page-head"><h1>비밀번호 변경</h1></section>
     <section class="panel narrow">
+      ${required ? alertWarning("최초 로그인입니다. 계속 사용하려면 기본 비밀번호를 새 비밀번호로 변경하세요.") : ""}
       ${error ? alertDanger(error) : ""}
       ${success ? `<div class="alert success">비밀번호가 변경되었습니다.</div>` : ""}
       <form method="post" action="/account/password" class="stack">

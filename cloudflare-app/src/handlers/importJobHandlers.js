@@ -17,8 +17,9 @@ import {
   notFoundPage
 } from "../html.js";
 import { prepareDocumentImportRows, readDocumentImportRows } from "../documentCsv.js";
-import { clean, csvEscape, logError, redirect } from "../utils.js";
+import { clean, csvEscape, jsonResponse, logError, redirect } from "../utils.js";
 import { requireManageDocuments } from "./permissionGuards.js";
+import { csvDownloadResponse } from "./responseHelpers.js";
 
 export async function handleDocumentImportJobs(env, session) {
   const denied = requireManageDocuments(session);
@@ -72,7 +73,9 @@ export async function handleDocumentImportJobRoute(request, env, session, routeI
       logError("import-job.process", error, { jobId: id });
       result = { ok: false, message: "문서 가져오기 처리 중 오류가 발생했습니다." };
     }
-    if (request.headers.get("Accept")?.includes("application/json")) return json(result, result.ok ? 200 : 409);
+    if (request.headers.get("Accept")?.includes("application/json")) {
+      return jsonResponse(result, { status: result.ok ? 200 : 409 });
+    }
     if (!result.ok) return errorPage(result.message, session, 409);
     return redirect(`/document-import-jobs/${id}`);
   }
@@ -90,9 +93,5 @@ async function exportFailures(env, id) {
   const lines = rows.map((row) => [row.row_number, row.error_message, row.payload_json, row.processed_at || ""].map(csvEscape).join(","));
   const body = `\uFEFF${header.map(csvEscape).join(",")}\r\n${lines.join("\r\n")}`;
   const code = clean(rows[0]?.job_code) || `IMP-${id}`;
-  return new Response(body, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${code}-failures.csv"`, "Cache-Control": "no-store" } });
-}
-
-function json(payload, status = 200) {
-  return new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
+  return csvDownloadResponse(body, `${code}-failures.csv`);
 }

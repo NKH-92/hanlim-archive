@@ -273,6 +273,18 @@ export async function upsertRack(env, values, actor = {}) {
     const action = Number(before.is_active) !== nextActive
       ? (nextActive ? "reactivate" : "deactivate")
       : "update";
+    // 사전 확인과 batch 사이에 범위 밖 슬롯으로 문서가 이동할 수 있으므로 감사·랙 수정도
+    // 같은 축소 가능 조건으로 다시 가드한다. 이후 슬롯 문장은 수정된 구조 값을 확인한다.
+    const resizeGuardSql = `FROM racks target
+      WHERE target.id = ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM documents d
+          JOIN rack_slots rs ON rs.id = d.rack_slot_id
+          WHERE rs.rack_id = target.id
+            AND (rs.column_number > ? OR rs.shelf_number > ?)
+        )`;
+    const resizeGuardBinds = [values.id, values.columnCount, values.shelfCount];
     const results = await env.DB.batch([
       createSystemAuditStatement(env, {
         entityType: "rack",
@@ -282,7 +294,7 @@ export async function upsertRack(env, values, actor = {}) {
         actor,
         summary: `랙 ${action === "reactivate" ? "다시 사용" : action === "deactivate" ? "사용중지" : "수정"}`,
         details: { before: rackAuditSnapshot(before), after }
-      }, { guardSql: "FROM racks WHERE id = ?", guardBinds: [values.id] }),
+      }, { guardSql: resizeGuardSql, guardBinds: resizeGuardBinds }),
       env.DB.prepare(`
         UPDATE racks
         SET
@@ -297,6 +309,13 @@ export async function upsertRack(env, values, actor = {}) {
           shelf_count = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM documents d
+            JOIN rack_slots rs ON rs.id = d.rack_slot_id
+            WHERE rs.rack_id = racks.id
+              AND (rs.column_number > ? OR rs.shelf_number > ?)
+          )
       `).bind(
         values.zoneNumber,
         values.rackNumber,
@@ -307,16 +326,18 @@ export async function upsertRack(env, values, actor = {}) {
         nextActive,
         values.columnCount,
         values.shelfCount,
-        values.id
-      )
+        values.id,
+        values.columnCount,
+        values.shelfCount
+      ),
+      ...createRackSlotSyncStatements(env, values.id, values.columnCount, values.shelfCount)
     ]);
     if (!Number(results[1]?.meta?.changes || 0)) throw new Error("랙을 찾을 수 없습니다.");
 
-    await syncRackSlots(env, values.id, values.columnCount, values.shelfCount);
     return values.id;
   }
 
-  await env.DB.batch([
+  const results = await env.DB.batch([
     env.DB.prepare(`
       INSERT INTO racks (
         zone_number,
@@ -331,6 +352,7 @@ export async function upsertRack(env, values, actor = {}) {
         updated_at
       )
       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP)
+      RETURNING id
     `).bind(
       values.zoneNumber,
       values.rackNumber,
@@ -348,17 +370,17 @@ export async function upsertRack(env, values, actor = {}) {
       actor,
       summary: "랙 생성",
       details: { after: { ...after, isActive: true } }
-    }, { guardSql: "FROM racks WHERE code = ?", guardBinds: [code] })
+    }, { guardSql: "FROM racks WHERE code = ?", guardBinds: [code] }),
+    createRackSlotInsertStatementByCode(env, code, values.columnCount, values.shelfCount)
   ]);
-  const row = await env.DB.prepare("SELECT id FROM racks WHERE code = ?").bind(code).first();
-  if (!row?.id) throw new Error("생성한 랙을 확인할 수 없습니다.");
+  const id = Number(results[0]?.results?.[0]?.id || results[0]?.meta?.last_row_id || 0);
+  if (!id) throw new Error("생성한 랙을 확인할 수 없습니다.");
 
-  await syncRackSlots(env, row.id, values.columnCount, values.shelfCount);
-  return row.id;
+  return id;
 }
 
-async function syncRackSlots(env, rackId, columnCount, shelfCount) {
-  await env.DB.batch([
+function createRackSlotSyncStatements(env, rackId, columnCount, shelfCount) {
+  return [
     env.DB.prepare(`
       UPDATE rack_slots
       SET
@@ -368,7 +390,11 @@ async function syncRackSlots(env, rackId, columnCount, shelfCount) {
         END,
         updated_at = CURRENT_TIMESTAMP
       WHERE rack_id = ?
-    `).bind(columnCount, shelfCount, rackId),
+        AND EXISTS (
+          SELECT 1 FROM racks
+          WHERE id = ? AND column_count = ? AND shelf_count = ?
+        )
+    `).bind(columnCount, shelfCount, rackId, rackId, columnCount, shelfCount),
     env.DB.prepare(`
       WITH RECURSIVE
         col_nums(column_number) AS (
@@ -400,15 +426,61 @@ async function syncRackSlots(env, rackId, columnCount, shelfCount) {
         CURRENT_TIMESTAMP
       FROM col_nums
       CROSS JOIN shelf_nums
-      WHERE 1 = 1
+      WHERE EXISTS (
+        SELECT 1 FROM racks
+        WHERE id = ? AND column_count = ? AND shelf_count = ?
+      )
       ON CONFLICT(rack_id, slot_code) DO UPDATE SET
         column_number = excluded.column_number,
         shelf_number = excluded.shelf_number,
         description = excluded.description,
         is_active = 1,
         updated_at = CURRENT_TIMESTAMP
-    `).bind(columnCount, shelfCount, rackId)
-  ]);
+    `).bind(columnCount, shelfCount, rackId, rackId, columnCount, shelfCount)
+  ];
+}
+
+function createRackSlotInsertStatementByCode(env, code, columnCount, shelfCount) {
+  return env.DB.prepare(`
+    WITH RECURSIVE
+      col_nums(column_number) AS (
+        VALUES(1)
+        UNION ALL
+        SELECT column_number + 1 FROM col_nums WHERE column_number < ?
+      ),
+      shelf_nums(shelf_number) AS (
+        VALUES(1)
+        UNION ALL
+        SELECT shelf_number + 1 FROM shelf_nums WHERE shelf_number < ?
+      )
+    INSERT INTO rack_slots (
+      rack_id,
+      slot_code,
+      column_number,
+      shelf_number,
+      description,
+      is_active,
+      updated_at
+    )
+    SELECT
+      r.id,
+      printf('%d-%d', col_nums.column_number, shelf_nums.shelf_number),
+      col_nums.column_number,
+      shelf_nums.shelf_number,
+      printf('%d열 %d선반', col_nums.column_number, shelf_nums.shelf_number),
+      1,
+      CURRENT_TIMESTAMP
+    FROM racks r
+    CROSS JOIN col_nums
+    CROSS JOIN shelf_nums
+    WHERE r.code = ?
+    ON CONFLICT(rack_id, slot_code) DO UPDATE SET
+      column_number = excluded.column_number,
+      shelf_number = excluded.shelf_number,
+      description = excluded.description,
+      is_active = 1,
+      updated_at = CURRENT_TIMESTAMP
+  `).bind(columnCount, shelfCount, code);
 }
 
 export async function configureRackCounts(env, counts, actor = {}) {

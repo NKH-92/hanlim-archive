@@ -6,7 +6,7 @@
 
 ```
 npm run check   # src/·scripts/ 전체 문법 검사
-npm test        # node:test 전체 (64개)
+npm test        # node:test 전체
 npm run dev     # wrangler dev, http://localhost:8787 (.dev.vars 필요)
 npm run db:migrate:local
 ```
@@ -21,4 +21,4 @@ npm run db:migrate:local
   `page()`를 통한 CSP nonce 주입, D1 batch 문장 순서·가드(테스트가 고정), migration append-only.
 - 주석은 한국어. Workers 런타임이므로 src/에 Node API 금지 (Web Crypto·표준 웹 API만).
 - UI 값은 `DESIGN.md` 토큰이 단일 출처. 임의 hex·spacing 금지.
-- 스키마 변경은 반드시 새 migration 파일로. 수동 SQL 금지(초기 관리자 생성 제외).
+- 스키마 변경은 반드시 새 migration 파일로. 수동 SQL 금지.

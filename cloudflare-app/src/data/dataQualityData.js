@@ -3,11 +3,19 @@
 import { clean } from "../utils.js";
 
 export const DATA_QUALITY_ISSUES = Object.freeze({
-  "duplicate-number": Object.freeze({ label: "중복 문서번호·개정", condition: `EXISTS (
-    SELECT 1 FROM documents duplicate
-    WHERE duplicate.id <> d.id
-      AND UPPER(duplicate.document_number) = UPPER(d.document_number)
-      AND UPPER(duplicate.revision_number) = UPPER(d.revision_number)
+  "duplicate-number": Object.freeze({ label: "중복 문서번호·개정", condition: `d.id IN (
+    SELECT duplicate_member.id
+    FROM documents duplicate_member
+    JOIN (
+      SELECT
+        UPPER(document_number) AS document_number_key,
+        UPPER(revision_number) AS revision_number_key
+      FROM documents
+      GROUP BY UPPER(document_number), UPPER(revision_number)
+      HAVING COUNT(*) > 1
+    ) duplicate_keys
+      ON duplicate_keys.document_number_key = UPPER(duplicate_member.document_number)
+      AND duplicate_keys.revision_number_key = UPPER(duplicate_member.revision_number)
   )` }),
   "missing-location": Object.freeze({ label: "누락·비활성 위치", condition: "rs.id IS NULL OR r.id IS NULL OR rs.is_active = 0 OR r.is_active = 0" }),
   "inactive-category": Object.freeze({ label: "누락·비활성 대분류", condition: "c.id IS NULL OR c.is_active = 0" }),
@@ -29,8 +37,11 @@ export function normalizeDataQualityIssue(value) {
 export async function getDataQualityPage(env, issueValue, page = 1, pageSize = 30) {
   const issue = normalizeDataQualityIssue(issueValue);
   const definition = DATA_QUALITY_ISSUES[issue];
-  const safePage = Math.max(1, Math.floor(Number(page) || 1));
-  const safePageSize = Math.max(1, Math.min(Math.floor(Number(pageSize) || 30), 100));
+  const parsedPage = Math.floor(Number(page));
+  const parsedPageSize = Math.floor(Number(pageSize));
+  // Infinity 같은 비유한 값이 LIMIT/OFFSET bind로 전달되면 D1이 요청 자체를 거부한다.
+  const safePage = Number.isFinite(parsedPage) ? Math.max(1, parsedPage) : 1;
+  const safePageSize = Number.isFinite(parsedPageSize) ? Math.max(1, Math.min(parsedPageSize, 100)) : 30;
   const joins = `FROM documents d
     LEFT JOIN categories c ON c.id = d.category_id
     LEFT JOIN rack_slots rs ON rs.id = d.rack_slot_id

@@ -74,9 +74,10 @@ export function dashboardPage({
   const hits = new Set(documents.map((document) => document.location?.rackCode).filter(Boolean));
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
   const isFirstPage = Number(viewerSearch.pagination?.page || 1) === 1;
-  const answer = isFirstPage && query && (filters.sort || "relevance") === "relevance"
-    ? pickDominantAnswer(documents, query)
+  const answerDecision = isFirstPage && query && (filters.sort || "relevance") === "relevance"
+    ? viewerDominantAnswerDecision(documents, query)
     : null;
+  const answer = answerDecision?.show ? documents[0] : null;
   const rest = answer ? documents.filter((item) => item.id !== answer.id) : documents;
 
   return page("문서 검색", `
@@ -94,7 +95,7 @@ export function dashboardPage({
           <span class="count-badge" data-results-count>${totalItems}건</span>
         </div>
         <div data-results-body>
-          ${answer ? answerCard(answer, query, dominantGrade(answer, query)) : ""}
+          ${answer ? answerCard(answer, query, answerDecision.grade) : ""}
           ${answer && rest.length ? `<p class="rest-label">다른 결과 ${totalItems - 1}건</p>` : ""}
           ${answer && !rest.length ? "" : viewerDocumentResults(rest, query)}
           ${!documents.length && didYouMean.length ? didYouMeanView(didYouMean) : ""}
@@ -114,26 +115,16 @@ export function dashboardPage({
   `, session);
 }
 
-// 정답 판정: 문서번호 정확 일치는 무조건, 그 외엔 1위가 2위의 1.5배 이상일 때.
-function pickDominantAnswer(items, query = "") {
-  if (!items.length) return null;
-  const first = items[0];
-  if (!Number(first.relevanceScore || 0)) return null;
-  const compactQuery = searchCore.compactSearchText(query);
-  if (compactQuery && first.documentNumber && searchCore.compactSearchText(first.documentNumber) === compactQuery) {
-    return first;
-  }
-  if (items.length === 1) return first;
-  const second = Number(items[1].relevanceScore || 0);
-  return Number(first.relevanceScore) >= second * 1.5 ? first : null;
-}
-
-// 확신 등급: 문서번호 정확 일치는 '확실'(초록), 관련도 우위로 뽑힌 답은 '유력·확인 권장'(노랑).
-// 애매한 답이 확실한 답처럼 보이는 거짓 확신을 없앤다.
-function dominantGrade(item, query) {
-  const compactQuery = searchCore.compactSearchText(query);
-  const exact = compactQuery && item.documentNumber && searchCore.compactSearchText(item.documentNumber) === compactQuery;
-  return exact ? "certain" : "likely";
+// 서버용 필드 어댑터. 정답 판정 자체는 브라우저와 같은 searchCore 정책을 쓴다.
+function viewerDominantAnswerDecision(items, query = "") {
+  const first = items[0] || {};
+  return searchCore.decideDominantAnswer({
+    query,
+    documentNumber: first.documentNumber,
+    firstScore: first.relevanceScore,
+    secondScore: items[1]?.relevanceScore,
+    resultCount: items.length
+  });
 }
 
 function answerGradeChip(grade) {

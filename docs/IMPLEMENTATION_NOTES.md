@@ -4,8 +4,8 @@
 
 - 확인일: 2026-07-17
 - 배포 대상: `cloudflare-app/`
-- `npm run check`: 44개 소스·스크립트 문법 검사 통과
-- `npm test`: 88개 테스트 통과
+- `npm run check`: 전체 소스·스크립트 문법 검사
+- `npm test`: node:test 전체 통과
 - 기준 브랜치: `codex/audit-trail-detail-cleanup`
 
 ## 유지할 구조
@@ -20,7 +20,7 @@
 2. HTML은 반드시 `page()`를 거쳐 CSP nonce를 주입한다.
 3. 다중 상태 변경은 `env.DB.batch()`에 넣고 감사 INSERT를 UPDATE/DELETE보다 먼저 실행한다.
 4. 문서 수정과 위치 이동은 `updated_at`과 단조 증가 `row_version` 낙관적 잠금을 함께 사용한다.
-5. migration은 append-only이며 초기 관리자 외 수동 SQL 절차를 만들지 않는다.
+5. migration은 append-only이며 초기 관리자도 migration으로 등록한다. 수동 SQL 절차를 만들지 않는다.
 6. 내부 `ARC-*` 보관코드는 사용자 검색·CSV·감사 상세에 노출하지 않는다.
 7. 랙 면 표기는 단면 `13`, 양면 `13-1`/`13-2`이며 저장값 A/B는 유지한다.
 

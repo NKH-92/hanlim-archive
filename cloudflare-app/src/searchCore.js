@@ -528,6 +528,17 @@ export function createSearchCore() {
     return Math.min(Math.max(Number(count) || 0, 0), 20) * 2;
   }
 
+  // 서버와 브라우저는 필드명이 다르므로 객체를 직접 받지 않고, 어댑터가 넘긴 순수 값만 판정한다.
+  // 문서번호 정확 일치는 '확실', 단독/점수 우위 결과는 '유력' 정답 카드로 표시한다.
+  function decideDominantAnswer({ query = "", documentNumber = "", firstScore = 0, secondScore = 0, resultCount = 0 } = {}) {
+    const compactQuery = compactSearchText(query);
+    const exact = Boolean(compactQuery && documentNumber && compactSearchText(documentNumber) === compactQuery);
+    const score = Number(firstScore || 0);
+    const count = Number(resultCount || 0);
+    const show = Boolean(score && (exact || count === 1 || score >= Number(secondScore || 0) * 1.5));
+    return { show, grade: exact ? "certain" : "likely" };
+  }
+
   return {
     clean,
     normalizeSearchText,
@@ -545,7 +556,8 @@ export function createSearchCore() {
     parseSearchQuery,
     highlightHtml,
     clickBoost,
-    popularityBoost
+    popularityBoost,
+    decideDominantAnswer
   };
 }
 

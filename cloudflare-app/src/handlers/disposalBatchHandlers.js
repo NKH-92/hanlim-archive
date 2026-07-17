@@ -21,8 +21,9 @@ import {
   errorPage,
   notFoundPage
 } from "../html.js";
-import { clean, csvEscape, redirect } from "../utils.js";
+import { clean, csvEscape, jsonResponse, redirect } from "../utils.js";
 import { requireManageDisposals } from "./permissionGuards.js";
+import { csvDownloadResponse } from "./responseHelpers.js";
 
 export async function handleDisposalBatches(env, session) {
   const denied = requireManageDisposals(session);
@@ -79,7 +80,7 @@ export async function handleDisposalBatchRoute(request, env, session, routeInfo)
     if (!result.ok) return errorPage(result.message, session, 409);
   } else if (action === "process") {
     const result = await processDisposalBatch(env, id, session);
-    if (wantsJson(request)) return json(result, result.ok ? 200 : 409);
+    if (wantsJson(request)) return jsonResponse(result, { status: result.ok ? 200 : 409 });
     if (!result.ok) return errorPage(result.message, session, 409);
   } else if (action === "cancel") {
     const result = await cancelDisposalBatch(env, id, session);
@@ -134,13 +135,7 @@ async function exportDisposalBatchCsv(env, id) {
     row.exclusion_reason || row.result_message || "", row.processed_at || ""
   ].map(csvEscape).join(","));
   const body = `\uFEFF${header.map(csvEscape).join(",")}\r\n${lines.join("\r\n")}`;
-  return new Response(body, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${rows[0].batch_code}.csv"`,
-      "Cache-Control": "no-store"
-    }
-  });
+  return csvDownloadResponse(body, `${rows[0].batch_code}.csv`);
 }
 
 function disposalValues(form) {
@@ -157,8 +152,4 @@ function disposalValues(form) {
 
 function wantsJson(request) {
   return request.headers.get("Accept")?.includes("application/json");
-}
-
-function json(payload, status = 200) {
-  return new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
 }
