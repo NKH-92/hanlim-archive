@@ -86,8 +86,8 @@ test("parseDocumentFilters supports URLSearchParams and normalizes invalid value
     categoryId: 2,
     zoneNumber: 3,
     tagId: 4,
-    status: "active",
-    includeDisposed: false,
+    status: "disposed",
+    includeDisposed: true,
     sort: "location"
   });
   assert.deepEqual(parseDocumentFilters({ category: "1.5", status: "unknown", sort: "drop-table", q: "검색" }), {
@@ -102,8 +102,16 @@ test("parseDocumentFilters supports URLSearchParams and normalizes invalid value
     categoryId: 0,
     zoneNumber: 0,
     tagId: 0,
-    status: "",
+    status: "disposed",
     includeDisposed: true,
+    sort: "updated"
+  });
+  assert.deepEqual(parseDocumentFilters({ status: "active", includeDisposed: "1" }), {
+    categoryId: 0,
+    zoneNumber: 0,
+    tagId: 0,
+    status: "active",
+    includeDisposed: false,
     sort: "updated"
   });
 });

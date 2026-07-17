@@ -135,11 +135,11 @@ async function route(request, env) {
   }
 
   if (path === "/logout") {
-    return redirect(session.role === "Admin" ? "/admin" : "/app");
+    return redirect("/app");
   }
 
   if (path === "/" && request.method === "GET") {
-    return redirect(session.role === "Admin" ? "/admin" : "/app");
+    return redirect("/app");
   }
 
   if (path === "/app" && request.method === "GET") {

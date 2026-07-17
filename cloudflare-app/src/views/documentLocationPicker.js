@@ -92,7 +92,7 @@ export function locationPickerScript() {
         var refreshCells = function (selectedColumn, selectedShelf) {
           var rack = currentRack();
           colSel.disabled = shelfSel.disabled = !rack;
-          fillSelect(colSel, '열 선택', rack ? numericKeys(rack.columns) : [], function (n) { return n + '열 (왼쪽에서)'; }, selectedColumn);
+          fillSelect(colSel, '열 선택', rack ? numericKeys(rack.columns) : [], function (n) { return n + '열 (면 안쪽부터)'; }, selectedColumn);
           fillSelect(shelfSel, '선반 선택', rack ? numericKeys(rack.shelves) : [], function (n) { return n + '선반 (아래에서)'; }, selectedShelf);
         };
         var apply = function () {

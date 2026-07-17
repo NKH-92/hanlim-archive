@@ -36,7 +36,6 @@ export function dashboardPage({
 
   // 홈 모드: 검색창 + 문서고 도면. 즉시 검색 결과가 뜨면 도면 위 해당 랙이 파랗게 강조된다.
   if (mode === "home") {
-    const isAdmin = session.role === "Admin";
     const totalRacks = floorPlan.reduce((sum, region) => sum + region.racks.length, 0);
     return page("문서 검색", `
       <section class="search-home" data-search-home>
@@ -63,16 +62,6 @@ export function dashboardPage({
           <div class="section-title"><h2 id="home-floor-plan-title">문서고 도면</h2><span class="count-badge">${totalRacks}개 랙</span></div>
           ${floorPlanView(floorPlan, new Set())}
         </section>` : ""}
-
-        <div class="search-home-extras" data-home-extras>
-          <nav class="search-home-links" aria-label="바로가기">
-            <a href="/documents"><i class="fa-solid fa-file-lines"></i>전체 문서</a>
-            <a href="/sets"><i class="fa-solid fa-list-check"></i>문서 세트</a>
-            ${isAdmin
-              ? `<a href="/racks"><i class="fa-solid fa-box-archive"></i>랙 목록</a><a href="/admin/search-report"><i class="fa-solid fa-chart-simple"></i>검색 리포트</a>`
-              : `<a href="/qa"><i class="fa-solid fa-circle-question"></i>Q&amp;A</a>`}
-          </nav>
-        </div>
       </section>
       <script type="application/json" data-viewer-context>${viewerContext}</script>
       ${searchCoreScript()}
@@ -116,7 +105,6 @@ export function dashboardPage({
       <aside class="panel viewer-location-panel" aria-labelledby="viewer-location-title" data-viewer-map>
         <div class="section-title">
           <h2 id="viewer-location-title">문서고 도면</h2>
-          ${session.role === "Admin" ? `<a class="button secondary sm" href="/racks">랙 목록</a>` : ""}
         </div>
         ${floorPlanView(floorPlan, hits)}
       </aside>
@@ -191,7 +179,7 @@ function answerCard(item, query, grade = "likely") {
 }
 
 function viewerSearchForm({ query, suggestions, categories, tags, filters, home = false }) {
-  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.includeDisposed].filter(Boolean).length;
+  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status === "disposed"].filter(Boolean).length;
   return `
     <form method="get" action="/app" class="viewer-search-form ${home ? "is-home" : ""}" data-search-form data-viewer-form data-auto-submit>
       ${searchInputBlock(query, suggestions)}
@@ -205,7 +193,7 @@ function viewerSearchForm({ query, suggestions, categories, tags, filters, home 
 
 function viewerDocumentResults(documents, query) {
   if (!documents.length) {
-    return emptyResult("조건에 맞는 문서가 없습니다.", query);
+    return emptyResult("조건에 맞는 문서가 없습니다.");
   }
   return `<div class="viewer-result-list">${documents.map((document) => viewerDocumentCard(document, query)).join("")}</div>`;
 }
@@ -263,7 +251,7 @@ function viewerUrl({ query, filters = {}, patch = {}, page = 1 }) {
     ["category", "categoryId"],
     ["tag", "tagId"],
     ["zone", "zoneNumber"],
-    ["includeDisposed", "includeDisposed"],
+    ["status", "status"],
     ["sort", "sort"]
   ]);
 }

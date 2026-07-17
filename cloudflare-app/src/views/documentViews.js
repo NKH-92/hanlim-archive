@@ -4,7 +4,7 @@ import { escapeHtml, locationLabel, rackFaceLabel, readBoolean } from "../utils.
 import { locationPicker, locationPickerScript } from "./documentLocationPicker.js";
 import { documentResults } from "./documentTableViews.js";
 import { zoneFloorPlanView } from "./floorPlanViews.js";
-import { alertDanger, filterSelectRow, formValue, listUrl, option, page, paginationNav, statusBadge, timeline, timelineItem } from "./layout.js";
+import { alertDanger, alertWarning, filterSelectRow, formValue, listUrl, option, page, paginationNav, statusBadge, timeline, timelineItem } from "./layout.js";
 import { didYouMeanView, parsedChipRow, searchInputBlock } from "./searchFragments.js";
 
 export { documentResults };
@@ -22,9 +22,9 @@ export function documentsPage({
   pagination = { page: 1, pageSize: 30, totalDocuments: documents.length, totalPages: 1 }
 }) {
   const chipRow = parsedChipRow(parsedQuery, query, "/documents");
-  return page("문서 검색", `
+  return page("문서 관리", `
     <section class="page-head">
-      <h1>전체 문서</h1>
+      <div><h1>문서 관리</h1><p class="muted">문서 정보와 보관 위치를 확인하고 수정합니다.</p></div>
       ${documentToolbar(session)}
     </section>
 
@@ -42,10 +42,9 @@ export function documentsPage({
         <h2>${query ? `"${escapeHtml(query)}" 검색 결과` : "전체 보유문서"}</h2>
         <span class="count-badge">${pagination.totalDocuments}건</span>
       </div>
-      ${documentResults(documents, { bulk: session.role === "Admin", emptyQuery: query, showScore: Boolean(query), query })}
+      ${documentResults(documents, { emptyQuery: query, showScore: Boolean(query), query })}
       ${!documents.length && didYouMean.length ? didYouMeanView(didYouMean) : ""}
       ${paginationView(pagination, { query, filters })}
-      ${session.role === "Admin" ? bulkActionBar() : ""}
     </section>
   `, session);
 }
@@ -57,15 +56,16 @@ export function disposalWorkspacePage({
   racks = [],
   years = [],
   filters = {},
-  capped = false
+  capped = false,
+  feedback = null
 }) {
   const returnTo = disposalListUrl(filters);
-  const hasFilters = Boolean(filters.categoryId || filters.rackId || filters.disposalDueYear);
   return page("문서 폐기 작업", `
     <section class="page-head">
-      <div><h1>문서 폐기 작업</h1><p class="muted">보관중 문서만 표시됩니다. 조건을 좁힌 뒤 선택 또는 필터 결과 전체를 폐기할 수 있습니다.</p></div>
-      <a class="button secondary" href="/documents">문서 목록</a>
+      <div><h1>문서 폐기 작업</h1><p class="muted">보관중 문서만 표시됩니다. 현재 목록에서 대상을 선택하고 폐기 사유를 한 번 입력해 처리합니다.</p></div>
+      <a class="button secondary" href="/documents">문서 관리</a>
     </section>
+    ${disposalFeedback(feedback)}
     <section class="panel">
       <form method="get" action="/documents/disposal" class="filter-row">
         <label><span class="sr-only">대분류</span><select name="category"><option value="">전체 대분류</option>${categories.map((item) => option(item.id, item.name, filters.categoryId)).join("")}</select></label>
@@ -77,23 +77,18 @@ export function disposalWorkspacePage({
     </section>
     <section class="panel results-panel">
       <div class="section-title"><h2>폐기 대상 후보</h2><span class="count-badge">${documents.length}${capped ? "+" : ""}건</span></div>
-      ${capped ? `<div class="alert warning">한 번에 최대 200건까지만 처리할 수 있습니다. 필터를 더 좁혀 주세요.</div>` : ""}
-      ${documentResults(documents, { bulk: true, emptyMessage: "조건에 맞는 보관중 문서가 없습니다." })}
+      ${capped ? `<div class="alert warning">한 번에 최대 200건까지만 처리할 수 있습니다. 표시된 문서를 선택하거나 필터를 더 좁혀 주세요.</div>` : ""}
+      ${documentResults(documents, { bulk: true, selectAll: true, emptyMessage: "조건에 맞는 보관중 문서가 없습니다." })}
       ${bulkActionBar("/documents/bulk-dispose", returnTo)}
     </section>
-    <section class="panel narrow">
-      <h2>필터 결과 일괄 폐기</h2>
-      <p class="muted">안전을 위해 대분류·랙·폐기 예정 년도 중 하나 이상을 선택해야 합니다.</p>
-      <form method="post" action="/documents/dispose-filtered" class="stack" data-filtered-dispose-form>
-        <input type="hidden" name="categoryId" value="${escapeHtml(filters.categoryId || "")}">
-        <input type="hidden" name="rackId" value="${escapeHtml(filters.rackId || "")}">
-        <input type="hidden" name="disposalDueYear" value="${escapeHtml(filters.disposalDueYear || "")}">
-        <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
-        <label>폐기 사유 <em>*</em><textarea name="reason" rows="3" required></textarea></label>
-        <button type="submit" class="danger-button"${capped || !documents.length || !hasFilters ? " disabled" : ""}>필터 결과 ${documents.length}건 일괄 폐기</button>
-      </form>
-    </section>
   `, session);
+}
+
+function disposalFeedback(feedback) {
+  if (!feedback?.message) return "";
+  if (feedback.type === "warning") return alertWarning(feedback.message);
+  if (feedback.type === "success") return `<div class="alert success" role="status">${escapeHtml(feedback.message)}</div>`;
+  return alertDanger(feedback.message);
 }
 
 function disposalListUrl(filters = {}) {
@@ -136,10 +131,34 @@ export function documentFormPage({ session, title, action, values = {}, categori
 export function documentDetailsPage({ session, document, tags, disposalLogs, auditLogs, floorPlan = [] }) {
   const isAdmin = session.role === "Admin";
   const location = locationLabel(document);
+  const latestDisposal = disposalLogs.find((log) => log.action === "disposed");
+  const information = `
+    <section class="panel detail-grid">
+      ${detail("문서명", document.document_name)}
+      ${detail("문서번호", document.document_number)}
+      ${detail("개정번호", document.revision_number)}
+      ${detail("제/개정일", document.revision_date || "미입력")}
+      ${detail("폐기 예정 년도", document.disposal_due_year ?? "미입력")}
+    </section>
+    <section class="panel detail-grid">
+      ${detail("상태", document.status === "active" ? "보관중" : "폐기")}
+      ${detail("대분류", document.category_name)}
+      ${detail("태그", tags.length ? tags.map((t) => t.name).join(", ") : "-")}
+      ${detail("비고", document.note || "-")}
+      ${document.status === "disposed" ? detail("폐기사유", latestDisposal?.reason || "-") : ""}
+    </section>
+    ${renderMiniVisualizer(document)}
+    ${renderDocumentFloorPlan(document, floorPlan)}
+  `;
+
+  const breadcrumb = isAdmin
+    ? `<a href="/app">검색</a><span>/</span><a href="/documents">문서 관리</a><span>/</span><span>상세</span>`
+    : `<a href="/app">문서 검색</a><span>/</span><span>상세</span>`;
+
   return page(document.document_name, `
     <section class="page-head">
       <div>
-        <nav class="breadcrumb" aria-label="경로"><a href="/app">홈</a><span>/</span><a href="/documents">문서 검색</a><span>/</span><span>상세</span></nav>
+        <nav class="breadcrumb" aria-label="경로">${breadcrumb}</nav>
         <h1>${escapeHtml(document.document_name)}</h1>
       </div>
       <div class="head-actions">
@@ -155,37 +174,18 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
       </div>
       <div class="button-group">
         <button type="button" class="button secondary sm" data-copy-text="${escapeHtml(location)}">위치 복사</button>
-        <a class="button secondary sm" href="/documents?q=${encodeURIComponent(document.rack_code)}">같은 랙 문서 보기</a>
+        <a class="button secondary sm" href="${isAdmin ? "/documents" : "/app"}?q=${encodeURIComponent(document.rack_code)}">같은 랙 문서 보기</a>
       </div>
     </section>
-    <div class="tab-nav" role="tablist" aria-label="문서 상세 정보">
-      <button role="tab" aria-selected="true" data-tab="info" id="tab-info" aria-controls="panel-info">기본 정보</button>
-      <button role="tab" aria-selected="false" data-tab="audit" id="tab-audit" aria-controls="panel-audit">감사 이력 <span class="tab-count">${auditLogs.length}</span></button>
-      <button role="tab" aria-selected="false" data-tab="disposal" id="tab-disposal" aria-controls="panel-disposal">폐기 이력 <span class="tab-count">${disposalLogs.length}</span></button>
-    </div>
-    <div class="tab-panel" id="panel-info" role="tabpanel" aria-labelledby="tab-info">
-      <section class="panel detail-grid">
-        ${detail("문서명", document.document_name)}
-        ${detail("문서번호", document.document_number)}
-        ${detail("개정번호", document.revision_number)}
-        ${detail("제/개정일", document.revision_date || "미입력")}
-        ${detail("폐기 예정 년도", document.disposal_due_year ?? "미입력")}
-        ${detail("보관위치", location)}
-      </section>
-      <section class="panel detail-grid">
-        ${detail("보관코드", document.storage_code)}
-        ${detail("대분류", document.category_name)}
-        ${detail("태그", tags.length ? tags.map((t) => t.name).join(", ") : "-")}
-        ${detail("상태", document.status === "active" ? "보관중" : "폐기")}
-        ${detail("비고", document.note || "-")}
-      </section>
-      ${renderDocumentFloorPlan(document, floorPlan)}
-      ${renderMiniVisualizer(document)}
-    </div>
-    <div class="tab-panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" hidden><section class="panel">${timeline(auditLogs, renderAuditLog, "감사 이력이 없습니다.")}</section></div>
-    <div class="tab-panel" id="panel-disposal" role="tabpanel" aria-labelledby="tab-disposal" hidden><section class="panel">${timeline(disposalLogs, renderDisposalLog, "폐기 이력이 없습니다.")}</section></div>
+    ${isAdmin ? `
+      <div class="tab-nav" role="tablist" aria-label="문서 상세 정보">
+        <button role="tab" aria-selected="true" data-tab="info" id="tab-info" aria-controls="panel-info">기본 정보</button>
+        <button role="tab" aria-selected="false" data-tab="audit" id="tab-audit" aria-controls="panel-audit">Audit Trail <span class="tab-count">${auditLogs.length}</span></button>
+      </div>
+      <div class="tab-panel" id="panel-info" role="tabpanel" aria-labelledby="tab-info">${information}</div>
+      <div class="tab-panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" hidden><section class="panel">${timeline(auditLogs, renderAuditLog, "Audit Trail이 없습니다.")}</section></div>
+    ` : `<div class="document-info">${information}</div>`}
     ${isAdmin && document.status === "active" ? disposeModal(document) : ""}
-    ${isAdmin && document.status !== "active" ? deleteModal(document) : ""}
   `, session);
 }
 
@@ -197,18 +197,14 @@ function documentActions(document) {
   if (document.status === "active") {
     return `<div class="button-group"><a class="button sm" href="/documents/${document.id}/edit">수정</a><button type="button" class="danger-button sm" data-open-modal="dispose-modal">폐기</button></div>`;
   }
-  return `<div class="button-group"><form method="post" action="/documents/${document.id}/restore"><button type="submit" class="button sm">폐기 해제</button></form><button type="button" class="danger-button sm" data-open-modal="delete-modal">완전 삭제</button></div>`;
+  return `<div class="button-group"><form method="post" action="/documents/${document.id}/restore"><button type="submit" class="button sm">폐기 해제</button></form></div>`;
 }
 
 function disposeModal(document) {
   return `<dialog id="dispose-modal" class="modal"><form method="post" action="/documents/${document.id}/dispose" class="modal-body"><h3>문서 폐기</h3><label>폐기 사유 <em>*</em><textarea name="reason" rows="3" required></textarea></label><div class="modal-actions"><button type="button" class="button secondary" data-close-modal>취소</button><button type="submit" class="danger-button">폐기 확인</button></div></form></dialog>`;
 }
 
-function deleteModal(document) {
-  return `<dialog id="delete-modal" class="modal"><form method="post" action="/documents/${document.id}/delete-permanent" class="modal-body"><h3>완전 삭제</h3><p class="danger-text">이 작업은 되돌릴 수 없습니다.</p><div class="modal-actions"><button type="button" class="button secondary" data-close-modal>취소</button><button type="submit" class="danger-button">완전 삭제</button></div></form></dialog>`;
-}
-
-// 문서 상세 기본정보: 문서 정보와 서가 위치 사이에, 해당 구역만 확대한 도면을 넣고
+// 큰 구역 도면은 필요할 때만 펼치도록 기본 접힘 native details로 둔다.
 // 문서가 보관된 랙(양면이면 그 면의 반쪽)만 파란색으로 강조한다.
 function renderDocumentFloorPlan(document, floorPlan = []) {
   if (!floorPlan.length) {
@@ -220,23 +216,23 @@ function renderDocumentFloorPlan(document, floorPlan = []) {
 
   if (!region) {
     return `
-      <section class="panel doc-floor-plan">
-        <div class="section-title"><h2>문서고 도면</h2><span class="count-badge">${badge}</span></div>
-        <p class="muted">이 문서의 랙은 현재 도면에 표시되지 않는 구역에 있습니다.</p>
-      </section>
+      <details class="panel doc-floor-plan">
+        <summary><span>문서고 도면</span><span class="count-badge">${badge}</span></summary>
+        <div class="doc-floor-plan-body"><p class="muted">이 문서의 랙은 현재 도면에 표시되지 않는 구역에 있습니다.</p></div>
+      </details>
     `;
   }
 
   const single = readBoolean(document.is_single_sided);
+  const orientation = rackViewOrientation(document);
   return `
-    <section class="panel doc-floor-plan">
-      <div class="section-title">
-        <h2>문서고 도면 · ${escapeHtml(region.label)}</h2>
-        <span class="count-badge">${badge}</span>
+    <details class="panel doc-floor-plan">
+      <summary><span>문서고 도면 · ${escapeHtml(region.label)}</span><span class="count-badge">${badge}</span></summary>
+      <div class="doc-floor-plan-body">
+        ${zoneFloorPlanView(region, { hitCode: document.rack_code, hitFace: document.rack_face })}
+        <p class="muted">파란색이 이 문서가 보관된 ${single ? `단면 랙입니다. ${orientation.description}` : `${escapeHtml(rackLabel)} 면(양면 랙의 ${document.rack_face === "B" ? "우측" : "좌측"})입니다. 1열은 통로 안쪽인 ${orientation.originLabel}에서 시작합니다.`}</p>
       </div>
-      ${zoneFloorPlanView(region, { hitCode: document.rack_code, hitFace: document.rack_face })}
-      <p class="muted">파란색이 이 문서가 보관된 ${single ? "랙" : `${escapeHtml(rackLabel)} 면(양면 랙의 ${document.rack_face === "B" ? "우측" : "좌측"})`}입니다.</p>
-    </section>
+    </details>
   `;
 }
 
@@ -245,36 +241,55 @@ function renderMiniVisualizer(document) {
   const rows = Math.max(1, Number(document.shelf_count || 3));
   const activeCol = Number(document.column_number || 0);
   const activeRow = Number(document.shelf_number || 0);
+  const orientation = rackViewOrientation(document);
+  const columns = Array.from({ length: cols }, (_, index) => index + 1);
+  if (orientation.origin === "right") columns.reverse();
   let slots = "";
 
   for (let row = rows; row >= 1; row -= 1) {
-    for (let col = 1; col <= cols; col += 1) {
+    for (const col of columns) {
       const active = col === activeCol && row === activeRow;
-      slots += `<div class="mini-slot ${active ? "active" : ""}" title="${col}열 ${row}행"><span>${col}-${row}</span>${active ? `<i class="fa-solid fa-location-dot" aria-hidden="true"></i>` : ""}</div>`;
+      slots += `<div class="mini-slot ${active ? "active" : ""}" title="${col}열 ${row}선반"><span>${col}-${row}</span>${active ? `<i class="fa-solid fa-location-dot" aria-hidden="true"></i>` : ""}</div>`;
     }
   }
 
   // 선반 나침반: 추상 좌표를 랙 앞에 선 사람의 몸 기준 서수·방향으로 번역해 '어디부터 세지' 혼동을 없앤다.
   const ordinal = [
     activeRow ? `아래에서 ${activeRow}번째 선반` : "",
-    activeCol ? `왼쪽에서 ${activeCol}번째 열` : ""
+    activeCol ? `${orientation.originLabel}에서 ${activeCol}번째 열` : ""
   ].filter(Boolean).join(" · ");
 
   const rackLabel = rackFaceLabel(document);
   return `
     <section class="panel minimap-card">
-      <div class="section-title"><h2>서가 위치 · ${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙</h2><span class="count-badge">${activeCol}열 ${activeRow}행</span></div>
+      <div class="section-title"><h2>서가 위치 · ${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙</h2><span class="count-badge">${activeCol}열 ${activeRow}선반</span></div>
+      <div class="mini-column-guide" data-column-origin="${orientation.origin}">
+        <span>${orientation.origin === "left" ? "1열 · 통로 안쪽" : `${cols}열 · 바깥쪽`}</span>
+        <strong>사용자 시선</strong>
+        <span>${orientation.origin === "right" ? "1열 · 통로 안쪽" : `${cols}열 · 바깥쪽`}</span>
+      </div>
       <div class="mini-rack-stage">
         <div class="mini-axis" aria-hidden="true"><span>위 ↑</span><span>아래 ↓</span></div>
-        <div class="mini-rack-grid" style="--cols:${cols};--rows:${rows}">${slots}</div>
+        <div class="mini-rack-grid" data-column-origin="${orientation.origin}" style="--cols:${cols};--rows:${rows}">${slots}</div>
       </div>
+      <p class="mini-orientation-note">${escapeHtml(orientation.description)} 선반은 아래에서 1선반부터 위로 올라갑니다.</p>
       ${ordinal ? `<p class="mini-compass"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> ${escapeHtml(ordinal)}${readBoolean(document.is_single_sided) ? "" : ` · 양면 랙 ${escapeHtml(rackLabel)} 면`}</p>` : ""}
     </section>
   `;
 }
 
-function renderDisposalLog(log) {
-  return timelineItem(log.action === "disposed" ? "문서 폐기" : "폐기 해제", `${log.performed_by} / ${log.created_at}`, log.reason || "-");
+function rackViewOrientation(document) {
+  const isZoneOne = Number(document.zone_number) === 1;
+  const single = readBoolean(document.is_single_sided);
+  const isZoneOneRightSingle = isZoneOne && single && Number(document.rack_number) === 1;
+  const origin = document.rack_face === "B" || isZoneOneRightSingle ? "right" : "left";
+  const originLabel = origin === "right" ? "오른쪽" : "왼쪽";
+  const description = isZoneOneRightSingle
+    ? "1구역 1번 단면랙은 우측 랙과 같은 방향이므로 오른쪽이 1열입니다."
+    : single
+      ? `단면랙을 정면에서 본 모습이며 ${originLabel}이 1열입니다.`
+      : `${document.rack_face === "B" ? "우측 면" : "좌측 면"}을 정면에서 본 모습이며 ${originLabel}이 1열입니다.`;
+  return { origin, originLabel, description };
 }
 
 function renderAuditLog(log) {
@@ -328,20 +343,20 @@ function documentListUrl({ query, filters = {}, page = 1 }) {
     ["category", "categoryId"],
     ["zone", "zoneNumber"],
     ["tag", "tagId"],
-    ["includeDisposed", "includeDisposed"],
+    ["status", "status"],
     ["sort", "sort"]
   ]);
 }
 
-function bulkActionBar(action = "/documents/bulk-dispose", returnTo = "/documents") {
+function bulkActionBar(action = "/documents/bulk-dispose", returnTo = "/documents/disposal") {
   return `
     <div class="bulk-bar" data-bulk-bar hidden>
       <span data-bulk-count>0건 선택</span>
       <form method="post" action="${escapeHtml(action)}" data-bulk-form>
         <input type="hidden" name="ids" data-bulk-ids>
         <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
-        <label class="bulk-reason"><input name="reason" placeholder="폐기 사유" required></label>
-        <button type="submit" class="danger-button sm">일괄 폐기</button>
+        <label class="bulk-reason"><span class="sr-only">폐기 사유</span><input name="reason" placeholder="폐기 사유를 입력하세요" required></label>
+        <button type="submit" class="danger-button sm">선택 문서 폐기</button>
       </form>
     </div>
   `;
@@ -349,5 +364,5 @@ function bulkActionBar(action = "/documents/bulk-dispose", returnTo = "/document
 
 function documentToolbar(session) {
   if (session.role !== "Admin") return "";
-  return `<div class="button-group"><a class="button" href="/documents/new">문서 등록</a><a class="button secondary" href="/documents/disposal">문서 폐기 작업</a><a class="button secondary" href="/documents/import">CSV 가져오기</a><a class="button secondary" href="/documents/export.csv">엑셀 목록 내보내기</a></div>`;
+  return `<div class="button-group document-toolbar"><a class="button" href="/documents/new">문서 등록</a><a class="button secondary" href="/documents/disposal">폐기 작업</a><a class="button secondary" href="/documents/import">CSV 가져오기</a><a class="button secondary" href="/documents/export.csv">엑셀 목록 내보내기</a></div>`;
 }

@@ -19,6 +19,7 @@ export async function resolveSearchRequest(env, url) {
     category: url.searchParams.get("category"),
     zone: url.searchParams.get("zone"),
     tag: url.searchParams.get("tag"),
+    status: url.searchParams.get("status"),
     includeDisposed: url.searchParams.get("includeDisposed"),
     sort: url.searchParams.get("sort")
   }, { emptySort: true, query, defaultActive: false });
@@ -28,22 +29,22 @@ export async function resolveSearchRequest(env, url) {
   ]);
   const hasExplicitFilter = Boolean(
     explicitFilters.categoryId || explicitFilters.zoneNumber || explicitFilters.tagId ||
-    explicitFilters.includeDisposed
+    explicitFilters.status === "disposed"
   );
 
   // "2구역 PV" 같은 검색어를 필터 + 남은 텍스트로 분해한다.
   const parsed = parseSearchQuery(query, {
     categories,
     tags,
-    // 상태는 체크박스로만 제어하며 검색어의 상태 토큰은 일반 검색어로 남긴다.
-    explicit: { ...explicitFilters, status: "active" }
+    // 상태는 선택 상자로만 제어하며 검색어의 상태 토큰은 일반 검색어로 남긴다.
+    explicit: { ...explicitFilters, status: explicitFilters.status || "active" }
   });
   const filters = {
     categoryId: explicitFilters.categoryId || parsed.filters.categoryId || 0,
     zoneNumber: explicitFilters.zoneNumber || parsed.filters.zoneNumber || 0,
     tagId: explicitFilters.tagId || parsed.filters.tagId || 0,
-    status: explicitFilters.includeDisposed ? "" : "active",
-    includeDisposed: explicitFilters.includeDisposed,
+    status: explicitFilters.status || "active",
+    includeDisposed: explicitFilters.status === "disposed",
     sort: explicitFilters.sort || (parsed.text ? "relevance" : "updated")
   };
 
@@ -52,7 +53,7 @@ export async function resolveSearchRequest(env, url) {
 
 // 결과 0건이면 "혹시 이 검색어?" 후보를 만들고, 1페이지 검색이면 검색 로그를 남긴다.
 export async function resolveSearchOutcome(env, search, totalItems) {
-  const didYouMean = search.query && totalItems === 0
+  const didYouMean = search.query && totalItems === 0 && search.filters.status !== "disposed"
     ? await getDidYouMeanSuggestions(env, search.parsed.text || search.query, 3)
     : [];
 

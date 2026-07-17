@@ -29,7 +29,6 @@ export function page(title, body, session, status = 200) {
   <a href="#main-content" class="skip-nav">본문 바로가기</a>
   ${session ? header(session) : ""}
   <main id="main-content" class="${session ? "app-shell" : "login-main"}">${body}</main>
-  ${session ? commandPalette() : ""}
 </body>
 </html>`;
 
@@ -66,28 +65,20 @@ function withCsrfToken(body, token) {
 }
 
 function header(session) {
-  const home = session.role === "Admin" ? "/admin" : "/app";
   const adminLinks = [
-    ["/admin", "fa-user-shield", "관리자"],
     ["/app", "fa-magnifying-glass", "검색"],
-    ["/documents", "fa-file-lines", "문서"],
-    ["/documents/disposal", "fa-trash-can", "문서 폐기"],
-    ["/sets", "fa-list-check", "세트"],
-    ["/racks", "fa-box-archive", "랙"],
-    ["/categories", "fa-layer-group", "대분류"],
-    ["/tags", "fa-tags", "태그"]
+    ["/documents", "fa-file-lines", "문서 관리"],
+    ["/documents/disposal", "fa-box-archive", "폐기 작업"],
+    ["/admin", "fa-gear", "관리 설정"]
   ];
   const userLinks = [
-    ["/app", "fa-magnifying-glass", "검색"],
-    ["/documents", "fa-file-lines", "전체 문서"],
-    ["/sets", "fa-list-check", "세트"],
-    ["/qa", "fa-circle-question", "Q&A"]
+    ["/app", "fa-magnifying-glass", "검색"]
   ];
   const links = session.role === "Admin" ? adminLinks : userLinks;
 
   return `
     <header class="topbar">
-      <a href="${home}" class="brand"><span class="brand-mark"><i class="fa-solid fa-building-columns"></i></span><span><strong>한림문서고</strong><small>통합 문서 위치 검색</small></span></a>
+      <a href="/app" class="brand"><span class="brand-mark"><i class="fa-solid fa-building-columns"></i></span><span><strong>한림문서고</strong><small>통합 문서 위치 검색</small></span></a>
       <button type="button" class="hamburger" aria-label="메뉴 열기" data-hamburger><span></span><span></span><span></span></button>
       <nav aria-label="주 메뉴" data-nav-menu>
         <button type="button" class="drawer-close" data-drawer-close aria-label="메뉴 닫기">×</button>
@@ -102,21 +93,6 @@ function header(session) {
       </nav>
       <div class="nav-scrim" data-nav-scrim></div>
     </header>
-  `;
-}
-
-function commandPalette() {
-  return `
-    <dialog id="command-palette" class="cmd-palette">
-      <div class="cmd-palette-content">
-        <label class="cmd-search-wrap">
-          <i class="fa-solid fa-magnifying-glass cmd-icon"></i>
-          <span class="sr-only">명령 또는 문서 검색</span>
-          <input type="text" id="cmdSearchInput" placeholder="문서명, 문서번호, 위치 또는 메뉴 검색" autocomplete="off">
-        </label>
-        <div class="cmd-results" id="cmdResults"></div>
-      </div>
-    </dialog>
   `;
 }
 
@@ -200,7 +176,12 @@ export function filterSelectRow({ categories, tags, filters, viewer = false }) {
               ${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}
             </select>
           </label>
-          <label class="check-item"><input type="checkbox" name="includeDisposed" value="1"${filters.includeDisposed ? " checked" : ""}><span>폐기문서 포함</span></label>
+          <label>${label("문서 상태")}
+            <select name="status">
+              ${option("active", "보관중 문서", filters.status || "active")}
+              ${option("disposed", "폐기 문서만", filters.status || "active")}
+            </select>
+          </label>
           <label>${label("정렬")}
             <select name="sort">
               ${option("relevance", "정확도순", filters.sort || "relevance")}
@@ -227,7 +208,7 @@ export function listUrl(basePath, { query, filters = {}, page = 1 }, paramOrder)
   const params = new URLSearchParams();
   if (query) params.set("q", query);
   for (const [param, key] of paramOrder) {
-    if (filters[key]) params.set(param, key === "includeDisposed" ? "1" : filters[key]);
+    if (filters[key]) params.set(param, filters[key]);
   }
   if (page > 1) params.set("page", page);
   const text = params.toString();

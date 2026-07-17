@@ -4,6 +4,7 @@
 import { clean } from "../utils.js";
 
 const VALID_SORTS = new Set(["relevance", "updated", "docnum", "category", "location"]);
+const VALID_STATUSES = new Set(["active", "disposed"]);
 
 function readParam(params, ...names) {
   for (const name of names) {
@@ -25,16 +26,24 @@ function positiveInteger(value) {
 export function parseDocumentFilters(params = {}, { emptySort = false, query = "", defaultActive = true } = {}) {
   const q = clean(query || readParam(params, "q", "query"));
   const sortRaw = clean(readParam(params, "sort"));
-  const includeDisposed = ["1", "true", "on", "yes"].includes(clean(readParam(params, "includeDisposed")).toLowerCase());
+  const statusRaw = clean(readParam(params, "status")).toLowerCase();
+  const legacyIncludeDisposed = ["1", "true", "on", "yes"].includes(clean(readParam(params, "includeDisposed")).toLowerCase());
   const sort = VALID_SORTS.has(sortRaw) ? sortRaw : "";
-  const status = defaultActive && !includeDisposed ? "active" : "";
+  const status = VALID_STATUSES.has(statusRaw)
+    ? statusRaw
+    : legacyIncludeDisposed
+      ? "disposed"
+      : defaultActive
+        ? "active"
+        : "";
 
   return {
     categoryId: positiveInteger(readParam(params, "category", "categoryId")),
     zoneNumber: positiveInteger(readParam(params, "zone", "zoneNumber")),
     tagId: positiveInteger(readParam(params, "tag", "tagId")),
     status,
-    includeDisposed,
+    // 구형 호출부가 참조해도 혼합 상태가 되지 않도록 "폐기 문서만" 의미로 유지한다.
+    includeDisposed: status === "disposed",
     sort: emptySort ? sort : (sort || (q ? "relevance" : "updated"))
   };
 }

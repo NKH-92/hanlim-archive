@@ -62,7 +62,7 @@ export async function handleDocuments(request, env, session) {
     categories,
     tags,
     filters,
-    suggestions,
+    suggestions: filters.status === "disposed" ? [] : suggestions,
     didYouMean,
     pagination: {
       page: sliced.page,
@@ -75,6 +75,10 @@ export async function handleDocuments(request, env, session) {
 
 export async function handleDisposalWorkspace(request, env, session) {
   const filters = parseDisposalFilters(new URL(request.url).searchParams);
+  return renderDisposalWorkspace(env, session, filters);
+}
+
+async function renderDisposalWorkspace(env, session, filters, feedback = null) {
   const [{ categories }, racks, years, candidates] = await Promise.all([
     loadDocumentFormOptions(env, { activeOnly: true, includeSlots: false }),
     getRackSummaries(env),
@@ -88,7 +92,8 @@ export async function handleDisposalWorkspace(request, env, session) {
     years,
     filters,
     documents: candidates.slice(0, 200),
-    capped: candidates.length > 200
+    capped: candidates.length > 200,
+    feedback
   });
 }
 
@@ -185,7 +190,7 @@ export async function handleCreateDocument(request, env, session) {
 }
 
 async function renderEditDocumentForm(env, session, id, values, selectedTags, error = "") {
-  const { categories, tags, slots } = await loadDocumentFormOptions(env, { includeSlots: false });
+  const { categories, tags, slots } = await loadDocumentFormOptions(env, { includeSlots: true });
   return documentFormPage({
     session,
     title: "문서 수정",
@@ -196,7 +201,7 @@ async function renderEditDocumentForm(env, session, id, values, selectedTags, er
     slots,
     selectedTags,
     error,
-    showLocation: false
+    showLocation: true
   });
 }
 
@@ -213,7 +218,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
     const [tags, disposalLogs, auditLogs, racks, regions] = await Promise.all([
       getDocumentTags(env, id),
       getDisposalLogs(env, id),
-      getDocumentAuditLogs(env, id),
+      session.role === "Admin" ? getDocumentAuditLogs(env, id) : Promise.resolve([]),
       getRackSummaries(env),
       getFloorPlanRegions(env)
     ]);
@@ -271,8 +276,6 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
     }
 
     const values = valuesFromDocumentForm(await request.formData());
-    values.rackSlotId = document.rack_slot_id;
-    values.rackFace = document.rack_face;
     const validation = await validateDocumentInput(env, values, {
       allowInactiveCategoryId: document.category_id,
       allowInactiveTagIds: currentTags.map((tag) => tag.id)
@@ -339,27 +342,49 @@ export async function handleBulkDispose(request, env, session) {
   const reason = clean(form.get("reason"));
   const returnTo = safeDisposalReturn(form.get("returnTo"));
 
-  if (!idsRaw || !reason) {
-    return redirect(withToast(returnTo, "error"));
+  if (!idsRaw) {
+    return renderDisposalWorkspace(env, session, disposalFiltersFromReturn(returnTo), {
+      type: "error",
+      message: "폐기할 문서를 하나 이상 선택해 주세요."
+    });
+  }
+
+  if (!reason) {
+    return renderDisposalWorkspace(env, session, disposalFiltersFromReturn(returnTo), {
+      type: "error",
+      message: "폐기 사유를 입력해 주세요."
+    });
   }
 
   const ids = [...new Set(idsRaw.split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0))];
 
+  if (!ids.length) {
+    return renderDisposalWorkspace(env, session, disposalFiltersFromReturn(returnTo), {
+      type: "error",
+      message: "유효한 폐기 대상을 선택해 주세요."
+    });
+  }
+
   if (ids.length > 200) {
-    return errorPage("일괄 폐기는 한 번에 200건 이하로 처리해 주세요.", session, 400);
+    return renderDisposalWorkspace(env, session, disposalFiltersFromReturn(returnTo), {
+      type: "error",
+      message: "일괄 폐기는 한 번에 200건 이하로 처리해 주세요."
+    });
   }
 
   const result = await disposeInChunks(env, ids, session, reason);
 
   if (result.failures.length) {
-    return errorPage(
-      `일괄 폐기 중 ${result.disposed}건 완료, ${result.failures.length}건 실패: ${result.failures.join(" / ")}`,
-      session,
-      409
-    );
+    return renderDisposalWorkspace(env, session, disposalFiltersFromReturn(returnTo), {
+      type: "warning",
+      message: `폐기 ${result.disposed}건 완료, 건너뜀 ${result.skipped}건, 실패 ${result.failures.length}건: ${result.failures.join(" / ")}`
+    });
   }
 
-  return redirect(withToast(returnTo, "bulk-disposed"));
+  return redirect(withToast(returnTo, "bulk-disposed", {
+    disposed: result.disposed,
+    skipped: result.skipped
+  }));
 }
 
 export async function handleFilteredDispose(request, env, session) {
@@ -382,7 +407,10 @@ export async function handleFilteredDispose(request, env, session) {
   if (result.failures.length) {
     return errorPage(`일괄 폐기 중 ${result.disposed}건 완료, ${result.failures.length}건 실패: ${result.failures.join(" / ")}`, session, 409);
   }
-  return redirect(withToast(returnTo, "bulk-disposed"));
+  return redirect(withToast(returnTo, "bulk-disposed", {
+    disposed: result.disposed,
+    skipped: result.skipped
+  }));
 }
 
 async function disposeInChunks(env, ids, session, reason) {
@@ -398,9 +426,26 @@ async function disposeInChunks(env, ids, session, reason) {
 
 function safeDisposalReturn(value) {
   const path = clean(value);
-  return path.startsWith("/documents/disposal") ? path : "/documents";
+  try {
+    const url = new URL(path || "/documents/disposal", "https://archive.local");
+    return url.origin === "https://archive.local" && url.pathname === "/documents/disposal"
+      ? `${url.pathname}${url.search}`
+      : "/documents/disposal";
+  } catch {
+    return "/documents/disposal";
+  }
 }
 
-function withToast(path, toast) {
-  return `${path}${path.includes("?") ? "&" : "?"}toast=${encodeURIComponent(toast)}`;
+function disposalFiltersFromReturn(path) {
+  const url = new URL(path, "https://archive.local");
+  return parseDisposalFilters(url.searchParams);
+}
+
+function withToast(path, toast, details = {}) {
+  const url = new URL(path, "https://archive.local");
+  url.searchParams.set("toast", toast);
+  for (const [key, value] of Object.entries(details)) {
+    url.searchParams.set(key, String(value));
+  }
+  return `${url.pathname}${url.search}`;
 }

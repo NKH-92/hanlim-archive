@@ -126,7 +126,10 @@ export function clientScript() {
           var q = input.value.trim();
           if (!datalist || q.length < 2) return;
           timer = setTimeout(function () {
-            fetch('/api/search-suggestions?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
+            var statusControl = input.form ? input.form.querySelector('select[name="status"]') : null;
+            var suggestionUrl = '/api/search-suggestions?q=' + encodeURIComponent(q);
+            if (statusControl && statusControl.value === 'disposed') suggestionUrl += '&status=disposed';
+            fetch(suggestionUrl, { headers: { Accept: 'application/json' } })
               .then(function (response) { return response.ok ? response.json() : { suggestions: [] }; })
               .then(function (data) {
                 datalist.innerHTML = (data.suggestions || []).map(function (item) {
@@ -141,80 +144,55 @@ export function clientScript() {
       var bulkBar = document.querySelector('[data-bulk-bar]');
       var bulkIds = document.querySelector('[data-bulk-ids]');
       var bulkCount = document.querySelector('[data-bulk-count]');
+      var bulkSelectAll = document.querySelector('[data-bulk-select-all]');
       function syncBulk() {
-        var checked = Array.from(document.querySelectorAll('[data-bulk-item]:checked')).map(function (item) { return item.value; });
+        var items = Array.from(document.querySelectorAll('[data-bulk-item]'));
+        var checkedItems = items.filter(function (item) { return item.checked; });
+        var checked = checkedItems.map(function (item) { return item.value; });
         if (bulkBar) bulkBar.hidden = checked.length === 0;
         if (bulkIds) bulkIds.value = checked.join(',');
         if (bulkCount) bulkCount.textContent = checked.length + '건 선택';
+        if (bulkSelectAll) {
+          bulkSelectAll.checked = items.length > 0 && checked.length === items.length;
+          bulkSelectAll.indeterminate = checked.length > 0 && checked.length < items.length;
+          bulkSelectAll.disabled = items.length === 0;
+        }
       }
       document.querySelectorAll('[data-bulk-item]').forEach(function (item) { item.addEventListener('change', syncBulk); });
+      if (bulkSelectAll) {
+        bulkSelectAll.addEventListener('change', function () {
+          document.querySelectorAll('[data-bulk-item]').forEach(function (item) { item.checked = bulkSelectAll.checked; });
+          syncBulk();
+        });
+      }
+      syncBulk();
 
       var bulkForm = document.querySelector('[data-bulk-form]');
       if (bulkForm) {
         bulkForm.addEventListener('submit', function (event) {
           var count = document.querySelectorAll('[data-bulk-item]:checked').length;
+          if (!count) {
+            event.preventDefault();
+            return;
+          }
           if (!window.confirm('선택한 ' + count + '건을 일괄 폐기 처리할까요? 폐기 후에는 관리자만 해제할 수 있습니다.')) {
             event.preventDefault();
           }
         });
       }
-      var filteredDisposeForm = document.querySelector('[data-filtered-dispose-form]');
-      if (filteredDisposeForm) {
-        filteredDisposeForm.addEventListener('submit', function (event) {
-          if (!window.confirm('현재 필터 결과를 일괄 폐기 처리할까요? 이 작업은 감사 이력에 기록됩니다.')) {
-            event.preventDefault();
-          }
-        });
-      }
-
-      var cmd = document.getElementById('command-palette');
-      var cmdInput = document.getElementById('cmdSearchInput');
-      var cmdResults = document.getElementById('cmdResults');
-      var routes = [
-        { title: '검색', path: '/app', icon: 'fa-magnifying-glass' },
-        { title: '문서 전체', path: '/documents', icon: 'fa-file-lines' },
-        { title: '문서 등록', path: '/documents/new', icon: 'fa-plus' },
-        { title: '랙 목록', path: '/racks', icon: 'fa-box-archive' },
-        { title: '대분류 관리', path: '/categories', icon: 'fa-layer-group' },
-        { title: '태그 관리', path: '/tags', icon: 'fa-tags' }
-      ];
-      function renderCmd() {
-        if (!cmdResults || !cmdInput) return;
-        var q = cmdInput.value.trim();
-        var lower = q.toLowerCase();
-        var html = '';
-        if (q) {
-          html += '<a href="/app?q=' + encodeURIComponent(q) + '" class="cmd-item"><i class="fa-solid fa-file-lines cmd-item-icon"></i><span>"' + escapeHtmlClient(q) + '" 문서 검색</span></a>';
-        }
-        routes.filter(function (route) { return !q || route.title.toLowerCase().includes(lower); }).forEach(function (route) {
-          html += '<a href="' + route.path + '" class="cmd-item"><i class="fa-solid ' + route.icon + ' cmd-item-icon"></i><span>' + route.title + '</span></a>';
-        });
-        cmdResults.innerHTML = html;
-      }
-      document.addEventListener('keydown', function (event) {
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-          event.preventDefault();
-          if (cmd && cmd.showModal) {
-            cmd.showModal();
-            renderCmd();
-            setTimeout(function () { if (cmdInput) cmdInput.focus(); }, 0);
-          }
-        } else if (event.key === 'Escape' && cmd && cmd.open) {
-          cmd.close();
-        }
-      });
-      if (cmdInput) cmdInput.addEventListener('input', renderCmd);
 
       var currentPath = location.pathname;
-      document.querySelectorAll('.archive-nav-item').forEach(function (item) {
+      var activeNav = Array.from(document.querySelectorAll('.archive-nav-item')).filter(function (item) {
         var href = item.getAttribute('href') || '';
-        if (href === currentPath || (href.length > 1 && currentPath.indexOf(href + '/') === 0)) {
-          item.classList.add('active');
-        }
-      });
+        return href === currentPath || (href.length > 1 && currentPath.indexOf(href + '/') === 0);
+      }).sort(function (left, right) {
+        return (right.getAttribute('href') || '').length - (left.getAttribute('href') || '').length;
+      })[0];
+      if (activeNav) activeNav.classList.add('active');
 
       var toastKey = new URLSearchParams(location.search).get('toast');
       if (toastKey) {
+        var toastParams = new URLSearchParams(location.search);
         var toastMessages = {
           created: '문서가 등록되었습니다.',
           updated: '문서 정보가 수정되었습니다.',
@@ -228,6 +206,11 @@ export function clientScript() {
           error: '요청을 처리하지 못했습니다. 입력값을 확인하세요.'
         };
         var toastMessage = toastMessages[toastKey];
+        if (toastKey === 'bulk-disposed') {
+          var disposedCount = Number(toastParams.get('disposed') || 0);
+          var skippedCount = Number(toastParams.get('skipped') || 0);
+          toastMessage = '폐기 ' + disposedCount + '건 완료' + (skippedCount ? ' · 건너뜀 ' + skippedCount + '건' : '') + '.';
+        }
         if (toastMessage) {
           var toast = document.createElement('div');
           toast.className = 'app-toast' + (toastKey === 'error' ? ' is-error' : '');
@@ -241,6 +224,8 @@ export function clientScript() {
         try {
           var cleanUrl = new URL(location.href);
           cleanUrl.searchParams.delete('toast');
+          cleanUrl.searchParams.delete('disposed');
+          cleanUrl.searchParams.delete('skipped');
           history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
         } catch {}
       }
@@ -352,14 +337,14 @@ export function clientScript() {
             var el = viewerForm.querySelector('select[name="' + name + '"]');
             return el ? Number(el.value) || 0 : 0;
           };
-          var includeDisposedEl = viewerForm.querySelector('input[name="includeDisposed"]');
+          var statusEl = viewerForm.querySelector('select[name="status"]');
           var sortEl = viewerForm.querySelector('select[name="sort"]');
+          var status = statusEl && statusEl.value === 'disposed' ? 'disposed' : 'active';
           return {
             categoryId: num('category'),
             tagId: num('tag'),
             zoneNumber: num('zone'),
-            status: includeDisposedEl && includeDisposedEl.checked ? '' : 'active',
-            includeDisposed: Boolean(includeDisposedEl && includeDisposedEl.checked),
+            status: status,
             sort: sortEl ? sortEl.value : 'relevance'
           };
         };
@@ -408,13 +393,13 @@ export function clientScript() {
           var parsed = core.parseSearchQuery(q, {
             categories: searchContext.categories,
             tags: searchContext.tags,
-            explicit: Object.assign({}, f, { status: 'active' })
+            explicit: f
           });
           var merged = {
             categoryId: f.categoryId || parsed.filters.categoryId || 0,
             tagId: f.tagId || parsed.filters.tagId || 0,
             zoneNumber: f.zoneNumber || parsed.filters.zoneNumber || 0,
-            status: f.includeDisposed ? '' : 'active',
+            status: f.status,
             sort: f.sort || 'relevance'
           };
           var text = parsed.text;
@@ -468,7 +453,7 @@ export function clientScript() {
             var loose = [];
             for (var j = 0; j < searchIndex.length; j++) {
               var candidate = searchIndex[j];
-              if (candidate.status !== 'active') continue;
+              if (candidate.status !== merged.status) continue;
               var looseScore = core.scoreDocumentMatch(candidate, text, { minCoverage: 0.2 });
               if (looseScore.relevance_score > 0) loose.push(Object.assign({}, candidate, looseScore));
             }
@@ -481,7 +466,14 @@ export function clientScript() {
             }
           }
           if (scored.length > top.length) {
-            html += '<nav class="pagination"><a class="button secondary sm" href="/app?q=' + encodeURIComponent(q) + '">전체 ' + scored.length + '건 모두 보기</a></nav>';
+            var allParams = new URLSearchParams();
+            allParams.set('q', q);
+            allParams.set('status', merged.status);
+            if (f.categoryId) allParams.set('category', f.categoryId);
+            if (f.tagId) allParams.set('tag', f.tagId);
+            if (f.zoneNumber) allParams.set('zone', f.zoneNumber);
+            if (f.sort) allParams.set('sort', f.sort);
+            html += '<nav class="pagination"><a class="button secondary sm" href="/app?' + escapeHtmlClient(allParams.toString()) + '">전체 ' + scored.length + '건 모두 보기</a></nav>';
           }
           if (resultsBody) resultsBody.innerHTML = html;
           if (resultsTitle) resultsTitle.textContent = '"' + q + '" 검색 결과';

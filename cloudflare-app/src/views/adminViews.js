@@ -1,24 +1,44 @@
-// 관리자 화면: 대시보드·사용자 승인·분류/태그·비밀번호.
+// 관리자 화면: 관리 설정·사용자 승인·분류/태그·비밀번호.
 
 import { escapeHtml, readBoolean } from "../utils.js";
 import { alertDanger, emptyState, page, sectionHeader } from "./layout.js";
 
 export function adminDashboardPage({ session, pendingCount, quality = null }) {
-  return page("관리자", `
+  return page("관리 설정", `
     <section class="page-head">
-      <h1>문서고 운영 관리</h1>
+      <div><h1>관리 설정</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 설정합니다.</p></div>
     </section>
     ${quality ? dataQualityPanel(quality) : ""}
-    <section class="admin-grid">
-      <a class="panel admin-tile" href="/admin/settings"><small>가입 요청</small><strong>${pendingCount}건 대기</strong></a>
-      <a class="panel admin-tile" href="/documents"><small>문서 관리</small><strong>검색 / 수정 / 폐기</strong></a>
-      <a class="panel admin-tile" href="/admin/search-report"><small>검색 리포트</small><strong>자주 찾는 / 실패 검색어</strong></a>
-      <a class="panel admin-tile" href="/documents/import"><small>CSV</small><strong>대량 등록 / 내보내기</strong></a>
-      <a class="panel admin-tile" href="/racks/configure"><small>랙 설정</small><strong>구역별 랙 수 조정</strong></a>
-      <a class="panel admin-tile" href="/categories"><small>분류</small><strong>대분류 관리</strong></a>
-      <a class="panel admin-tile" href="/tags"><small>태그</small><strong>검색 보조 키워드 관리</strong></a>
-    </section>
+    <div class="management-grid">
+      ${managementGroup("사용자 및 접근", "계정 승인과 사용 권한을 관리합니다.", [
+        ["/admin/settings", "fa-users-gear", "사용자 관리", `${pendingCount}건 승인 대기`]
+      ])}
+      ${managementGroup("문서고 기준정보", "보관 위치와 검색 분류 기준을 관리합니다.", [
+        ["/racks", "fa-box-archive", "랙 관리", "랙 목록과 위치 확인"],
+        ["/racks/configure", "fa-table-cells-large", "랙 구성", "구역별 랙 수 조정"],
+        ["/categories", "fa-layer-group", "대분류 관리", "문서 분류 기준"],
+        ["/tags", "fa-tags", "태그 관리", "검색 보조 키워드"]
+      ])}
+      ${managementGroup("데이터 및 검색", "초기 데이터 등록과 검색 품질을 확인합니다.", [
+        ["/documents/import", "fa-file-csv", "초기 CSV 가져오기", "대량 등록 및 내보내기"],
+        ["/admin/search-report", "fa-chart-simple", "검색 리포트", "자주 찾는·실패 검색어"]
+      ])}
+      ${managementGroup("고급 도구", "일상 업무에서는 사용하지 않는 보조 기능입니다.", [
+        ["/sets", "fa-list-check", "문서 세트", "고급 묶음 관리 도구"]
+      ], true)}
+    </div>
   `, session);
+}
+
+function managementGroup(title, description, links, advanced = false) {
+  return `
+    <section class="panel management-section${advanced ? " is-advanced" : ""}">
+      <div class="management-heading"><div><h2>${escapeHtml(title)}</h2><p class="muted">${escapeHtml(description)}</p></div>${advanced ? `<span class="count-badge">고급</span>` : ""}</div>
+      <div class="admin-grid management-links">
+        ${links.map(([href, icon, label, caption]) => `<a class="panel admin-tile" href="${href}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(caption)}</small></span></a>`).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function dataQualityPanel(quality) {
@@ -42,8 +62,8 @@ export function adminSettingsPage({ session, users }) {
   const pending = users.filter((u) => u.status === "pending");
   const approved = users.filter((u) => u.status === "approved");
   const rejected = users.filter((u) => u.status === "rejected");
-  return page("관리자 설정", `
-    <section class="page-head"><h1>사용자 승인 관리</h1></section>
+  return page("사용자 관리", `
+    <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리합니다.</p></div><a class="button secondary" href="/admin">관리 설정</a></section>
     <section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${pending.length ? userRequestTable(pending) : emptyState("대기 중인 가입 요청이 없습니다.")}</section>
     <section class="two-col">
       <article class="panel">${sectionHeader("승인된 사용자", `${approved.length}명`)}${approved.length ? userRequestTable(approved) : emptyState("승인된 사용자가 없습니다.")}</article>

@@ -13,7 +13,7 @@ import { clean, redirect, sanitizeReturnUrl } from "../utils.js";
 
 export function renderLogin(url, env) {
   return loginPage({
-    returnUrl: url.searchParams.get("returnUrl") || "/",
+    returnUrl: url.searchParams.get("returnUrl") || "/app",
     error: clean(url.searchParams.get("error")),
     signupSubmitted: url.searchParams.has("signup"),
     setupWarning: getMissingSetup(env)
@@ -24,7 +24,7 @@ export async function handleLogin(request, env) {
   const form = await request.formData();
   const username = clean(form.get("username"));
   const password = String(form.get("password") ?? "");
-  const returnUrl = sanitizeReturnUrl(clean(form.get("returnUrl")) || "/");
+  const returnUrl = sanitizeReturnUrl(clean(form.get("returnUrl")) || "/app");
 
   if (await isLoginLocked(env, username)) {
     return redirect(`/login?error=locked&returnUrl=${encodeURIComponent(returnUrl)}`);
@@ -40,7 +40,7 @@ export async function handleLogin(request, env) {
   await clearLoginFailures(env, username);
 
   const secureCookie = new URL(request.url).protocol === "https:";
-  const destination = returnUrl === "/" ? (user.role === "Admin" ? "/admin" : "/app") : returnUrl;
+  const destination = returnUrl === "/" ? "/app" : returnUrl;
   return redirect(destination, { "Set-Cookie": await createSessionCookie(user, env, secureCookie) });
 }
 
