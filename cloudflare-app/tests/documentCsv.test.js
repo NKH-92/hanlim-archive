@@ -9,6 +9,7 @@ import {
 
 test("buildDocumentCsv creates deterministic filename and safe cells", () => {
   const result = buildDocumentCsv([{
+    storage_code: "ARC-000001",
     document_number: "=DOC-1",
     revision_number: "Rev.0",
     revision_date: "2026-04-14",
@@ -30,6 +31,7 @@ test("buildDocumentCsv creates deterministic filename and safe cells", () => {
   // 면은 실물 표기(1/2)로 내보낸다: rackCode,rackColumn,shelfNumber,rackFace 순.
   assert.match(result.body, /2026-04-14,2031,/);
   assert.match(result.body, /1-01 \/ 1.* \/ 2/);
+  assert.doesNotMatch(result.body, /ARC-000001|보관코드/);
 });
 
 test("readDocumentImportRows enforces configured row and byte limits", async () => {

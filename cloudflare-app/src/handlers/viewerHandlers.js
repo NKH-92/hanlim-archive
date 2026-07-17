@@ -1,7 +1,9 @@
+import { getAppConfig } from "../config.js";
 import {
   buildFloorPlanLayout,
   getFloorPlanRegions,
   getRackSummaries,
+  parseDocumentFilters,
   getSearchIndexDocuments,
   getSearchIndexMeta,
   getSearchReport,
@@ -43,7 +45,11 @@ export async function handleDashboard(request, env, session) {
       category: filters.categoryId,
       zone: filters.zoneNumber,
       tag: filters.tagId,
-      includeDisposed: filters.includeDisposed,
+      rack: filters.rackId,
+      face: filters.rackFace,
+      column: filters.columnNumber,
+      shelf: filters.shelfNumber,
+      status: filters.status,
       sort: filters.sort,
       page,
       pageSize: 12
@@ -58,7 +64,7 @@ export async function handleDashboard(request, env, session) {
     mode: "results",
     query,
     parsedQuery: parsed,
-    viewerSearch,
+    viewerSearch: filters.status === "disposed" ? { ...viewerSearch, suggestions: [] } : viewerSearch,
     floorPlan: buildFloorPlanLayout(racks, regions),
     categories,
     tags,
@@ -67,21 +73,24 @@ export async function handleDashboard(request, env, session) {
   });
 }
 
-export function renderQa(session) {
-  return qaPage({ session });
+export function renderQa(session, env) {
+  return qaPage({ session, support: getAppConfig(env).support });
 }
 
 export async function handleSearchSuggestions(request, env) {
   const url = new URL(request.url);
   const query = clean(url.searchParams.get("q"));
-  const suggestions = await getSearchSuggestions(env, query, 8);
+  const filters = parseDocumentFilters(url.searchParams, { query });
+  const suggestions = filters.status === "disposed" ? [] : await getSearchSuggestions(env, query, 8);
   return jsonResponse({ suggestions });
 }
 
 export async function handleViewerSearch(request, env) {
   const url = new URL(request.url);
-  const payload = await getViewerSearchPayload(env, Object.fromEntries(url.searchParams));
-  return jsonResponse(payload);
+  const params = Object.fromEntries(url.searchParams);
+  const payload = await getViewerSearchPayload(env, params);
+  const filters = parseDocumentFilters(params, { query: params.q || params.query });
+  return jsonResponse(filters.status === "disposed" ? { ...payload, suggestions: [] } : payload);
 }
 
 export async function handleSearchIndex(request, env) {

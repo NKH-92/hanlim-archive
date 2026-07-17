@@ -48,6 +48,19 @@ test("regular users cannot access document administration or disposal routes", a
   assert.equal(disposalPostResponse.status, 403);
 });
 
+test("root redirects every authenticated role to the search home", async () => {
+  for (const role of ["User", "Admin"]) {
+    const env = userSessionEnv(role);
+    const cookie = await createSessionCookie({ username: role.toLowerCase(), displayName: role, role }, env, false);
+    const response = await worker.fetch(new Request("https://archive.example.com/", {
+      headers: { Cookie: cookie }
+    }), env);
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("Location"), "/app");
+  }
+});
+
 test("viewer search api returns paginated items, facets, and suggestions", async () => {
   const env = viewerSearchEnv();
   const user = { username: "viewer", displayName: "Viewer", role: "User" };
@@ -64,6 +77,7 @@ test("viewer search api returns paginated items, facets, and suggestions", async
   assert.equal(response.status, 200);
   assert.equal(payload.items.length, 1);
   assert.equal(payload.items[0].documentNumber, "PV-2026-014");
+  assert.equal("storageCode" in payload.items[0], false);
   assert.equal(payload.items[0].location.label, "1구역 / 1-1번 랙 / 2열 / 3선반");
   assert.equal(payload.items[0].location.rackLabel, "1-1");
   assert.equal(payload.pagination.totalItems, 1);
@@ -71,7 +85,21 @@ test("viewer search api returns paginated items, facets, and suggestions", async
   assert.ok(payload.suggestions.length >= 1);
 });
 
-test("dashboard includes disposed documents only when the checkbox is explicit", async () => {
+test("disposed suggestion requests never expose active-document suggestions", async () => {
+  const env = viewerSearchEnv();
+  const user = { username: "viewer", displayName: "Viewer", role: "User" };
+  const cookie = await createSessionCookie(user, env, false);
+
+  const response = await worker.fetch(new Request("https://archive.example.com/api/search-suggestions?q=PV&status=disposed", {
+    headers: { Cookie: cookie, Accept: "application/json" }
+  }), env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload.suggestions, []);
+});
+
+test("dashboard status selector keeps active and disposed results mutually exclusive", async () => {
   const user = { username: "viewer", displayName: "Viewer", role: "User" };
 
   const defaultEnv = dashboardSearchEnv();
@@ -86,21 +114,68 @@ test("dashboard includes disposed documents only when the checkbox is explicit",
   assert.ok(defaultSearch);
   assert.match(defaultSearch.sql, /d\.status = \?/);
   assert.equal(defaultSearch.args[0], "active");
+  assert.match(defaultHtml, /<option value="active" selected>보관중 문서<\/option>/);
   assert.doesNotMatch(defaultHtml, /폐기된 공정 밸리데이션 보고서/);
 
-  const includedEnv = dashboardSearchEnv();
-  const includedCookie = await createSessionCookie(user, includedEnv, false);
-  const includedResponse = await worker.fetch(new Request("https://archive.example.com/app?q=PV&includeDisposed=1", {
-    headers: { Cookie: includedCookie }
-  }), includedEnv);
-  const includedHtml = await includedResponse.text();
-  const includedSearch = authoritativeDocumentSearch(includedEnv.state.calls);
+  const disposedEnv = dashboardSearchEnv();
+  const disposedCookie = await createSessionCookie(user, disposedEnv, false);
+  const disposedResponse = await worker.fetch(new Request("https://archive.example.com/app?q=PV&status=disposed", {
+    headers: { Cookie: disposedCookie }
+  }), disposedEnv);
+  const disposedHtml = await disposedResponse.text();
+  const disposedSearch = authoritativeDocumentSearch(disposedEnv.state.calls);
 
-  assert.equal(includedResponse.status, 200);
-  assert.ok(includedSearch);
-  assert.doesNotMatch(includedSearch.sql, /d\.status = \?/);
-  assert.ok(!includedSearch.args.includes("active"));
-  assert.match(includedHtml, /폐기된 공정 밸리데이션 보고서/);
+  assert.equal(disposedResponse.status, 200);
+  assert.ok(disposedSearch);
+  assert.match(disposedSearch.sql, /d\.status = \?/);
+  assert.equal(disposedSearch.args[0], "disposed");
+  assert.match(disposedHtml, /<option value="disposed" selected>폐기 문서만<\/option>/);
+  assert.match(disposedHtml, /폐기된 공정 밸리데이션 보고서/);
+  assert.doesNotMatch(disposedHtml, />충전 공정 밸리데이션 보고서</);
+
+  const legacyEnv = dashboardSearchEnv();
+  const legacyCookie = await createSessionCookie(user, legacyEnv, false);
+  const legacyResponse = await worker.fetch(new Request("https://archive.example.com/app?q=PV&includeDisposed=1", {
+    headers: { Cookie: legacyCookie }
+  }), legacyEnv);
+  const legacyHtml = await legacyResponse.text();
+  const legacySearch = authoritativeDocumentSearch(legacyEnv.state.calls);
+
+  assert.equal(legacyResponse.status, 200);
+  assert.ok(legacySearch);
+  assert.match(legacySearch.sql, /d\.status = \?/);
+  assert.equal(legacySearch.args[0], "disposed");
+  assert.match(legacyHtml, /폐기된 공정 밸리데이션 보고서/);
+  assert.doesNotMatch(legacyHtml, />충전 공정 밸리데이션 보고서</);
+});
+
+test("bulk disposal redirect preserves filters and reports disposed and skipped counts", async () => {
+  const env = bulkDisposalEnv();
+  const user = { username: "admin", displayName: "관리자", role: "Admin" };
+  const cookie = await createSessionCookie(user, env, false);
+  const csrfToken = csrfFromCookie(cookie);
+
+  const response = await worker.fetch(new Request("https://archive.example.com/documents/bulk-dispose", {
+    method: "POST",
+    headers: {
+      Cookie: cookie,
+      Origin: "https://archive.example.com"
+    },
+    body: new URLSearchParams({
+      csrf_token: csrfToken,
+      ids: "1,2",
+      reason: "보존기간 만료",
+      returnTo: "/documents/disposal?category=3&rack=9&disposalDueYear=2031"
+    })
+  }), env);
+
+  assert.equal(response.status, 302);
+  assert.equal(
+    response.headers.get("Location"),
+    "/documents/disposal?category=3&rack=9&disposalDueYear=2031&toast=bulk-disposed&disposed=1&skipped=1"
+  );
+  assert.equal(env.state.batches.length, 1);
+  assert.equal(env.state.batches[0].filter((statement) => statement.sql.includes("UPDATE documents")).length, 1);
 });
 
 test("document CSV import loads only active categories and tags", async () => {
@@ -169,6 +244,21 @@ test("successful logins clear recorded failures", async () => {
   assert.equal(response.status, 302);
   assert.equal(response.headers.get("Location"), "/app");
   assert.ok(env.state.runs.some((sql) => sql.includes("DELETE FROM login_throttle")));
+
+  const adminEnv = loginThrottleEnv({
+    locked: false,
+    user: {
+      username: "admin",
+      display_name: "관리자",
+      password_salt: record.salt,
+      password_hash: record.hash,
+      status: "approved",
+      role: "Admin"
+    }
+  });
+  const adminResponse = await worker.fetch(loginRequest("admin", "correct-password"), adminEnv);
+  assert.equal(adminResponse.status, 302);
+  assert.equal(adminResponse.headers.get("Location"), "/app");
 });
 
 function loginRequest(username, password) {
@@ -209,6 +299,79 @@ function loginThrottleEnv({ locked, user = null }) {
             };
           }
         };
+      }
+    }
+  };
+}
+
+function bulkDisposalEnv() {
+  const state = { batches: [] };
+  const activeDocument = {
+    id: 1,
+    storage_code: "ARC-000001",
+    category_id: 3,
+    category_name: "PV",
+    document_number: "PV-2026-001",
+    revision_number: "Rev.0",
+    revision_date: "2026-01-01",
+    disposal_due_year: 2031,
+    document_name: "폐기 대상 문서",
+    note: "",
+    rack_slot_id: 1,
+    rack_face: "A",
+    status: "active",
+    updated_at: "2026-07-17 00:00:00",
+    rack_code: "1-01",
+    zone_number: 1,
+    rack_number: 1,
+    is_single_sided: 0,
+    column_count: 7,
+    shelf_count: 6,
+    column_number: 1,
+    shelf_number: 1,
+    slot_code: "1-1"
+  };
+  const disposedDocument = { ...activeDocument, id: 2, storage_code: "ARC-000002", status: "disposed" };
+
+  function statement(sql, args = []) {
+    const methods = {
+      sql,
+      args,
+      bind(...nextArgs) {
+        return statement(sql, nextArgs);
+      },
+      async first() {
+        if (sql.includes("FROM app_users")) {
+          return { username: "admin", display_name: "관리자", status: "approved", role: "Admin" };
+        }
+        return null;
+      },
+      async all() {
+        if (sql.includes("WHERE d.id IN")) {
+          return { results: [{ ...activeDocument }, { ...disposedDocument }] };
+        }
+        if (sql.includes("FROM document_tags")) {
+          return { results: [] };
+        }
+        return { results: [] };
+      },
+      async run() {
+        return { meta: { changes: 1 } };
+      }
+    };
+    return methods;
+  }
+
+  return {
+    SESSION_SECRET,
+    state,
+    DB: {
+      prepare(sql) {
+        return statement(sql);
+      },
+      async batch(statements) {
+        state.batches.push(statements);
+        return statements.map(() => ({ meta: { changes: 1 } }));
       }
     }
   };
@@ -269,7 +432,7 @@ function adminImportEnv() {
   };
 }
 
-function userSessionEnv() {
+function userSessionEnv(role = "User") {
   return {
     SESSION_SECRET,
     DB: {
@@ -280,9 +443,9 @@ function userSessionEnv() {
               async first() {
                 return {
                   username,
-                  display_name: "Viewer",
+                  display_name: role === "Admin" ? "관리자" : "Viewer",
                   status: "approved",
-                  role: "User"
+                  role
                 };
               }
             };
@@ -409,9 +572,11 @@ function dashboardSearchEnv() {
             state.calls.push({ type: "all", sql, args });
             if (sql.includes("FROM documents d") && sql.includes("LIMIT ?")) {
               return {
-                results: args.includes("active")
-                  ? [{ ...document }]
-                  : [{ ...document }, { ...disposedDocument }]
+                results: args.includes("disposed")
+                  ? [{ ...disposedDocument }]
+                  : args.includes("active")
+                    ? [{ ...document }]
+                    : [{ ...document }, { ...disposedDocument }]
               };
             }
             return { results: [] };

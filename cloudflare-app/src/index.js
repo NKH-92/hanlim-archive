@@ -1,60 +1,10 @@
-// 엔트리포인트: 최상위 라우팅 표와 공통 미들웨어(세션 로딩, 출처/CSRF 검사,
-// 보안 헤더, 오류 처리)만 남긴다. 각 라우트의 실제 처리는 src/handlers/*가 담당한다.
+// 엔트리포인트: 공개 경로와 공통 인증·보안 파이프라인만 담당한다.
 import { readSession } from "./auth.js";
 import { errorPage, notFoundPage } from "./html.js";
-import { matchAdminUserRoute, matchDocumentRoute, matchMasterRoute, matchRackRoute, matchSetRoute } from "./routes.js";
-import { isTrustedPostOrigin, isValidCsrfToken, logError, normalizePath, redirect } from "./utils.js";
 import { withSecurityHeaders } from "./security.js";
-import { requireAdmin } from "./handlers/guards.js";
-import { handleLogin, handleLogout, handleSignup, renderLogin, renderSignup } from "./handlers/sessionHandlers.js";
-import {
-  handleAdminSearchReport,
-  handleDashboard,
-  handleSearchClick,
-  handleSearchIndex,
-  handleSearchSuggestions,
-  handleViewerSearch,
-  renderQa
-} from "./handlers/viewerHandlers.js";
-import {
-  handleBulkDispose,
-  handleCreateDocument,
-  handleDocumentExport,
-  handleDocumentImport,
-  handleDocumentRoute,
-  handleDocuments,
-  handleDisposalWorkspace,
-  handleFilteredDispose,
-  renderCreateDocument,
-  renderDocumentImport
-} from "./handlers/documentHandlers.js";
-import {
-  handleSaveSet,
-  handleSetRoute,
-  handleSets,
-  renderNewSetForm
-} from "./handlers/setHandlers.js";
-import {
-  handleRackConfigure,
-  handleRackRoute,
-  handleRacks,
-  handleSaveRack,
-  renderNewRackForm,
-  renderRackConfigure
-} from "./handlers/rackHandlers.js";
-import {
-  handleAdminDashboard,
-  handleAdminSettings,
-  handleAdminUserAction,
-  handleCategoryAction,
-  handleChangePassword,
-  handleSaveCategory,
-  handleSaveTag,
-  handleTagAction,
-  renderCategories,
-  renderPasswordPage,
-  renderTags
-} from "./handlers/adminHandlers.js";
+import { routeAuthenticatedRequest } from "./handlers/authenticatedRouter.js";
+import { handleLogin, handleLogout, renderLogin } from "./handlers/sessionHandlers.js";
+import { isTrustedPostOrigin, isValidCsrfToken, logError, normalizePath, redirect } from "./utils.js";
 
 export default {
   async fetch(request, env) {
@@ -111,12 +61,8 @@ async function route(request, env) {
     return handleLogin(request, env);
   }
 
-  if (path === "/signup" && request.method === "GET") {
-    return renderSignup();
-  }
-
-  if (path === "/signup" && request.method === "POST") {
-    return handleSignup(request, env);
+  if (path === "/signup") {
+    return notFoundPage(null);
   }
 
   const session = await readSession(request, env);
@@ -135,178 +81,15 @@ async function route(request, env) {
   }
 
   if (path === "/logout") {
-    return redirect(session.role === "Admin" ? "/admin" : "/app");
+    return redirect("/app");
   }
 
-  if (path === "/" && request.method === "GET") {
-    return redirect(session.role === "Admin" ? "/admin" : "/app");
+  // 기본 비밀번호를 사용하는 동안에는 비밀번호 변경 외의 기능으로 진입할 수 없다.
+  if (session.mustChangePassword && path !== "/account/password") {
+    return redirect("/account/password?required=1");
   }
 
-  if (path === "/app" && request.method === "GET") {
-    return handleDashboard(request, env, session);
-  }
-
-  if (path === "/qa" && request.method === "GET") {
-    return renderQa(session);
-  }
-
-  if (path === "/api/search-suggestions" && request.method === "GET") {
-    return handleSearchSuggestions(request, env);
-  }
-
-  if (path === "/api/viewer/search" && request.method === "GET") {
-    return handleViewerSearch(request, env);
-  }
-
-  if (path === "/api/search-index" && request.method === "GET") {
-    return handleSearchIndex(request, env);
-  }
-
-  if (path === "/api/search-click" && request.method === "POST") {
-    return handleSearchClick(request, env);
-  }
-
-  if (path === "/account/password" && request.method === "GET") {
-    return renderPasswordPage(session);
-  }
-
-  if (path === "/account/password" && request.method === "POST") {
-    return handleChangePassword(request, env, session);
-  }
-
-  if (path === "/admin" && request.method === "GET") {
-    return requireAdmin(session) ?? handleAdminDashboard(env, session);
-  }
-
-  if (path === "/admin/settings" && request.method === "GET") {
-    return requireAdmin(session) ?? handleAdminSettings(env, session);
-  }
-
-  if (path === "/admin/search-report" && request.method === "GET") {
-    return requireAdmin(session) ?? handleAdminSearchReport(env, session);
-  }
-
-  const adminUserRoute = matchAdminUserRoute(path);
-
-  if (adminUserRoute && request.method === "POST") {
-    return requireAdmin(session) ?? handleAdminUserAction(env, session, adminUserRoute);
-  }
-
-  if (path === "/documents" && request.method === "GET") {
-    return handleDocuments(request, env, session);
-  }
-
-  if (path === "/documents/disposal" && request.method === "GET") {
-    return requireAdmin(session) ?? handleDisposalWorkspace(request, env, session);
-  }
-
-  if (path === "/documents/bulk-dispose" && request.method === "POST") {
-    return requireAdmin(session) ?? handleBulkDispose(request, env, session);
-  }
-
-  if (path === "/documents/dispose-filtered" && request.method === "POST") {
-    return requireAdmin(session) ?? handleFilteredDispose(request, env, session);
-  }
-
-  if (path === "/documents/export.csv" && request.method === "GET") {
-    return requireAdmin(session) ?? handleDocumentExport(env);
-  }
-
-  if (path === "/documents/import" && request.method === "GET") {
-    return requireAdmin(session) ?? renderDocumentImport(session);
-  }
-
-  if (path === "/documents/import" && request.method === "POST") {
-    return requireAdmin(session) ?? handleDocumentImport(request, env, session);
-  }
-
-  if (path === "/documents/new" && request.method === "GET") {
-    return requireAdmin(session) ?? renderCreateDocument(env, session);
-  }
-
-  if (path === "/documents" && request.method === "POST") {
-    return requireAdmin(session) ?? handleCreateDocument(request, env, session);
-  }
-
-  const documentRoute = matchDocumentRoute(path);
-
-  if (documentRoute) {
-    return handleDocumentRoute(request, env, session, documentRoute);
-  }
-
-  if (path === "/sets" && request.method === "GET") {
-    return handleSets(env, session);
-  }
-
-  if (path === "/sets/new" && request.method === "GET") {
-    return requireAdmin(session) ?? renderNewSetForm(session);
-  }
-
-  if (path === "/sets" && request.method === "POST") {
-    return requireAdmin(session) ?? handleSaveSet(request, env, session);
-  }
-
-  const setRoute = matchSetRoute(path);
-
-  if (setRoute) {
-    return handleSetRoute(request, env, session, setRoute);
-  }
-
-  if (path === "/racks" && request.method === "GET") {
-    return requireAdmin(session) ?? handleRacks(env, session);
-  }
-
-  if (path === "/racks/new" && request.method === "GET") {
-    return requireAdmin(session) ?? renderNewRackForm(session);
-  }
-
-  if (path === "/racks/configure" && request.method === "GET") {
-    return requireAdmin(session) ?? renderRackConfigure(env, session);
-  }
-
-  if (path === "/racks/configure" && request.method === "POST") {
-    return requireAdmin(session) ?? handleRackConfigure(request, env, session);
-  }
-
-  if (path === "/racks" && request.method === "POST") {
-    return requireAdmin(session) ?? handleSaveRack(request, env, session);
-  }
-
-  const rackRoute = matchRackRoute(path);
-
-  if (rackRoute) {
-    return requireAdmin(session) ?? handleRackRoute(request, env, session, rackRoute);
-  }
-
-  if (path === "/categories" && request.method === "GET") {
-    return requireAdmin(session) ?? renderCategories(env, session);
-  }
-
-  if (path === "/categories" && request.method === "POST") {
-    return requireAdmin(session) ?? handleSaveCategory(request, env, session);
-  }
-
-  const categoryRoute = matchMasterRoute(path, "categories");
-
-  if (categoryRoute && request.method === "POST") {
-    return requireAdmin(session) ?? handleCategoryAction(request, env, session, categoryRoute);
-  }
-
-  if (path === "/tags" && request.method === "GET") {
-    return requireAdmin(session) ?? renderTags(env, session);
-  }
-
-  if (path === "/tags" && request.method === "POST") {
-    return requireAdmin(session) ?? handleSaveTag(request, env, session);
-  }
-
-  const tagRoute = matchMasterRoute(path, "tags");
-
-  if (tagRoute && request.method === "POST") {
-    return requireAdmin(session) ?? handleTagAction(request, env, session, tagRoute);
-  }
-
-  return notFoundPage(session);
+  return routeAuthenticatedRequest(request, env, session, url, path);
 }
 
 async function handleHealthCheck(env) {

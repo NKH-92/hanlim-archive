@@ -73,6 +73,13 @@ test("scoreDocumentMatch keeps existing behavior", () => {
   assert.equal(core.scoreDocumentMatch(sampleDocument, "완전히다른검색어").relevance_score, 0);
 });
 
+test("internal storage codes are not searchable", () => {
+  const result = core.scoreDocumentMatch(sampleDocument, "ARC-900014");
+
+  assert.equal(result.relevance_score, 0);
+  assert.doesNotMatch(result.match_reason, /보관코드/);
+});
+
 test("loose coverage option keeps weak matches for did-you-mean", () => {
   const strict = core.scoreDocumentMatch(sampleDocument, "밸리데이션 완전다른말 또다른말");
   assert.equal(strict.relevance_score, 0);

@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   matchAdminUserRoute,
+  matchDisposalBatchRoute,
+  matchDocumentImportJobRoute,
   matchDocumentRoute,
   matchMasterRoute,
   matchRackRoute,
@@ -26,6 +28,7 @@ test("matchSetRoute resolves set detail and action routes", () => {
   assert.deepEqual(matchSetRoute("/sets/3/edit"), { id: 3, action: "edit" });
   assert.deepEqual(matchSetRoute("/sets/3/add"), { id: 3, action: "add" });
   assert.deepEqual(matchSetRoute("/sets/3/remove"), { id: 3, action: "remove" });
+  assert.deepEqual(matchSetRoute("/sets/3/export.csv"), { id: 3, action: "export.csv" });
   assert.equal(matchSetRoute("/sets/new"), null);
   assert.equal(matchSetRoute("/sets"), null);
 });
@@ -34,5 +37,14 @@ test("matchMasterRoute and matchAdminUserRoute resolve admin POST routes", () =>
   assert.deepEqual(matchMasterRoute("/categories/3/delete", "categories"), { id: 3, action: "delete" });
   assert.deepEqual(matchMasterRoute("/tags/4/edit", "tags"), { id: 4, action: "edit" });
   assert.deepEqual(matchAdminUserRoute("/admin/users/5/approve"), { id: 5, action: "approve" });
+  assert.deepEqual(matchAdminUserRoute("/admin/users/5/permissions"), { id: 5, action: "permissions" });
   assert.equal(matchAdminUserRoute("/admin/users/5/delete"), null);
+});
+
+test("campaign and import job matchers resolve nested workflow routes", () => {
+  assert.deepEqual(matchDisposalBatchRoute("/disposal-batches/4"), { id: 4, action: "details", itemId: 0 });
+  assert.deepEqual(matchDisposalBatchRoute("/disposal-batches/4/export.csv"), { id: 4, action: "export.csv", itemId: 0 });
+  assert.deepEqual(matchDisposalBatchRoute("/disposal-batches/4/items/9/exclude"), { id: 4, itemId: 9, action: "exclude" });
+  assert.deepEqual(matchDocumentImportJobRoute("/document-import-jobs/8"), { id: 8, action: "details" });
+  assert.deepEqual(matchDocumentImportJobRoute("/document-import-jobs/8/failures.csv"), { id: 8, action: "failures.csv" });
 });

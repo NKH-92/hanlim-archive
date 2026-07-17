@@ -11,8 +11,12 @@ import {
   documentToViewerItem,
   disposeDocument,
   disposeDocumentsBulk,
+  findDocumentsByNumbers,
   getDocumentQualitySummary,
+  getDocumentCount,
+  getDocumentPage,
   getDisposalCandidates,
+  getSearchIndexDocuments,
   getSearchIndexMeta,
   levenshteinDistance,
   MAX_SEARCH_RESULTS,
@@ -28,8 +32,10 @@ import {
   searchTokens,
   updateDocument,
   upsertDocumentSet,
-  validateDocumentInput
+  validateDocumentInput,
+  valuesFromDocumentForm
 } from "../src/db.js";
+import { FREE_TIER_BUDGET } from "../src/freeTierBudget.js";
 
 test("parseDocumentNumberList splits, trims, and dedupes pasted numbers", () => {
   const numbers = parseDocumentNumberList("MR-2026-001, PV-2026-014\n mr-2026-001 ;\tARC-000002\n\n");
@@ -39,6 +45,44 @@ test("parseDocumentNumberList splits, trims, and dedupes pasted numbers", () => 
   assert.deepEqual(parseDocumentNumberList(null), []);
   // 공백 구분도 지원한다(감사관이 부른 번호를 공백으로 붙여넣는 경우).
   assert.deepEqual(parseDocumentNumberList("NOPE-999  ARC-000001 PV-2026-014"), ["NOPE-999", "ARC-000001", "PV-2026-014"]);
+});
+
+test("valuesFromDocumentForm preserves optimistic-lock tokens for validation rerenders", () => {
+  const form = new FormData();
+  form.set("expectedUpdatedAt", "2026-07-17 12:34:56");
+  form.set("expectedRowVersion", "7");
+
+  const values = valuesFromDocumentForm(form);
+
+  assert.equal(values.expectedUpdatedAt, "2026-07-17 12:34:56");
+  assert.equal(values.expectedRowVersion, 7);
+  assert.equal(values.updatedAt, values.expectedUpdatedAt);
+  assert.equal(values.rowVersion, values.expectedRowVersion);
+});
+
+test("document set number lookup never matches internal storage codes", async () => {
+  let executedSql = "";
+  let executedArgs = [];
+  const env = {
+    DB: {
+      prepare(sql) {
+        executedSql = sql;
+        return {
+          bind(...args) {
+            executedArgs = args;
+            return { all: async () => ({ results: [{ id: 7, document_number: "PV-2026-014" }] }) };
+          }
+        };
+      }
+    }
+  };
+
+  const result = await findDocumentsByNumbers(env, ["PV-2026-014", "ARC-000007"]);
+
+  assert.deepEqual(result.documents, [{ id: 7, document_number: "PV-2026-014" }]);
+  assert.deepEqual(result.missing, ["ARC-000007"]);
+  assert.doesNotMatch(executedSql, /storage_code/);
+  assert.deepEqual(executedArgs, ["PV-2026-014", "ARC-000007"]);
 });
 
 test("search normalization supports partial numbers, spacing, and light typos", () => {
@@ -86,14 +130,22 @@ test("parseDocumentFilters supports URLSearchParams and normalizes invalid value
     categoryId: 2,
     zoneNumber: 3,
     tagId: 4,
-    status: "active",
-    includeDisposed: false,
+    rackId: 0,
+    rackFace: "",
+    columnNumber: 0,
+    shelfNumber: 0,
+    status: "disposed",
+    includeDisposed: true,
     sort: "location"
   });
   assert.deepEqual(parseDocumentFilters({ category: "1.5", status: "unknown", sort: "drop-table", q: "검색" }), {
     categoryId: 0,
     zoneNumber: 0,
     tagId: 0,
+    rackId: 0,
+    rackFace: "",
+    columnNumber: 0,
+    shelfNumber: 0,
     status: "active",
     includeDisposed: false,
     sort: "relevance"
@@ -102,8 +154,24 @@ test("parseDocumentFilters supports URLSearchParams and normalizes invalid value
     categoryId: 0,
     zoneNumber: 0,
     tagId: 0,
-    status: "",
+    rackId: 0,
+    rackFace: "",
+    columnNumber: 0,
+    shelfNumber: 0,
+    status: "disposed",
     includeDisposed: true,
+    sort: "updated"
+  });
+  assert.deepEqual(parseDocumentFilters({ status: "active", includeDisposed: "1" }), {
+    categoryId: 0,
+    zoneNumber: 0,
+    tagId: 0,
+    rackId: 0,
+    rackFace: "",
+    columnNumber: 0,
+    shelfNumber: 0,
+    status: "active",
+    includeDisposed: false,
     sort: "updated"
   });
 });
@@ -187,6 +255,7 @@ test("getSearchIndexMeta preserves every master and rack update stamp in the ver
   const row = {
     count: 3,
     max_id: 9,
+    documents_version: 3,
     documents_updated: "2026-07-10 10:00:00",
     categories_updated: "2026-07-02 11:00:00",
     tags_updated: "2026-06-30 09:00:00",
@@ -211,9 +280,14 @@ test("getSearchIndexMeta preserves every master and rack update stamp in the ver
   // 문서가 가장 최신이어도 더 오래된 태그 시각 변경이 버전 키를 바꿔야 한다.
   assert.equal(before.updated, "2026-07-10 10:00:00");
   assert.equal(after.updated, before.updated);
-  assert.equal(before.versionKey, "20260710100000-20260702110000-20260630090000-20260701120000-20260701080000");
-  assert.equal(after.versionKey, "20260710100000-20260702110000-20260630090100-20260701120000-20260701080000");
+  assert.equal(before.versionKey, "3-20260710100000-20260702110000-20260630090000-20260701120000-20260701080000");
+  assert.equal(after.versionKey, "3-20260710100000-20260702110000-20260630090100-20260701120000-20260701080000");
   assert.notEqual(after.versionKey, before.versionKey);
+  row.tags_updated = "2026-06-30 09:00:00";
+  row.documents_version = 4;
+  const sameSecondDocumentChange = await getSearchIndexMeta(env);
+  assert.notEqual(sameSecondDocumentChange.versionKey, before.versionKey);
+  assert.match(sql, /SUM\(row_version\)/);
   assert.match(sql, /FROM categories/);
   assert.match(sql, /FROM tags/);
   assert.match(sql, /FROM racks/);
@@ -315,6 +389,8 @@ test("disposeDocumentsBulk packs per-document guards into one atomic batch", asy
     assert.match(statements[offset + 1].sql, /INSERT INTO document_audit_logs/);
     assert.match(statements[offset + 2].sql, /UPDATE documents/);
     assert.match(statements[offset + 2].sql, /status = 'active'/);
+    assert.match(statements[offset + 2].sql, /updated_at = \?/);
+    assert.match(statements[offset + 2].sql, /row_version = \?/);
   }
 });
 
@@ -329,11 +405,16 @@ test("disposeDocument reports a conflict when the guarded update changes no rows
   // 원자화된 batch가 실행되더라도 pre-state 가드가 모두 걸려 아무것도 커밋되지 않는다(0행).
   assert.equal(result.ok, false);
   assert.match(result.message, /변경/);
+  for (const statement of env.state.batches[0]) {
+    assert.match(statement.sql, /updated_at = \?/);
+    assert.match(statement.sql, /row_version = \?/);
+  }
 });
 
 test("viewer search item exposes location-first api shape", () => {
   const item = documentToViewerItem({
     id: 7,
+    storage_code: "ARC-000007",
     document_number: "PV-2026-014",
     revision_number: "Rev.1",
     revision_date: "2026-04-14",
@@ -356,6 +437,7 @@ test("viewer search item exposes location-first api shape", () => {
 
   assert.equal(item.id, 7);
   assert.equal(item.documentNumber, "PV-2026-014");
+  assert.equal("storageCode" in item, false);
   assert.equal(item.revisionDate, "2026-04-14");
   assert.equal(item.disposalDueYear, 2031);
   assert.deepEqual(item.tags, ["중요문서", "원본보관"]);
@@ -364,6 +446,44 @@ test("viewer search item exposes location-first api shape", () => {
   assert.equal(item.location.rackLabel, "1-1");
   assert.equal(item.location.isSingleSided, false);
   assert.equal(item.matchReason, "문서번호 부분 일치");
+});
+
+test("exact document numbers use the direct SQL path without internal storage codes", async () => {
+  const env = recordingEnv({
+    all: (sql) => sql.includes("LOWER(d.document_number)")
+      ? [sampleDocument({ document_number: "PV-2026-014" })]
+      : []
+  });
+
+  const rows = await searchDocuments(env, "PV-2026-014", 30, { status: "active" });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].match_reason, "문서번호 정확히 일치");
+  assert.equal(env.state.calls.filter((call) => call.type === "all").length, 1);
+  assert.match(env.state.calls[0].sql, /LOWER\(d\.document_number\)/);
+  assert.doesNotMatch(env.state.calls[0].sql, /LOWER\(d\.storage_code\)/);
+});
+
+test("browser search index omits internal storage codes", async () => {
+  const env = {
+    DB: {
+      prepare(sql) {
+        return {
+          async all() {
+            if (sql.includes("FROM documents d")) {
+              return { results: [{ id: 7, storage_code: "ARC-000007", document_number: "PV-2026-014" }] };
+            }
+            return { results: [{ document_id: 7, total: 3 }] };
+          }
+        };
+      }
+    }
+  };
+
+  const documents = await getSearchIndexDocuments(env);
+
+  assert.deepEqual(documents, [{ id: 7, document_number: "PV-2026-014", popularity: 3 }]);
+  assert.equal("storage_code" in documents[0], false);
 });
 
 test("viewer search item labels single-sided racks without a face suffix", () => {
@@ -425,7 +545,8 @@ test("getDocumentQualitySummary uses one D1 aggregate round trip", async () => {
               invalid_rack_face: 4,
               suspicious_text: 5,
               documents_without_tags: 6,
-              disposed_documents: 7
+              disposed_documents: 7,
+              missing_disposal_year: 8
             };
           }
         };
@@ -443,8 +564,55 @@ test("getDocumentQualitySummary uses one D1 aggregate round trip", async () => {
     invalidRackFace: 4,
     suspiciousText: 5,
     documentsWithoutTags: 6,
-    disposedDocuments: 7
+    disposedDocuments: 7,
+    missingDisposalYear: 8
   });
+});
+
+test("document browsing uses SQL COUNT plus LIMIT/OFFSET page reads", async () => {
+  const env = recordingEnv({
+    first: (sql) => sql.includes("COUNT(*)") ? { count: 73 } : null,
+    all: (sql) => sql.includes("FROM documents d") ? [sampleDocument()] : []
+  });
+  const filters = { categoryId: 2, status: "active", sort: "location" };
+
+  const count = await getDocumentCount(env, filters);
+  const rows = await getDocumentPage(env, filters, 2, FREE_TIER_BUDGET.documentPageSize);
+
+  assert.equal(count, 73);
+  assert.equal(rows.length, 1);
+  assert.equal(env.state.calls.length, 2);
+  const pageCall = env.state.calls.find((call) => call.type === "all");
+  assert.match(pageCall.sql, /LIMIT \? OFFSET \?/);
+  assert.match(pageCall.sql, /d\.category_id = \?/);
+  assert.match(pageCall.sql, /r\.zone_number, r\.rack_number/);
+  assert.deepEqual(pageCall.args.slice(-2), [30, 30]);
+});
+
+test("legacy bulk disposal rejects over-budget item counts before D1 access", async () => {
+  const env = recordingEnv();
+  const tooMany = Array.from({ length: FREE_TIER_BUDGET.legacyBulkDisposeMaxItems + 1 }, (_, index) => index + 1);
+
+  const result = await disposeDocumentsBulk(env, tooMany, "관리자", "긴급 폐기", "Admin");
+
+  assert.equal(result.ok, false);
+  assert.match(result.failures[0], /10건 이하/);
+  assert.equal(env.state.calls.length, 0);
+  assert.equal(env.state.batches.length, 0);
+});
+
+test("legacy bulk disposal stays within the conservative statement budget", async () => {
+  const documents = Array.from({ length: 10 }, (_, index) => sampleDocument({ id: index + 1 }));
+  const env = recordingEnv({
+    all: (sql) => sql.includes("WHERE d.id IN") ? documents : []
+  });
+
+  const result = await disposeDocumentsBulk(env, documents.map((item) => item.id), "관리자", "긴급 폐기", "Admin");
+
+  assert.equal(result.disposed, 10);
+  const statementCount = env.state.calls.length + env.state.batches[0].length;
+  assert.equal(env.state.batches[0].length, 30);
+  assert.ok(statementCount <= FREE_TIER_BUDGET.maxD1StatementsPerRequest);
 });
 
 test("viewer facets count active filters from result rows", () => {
@@ -500,51 +668,109 @@ test("disposeDocument writes disposal + audit logs and the status change in one 
   assert.ok(disposalLog.sql.includes("FROM documents"));
 });
 
+test("restoreDocument requires a real reason and writes document plus system audit atomically", async () => {
+  const refusedEnv = recordingEnv();
+  const refused = await restoreDocument(refusedEnv, 1, { userId: 7, username: "keeper", displayName: "담당자", role: "Admin" }, "");
+  assert.equal(refused.ok, false);
+  assert.equal(refusedEnv.state.calls.length, 0);
+
+  const env = recordingEnv({
+    first: (sql) => sql.includes("FROM documents d") ? sampleDocument({ status: "disposed" }) : null,
+    all: () => []
+  });
+  const result = await restoreDocument(
+    env,
+    1,
+    { userId: 7, username: "keeper", displayName: "담당자", role: "Admin" },
+    "폐기 대상 선정 오류",
+    "Admin"
+  );
+
+  assert.equal(result.ok, true);
+  const statements = env.state.batches[0];
+  assert.equal(statements.length, 4);
+  assert.match(statements[0].sql, /INSERT INTO disposal_logs/);
+  assert.ok(statements[0].args.includes("폐기 대상 선정 오류"));
+  assert.match(statements[1].sql, /INSERT INTO document_audit_logs/);
+  assert.match(statements[2].sql, /INSERT INTO system_audit_logs/);
+  assert.match(statements[3].sql, /UPDATE documents/);
+});
+
 test("upsertDocumentSet writes create and update logs", async () => {
   const createEnv = recordingEnv({
-    first: (sql) => (sql.includes("INSERT INTO document_sets") ? { id: 9 } : null)
+    batch: (statements) => statements.map((_, index) => index === 0
+      ? { meta: { changes: 1 }, results: [{ id: 9 }] }
+      : { meta: { changes: 1 } })
   });
   const created = await upsertDocumentSet(createEnv, { name: "정기감사 준비문서" }, "관리자");
   assert.equal(created.ok, true);
-  const createLog = createEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
-  assert.ok(createLog);
-  assert.equal(createLog.args[2], "create");
+  assert.equal(createEnv.state.batches.length, 1);
+  assert.equal(createEnv.state.batches[0].length, 2);
+  assert.match(createEnv.state.batches[0][0].sql, /INSERT INTO document_sets/);
+  assert.match(createEnv.state.batches[0][1].sql, /INSERT INTO document_set_logs/);
+  assert.match(createEnv.state.batches[0][1].sql, /'create'/);
 
-  const updateEnv = recordingEnv({ run: () => 1 });
+  const updateEnv = recordingEnv();
   const updated = await upsertDocumentSet(updateEnv, { id: 9, name: "정기감사 준비문서" }, "관리자");
   assert.equal(updated.ok, true);
-  const updateLog = updateEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
-  assert.ok(updateLog);
-  assert.equal(updateLog.args[2], "update");
+  assert.equal(updateEnv.state.batches.length, 1);
+  assert.equal(updateEnv.state.batches[0].length, 2);
+  assert.match(updateEnv.state.batches[0][0].sql, /INSERT INTO document_set_logs/);
+  assert.match(updateEnv.state.batches[0][0].sql, /'update'/);
+  assert.match(updateEnv.state.batches[0][1].sql, /UPDATE document_sets/);
 });
 
 test("addDocumentsToSet logs which document numbers were actually added", async () => {
   const env = recordingEnv({
-    batch: (statements) => statements.map((_, index) => ({ meta: { changes: index === 0 ? 1 : 0 } })),
-    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null),
-    all: (sql) => (sql.includes("FROM documents") ? [{ document_number: "MR-2026-001" }] : [])
+    batch: (statements) => statements.map(() => ({ meta: { changes: 1 } })),
+    all: (sql) => (sql.includes("FROM documents") ? [{ id: 10, document_number: "MR-2026-001" }] : [])
   });
 
   const { added } = await addDocumentsToSet(env, 3, [10, 11], "관리자");
 
   assert.equal(added, 1);
-  const log = env.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
-  assert.ok(log);
-  assert.equal(log.args[2], "add");
-  assert.match(log.args[4], /MR-2026-001/);
+  assert.equal(env.state.batches.length, 1);
+  assert.equal(env.state.batches[0].length, 3);
+  const log = env.state.batches[0][0];
+  assert.match(log.sql, /INSERT INTO document_set_logs/);
+  assert.match(log.sql, /'add'/);
+  assert.ok(log.args.some((value) => String(value).includes("MR-2026-001")));
+});
+
+test("addDocumentsToSet keeps 200 requested ids in one D1 insert statement", async () => {
+  const env = recordingEnv({
+    batch: (statements) => statements.map((_, index) => ({
+      meta: { changes: index === 2 ? 200 : 1 },
+      results: []
+    })),
+    all: () => Array.from({ length: 200 }, (_, index) => ({
+      id: index + 1,
+      document_number: `DOC-${String(index + 1).padStart(3, "0")}`
+    }))
+  });
+
+  const result = await addDocumentsToSet(env, 3, Array.from({ length: 200 }, (_, index) => index + 1), "관리자");
+
+  assert.equal(result.added, 200);
+  assert.equal(env.state.batches[0].length, 3);
+  assert.match(env.state.batches[0][2].sql, /WITH requested\(document_id\) AS \(VALUES/);
+  assert.match(env.state.batches[0][2].sql, /INSERT OR IGNORE INTO document_set_items/);
 });
 
 test("removeDocumentFromSet and deleteDocumentSet write remove and delete logs", async () => {
   const removeEnv = recordingEnv({
-    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null),
-    all: (sql) => (sql.includes("FROM documents") ? [{ document_number: "PV-2026-014" }] : []),
-    run: () => 1
+    first: (sql) => (sql.includes("FROM document_set_items")
+      ? { set_name: "감사세트", document_number: "PV-2026-014" }
+      : null)
   });
   const removed = await removeDocumentFromSet(removeEnv, 3, 10, "관리자");
   assert.equal(removed.ok, true);
-  const removeLog = removeEnv.state.calls.find((call) => call.sql.includes("INSERT INTO document_set_logs"));
-  assert.equal(removeLog.args[2], "remove");
-  assert.match(removeLog.args[4], /PV-2026-014/);
+  assert.equal(removeEnv.state.batches.length, 1);
+  assert.equal(removeEnv.state.batches[0].length, 3);
+  const removeLog = removeEnv.state.batches[0][0];
+  assert.match(removeLog.sql, /INSERT INTO document_set_logs/);
+  assert.match(removeLog.sql, /'remove'/);
+  assert.ok(removeLog.args.some((value) => String(value).includes("PV-2026-014")));
 
   const deleteEnv = recordingEnv({
     first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null)
@@ -575,7 +801,8 @@ test("updateDocument binds the optimistic lock and guards tags + audit in one at
     rackFace: "B",
     tagIds: [2, 3],
     note: "메모",
-    expectedUpdatedAt: "2026-07-01 09:00:00"
+    expectedUpdatedAt: "2026-07-01 09:00:00",
+    expectedRowVersion: 1
   }, "관리자", "Admin");
 
   assert.equal(result.ok, true);
@@ -614,11 +841,33 @@ test("updateDocument reports a conflict when the optimistic lock does not match"
     rackFace: "A",
     tagIds: [],
     note: "",
-    expectedUpdatedAt: "2000-01-01 00:00:00"
+    expectedUpdatedAt: "2000-01-01 00:00:00",
+    expectedRowVersion: 1
   }, "관리자", "Admin");
 
   assert.equal(result.ok, false);
   assert.match(result.message, /먼저 수정|변경/);
+});
+
+test("updateDocument rejects missing optimistic-lock tokens before mutation", async () => {
+  const env = recordingEnv({
+    first: (sql) => (sql.includes("FROM documents d") ? sampleDocument() : null)
+  });
+
+  const result = await updateDocument(env, 1, {
+    documentNumber: "MR-002",
+    revisionNumber: "Rev.1",
+    documentName: "수정",
+    categoryId: 1,
+    rackSlotId: 1,
+    rackFace: "A",
+    tagIds: [],
+    note: ""
+  }, "관리자", "Admin");
+
+  assert.equal(result.ok, false);
+  assert.match(result.message, /잠금 정보|새로고침/);
+  assert.equal(env.state.batches.length, 0);
 });
 
 test("permanentlyDeleteDocument refuses active documents and preserves history before hard delete", async () => {
@@ -644,6 +893,9 @@ test("permanentlyDeleteDocument refuses active documents and preserves history b
   const auditIdx = statements.findIndex((s) => s.sql.includes("INSERT INTO document_audit_logs"));
   const deleteIdx = statements.findIndex((s) => s.sql.includes("DELETE FROM documents"));
   assert.ok(auditIdx >= 0 && deleteIdx >= 0 && auditIdx < deleteIdx);
+  assert.match(statements[deleteIdx].sql, /updated_at = \?/);
+  assert.match(statements[deleteIdx].sql, /row_version = \?/);
+  assert.ok(statements.some((statement) => statement.sql.includes("INSERT INTO system_audit_logs")));
   const detailsJson = statements[auditIdx].args.find((a) => typeof a === "string" && a.includes("history"));
   assert.ok(detailsJson, "감사 상세에 history 스냅샷이 포함되어야 한다");
   assert.match(detailsJson, /disposals/);
@@ -669,6 +921,8 @@ function sampleDocument(overrides = {}) {
     column_number: 1,
     shelf_number: 1,
     slot_code: "1-1",
+    updated_at: "2026-07-01 09:00:00",
+    row_version: 1,
     note: "",
     ...overrides
   };

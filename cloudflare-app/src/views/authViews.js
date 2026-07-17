@@ -15,16 +15,16 @@ export function loginPage({ returnUrl, error, setupWarning, signupSubmitted }) {
         <h2>로그인</h2>
         ${setupWarning ? alertWarning(setupWarning) : ""}
         ${error ? alertDanger(error === "locked"
-          ? "로그인 실패가 반복되어 이 계정은 잠시 잠금되었습니다. 10분 후 다시 시도하세요."
+          ? "로그인 실패가 반복되어 이 접속의 로그인이 잠시 제한되었습니다. 10분 후 다시 시도하세요."
           : "아이디 또는 비밀번호가 올바르지 않습니다.") : ""}
         ${signupSubmitted ? `<div class="alert success" role="alert">가입 요청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.</div>` : ""}
         <form method="post" action="/login" class="stack">
           <input type="hidden" name="returnUrl" value="${escapeHtml(returnUrl)}">
-          <label>아이디<input name="username" autocomplete="username" required></label>
+          <label>이메일<input name="username" type="email" autocomplete="username" required></label>
           <label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label>
           <button type="submit" class="primary">로그인</button>
         </form>
-        <p class="muted form-foot"><a href="/signup">계정이 없으면 가입 요청</a></p>
+        <p class="muted form-foot">등록된 사내 이메일 계정만 로그인할 수 있습니다.</p>
       </div>
     </section>
   `, null);

@@ -1,5 +1,7 @@
 import { sharedSearchCore } from "../searchCore.js";
+import { FREE_TIER_BUDGET } from "../config.js";
 import { clean, locationLabel, paginateSlice, rackFaceLabel, readBoolean } from "../utils.js";
+import { getDocumentCount, getDocumentPage } from "./documentsData.js";
 import {
   getDocumentClickPopularity,
   getSearchClickHits,
@@ -56,6 +58,40 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
 
   const hasQuery = Boolean(trimmed);
   const sort = filters.sort || (hasQuery ? "relevance" : "updated");
+  // 문서번호처럼 보이는 완전 일치 입력은 퍼지 검색용 최대 5,000행 후보를 읽기 전에 직접
+  // 조회한다. 내부 ARC 보관코드는 이 경로에 포함하지 않아 기존 비노출 정책을 유지한다.
+  if (hasQuery && looksLikeDocumentNumber(trimmed)) {
+    const exactWhere = where
+      ? `${where} AND LOWER(d.document_number) = LOWER(?)`
+      : "WHERE LOWER(d.document_number) = LOWER(?)";
+    const exact = await env.DB.prepare(`
+      SELECT
+        d.id,
+        ${DOCUMENT_CORE_COLUMNS}
+        d.updated_at,
+        ${DOCUMENT_LOCATION_COLUMNS}
+        r.column_count,
+        r.shelf_count,
+        rs.column_number,
+        rs.shelf_number,
+        rs.slot_code,
+        ${DOCUMENT_TAG_CONCAT}
+      ${DOCUMENT_BASE_JOINS}
+      ${DOCUMENT_TAG_JOINS}
+      ${exactWhere}
+      GROUP BY d.id
+      ORDER BY d.revision_number DESC, d.id DESC
+      LIMIT ?
+    `).bind(...filterBinds, trimmed, safeLimit).all();
+    const exactRows = exact.results ?? [];
+    if (exactRows.length) {
+      for (const document of exactRows) {
+        document.relevance_score = 1000;
+        document.match_reason = "문서번호 정확히 일치";
+      }
+      return exactRows;
+    }
+  }
   // 문서 후보 조회와 클릭 학습 조회는 서로 독립이므로 병렬로 보낸다.
   const [result, clickHits] = await Promise.all([
     env.DB.prepare(`
@@ -107,6 +143,10 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
     .slice(0, safeLimit);
 }
 
+function looksLikeDocumentNumber(value) {
+  return value.length <= 100 && /\d/.test(value) && /[-_/]/.test(value) && !/\s/.test(value);
+}
+
 // 0건 검색 시 "혹시 이 문서를 찾으셨나요?" 후보 (커버리지 완화 재검색)
 export async function getDidYouMeanSuggestions(env, query, limit = 3) {
   const trimmed = clean(query);
@@ -148,6 +188,7 @@ export async function getSearchIndexMeta(env) {
     SELECT
       (SELECT COUNT(*) FROM documents) AS count,
       (SELECT MAX(id) FROM documents) AS max_id,
+      (SELECT COALESCE(SUM(row_version), 0) FROM documents) AS documents_version,
       (SELECT MAX(updated_at) FROM documents) AS documents_updated,
       (SELECT MAX(updated_at) FROM categories) AS categories_updated,
       (SELECT MAX(updated_at) FROM tags) AS tags_updated,
@@ -166,9 +207,10 @@ export async function getSearchIndexMeta(env) {
   // versionKey는 최댓값 하나가 아니라 테이블별 시각을 순서대로 보존해야 한다. 예를 들어
   // 문서가 더 최신이어도 태그만 바뀌면 해당 구간이 달라져 ETag가 반드시 갱신된다.
   const updated = stamps.reduce((latest, stamp) => (stamp > latest ? stamp : latest), "");
-  const versionKey = stamps
-    .map((stamp) => stamp.replace(/[^0-9]/g, "") || "0")
-    .join("-");
+  const versionKey = [
+    String(Number(row?.documents_version || 0)),
+    ...stamps.map((stamp) => stamp.replace(/[^0-9]/g, "") || "0")
+  ].join("-");
 
   return {
     count: Number(row?.count || 0),
@@ -198,9 +240,40 @@ export async function getSearchIndexDocuments(env) {
   ]);
 
   return (result.results ?? []).map((row) => {
-    row.popularity = popularity.get(Number(row.id)) || 0;
-    return row;
+    // 보관코드는 DB 내부 식별자로만 사용하며 브라우저 검색 인덱스에는 전달하지 않는다.
+    const { storage_code: _storageCode, ...document } = row;
+    document.popularity = popularity.get(Number(row.id)) || 0;
+    return document;
   });
+}
+
+export async function getSearchIndexStats(env) {
+  const row = await env.DB.prepare(`
+    SELECT
+      COUNT(*) AS document_count,
+      COALESCE(SUM(
+        LENGTH(IFNULL(d.document_number, '')) +
+        LENGTH(IFNULL(d.revision_number, '')) +
+        LENGTH(IFNULL(d.document_name, '')) +
+        LENGTH(IFNULL(d.note, '')) +
+        LENGTH(IFNULL(c.name, '')) +
+        LENGTH(IFNULL(r.code, '')) + 220
+      ), 0) AS estimated_json_bytes
+    ${DOCUMENT_BASE_JOINS}
+  `).first();
+  const documentCount = Number(row?.document_count || 0);
+  const estimatedJsonBytes = Number(row?.estimated_json_bytes || 0);
+  return {
+    documentCount,
+    estimatedJsonBytes,
+    warningCount: FREE_TIER_BUDGET.searchIndexWarningCount,
+    reviewCount: FREE_TIER_BUDGET.searchIndexReviewCount,
+    level: documentCount >= FREE_TIER_BUDGET.searchIndexReviewCount
+      ? "review"
+      : documentCount >= FREE_TIER_BUDGET.searchIndexWarningCount
+        ? "warning"
+        : "ok"
+  };
 }
 
 // 이미 로드한 검색 결과에서 자동완성 후보를 만든다(추가 D1 왕복 없이).
@@ -235,7 +308,8 @@ export function buildSearchSuggestions(documents, limit = 8) {
 function filtersAllowSuggestionReuse(filters = {}, query = "") {
   const expectedSort = query ? "relevance" : "updated";
   const sort = filters.sort || expectedSort;
-  return !filters.categoryId && !filters.zoneNumber && !filters.tagId &&
+  return !filters.categoryId && !filters.zoneNumber && !filters.tagId && !filters.rackId &&
+    !filters.rackFace && !filters.columnNumber && !filters.shelfNumber &&
     (!filters.status || filters.status === "active") &&
     sort === expectedSort;
 }
@@ -277,7 +351,6 @@ export function documentToViewerItem(document) {
   return {
     id: Number(document.id),
     documentNumber: clean(document.document_number),
-    storageCode: clean(document.storage_code),
     revisionNumber: clean(document.revision_number),
     revisionDate: clean(document.revision_date),
     disposalDueYear: document.disposal_due_year === null || document.disposal_due_year === undefined ? null : Number(document.disposal_due_year),
@@ -367,6 +440,19 @@ export async function getViewerSearchPayload(env, params = {}) {
   const rawPage = Number(params.page);
   const requestedPage = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
   const filters = parseDocumentFilters(params, { query });
+  if (!query) {
+    const totalItems = await getDocumentCount(env, filters);
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const page = Math.min(requestedPage, totalPages);
+    const documents = await getDocumentPage(env, filters, page, pageSize);
+    return {
+      items: documents.map(documentToViewerItem),
+      pagination: { page, pageSize, totalItems, totalPages },
+      facets: buildViewerFacets(documents),
+      suggestions: filters.status === "disposed" ? [] : buildSearchSuggestions(documents, 8)
+    };
+  }
+
   const { documents: allDocuments, suggestions } = await searchDocumentsWithSuggestions(
     env,
     query,

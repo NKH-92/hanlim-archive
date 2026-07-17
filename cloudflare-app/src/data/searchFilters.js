@@ -4,6 +4,7 @@
 import { clean } from "../utils.js";
 
 const VALID_SORTS = new Set(["relevance", "updated", "docnum", "category", "location"]);
+const VALID_STATUSES = new Set(["active", "disposed"]);
 
 function readParam(params, ...names) {
   for (const name of names) {
@@ -20,21 +21,40 @@ function positiveInteger(value) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
+function rackFace(value) {
+  const normalized = clean(value).toUpperCase();
+  if (normalized === "1") return "A";
+  if (normalized === "2") return "B";
+  return normalized === "A" || normalized === "B" ? normalized : "";
+}
+
 // params: URLSearchParams 값 또는 plain object (category|categoryId 등 별칭 허용).
 // emptySort: true면 sort 기본값을 넣지 않는다(명시 필터만 읽을 때).
 export function parseDocumentFilters(params = {}, { emptySort = false, query = "", defaultActive = true } = {}) {
   const q = clean(query || readParam(params, "q", "query"));
   const sortRaw = clean(readParam(params, "sort"));
-  const includeDisposed = ["1", "true", "on", "yes"].includes(clean(readParam(params, "includeDisposed")).toLowerCase());
+  const statusRaw = clean(readParam(params, "status")).toLowerCase();
+  const legacyIncludeDisposed = ["1", "true", "on", "yes"].includes(clean(readParam(params, "includeDisposed")).toLowerCase());
   const sort = VALID_SORTS.has(sortRaw) ? sortRaw : "";
-  const status = defaultActive && !includeDisposed ? "active" : "";
+  const status = VALID_STATUSES.has(statusRaw)
+    ? statusRaw
+    : legacyIncludeDisposed
+      ? "disposed"
+      : defaultActive
+        ? "active"
+        : "";
 
   return {
     categoryId: positiveInteger(readParam(params, "category", "categoryId")),
     zoneNumber: positiveInteger(readParam(params, "zone", "zoneNumber")),
     tagId: positiveInteger(readParam(params, "tag", "tagId")),
+    rackId: positiveInteger(readParam(params, "rack", "rackId")),
+    rackFace: rackFace(readParam(params, "face", "rackFace")),
+    columnNumber: positiveInteger(readParam(params, "column", "columnNumber")),
+    shelfNumber: positiveInteger(readParam(params, "shelf", "shelfNumber")),
     status,
-    includeDisposed,
+    // 구형 호출부가 참조해도 혼합 상태가 되지 않도록 "폐기 문서만" 의미로 유지한다.
+    includeDisposed: status === "disposed",
     sort: emptySort ? sort : (sort || (q ? "relevance" : "updated"))
   };
 }
@@ -51,6 +71,22 @@ export function buildDocumentFilterWhere(filters = {}) {
   if (filters.zoneNumber && Number.isInteger(filters.zoneNumber) && filters.zoneNumber > 0) {
     filterClauses.push("r.zone_number = ?");
     filterBinds.push(filters.zoneNumber);
+  }
+  if (filters.rackId && Number.isInteger(filters.rackId) && filters.rackId > 0) {
+    filterClauses.push("r.id = ?");
+    filterBinds.push(filters.rackId);
+  }
+  if (filters.rackFace === "A" || filters.rackFace === "B") {
+    filterClauses.push("d.rack_face = ?");
+    filterBinds.push(filters.rackFace);
+  }
+  if (filters.columnNumber && Number.isInteger(filters.columnNumber) && filters.columnNumber > 0) {
+    filterClauses.push("rs.column_number = ?");
+    filterBinds.push(filters.columnNumber);
+  }
+  if (filters.shelfNumber && Number.isInteger(filters.shelfNumber) && filters.shelfNumber > 0) {
+    filterClauses.push("rs.shelf_number = ?");
+    filterBinds.push(filters.shelfNumber);
   }
   if (filters.status === "active" || filters.status === "disposed") {
     filterClauses.push("d.status = ?");

@@ -12,7 +12,8 @@ on:
 
 # 배포는 동시에 하나만 진행되도록 직렬화한다(중복 배포로 인한 경합 방지).
 concurrency:
-  group: deploy-production
+  # 주간 D1 전체 export와 migration/deploy가 동시에 운영 DB를 점유하지 않게 같은 그룹을 쓴다.
+  group: d1-production-maintenance
   cancel-in-progress: false
 
 jobs:
@@ -25,10 +26,10 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: e2b9c1d94dc8f0f6e349bfbfb36cfa30
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: cloudflare-app/package-lock.json
       - run: npm ci

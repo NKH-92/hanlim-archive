@@ -1,3 +1,5 @@
+import { FREE_TIER_BUDGET } from "./freeTierBudget.js";
+
 export const RACK_ZONES = Object.freeze([1, 2, 3]);
 export const MAX_RACKS_PER_ZONE = 15;
 export const MAX_RACK_COLUMNS = 20;
@@ -12,8 +14,10 @@ export const DEFAULT_RACK_SHELVES = 6;
 // 더 큰 일괄 이관은 파일을 나눠 가져오거나 CSV_IMPORT_MAX_ROWS 환경변수로 조정한다.
 export const DEFAULT_CSV_IMPORT_LIMITS = Object.freeze({
   maxBytes: 128 * 1024,
-  maxRows: 50
+  maxRows: FREE_TIER_BUDGET.csvImportMaxItems
 });
+
+export { FREE_TIER_BUDGET };
 
 export function getAppConfig(env = {}) {
   return {
@@ -28,6 +32,11 @@ export function getAppConfig(env = {}) {
       maxShelves: MAX_RACK_SHELVES,
       defaultColumns: DEFAULT_RACK_COLUMNS,
       defaultShelves: DEFAULT_RACK_SHELVES
+    },
+    support: {
+      department: readText(env.SUPPORT_DEPARTMENT),
+      name: readText(env.SUPPORT_NAME),
+      email: readEmail(env.SUPPORT_EMAIL)
     }
   };
 }
@@ -35,4 +44,13 @@ export function getAppConfig(env = {}) {
 function readPositiveInteger(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readText(value) {
+  return String(value ?? "").trim().slice(0, 100);
+}
+
+function readEmail(value) {
+  const text = readText(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) ? text : "";
 }

@@ -36,7 +36,6 @@ export function dashboardPage({
 
   // 홈 모드: 검색창 + 문서고 도면. 즉시 검색 결과가 뜨면 도면 위 해당 랙이 파랗게 강조된다.
   if (mode === "home") {
-    const isAdmin = session.role === "Admin";
     const totalRacks = floorPlan.reduce((sum, region) => sum + region.racks.length, 0);
     return page("문서 검색", `
       <section class="search-home" data-search-home>
@@ -63,16 +62,6 @@ export function dashboardPage({
           <div class="section-title"><h2 id="home-floor-plan-title">문서고 도면</h2><span class="count-badge">${totalRacks}개 랙</span></div>
           ${floorPlanView(floorPlan, new Set())}
         </section>` : ""}
-
-        <div class="search-home-extras" data-home-extras>
-          <nav class="search-home-links" aria-label="바로가기">
-            <a href="/documents"><i class="fa-solid fa-file-lines"></i>전체 문서</a>
-            <a href="/sets"><i class="fa-solid fa-list-check"></i>문서 세트</a>
-            ${isAdmin
-              ? `<a href="/racks"><i class="fa-solid fa-box-archive"></i>랙 목록</a><a href="/admin/search-report"><i class="fa-solid fa-chart-simple"></i>검색 리포트</a>`
-              : `<a href="/qa"><i class="fa-solid fa-circle-question"></i>Q&amp;A</a>`}
-          </nav>
-        </div>
       </section>
       <script type="application/json" data-viewer-context>${viewerContext}</script>
       ${searchCoreScript()}
@@ -85,9 +74,10 @@ export function dashboardPage({
   const hits = new Set(documents.map((document) => document.location?.rackCode).filter(Boolean));
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
   const isFirstPage = Number(viewerSearch.pagination?.page || 1) === 1;
-  const answer = isFirstPage && query && (filters.sort || "relevance") === "relevance"
-    ? pickDominantAnswer(documents, query)
+  const answerDecision = isFirstPage && query && (filters.sort || "relevance") === "relevance"
+    ? viewerDominantAnswerDecision(documents, query)
     : null;
+  const answer = answerDecision?.show ? documents[0] : null;
   const rest = answer ? documents.filter((item) => item.id !== answer.id) : documents;
 
   return page("문서 검색", `
@@ -105,7 +95,7 @@ export function dashboardPage({
           <span class="count-badge" data-results-count>${totalItems}건</span>
         </div>
         <div data-results-body>
-          ${answer ? answerCard(answer, query, dominantGrade(answer, query)) : ""}
+          ${answer ? answerCard(answer, query, answerDecision.grade) : ""}
           ${answer && rest.length ? `<p class="rest-label">다른 결과 ${totalItems - 1}건</p>` : ""}
           ${answer && !rest.length ? "" : viewerDocumentResults(rest, query)}
           ${!documents.length && didYouMean.length ? didYouMeanView(didYouMean) : ""}
@@ -116,7 +106,6 @@ export function dashboardPage({
       <aside class="panel viewer-location-panel" aria-labelledby="viewer-location-title" data-viewer-map>
         <div class="section-title">
           <h2 id="viewer-location-title">문서고 도면</h2>
-          ${session.role === "Admin" ? `<a class="button secondary sm" href="/racks">랙 목록</a>` : ""}
         </div>
         ${floorPlanView(floorPlan, hits)}
       </aside>
@@ -126,30 +115,16 @@ export function dashboardPage({
   `, session);
 }
 
-// 정답 판정: 문서번호/보관코드 정확 일치는 무조건, 그 외엔 1위가 2위의 1.5배 이상일 때.
-function pickDominantAnswer(items, query = "") {
-  if (!items.length) return null;
-  const first = items[0];
-  if (!Number(first.relevanceScore || 0)) return null;
-  const compactQuery = searchCore.compactSearchText(query);
-  if (compactQuery && [first.documentNumber, first.storageCode].some(
-    (value) => value && searchCore.compactSearchText(value) === compactQuery
-  )) {
-    return first;
-  }
-  if (items.length === 1) return first;
-  const second = Number(items[1].relevanceScore || 0);
-  return Number(first.relevanceScore) >= second * 1.5 ? first : null;
-}
-
-// 확신 등급: 문서번호·보관코드 정확 일치는 '확실'(초록), 관련도 우위로 뽑힌 답은 '유력·확인 권장'(노랑).
-// 애매한 답이 확실한 답처럼 보이는 거짓 확신을 없앤다.
-function dominantGrade(item, query) {
-  const compactQuery = searchCore.compactSearchText(query);
-  const exact = compactQuery && [item.documentNumber, item.storageCode].some(
-    (value) => value && searchCore.compactSearchText(value) === compactQuery
-  );
-  return exact ? "certain" : "likely";
+// 서버용 필드 어댑터. 정답 판정 자체는 브라우저와 같은 searchCore 정책을 쓴다.
+function viewerDominantAnswerDecision(items, query = "") {
+  const first = items[0] || {};
+  return searchCore.decideDominantAnswer({
+    query,
+    documentNumber: first.documentNumber,
+    firstScore: first.relevanceScore,
+    secondScore: items[1]?.relevanceScore,
+    resultCount: items.length
+  });
 }
 
 function answerGradeChip(grade) {
@@ -191,7 +166,7 @@ function answerCard(item, query, grade = "likely") {
 }
 
 function viewerSearchForm({ query, suggestions, categories, tags, filters, home = false }) {
-  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.includeDisposed].filter(Boolean).length;
+  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status === "disposed"].filter(Boolean).length;
   return `
     <form method="get" action="/app" class="viewer-search-form ${home ? "is-home" : ""}" data-search-form data-viewer-form data-auto-submit>
       ${searchInputBlock(query, suggestions)}
@@ -205,7 +180,7 @@ function viewerSearchForm({ query, suggestions, categories, tags, filters, home 
 
 function viewerDocumentResults(documents, query) {
   if (!documents.length) {
-    return emptyResult("조건에 맞는 문서가 없습니다.", query);
+    return emptyResult("조건에 맞는 문서가 없습니다.");
   }
   return `<div class="viewer-result-list">${documents.map((document) => viewerDocumentCard(document, query)).join("")}</div>`;
 }
@@ -263,16 +238,22 @@ function viewerUrl({ query, filters = {}, patch = {}, page = 1 }) {
     ["category", "categoryId"],
     ["tag", "tagId"],
     ["zone", "zoneNumber"],
-    ["includeDisposed", "includeDisposed"],
+    ["rack", "rackId"],
+    ["face", "rackFace"],
+    ["column", "columnNumber"],
+    ["shelf", "shelfNumber"],
+    ["status", "status"],
     ["sort", "sort"]
   ]);
 }
 
-export function qaPage({ session }) {
+export function qaPage({ session, support = {} }) {
+  const contactName = [support.department, support.name].filter(Boolean).join(" / ");
+  const contactEmail = support.email || "";
   return page("Q&A", `
     <section class="page-head">
       <h1>Q&amp;A</h1>
-      <a class="button secondary" href="mailto:nkh92@hanlim.com">담당자 문의</a>
+      ${contactEmail ? `<a class="button secondary" href="mailto:${escapeHtml(contactEmail)}">담당자 문의</a>` : ""}
     </section>
     <section class="content-grid">
       <article class="panel">
@@ -286,8 +267,8 @@ export function qaPage({ session }) {
       <article class="panel">
         <h2>담당자</h2>
         <dl class="contact-list">
-          <div><dt>부서 / 이름</dt><dd>SQA팀 담당자</dd></div>
-          <div><dt>이메일</dt><dd><a href="mailto:nkh92@hanlim.com">nkh92@hanlim.com</a></dd></div>
+          <div><dt>부서 / 이름</dt><dd>${escapeHtml(contactName || "운영 관리자에게 문의하세요.")}</dd></div>
+          ${contactEmail ? `<div><dt>이메일</dt><dd><a href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a></dd></div>` : ""}
         </dl>
       </article>
     </section>
@@ -330,7 +311,7 @@ export function searchReportPage({ session, report }) {
               <td>${escapeHtml(row.query_text)}</td>
               <td>${Number(row.hits || 0)}회</td>
               <td>${escapeHtml(row.last_searched_at || "-")}</td>
-              <td><a class="button secondary sm" href="/tags">태그 보강</a></td>
+              <td><a class="button secondary sm" href="/tags?name=${encodeURIComponent(row.query_text)}">태그 보강</a></td>
             </tr>
           `).join("")}</tbody>
         </table></div>` : emptyState("실패한 검색이 없습니다.")}
