@@ -34,16 +34,6 @@ export function adminDashboardPage({ session, pendingCount, quality = null, sear
   if (dataLinks.length) {
     groups.push(managementGroup("데이터 및 감사", "데이터 품질과 변경 증적을 확인합니다.", dataLinks));
   }
-  const workLinks = [];
-  if (hasPermission(session, PERMISSIONS.MANAGE_DISPOSALS)) {
-    workLinks.push(["/disposal-batches", "fa-box-archive", "폐기 캠페인", "검토·동결·분할 폐기"]);
-  }
-  if (hasPermission(session, PERMISSIONS.MANAGE_SETS)) {
-    workLinks.push(["/sets", "fa-list-check", "문서 세트", "목록·잠금·CSV 출력"]);
-  }
-  if (workLinks.length) {
-    groups.push(managementGroup("업무 도구", "권한이 부여된 운영 작업입니다.", workLinks));
-  }
   return page("관리 설정", `
     <section class="page-head">
       <div><h1>관리 설정</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 설정합니다.</p></div>

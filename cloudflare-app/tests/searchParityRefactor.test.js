@@ -161,26 +161,29 @@ async function renderBrowser(documents, query) {
   };
 }
 
-test("server and browser keep the exact-code answer grade and key markup", async () => {
+test("server and browser keep the exact-code row fields and key markup", async () => {
   const query = "PV-2026-014";
   const serverHtml = serverResultsBody(await renderServer([serverItem()], query));
   const browser = await renderBrowser([browserItem()], query);
 
-  const expectedHead = '<div class="answer-head"><small class="answer-label">가장 정확한 결과</small><span class="answer-grade certain">확실</span></div>';
-  assert.equal(answerHead(serverHtml), expectedHead);
-  assert.equal(answerHead(browser.html), expectedHead);
-  assert.match(serverHtml, /<section class="answer-card" data-answer-card>/);
-  assert.match(browser.html, /^<section class="answer-card" data-answer-card>/);
+  assert.doesNotMatch(serverHtml, /data-answer-card/);
+  assert.doesNotMatch(browser.html, /data-answer-card/);
+  assert.match(serverHtml, /viewer-result-table/);
+  assert.match(browser.html, /^<div class="viewer-result-table"/);
   assert.match(serverHtml, /href="\/documents\/7" data-doc-click="7">충전 공정 밸리데이션 보고서<\/a>/);
   assert.match(browser.html, /href="\/documents\/7" data-doc-click="7">충전 공정 밸리데이션 보고서<\/a>/);
-  const expectedNumber = '<span class="mono"><mark>PV</mark>-<mark>2026</mark>-<mark>014</mark></span>';
+  const expectedNumber = '<span class="mono" role="cell" data-label="문서번호"><mark>PV</mark>-<mark>2026</mark>-<mark>014</mark></span>';
   assert.match(serverHtml, new RegExp(expectedNumber));
   assert.match(browser.html, new RegExp(expectedNumber));
+  assert.match(serverHtml, /data-label="대분류">PV<\/span>/);
+  assert.match(browser.html, /data-label="보관 위치">1구역 \/ 1-1번 랙 \/ 2열 \/ 3선반<\/span>/);
+  assert.match(serverHtml, /status active">보관중/);
+  assert.match(browser.html, /status active">보관중/);
   assert.equal(browser.title, `"${query}" 검색 결과`);
   assert.equal(browser.count, "1건");
 });
 
-test("server and browser keep likely dominance and ambiguous-list behavior", async () => {
+test("server and browser always keep row-only behavior for dominant and ambiguous matches", async () => {
   const query = "밸리데이션";
   const dominantServer = [
     serverItem({ relevanceScore: 300 }),
@@ -192,12 +195,10 @@ test("server and browser keep likely dominance and ambiguous-list behavior", asy
   ];
   const serverHtml = serverResultsBody(await renderServer(dominantServer, query, 2));
   const browser = await renderBrowser(dominantBrowser, query);
-  const expectedHead = '<div class="answer-head"><small class="answer-label">가장 정확한 결과</small><span class="answer-grade likely">유력 · 확인 권장</span></div>';
-
-  assert.equal(answerHead(serverHtml), expectedHead);
-  assert.equal(answerHead(browser.html), expectedHead);
-  assert.match(serverHtml, /<p class="rest-label">다른 결과 1건<\/p>/);
-  assert.match(browser.html, /<p class="rest-label">다른 결과 1건<\/p>/);
+  assert.doesNotMatch(serverHtml, /data-answer-card|rest-label/);
+  assert.doesNotMatch(browser.html, /data-answer-card|rest-label/);
+  assert.equal((serverHtml.match(/viewer-result-row/g) || []).length, 2);
+  assert.equal((browser.html.match(/viewer-result-row/g) || []).length, 2);
 
   const ambiguousServer = serverResultsBody(await renderServer([
     serverItem({ relevanceScore: 299 }),
@@ -211,7 +212,7 @@ test("server and browser keep likely dominance and ambiguous-list behavior", asy
   first.relevance_score = second.relevance_score;
   const ambiguousBrowser = await renderBrowser([first, second], query);
   assert.doesNotMatch(ambiguousBrowser.html, /data-answer-card/);
-  assert.match(ambiguousBrowser.html, /^<div class="viewer-result-list">/);
+  assert.match(ambiguousBrowser.html, /^<div class="viewer-result-table"/);
 });
 
 test("serialized search core remains self-contained and executable", () => {

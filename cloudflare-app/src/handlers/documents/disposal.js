@@ -1,27 +1,41 @@
 import { FREE_TIER_BUDGET } from "../../config.js";
 import {
+  createSelectedDisposalBatch,
   createDisposalBatch,
   disposeDocumentsBulk,
   getDisposalCandidates,
   getDisposalDueYears,
+  getDisposalHistoryPage,
   getRackSummaries,
   loadDocumentFormOptions,
-  parseDisposalFilters
+  parseDisposalFilters,
+  processDisposalBatch,
+  startDisposalBatch
 } from "../../db.js";
 import { disposalWorkspacePage, errorPage } from "../../html.js";
 import { clean, redirect } from "../../utils.js";
 
 export async function handleDisposalWorkspace(request, env, session) {
-  const filters = parseDisposalFilters(new URL(request.url).searchParams);
-  return renderDisposalWorkspace(env, session, filters);
+  const params = new URL(request.url).searchParams;
+  const filters = { ...parseDisposalFilters(params), query: clean(params.get("q")) };
+  const tab = params.get("tab") === "history" ? "history" : "targets";
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const feedback = feedbackFromParams(params);
+  return renderDisposalWorkspace(env, session, filters, feedback, { tab, page });
 }
 
-async function renderDisposalWorkspace(env, session, filters, feedback = null) {
-  const [{ categories }, racks, years, candidates] = await Promise.all([
+async function renderDisposalWorkspace(env, session, filters, feedback = null, { tab = "targets", page = 1 } = {}) {
+  const historyPromise = tab === "history"
+    ? getDisposalHistoryPage(env, { query: filters.query, page })
+    : Promise.resolve({ items: [], pagination: { page: 1, totalPages: 1, totalItems: 0 } });
+  const [{ categories }, racks, years, candidates, history] = await Promise.all([
     loadDocumentFormOptions(env, { activeOnly: true, includeSlots: false }),
     getRackSummaries(env),
     getDisposalDueYears(env),
-    getDisposalCandidates(env, filters, FREE_TIER_BUDGET.legacyBulkDisposeMaxItems + 1)
+    tab === "targets"
+      ? getDisposalCandidates(env, filters, FREE_TIER_BUDGET.disposalProcessChunkSize + 1)
+      : Promise.resolve([]),
+    historyPromise
   ]);
   return disposalWorkspacePage({
     session,
@@ -29,11 +43,51 @@ async function renderDisposalWorkspace(env, session, filters, feedback = null) {
     racks,
     years,
     filters,
-    documents: candidates.slice(0, FREE_TIER_BUDGET.legacyBulkDisposeMaxItems),
-    capped: candidates.length > FREE_TIER_BUDGET.legacyBulkDisposeMaxItems,
-    legacyLimit: FREE_TIER_BUDGET.legacyBulkDisposeMaxItems,
+    documents: candidates.slice(0, FREE_TIER_BUDGET.disposalProcessChunkSize),
+    capped: candidates.length > FREE_TIER_BUDGET.disposalProcessChunkSize,
+    legacyLimit: FREE_TIER_BUDGET.disposalProcessChunkSize,
+    history: history.items,
+    pagination: history.pagination,
+    tab,
     feedback
   });
+}
+
+export async function handleSelectedDisposal(request, env, session) {
+  const form = await request.formData();
+  const ids = clean(form.get("ids")).split(",").map(Number);
+  const filters = {
+    ...parseDisposalFilters({
+      categoryId: form.get("categoryId"),
+      rackId: form.get("rackId"),
+      disposalDueYear: form.get("disposalDueYear")
+    }),
+    query: clean(form.get("q"))
+  };
+  let created;
+  try {
+    created = await createSelectedDisposalBatch(env, {
+      documentIds: ids,
+      disposalReason: form.get("reason"),
+      approvalReference: form.get("approvalReference")
+    }, session);
+  } catch (error) {
+    console.error("selected disposal batch failed", error);
+    return renderDisposalWorkspace(env, session, filters, {
+      type: "error",
+      message: "선택 문서 상태가 변경되었습니다. 목록을 새로고침한 뒤 다시 시도해 주세요."
+    });
+  }
+  if (!created.ok) {
+    return renderDisposalWorkspace(env, session, filters, { type: "error", message: created.message });
+  }
+  const started = await startDisposalBatch(env, created.id, session);
+  if (!started.ok) return errorPage(started.message, session, 409);
+  const processed = await processDisposalBatch(env, created.id, session);
+  if (!processed.ok) return errorPage(processed.message, session, 409);
+  const completed = Number(processed.batch?.completed_count || 0);
+  const skipped = Number(processed.batch?.changed_count || 0) + Number(processed.batch?.failed_count || 0);
+  return redirect(`/documents/disposal?tab=history&toast=bulk-disposed&disposed=${completed}&skipped=${skipped}`);
 }
 
 export async function handleBulkDispose(request, env, session) {
@@ -139,4 +193,16 @@ function withToast(path, toast, details = {}) {
     url.searchParams.set(key, String(value));
   }
   return `${url.pathname}${url.search}`;
+}
+
+function feedbackFromParams(params) {
+  if (params.get("toast") !== "bulk-disposed") return null;
+  const disposed = Math.max(0, Number(params.get("disposed")) || 0);
+  const skipped = Math.max(0, Number(params.get("skipped")) || 0);
+  return {
+    type: skipped ? "warning" : "success",
+    message: skipped
+      ? `폐기 ${disposed}건 완료, 상태 변경으로 ${skipped}건을 건너뛰었습니다.`
+      : `문서 ${disposed}건을 폐기했습니다.`
+  };
 }

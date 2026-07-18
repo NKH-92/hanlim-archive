@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createSelectedDisposalBatch,
   freezeDisposalBatch,
+  getDisposalHistoryPage,
   normalizeDisposalCriteria,
   processDisposalBatch,
   validateDisposalBatchDraft
@@ -46,6 +48,55 @@ test("폐기 대상 동결은 스냅샷 INSERT와 상태 변경을 한 batch에 
   assert.match(statements[1].sql, /expected_updated_at/);
   assert.match(statements[1].sql, /d\.updated_at/);
   assert.match(statements[2].sql, /status = 'frozen'/);
+});
+
+test("통합 폐기 화면의 선택 문서는 스냅샷과 승인 참조를 원자적으로 동결한다", async () => {
+  const env = recordingEnv({
+    all(sql) {
+      return sql.includes("FROM documents") ? [{ id: 4 }, { id: 7 }] : [];
+    },
+    batch(statements) {
+      return statements.map((_, index) => index === 3
+        ? { meta: { changes: 1 }, results: [{ id: 31, target_count: 2 }] }
+        : { meta: { changes: 1 }, results: index === 0 ? [{ id: 31 }] : [] });
+    }
+  });
+
+  const result = await createSelectedDisposalBatch(env, {
+    documentIds: [4, 7, 4],
+    disposalReason: "보존기간 만료",
+    approvalReference: "QA-APP-2026-041"
+  }, actor);
+
+  assert.deepEqual(result, { ok: true, id: 31, count: 2 });
+  const statements = env.state.batches[0];
+  assert.equal(statements.length, 4);
+  assert.match(statements[0].sql, /approval_reference/);
+  assert.match(statements[1].sql, /선택 문서 폐기 작업 생성/);
+  assert.match(statements[2].sql, /INSERT INTO disposal_batch_items/);
+  assert.match(statements[2].sql, /expected_document_version/);
+  assert.match(statements[3].sql, /status = 'frozen'/);
+  assert.match(statements[3].sql, /THEN \? ELSE NULL/);
+  assert.deepEqual(statements[3].args.slice(0, 2), [2, 2]);
+});
+
+test("폐기 이력은 문서 식별자와 사유·승인 참조를 페이지 단위로 조회한다", async () => {
+  const env = recordingEnv({
+    first(sql) {
+      return sql.includes("COUNT(*) AS count") ? { count: 1 } : null;
+    },
+    all(sql) {
+      return sql.includes("FROM disposal_logs") ? [{ id: 5, document_number: "SOP-QA-014" }] : [];
+    }
+  });
+  const page = await getDisposalHistoryPage(env, { query: "SOP", page: 1, pageSize: 30 });
+
+  assert.equal(page.pagination.totalItems, 1);
+  assert.equal(page.items[0].document_number, "SOP-QA-014");
+  const historyRead = env.state.calls.find((call) => call.type === "all" && call.sql.includes("FROM disposal_logs"));
+  assert.match(historyRead.sql, /approval_reference/);
+  assert.match(historyRead.sql, /location_snapshot/);
+  assert.deepEqual(historyRead.args.slice(-2), [30, 0]);
 });
 
 test("폐기 process는 25건을 token으로 선점하고 10개 이하 집합 statement로 처리한다", async () => {

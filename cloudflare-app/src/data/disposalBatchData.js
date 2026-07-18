@@ -153,6 +153,145 @@ export async function createDisposalBatch(env, rawValues, actor) {
   return { ok: true, id };
 }
 
+// 통합 폐기 화면에서 사용자가 직접 고른 소량 문서를 즉시 동결된 작업으로 만든다.
+export async function createSelectedDisposalBatch(env, rawValues, actor) {
+  const ids = [...new Set((rawValues?.documentIds || [])
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0))];
+  const disposalReason = clean(rawValues?.disposalReason);
+  const approvalReference = clean(rawValues?.approvalReference);
+  const maxItems = FREE_TIER_BUDGET.disposalProcessChunkSize;
+  if (!ids.length) return { ok: false, message: "폐기할 문서를 하나 이상 선택해 주세요." };
+  if (ids.length > maxItems) return { ok: false, message: `한 번에 최대 ${maxItems}건까지 폐기할 수 있습니다.` };
+  if (!disposalReason) return { ok: false, message: "폐기 사유를 입력해 주세요." };
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const selected = await env.DB.prepare(`
+    SELECT id
+    FROM documents
+    WHERE id IN (${placeholders}) AND status = 'active'
+  `).bind(...ids).all();
+  if ((selected.results ?? []).length !== ids.length) {
+    return { ok: false, message: "선택한 문서 중 상태가 변경된 항목이 있습니다. 목록을 새로고침한 뒤 다시 선택해 주세요." };
+  }
+
+  const temporaryCode = `DSP-TEMP-${crypto.randomUUID()}`;
+  const actorId = requiredActorId(actor);
+  const actorDisplayName = actorName(actor);
+  const permissions = actorPermissionsSnapshot(actor);
+  const criteriaJson = JSON.stringify({ mode: "selected", documentIds: ids });
+  const statements = [
+    env.DB.prepare(`
+      INSERT INTO disposal_batches (
+        batch_code, title, criteria_json, disposal_reason, approval_reference,
+        created_by_user_id, created_by_name
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      RETURNING id
+    `).bind(
+      temporaryCode,
+      `선택 문서 폐기 ${ids.length}건`,
+      criteriaJson,
+      disposalReason,
+      approvalReference || null,
+      actorId,
+      actorDisplayName
+    ),
+    env.DB.prepare(`
+      INSERT INTO system_audit_logs (
+        entity_type, entity_id, entity_reference, action, actor_user_id,
+        actor_username_snapshot, actor_display_name_snapshot, actor_permissions_snapshot,
+        summary, details_json
+      )
+      SELECT
+        'disposal_batch', id, 'DSP-' || strftime('%Y', 'now') || '-' || printf('%04d', id),
+        'create', ?, ?, ?, ?, '선택 문서 폐기 작업 생성',
+        json_object('documentCount', ?, 'disposalReason', disposal_reason, 'approvalReference', approval_reference)
+      FROM disposal_batches
+      WHERE batch_code = ?
+    `).bind(actorId, actorUsername(actor), actorDisplayName, permissions, ids.length, temporaryCode),
+    env.DB.prepare(`
+      INSERT INTO disposal_batch_items (
+        batch_id, document_id, document_number_snapshot, revision_number_snapshot,
+        document_name_snapshot, category_snapshot, location_snapshot,
+        disposal_due_year_snapshot, expected_updated_at, expected_document_version
+      )
+      SELECT
+        b.id, d.id, d.document_number, d.revision_number, d.document_name, c.name,
+        ${locationSnapshotSql("d", "r", "rs")}, d.disposal_due_year, d.updated_at, d.row_version
+      FROM disposal_batches b
+      CROSS JOIN documents d
+      JOIN categories c ON c.id = d.category_id
+      JOIN rack_slots rs ON rs.id = d.rack_slot_id
+      JOIN racks r ON r.id = rs.rack_id
+      WHERE b.batch_code = ? AND d.id IN (${placeholders}) AND d.status = 'active'
+    `).bind(temporaryCode, ...ids),
+    env.DB.prepare(`
+      UPDATE disposal_batches
+      SET batch_code = 'DSP-' || strftime('%Y', 'now') || '-' || printf('%04d', id),
+          status = 'frozen',
+          target_count = CASE
+            WHEN (SELECT COUNT(*) FROM disposal_batch_items WHERE batch_id = disposal_batches.id) = ?
+            THEN ? ELSE NULL
+          END,
+          frozen_by_user_id = ?, frozen_by_name = ?, frozen_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE batch_code = ?
+        AND EXISTS (SELECT 1 FROM disposal_batch_items WHERE batch_id = disposal_batches.id)
+      RETURNING id, target_count
+    `).bind(ids.length, ids.length, actorId, actorDisplayName, temporaryCode)
+  ];
+  const results = await env.DB.batch(statements);
+  const row = results[3]?.results?.[0];
+  const id = Number(row?.id || 0);
+  if (!id) throw new Error("선택 문서 폐기 작업 생성 결과를 확인할 수 없습니다.");
+  return { ok: true, id, count: Number(row.target_count || 0) };
+}
+
+export async function getDisposalHistoryPage(env, { query = "", page = 1, pageSize = 30 } = {}) {
+  const cleanQuery = clean(query);
+  const safePage = Math.max(1, Number(page) || 1);
+  const safePageSize = Math.max(1, Math.min(Number(pageSize) || 30, 100));
+  const offset = (safePage - 1) * safePageSize;
+  const like = `%${cleanQuery}%`;
+  const where = `dl.action = 'disposed' AND (
+    ? = '' OR d.document_number LIKE ? OR d.revision_number LIKE ? OR d.document_name LIKE ?
+  )`;
+  const countRow = await env.DB.prepare(`
+    SELECT COUNT(*) AS count
+    FROM disposal_logs dl
+    JOIN documents d ON d.id = dl.document_id
+    WHERE ${where}
+  `).bind(cleanQuery, like, like, like).first();
+  const result = await env.DB.prepare(`
+    SELECT
+      dl.id, dl.document_id, dl.reason, dl.performed_by, dl.created_at,
+      d.document_number, d.revision_number, d.document_name, d.status,
+      c.name AS category_name,
+      ${locationSnapshotSql("d", "r", "rs")} AS location_snapshot,
+      b.batch_code, b.approval_reference
+    FROM disposal_logs dl
+    JOIN documents d ON d.id = dl.document_id
+    JOIN categories c ON c.id = d.category_id
+    JOIN rack_slots rs ON rs.id = d.rack_slot_id
+    JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN disposal_batches b ON b.id = dl.disposal_batch_id
+    WHERE ${where}
+    ORDER BY dl.created_at DESC, dl.id DESC
+    LIMIT ? OFFSET ?
+  `).bind(cleanQuery, like, like, like, safePageSize, offset).all();
+  const totalItems = Number(countRow?.count || 0);
+  return {
+    items: result.results ?? [],
+    pagination: {
+      page: safePage,
+      pageSize: safePageSize,
+      totalItems,
+      totalPages: Math.max(1, Math.ceil(totalItems / safePageSize))
+    }
+  };
+}
+
 export async function updateDisposalBatch(env, id, rawValues, actor, expectedUpdatedAt = "") {
   const validation = validateDisposalBatchDraft(rawValues);
   if (!validation.ok) return validation;

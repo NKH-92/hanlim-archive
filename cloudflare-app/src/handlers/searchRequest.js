@@ -34,7 +34,7 @@ export async function resolveSearchRequest(env, url) {
   const hasExplicitFilter = Boolean(
     explicitFilters.categoryId || explicitFilters.zoneNumber || explicitFilters.tagId || explicitFilters.rackId ||
     explicitFilters.rackFace || explicitFilters.columnNumber || explicitFilters.shelfNumber ||
-    explicitFilters.status === "disposed"
+    Boolean(explicitFilters.status)
   );
 
   // "2구역 PV" 같은 검색어를 필터 + 남은 텍스트로 분해한다.

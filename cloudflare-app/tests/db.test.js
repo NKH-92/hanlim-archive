@@ -11,6 +11,7 @@ import {
   documentToViewerItem,
   disposeDocument,
   disposeDocumentsBulk,
+  findDuplicateDocument,
   findDocumentsByNumbers,
   getDocumentQualitySummary,
   getDocumentCount,
@@ -174,6 +175,55 @@ test("parseDocumentFilters supports URLSearchParams and normalizes invalid value
     includeDisposed: false,
     sort: "updated"
   });
+  assert.deepEqual(parseDocumentFilters({ status: "all" }), {
+    categoryId: 0,
+    zoneNumber: 0,
+    tagId: 0,
+    rackId: 0,
+    rackFace: "",
+    columnNumber: 0,
+    shelfNumber: 0,
+    status: "all",
+    includeDisposed: false,
+    sort: "updated"
+  });
+});
+
+test("duplicate lookup matches document and revision without exposing internal storage codes", async () => {
+  let executedSql = "";
+  let executedArgs = [];
+  const env = {
+    DB: {
+      prepare(sql) {
+        executedSql = sql;
+        return {
+          bind(...args) {
+            executedArgs = args;
+            return {
+              async first() {
+                return {
+                  id: 7,
+                  document_number: "SOP-QA-014",
+                  revision_number: "Rev.03",
+                  document_name: "변경관리 절차서",
+                  status: "active",
+                  duplicate_count: 1
+                };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+
+  const duplicate = await findDuplicateDocument(env, "SOP-QA-014", "Rev.03", 4);
+
+  assert.equal(duplicate.exists, true);
+  assert.equal(duplicate.document.id, 7);
+  assert.doesNotMatch(executedSql, /storage_code/);
+  assert.match(executedSql, /UPPER\(d\.document_number\)/);
+  assert.deepEqual(executedArgs, ["SOP-QA-014", "Rev.03", 4, 4]);
 });
 
 test("parseDisposalFilters accepts only positive ids and valid disposal years", () => {

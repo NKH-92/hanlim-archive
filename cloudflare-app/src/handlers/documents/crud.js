@@ -1,64 +1,77 @@
 import {
-  buildFloorPlanLayout,
   createDocument,
   disposeDocument,
   documentToFormValues,
+  findDuplicateDocument,
   getDisposalLogs,
   getDocument,
   getDocumentAuditLogs,
   getDocumentMovements,
   getDocumentTags,
-  getFloorPlanRegions,
-  getRackSummaries,
   loadDocumentFormOptions,
   permanentlyDeleteDocument,
   restoreDocument,
   updateDocument,
-  validateDocumentInput,
+  validateDocumentInputDetails,
   valuesFromDocumentForm
 } from "../../db.js";
 import {
+  accessDeniedPage,
   documentDetailsPage,
   documentFormPage,
   errorPage,
   notFoundPage
 } from "../../html.js";
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
-import { clean, redirect } from "../../utils.js";
+import { clean, jsonResponse, redirect } from "../../utils.js";
 import { requireManageDisposals, requireManageDocuments } from "../permissionGuards.js";
 
-export async function renderCreateDocument(env, session, values = {}, error = "") {
+export async function renderCreateDocument(env, session, values = {}, validation = null, title = "문서 등록") {
   const { categories, tags, slots } = await loadDocumentFormOptions(env, { activeOnly: true });
   const safeValues = { ...values, returnTo: safeDocumentReturn(values.returnTo) };
 
   return documentFormPage({
     session,
-    title: "문서 등록",
+    title,
     action: "/documents",
     values: safeValues,
     categories,
     tags,
     slots,
     selectedTags: safeValues.tagIds || [],
-    error
+    error: typeof validation === "string" ? validation : "",
+    validation: typeof validation === "object" ? validation : null
   });
+}
+
+export async function handleDuplicateDocumentCheck(env, documentNumber, revisionNumber, excludeId = 0) {
+  return jsonResponse(await findDuplicateDocument(env, documentNumber, revisionNumber, excludeId));
 }
 
 export async function handleCreateDocument(request, env, session) {
   const form = await request.formData();
   const values = valuesFromDocumentForm(form);
   values.returnTo = safeDocumentReturn(form.get("returnTo"));
-  const validation = await validateDocumentInput(env, values);
+  const validation = await validateDocumentInputDetails(env, values);
 
-  if (validation) {
+  if (!validation.ok) {
     return renderCreateDocument(env, session, values, validation);
   }
 
-  const id = await createDocument(env, values, session, session.role);
-  return redirect(values.returnTo ? withToast(values.returnTo, "document-created") : `/documents/${id}?toast=created`);
+  const duplicate = await findDuplicateDocument(env, values.documentNumber, values.revisionNumber);
+  if (duplicate.exists) return renderCreateDocument(env, session, values, duplicateValidation(duplicate));
+
+  try {
+    const id = await createDocument(env, values, session, session.role);
+    return redirect(values.returnTo ? withToast(values.returnTo, "document-created") : `/documents/${id}?toast=created`);
+  } catch (error) {
+    if (error?.code !== "DUPLICATE_DOCUMENT") throw error;
+    const latestDuplicate = await findDuplicateDocument(env, values.documentNumber, values.revisionNumber);
+    return renderCreateDocument(env, session, values, duplicateValidation(latestDuplicate));
+  }
 }
 
-async function renderEditDocumentForm(env, session, id, values, selectedTags, error = "") {
+async function renderEditDocumentForm(env, session, id, values, selectedTags, validation = null) {
   const { categories, tags, slots } = await loadDocumentFormOptions(env, { includeSlots: false });
   return documentFormPage({
     session,
@@ -69,7 +82,8 @@ async function renderEditDocumentForm(env, session, id, values, selectedTags, er
     tags,
     slots,
     selectedTags,
-    error,
+    error: typeof validation === "string" ? validation : "",
+    validation: typeof validation === "object" ? validation : null,
     showLocation: false
   });
 }
@@ -86,13 +100,11 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
 
     const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
     const canViewMovements = canViewAudit || hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS);
-    const [tags, disposalLogs, auditLogs, movements, racks, regions] = await Promise.all([
+    const [tags, disposalLogs, auditLogs, movements] = await Promise.all([
       getDocumentTags(env, id),
       getDisposalLogs(env, id),
       canViewAudit ? getDocumentAuditLogs(env, id) : Promise.resolve([]),
-      canViewMovements ? getDocumentMovements(env, id) : Promise.resolve([]),
-      getRackSummaries(env),
-      getFloorPlanRegions(env)
+      canViewMovements ? getDocumentMovements(env, id) : Promise.resolve([])
     ]);
 
     return documentDetailsPage({
@@ -101,8 +113,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       tags,
       disposalLogs,
       auditLogs,
-      movements,
-      floorPlan: buildFloorPlanLayout(racks, regions)
+      movements
     });
   }
 
@@ -134,6 +145,24 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
     );
   }
 
+  if (request.method === "GET" && action === "revise") {
+    const denied = requireManageDocuments(session);
+    if (denied) return denied;
+    const [document, tags] = await Promise.all([getDocument(env, id), getDocumentTags(env, id)]);
+    if (!document) return notFoundPage(session);
+    if (document.status !== "active") return errorPage("폐기 문서는 새 개정을 등록할 수 없습니다.", session, 400);
+
+    return renderCreateDocument(env, session, {
+      ...documentToFormValues(document),
+      revisionNumber: "",
+      revisionDate: "",
+      disposalDueYear: "",
+      note: "",
+      tagIds: tags.map((tag) => tag.id),
+      revisionSourceId: id
+    }, null, "새 개정 등록");
+  }
+
   if (request.method === "POST" && action === "edit") {
     const denied = requireManageDocuments(session);
     if (denied) {
@@ -153,13 +182,20 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
     // 결합해 위치 변경이 반드시 전용 이동 흐름을 거치도록 한다.
     values.rackSlotId = Number(document.rack_slot_id);
     values.rackFace = document.rack_face;
-    const validation = await validateDocumentInput(env, values, {
+    const validation = await validateDocumentInputDetails(env, values, {
       allowInactiveCategoryId: document.category_id,
       allowInactiveTagIds: currentTags.map((tag) => tag.id)
     });
 
-    if (validation) {
+    if (!validation.ok) {
       return renderEditDocumentForm(env, session, id, values, values.tagIds, validation);
+    }
+
+    const pairChanged = values.documentNumber.toUpperCase() !== String(document.document_number).toUpperCase() ||
+      values.revisionNumber.toUpperCase() !== String(document.revision_number).toUpperCase();
+    if (pairChanged) {
+      const duplicate = await findDuplicateDocument(env, values.documentNumber, values.revisionNumber, id);
+      if (duplicate.exists) return renderEditDocumentForm(env, session, id, values, values.tagIds, duplicateValidation(duplicate));
     }
 
     const result = await updateDocument(env, id, values, session, session.role);
@@ -185,10 +221,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
   }
 
   if (request.method === "POST" && action === "restore") {
-    const denied = requireManageDisposals(session);
-    if (denied) {
-      return denied;
-    }
+    if (session.role !== "Admin") return accessDeniedPage(session);
 
     const form = await request.formData();
     const result = await restoreDocument(env, id, session, clean(form.get("reason")), session.role);
@@ -212,6 +245,15 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
   }
 
   return notFoundPage(session);
+}
+
+function duplicateValidation(duplicate) {
+  return {
+    ok: false,
+    fieldErrors: { documentNumber: "문서번호와 개정번호가 이미 등록되어 있습니다." },
+    formErrors: [],
+    duplicate: duplicate?.document ? duplicate : null
+  };
 }
 
 function safeDocumentReturn(value) {

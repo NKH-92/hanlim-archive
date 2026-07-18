@@ -3,11 +3,13 @@ import { matchDocumentRoute } from "../routes.js";
 import {
   handleBulkDispose,
   handleCreateDocument,
+  handleDuplicateDocumentCheck,
   handleDocumentExport,
   handleDocumentRoute,
   handleDocuments,
   handleDisposalWorkspace,
   handleFilteredDispose,
+  handleSelectedDisposal,
   renderCreateDocument
 } from "./documentHandlers.js";
 import { handleCreateDocumentImportJob, renderDocumentImportJobCreate } from "./importJobHandlers.js";
@@ -15,6 +17,15 @@ import { handleDocumentMove, renderDocumentMove } from "./movementHandlers.js";
 import { requireManageDisposals, requireManageDocuments } from "./permissionGuards.js";
 
 export async function routeDocumentRequest(request, env, session, url, path) {
+  if (path === "/api/documents/duplicate" && request.method === "GET") {
+    return requireManageDocuments(session) ?? handleDuplicateDocumentCheck(
+      env,
+      url.searchParams.get("documentNumber"),
+      url.searchParams.get("revisionNumber"),
+      url.searchParams.get("excludeId")
+    );
+  }
+
   if (path === "/documents" && request.method === "GET") {
     return handleDocuments(request, env, session);
   }
@@ -25,6 +36,10 @@ export async function routeDocumentRequest(request, env, session, url, path) {
 
   if (path === "/documents/bulk-dispose" && request.method === "POST") {
     return requireManageDisposals(session) ?? handleBulkDispose(request, env, session);
+  }
+
+  if (path === "/documents/disposal/process" && request.method === "POST") {
+    return requireManageDisposals(session) ?? handleSelectedDisposal(request, env, session);
   }
 
   if (path === "/documents/dispose-filtered" && request.method === "POST") {

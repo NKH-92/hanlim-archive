@@ -9,6 +9,48 @@ export function workflowStyles() {
     .bulk-bar input:focus { background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .4); box-shadow: none; }
     .bulk-reason { flex: 1 1 240px; min-width: 0; color: var(--surface); }
     .pagination { display: flex; justify-content: center; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); color: var(--gray-600); font-weight: 600; font-size: 12.5px; }
+    .workspace-tabs { display: flex; gap: var(--sp-1); border-bottom: 1px solid var(--line); }
+    .workspace-tabs a { padding: var(--sp-3) var(--sp-4); border-bottom: 2px solid transparent; color: var(--gray-500); text-decoration: none; font-size: 13.5px; font-weight: 700; }
+    .workspace-tabs a[aria-current="page"] { border-color: var(--primary); color: var(--primary); }
+    .disposal-filter { grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(140px, auto)) auto auto; }
+    .disposal-review-modal { width: min(560px, calc(100% - var(--sp-8))); }
+    .disposal-review-list { max-height: 220px; overflow-y: auto; margin: 0; padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-7); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--gray-50); }
+    .disposal-review-list li { padding: var(--sp-1) 0; font-size: 13px; }
+    .disposal-history-table small { display: block; margin-top: var(--sp-1); color: var(--gray-500); white-space: nowrap; }
+    .disposal-complete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+    .disposal-complete-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+    .document-form-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: var(--sp-4); align-items: start; }
+    .document-form { display: grid; gap: var(--sp-4); padding: var(--sp-5); }
+    .form-section { display: grid; gap: var(--sp-3); min-width: 0; margin: 0; padding: 0 0 var(--sp-4); border: 0; border-bottom: 1px solid var(--line); }
+    .form-section:last-of-type { border-bottom: 0; }
+    .form-section > legend, .form-section > h2 { margin: 0 0 var(--sp-1); padding: 0; font-size: 15px; font-weight: 700; }
+    .form-grid { display: grid; gap: var(--sp-3); }
+    .form-grid.two-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .field-group { display: grid; gap: var(--sp-1); min-width: 0; }
+    .mono-input { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .field-error { margin: 0; color: var(--danger); font-size: 12.5px; font-weight: 600; }
+    .form-error-summary { padding: var(--sp-4); border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--danger-soft); color: var(--danger); }
+    .form-error-summary p { margin: var(--sp-1) 0; }
+    .form-error-summary ul { margin: var(--sp-2) 0 0; padding-left: var(--sp-5); }
+    .form-error-summary a { color: inherit; font-weight: 600; }
+    .duplicate-notice { padding: var(--sp-4); border: 1px solid var(--warning); border-radius: var(--r-md); background: var(--warning-soft); color: var(--gray-900); }
+    .duplicate-notice[hidden] { display: none; }
+    .duplicate-notice p { margin: var(--sp-2) 0; color: var(--gray-700); }
+    .location-picker-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-2); }
+    .location-picker-steps label { gap: var(--sp-1); }
+    .location-picker-steps label > span { color: var(--gray-600); font-size: 12px; font-weight: 600; }
+    .enhanced-control-hidden { display: none !important; }
+    .form-actions { display: flex; justify-content: space-between; gap: var(--sp-2); }
+    .form-review { position: sticky; top: var(--sp-4); padding: var(--sp-5); }
+    .form-review summary { cursor: pointer; list-style: none; font-size: 15px; font-weight: 700; }
+    .form-review summary::-webkit-details-marker { display: none; }
+    .form-review summary::after { content: "+"; float: right; color: var(--gray-500); }
+    .form-review[open] summary::after { content: "−"; }
+    .form-review dl { display: grid; gap: 0; margin: var(--sp-4) 0 0; }
+    .form-review dl div { display: grid; grid-template-columns: minmax(96px, 1fr) minmax(0, 2fr); gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--gray-100); }
+    .form-review dt { color: var(--gray-500); font-size: 12px; font-weight: 600; }
+    .form-review dd { margin: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 
     .check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--sp-2); border-radius: var(--r-md); padding: var(--sp-3); background: var(--gray-50); border: 0; }
     .check-item, .check-inline { display: inline-flex; align-items: center; gap: var(--sp-2); width: max-content; font-weight: 500; font-size: 13px; color: var(--ink); }

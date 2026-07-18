@@ -236,7 +236,13 @@ export async function createDocument(env, values, actor, actorRole = "User") {
         status,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM documents
+        WHERE UPPER(document_number) = UPPER(?)
+          AND UPPER(revision_number) = UPPER(?)
+      )
       RETURNING id
     `).bind(
       temporaryStorageCode,
@@ -248,7 +254,9 @@ export async function createDocument(env, values, actor, actorRole = "User") {
       values.documentName,
       values.note || null,
       values.rackSlotId,
-      values.rackFace
+      values.rackFace,
+      values.documentNumber,
+      values.revisionNumber
     ),
     ...insertDocumentTagStatementsByTempCode(env, temporaryStorageCode, values.tagIds),
     createDocumentAuditStatement(env, temporaryStorageCode, actor, actorRole),
@@ -264,7 +272,9 @@ export async function createDocument(env, values, actor, actorRole = "User") {
   const createdId = result[0]?.results?.[0]?.id;
 
   if (!createdId) {
-    throw new Error("문서 등록 결과를 확인할 수 없습니다.");
+    const error = new Error("같은 문서번호와 개정번호가 이미 등록되어 있습니다.");
+    error.code = "DUPLICATE_DOCUMENT";
+    throw error;
   }
 
   return createdId;

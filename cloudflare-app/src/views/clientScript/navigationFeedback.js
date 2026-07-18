@@ -2,13 +2,16 @@
 
 export function navigationFeedbackScript() {
   return `      var currentPath = location.pathname;
-      var activeNav = Array.from(document.querySelectorAll('.archive-nav-item')).filter(function (item) {
+      var activeNavItems = Array.from(document.querySelectorAll('.archive-nav-item')).filter(function (item) {
         var href = item.getAttribute('href') || '';
         return href === currentPath || (href.length > 1 && currentPath.indexOf(href + '/') === 0);
       }).sort(function (left, right) {
         return (right.getAttribute('href') || '').length - (left.getAttribute('href') || '').length;
-      })[0];
-      if (activeNav) activeNav.classList.add('active');
+      });
+      var activeHref = activeNavItems[0] ? activeNavItems[0].getAttribute('href') : '';
+      activeNavItems.forEach(function (item) {
+        if (item.getAttribute('href') === activeHref) item.classList.add('active');
+      });
 
       var toastKey = new URLSearchParams(location.search).get('toast');
       if (toastKey) {

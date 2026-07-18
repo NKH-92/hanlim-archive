@@ -15,15 +15,13 @@ export function instantSearchScript() {
         var resultsBody = document.querySelector('[data-results-body]');
         var resultsTitle = document.querySelector('[data-results-title]');
         var resultsCount = document.querySelector('[data-results-count]');
+        var searchLive = document.querySelector('[data-search-live]');
         var homeExtras = document.querySelector('[data-home-extras]');
         var initialResults = {
           body: resultsBody ? resultsBody.innerHTML : '',
           title: resultsTitle ? resultsTitle.textContent : '',
           count: resultsCount ? resultsCount.textContent : ''
         };
-        var initialHitCodes = Array.prototype.slice.call(document.querySelectorAll('.floor-rack.is-hit')).map(function (rack) {
-          return rack.getAttribute('data-rack-code') || '';
-        });
         var renderTimer = null;
 
         var instantLocation = function (doc) {
@@ -49,42 +47,15 @@ export function instantSearchScript() {
         var instantRow = function (doc, q) {
           var loc = instantLocation(doc);
           var rail = doc.status !== 'active' ? ' is-disposed' : '';
-          return '<article class="doc-row' + rail + '">' +
-            '<div class="doc-row-loc"><div>' +
-            '<span class="loc-code">' + escapeHtmlClient(loc.main) + '</span>' +
-            '<small class="loc-sub">' + escapeHtmlClient(loc.sub) + '</small>' +
-            '</div><button type="button" class="icon-button" data-copy-text="' + escapeHtmlClient(loc.label) + '" title="위치 복사" aria-label="위치 복사"><i class="fa-regular fa-copy"></i></button></div>' +
-            '<div class="doc-row-main"><div class="doc-row-title">' +
-            '<a href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '">' + core.highlightHtml(doc.document_name || '문서명 없음', q, escapeHtmlClient) + '</a>' +
-            instantBadges(doc) +
-            '</div><div class="doc-row-meta">' +
-            '<span class="mono">' + core.highlightHtml(doc.document_number || '', q, escapeHtmlClient) + '</span>' +
-            '<span>' + escapeHtmlClient(doc.revision_number || '') + '</span>' +
-            '<span>' + escapeHtmlClient(doc.revision_date || '제/개정일 미입력') + '</span>' +
-            '<span>' + escapeHtmlClient(doc.disposal_due_year ? doc.disposal_due_year + '년 폐기 예정' : '폐기 예정 년도 미입력') + '</span>' +
-            '<span>' + escapeHtmlClient(doc.category_name || '-') + '</span>' +
-            (doc.match_reason ? '<span class="match-line">' + escapeHtmlClient(doc.match_reason) + '</span>' : '') +
-            '</div></div>' +
-            '<div class="doc-row-actions"><a class="button secondary sm" href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '"><i class="fa-solid fa-circle-info"></i>상세</a></div>' +
+          return '<article class="viewer-result-row' + rail + '" role="row">' +
+            '<span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '">' + core.highlightHtml(doc.document_name || '문서명 없음', q, escapeHtmlClient) + '</a></span>' +
+            '<span class="mono" role="cell" data-label="문서번호">' + core.highlightHtml(doc.document_number || '', q, escapeHtmlClient) + '</span>' +
+            '<span role="cell" data-label="개정">' + escapeHtmlClient(doc.revision_number || '-') + '</span>' +
+            '<span role="cell" data-label="제·개정일">' + escapeHtmlClient(doc.revision_date || '-') + '</span>' +
+            '<span role="cell" data-label="대분류">' + escapeHtmlClient(doc.category_name || '-') + '</span>' +
+            '<span class="viewer-result-location" role="cell" data-label="보관 위치">' + escapeHtmlClient(loc.label || '위치 미지정') + '</span>' +
+            '<span role="cell" data-label="상태">' + (doc.status === 'active' ? '<span class="status active">보관중</span>' : instantBadges(doc)) + '</span>' +
             '</article>';
-        };
-
-        var instantAnswer = function (doc, q, grade) {
-          var loc = instantLocation(doc);
-          var faceLabel = core.rackFaceLabel(doc);
-          var head = (doc.zone_number ? doc.zone_number + '구역 ' : '') + (faceLabel ? faceLabel + '번 랙' : (doc.rack_code || ''));
-          var gradeChip = grade === 'certain'
-            ? '<span class="answer-grade certain">확실</span>'
-            : '<span class="answer-grade likely">유력 · 확인 권장</span>';
-          return '<section class="answer-card" data-answer-card>' +
-            '<div class="answer-head"><small class="answer-label">가장 정확한 결과</small>' + gradeChip + '</div>' +
-            '<div class="answer-loc">' + escapeHtmlClient(head) + '<span>' + escapeHtmlClient(loc.sub) + '</span></div>' +
-            '<div class="answer-doc"><a href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '">' + core.highlightHtml(doc.document_name || '', q, escapeHtmlClient) + '</a>' + instantBadges(doc) +
-            '<div class="answer-meta"><span class="mono">' + core.highlightHtml(doc.document_number || '', q, escapeHtmlClient) + '</span><span>' + escapeHtmlClient(doc.revision_number || '') + '</span><span>' + escapeHtmlClient(doc.revision_date || '제/개정일 미입력') + '</span><span>' + escapeHtmlClient(doc.disposal_due_year ? doc.disposal_due_year + '년 폐기 예정' : '폐기 예정 년도 미입력') + '</span><span>' + escapeHtmlClient(doc.category_name || '-') + '</span></div></div>' +
-            '<div class="answer-actions">' +
-            '<a class="button" href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '"><i class="fa-solid fa-circle-info"></i>상세 정보</a>' +
-            '<button type="button" class="button secondary" data-copy-text="' + escapeHtmlClient(loc.label) + '">위치 복사</button>' +
-            '</div></section>';
         };
 
         var currentSelectFilters = function () {
@@ -94,7 +65,7 @@ export function instantSearchScript() {
           };
           var statusEl = viewerForm.querySelector('select[name="status"]');
           var sortEl = viewerForm.querySelector('select[name="sort"]');
-          var status = statusEl && statusEl.value === 'disposed' ? 'disposed' : 'active';
+          var status = statusEl && ['active', 'all', 'disposed'].indexOf(statusEl.value) !== -1 ? statusEl.value : 'active';
           return {
             categoryId: num('category'),
             tagId: num('tag'),
@@ -115,7 +86,7 @@ export function instantSearchScript() {
         var matchesFilters = function (doc, f) {
           if (f.categoryId && Number(doc.category_id) !== f.categoryId) return false;
           if (f.zoneNumber && Number(doc.zone_number) !== f.zoneNumber) return false;
-          if (f.status && doc.status !== f.status) return false;
+          if (f.status && f.status !== 'all' && doc.status !== f.status) return false;
           if (f.tagId) {
             var name = core.compactSearchText(tagNameById(f.tagId));
             if (!name) return false;
@@ -124,20 +95,13 @@ export function instantSearchScript() {
           return true;
         };
 
-        var updateFloorHits = function (codes) {
-          Array.prototype.forEach.call(document.querySelectorAll('.floor-rack'), function (rack) {
-            var code = rack.getAttribute('data-rack-code') || '';
-            rack.classList.toggle('is-hit', codes.indexOf(code) !== -1);
-          });
-        };
-
         var restoreInitial = function () {
           if (resultsBody) resultsBody.innerHTML = initialResults.body;
           if (resultsTitle) resultsTitle.textContent = initialResults.title;
           if (resultsCount) resultsCount.textContent = initialResults.count;
+          if (searchLive) searchLive.textContent = '검색어를 입력하면 보관중 문서를 바로 찾습니다.';
           if (homeExtras) homeExtras.hidden = false;
           if (viewerApp.classList.contains('is-home')) viewerApp.hidden = true;
-          updateFloorHits(initialHitCodes);
         };
 
         var renderInstant = function () {
@@ -181,36 +145,14 @@ export function instantSearchScript() {
               return '<span class="chip active">' + escapeHtmlClient((chipLabels[chip.type] || chip.type) + ': ' + chip.label) + '</span>';
             }).join('') + '</div>';
           }
-          var answer = null;
-          var answerGrade = 'likely';
-          if (hasText && (merged.sort || 'relevance') === 'relevance' && top.length) {
-            var answerDecision = core.decideDominantAnswer({
-              query: text,
-              documentNumber: top[0].document_number || '',
-              firstScore: top[0].relevance_score,
-              secondScore: top.length > 1 ? top[1].relevance_score : 0,
-              resultCount: top.length
-            });
-            if (answerDecision.show) {
-              answer = top[0];
-              answerGrade = answerDecision.grade;
-            }
-          }
-          if (answer) {
-            html += instantAnswer(answer, text, answerGrade);
-            var rest = top.filter(function (item) { return item.id !== answer.id; });
-            if (rest.length) {
-              html += '<p class="rest-label">다른 결과 ' + (scored.length - 1) + '건</p>';
-              html += '<div class="viewer-result-list">' + rest.map(function (item) { return instantRow(item, text); }).join('') + '</div>';
-            }
-          } else if (top.length) {
-            html += '<div class="viewer-result-list">' + top.map(function (item) { return instantRow(item, text); }).join('') + '</div>';
+          if (top.length) {
+            html += '<div class="viewer-result-table" role="table" aria-label="문서 검색 결과"><div class="viewer-result-header" role="row"><span>문서명</span><span>문서번호</span><span>개정</span><span>제·개정일</span><span>대분류</span><span>보관 위치</span><span>상태</span></div><div class="viewer-result-list" role="rowgroup">' + top.map(function (item) { return instantRow(item, text); }).join('') + '</div></div>';
           } else {
             html += '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p></div>';
             var loose = [];
             for (var j = 0; j < searchIndex.length; j++) {
               var candidate = searchIndex[j];
-              if (candidate.status !== merged.status) continue;
+              if (merged.status !== 'all' && candidate.status !== merged.status) continue;
               var looseScore = core.scoreDocumentMatch(candidate, text, { minCoverage: 0.2 });
               if (looseScore.relevance_score > 0) loose.push(Object.assign({}, candidate, looseScore));
             }
@@ -235,9 +177,9 @@ export function instantSearchScript() {
           if (resultsBody) resultsBody.innerHTML = html;
           if (resultsTitle) resultsTitle.textContent = '"' + q + '" 검색 결과';
           if (resultsCount) resultsCount.textContent = scored.length + '건';
+          if (searchLive) searchLive.textContent = scored.length ? scored.length + '건을 찾았습니다.' : '검색 결과가 없습니다.';
           if (homeExtras) homeExtras.hidden = true;
           viewerApp.hidden = false;
-          updateFloorHits(top.map(function (item) { return item.rack_code; }));
         };
 
         var loadSearchIndex = function () {
@@ -256,6 +198,7 @@ export function instantSearchScript() {
 
         viewerInput.addEventListener('input', function () {
           clearTimeout(renderTimer);
+          if (searchLive && viewerInput.value.trim()) searchLive.textContent = '검색 중…';
           renderTimer = setTimeout(renderInstant, 100);
         });
         viewerInput.addEventListener('focus', loadSearchIndex);

@@ -1,9 +1,10 @@
-// 전역 클라이언트 스크립트의 일괄 작업·명령 팔레트 조각. 실행 순서는 clientScript.js에서 고정한다.
+// 선택 작업과 명령 팔레트 동작. 실행 순서는 clientScript.js에서 고정한다.
 
 export function bulkCommandScript() {
   return `      var bulkBar = document.querySelector('[data-bulk-bar]');
       var bulkIds = document.querySelector('[data-bulk-ids]');
       var bulkCount = document.querySelector('[data-bulk-count]');
+      var bulkSummary = document.querySelector('[data-bulk-summary]');
       var bulkSelectAll = document.querySelector('[data-bulk-select-all]');
       function syncBulk() {
         var items = Array.from(document.querySelectorAll('[data-bulk-item]'));
@@ -12,6 +13,20 @@ export function bulkCommandScript() {
         if (bulkBar) bulkBar.hidden = checked.length === 0;
         if (bulkIds) bulkIds.value = checked.join(',');
         if (bulkCount) bulkCount.textContent = checked.length + '건 선택';
+        if (bulkSummary) {
+          bulkSummary.innerHTML = '';
+          checkedItems.forEach(function (item) {
+            var row = item.closest('[data-document-row]');
+            var name = row ? row.querySelector('.name-cell a') : null;
+            var number = row ? row.querySelector('.mono-cell') : null;
+            var revision = row ? row.querySelector('.revision-cell') : null;
+            var entry = document.createElement('li');
+            entry.textContent = (number ? number.textContent.trim() : '선택 문서') +
+              (revision ? ' / ' + revision.textContent.trim() : '') +
+              (name ? ' · ' + name.textContent.trim() : '');
+            bulkSummary.appendChild(entry);
+          });
+        }
         if (bulkSelectAll) {
           bulkSelectAll.checked = items.length > 0 && checked.length === items.length;
           bulkSelectAll.indeterminate = checked.length > 0 && checked.length < items.length;
@@ -64,13 +79,7 @@ export function bulkCommandScript() {
       if (bulkForm) {
         bulkForm.addEventListener('submit', function (event) {
           var count = document.querySelectorAll('[data-bulk-item]:checked').length;
-          if (!count) {
-            event.preventDefault();
-            return;
-          }
-          if (!window.confirm('선택한 ' + count + '건을 일괄 폐기 처리할까요? 폐기 후에는 관리자만 해제할 수 있습니다.')) {
-            event.preventDefault();
-          }
+          if (!count || !window.confirm('선택한 ' + count + '건을 폐기 상태로 변경할까요?')) event.preventDefault();
         });
       }
 `;

@@ -1,4 +1,4 @@
-import { validateDocumentRecordFields, validateDocumentTextFields } from "../documentRules.js";
+import { collectDocumentFieldErrors, validateDocumentRecordFields, validateDocumentTextFields } from "../documentRules.js";
 import { clean, normalizeRackFace } from "../utils.js";
 import {
   DOCUMENT_BASE_JOINS,
@@ -168,6 +168,44 @@ export async function getDocument(env, id) {
   `).bind(id).first();
 }
 
+// 문서번호와 개정번호의 정확한 조합을 대소문자와 무관하게 찾는다. 브라우저에는
+// 내부 보관코드를 내보내지 않으므로 등록 중복 확인에 필요한 최소 필드만 읽는다.
+export async function findDuplicateDocument(env, documentNumber, revisionNumber, excludeId = 0) {
+  const number = clean(documentNumber);
+  const revision = clean(revisionNumber);
+  if (!number || !revision) return { exists: false, count: 0, document: null };
+
+  const excluded = Number.isInteger(Number(excludeId)) && Number(excludeId) > 0 ? Number(excludeId) : 0;
+  const row = await env.DB.prepare(`
+    SELECT
+      d.id,
+      d.document_number,
+      d.revision_number,
+      d.document_name,
+      d.status,
+      COUNT(*) OVER () AS duplicate_count
+    FROM documents d
+    WHERE UPPER(d.document_number) = UPPER(?)
+      AND UPPER(d.revision_number) = UPPER(?)
+      AND (? = 0 OR d.id <> ?)
+    ORDER BY CASE WHEN d.status = 'active' THEN 0 ELSE 1 END, d.id DESC
+    LIMIT 1
+  `).bind(number, revision, excluded, excluded).first();
+
+  if (!row) return { exists: false, count: 0, document: null };
+  return {
+    exists: true,
+    count: Number(row.duplicate_count || 1),
+    document: {
+      id: Number(row.id),
+      documentNumber: row.document_number,
+      revisionNumber: row.revision_number,
+      documentName: row.document_name,
+      status: row.status
+    }
+  };
+}
+
 export async function getDocumentTags(env, documentId) {
   const result = await env.DB.prepare(`
     SELECT t.id, t.name
@@ -225,9 +263,25 @@ export async function validateDocumentInput(env, values, options = {}) {
     return "보관 면은 1면 또는 2면만 선택할 수 있습니다.";
   }
 
+  const referenceErrors = await validateDocumentReferences(env, values, options);
+  return referenceErrors.categoryId || referenceErrors.rackSlotId || referenceErrors.rackFace || referenceErrors.tagIds || "";
+}
+
+// 신규 등록 화면용 검증 결과. 기존 validateDocumentInput의 문자열 계약은 유지한다.
+export async function validateDocumentInputDetails(env, values, options = {}) {
+  const fieldErrors = collectDocumentFieldErrors(values);
+  Object.assign(fieldErrors, await validateDocumentReferences(env, values, options));
+  return {
+    ok: Object.keys(fieldErrors).length === 0,
+    fieldErrors,
+    formErrors: []
+  };
+}
+
+async function validateDocumentReferences(env, values, options = {}) {
+  const errors = {};
   const allowInactiveCategory = options.allowInactiveCategory === true ||
     Number(options.allowInactiveCategoryId) === values.categoryId;
-
   const uniqueTagIds = [...new Set(values.tagIds || [])]
     .map(Number)
     .filter((id) => Number.isInteger(id) && id > 0);
@@ -258,32 +312,25 @@ export async function validateDocumentInput(env, values, options = {}) {
       : Promise.resolve({ results: [] })
   ]);
 
-  if (!category || (!category.is_active && !allowInactiveCategory)) {
-    return "사용 가능한 대분류가 아닙니다.";
-  }
-
-  if (!slot) {
-    return "사용 가능한 보관 위치가 아닙니다.";
-  }
-
-  if (slot.is_single_sided && values.rackFace === "B") {
-    return "단면 랙은 면 구분 없이 사용합니다. 2면을 선택할 수 없습니다.";
-  }
+  if (!category || (!category.is_active && !allowInactiveCategory)) errors.categoryId = "사용 가능한 대분류가 아닙니다.";
+  if (!slot) errors.rackSlotId = "사용 가능한 보관 위치가 아닙니다.";
+  else if (slot.is_single_sided && values.rackFace === "B") errors.rackFace = "단면 랙은 면 구분 없이 사용합니다. 2면을 선택할 수 없습니다.";
 
   if (uniqueTagIds.length) {
     const found = new Map((tagRows.results ?? []).map((tag) => [Number(tag.id), tag]));
     for (const tagId of uniqueTagIds) {
       const tag = found.get(tagId);
       if (!tag) {
-        return "존재하지 않는 태그가 포함되어 있습니다.";
+        errors.tagIds = "존재하지 않는 태그가 포함되어 있습니다.";
+        break;
       }
       if (!tag.is_active && !allowInactiveTagIds.has(tagId)) {
-        return "사용 가능한 태그가 아닙니다.";
+        errors.tagIds = "사용 가능한 태그가 아닙니다.";
+        break;
       }
     }
   }
-
-  return "";
+  return errors;
 }
 
 export function parseDocumentNumberList(text) {
@@ -406,6 +453,12 @@ export async function getDisposalDueYears(env) {
 export async function getDisposalCandidates(env, filters = {}, limit = 201) {
   const clauses = ["d.status = 'active'"];
   const binds = [];
+  const query = clean(filters.query);
+  if (query) {
+    clauses.push("(d.document_number LIKE ? OR d.revision_number LIKE ? OR d.document_name LIKE ?)");
+    const like = `%${query}%`;
+    binds.push(like, like, like);
+  }
   if (filters.categoryId) {
     clauses.push("d.category_id = ?");
     binds.push(filters.categoryId);

@@ -2,11 +2,13 @@
 export { handleDocumentExport, handleDocuments } from "./documents/browse.js";
 export {
   handleCreateDocument,
+  handleDuplicateDocumentCheck,
   handleDocumentRoute,
   renderCreateDocument
 } from "./documents/crud.js";
 export {
   handleBulkDispose,
+  handleSelectedDisposal,
   handleDisposalWorkspace,
   handleFilteredDispose
 } from "./documents/disposal.js";

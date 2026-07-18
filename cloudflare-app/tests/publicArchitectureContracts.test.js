@@ -16,14 +16,14 @@ const DB_EXPORTS = `
   DATA_QUALITY_ISSUES DEFAULT_FLOOR_PLAN_REGIONS MAX_SEARCH_RESULTS
   addDocumentsToSet approveUser buildDocumentFilterWhere buildFloorPlanLayout
   buildSearchSuggestions buildViewerFacets cancelDisposalBatch cancelDocumentImportJob
-  compactSearchText configureRackCounts createDisposalBatch createDocument
+  compactSearchText configureRackCounts createDisposalBatch createSelectedDisposalBatch createDocument
   createDocumentImportJob createSignupRequest createSystemAuditStatement deleteCategory
   deleteDocumentSet deleteTag disableUser disposeDocument disposeDocumentsBulk
   documentToFormValues documentToViewerItem enableUser failDocumentImportItem
-  findDocumentsByNumbers freezeDisposalBatch getActiveCategories getActiveTags
+  findDocumentsByNumbers findDuplicateDocument freezeDisposalBatch getActiveCategories getActiveTags
   getAppUser getAppUsers getCategories getCategoryDocumentIndex getDataQualityPage
   getDidYouMeanSuggestions getDisposalBatch getDisposalBatchExportRows
-  getDisposalBatchItems getDisposalCandidates getDisposalDueYears getDisposalLogs
+  getDisposalBatchItems getDisposalCandidates getDisposalDueYears getDisposalHistoryPage getDisposalLogs
   getDocument getDocumentAuditLogs getDocumentCount getDocumentImportFailureRows
   getDocumentImportItems getDocumentImportJob getDocumentMovementPage
   getDocumentMovements getDocumentPage getDocumentQualitySummary getDocumentSet
@@ -40,7 +40,7 @@ const DB_EXPORTS = `
   searchDocuments searchDocumentsWithSuggestions searchTokens
   setDisposalBatchItemExcluded setDocumentSetLock startDisposalBatch updateDisposalBatch
   updateDocument updateUserPermissions upsertCategory upsertDocumentSet upsertRack
-  upsertTag validateDisposalBatchDraft validateDocumentInput valuesFromDocumentForm
+  upsertTag validateDisposalBatchDraft validateDocumentInput validateDocumentInputDetails valuesFromDocumentForm
 `.trim().split(/\s+/).sort();
 
 const HTML_EXPORTS = `

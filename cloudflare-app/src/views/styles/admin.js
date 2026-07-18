@@ -30,6 +30,26 @@ export function adminStyles() {
     .loc-label-lg { color: var(--primary); letter-spacing: -.01em; }
     .locator-hero span { color: var(--gray-500); font-size: 12.5px; }
 
+    .document-detail-head { display: grid; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+    .document-title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-4); }
+    .document-title-row h1 { margin: 0; }
+    .document-title-row p { margin: var(--sp-1) 0 0; color: var(--gray-500); }
+    .document-location-summary { display: grid; gap: var(--sp-1); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line); border-left: 4px solid var(--primary); border-radius: var(--r-md); background: var(--surface); }
+    .document-location-summary small { color: var(--gray-500); font-size: 12px; font-weight: 600; }
+    .document-location-summary strong { color: var(--primary); font-size: 15px; }
+    .document-detail-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
+    .detail-section h2 { margin-bottom: var(--sp-3); }
+    .detail-section dl { margin: 0; }
+    .detail-section dl div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--gray-100); }
+    .detail-section dt { color: var(--gray-500); font-size: 12px; font-weight: 600; }
+    .detail-section dd { margin: 0; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+    .detail-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-3); margin: var(--sp-4) 0; }
+    .detail-actions > div { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+    .detail-history { margin-top: var(--sp-4); }
+    .detail-history summary { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); cursor: pointer; font-weight: 700; list-style: none; }
+    .detail-history summary::-webkit-details-marker { display: none; }
+    .detail-history[open] summary { margin-bottom: var(--sp-4); }
+
     .tab-nav { display: flex; gap: var(--sp-4); overflow-x: auto; margin-bottom: var(--sp-4); border-bottom: 1px solid var(--line); }
     .tab-nav button { background: transparent; color: var(--gray-500); min-height: 0; padding: var(--sp-2) var(--sp-1) var(--sp-3); border: 0; border-radius: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; }
     .tab-nav button:hover { background: transparent; color: var(--gray-800); }

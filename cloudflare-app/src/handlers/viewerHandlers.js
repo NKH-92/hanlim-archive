@@ -1,8 +1,5 @@
 import { getAppConfig } from "../config.js";
 import {
-  buildFloorPlanLayout,
-  getFloorPlanRegions,
-  getRackSummaries,
   parseDocumentFilters,
   getSearchIndexDocuments,
   getSearchIndexMeta,
@@ -18,29 +15,21 @@ import { resolveSearchOutcome, resolveSearchRequest } from "./searchRequest.js";
 export async function handleDashboard(request, env, session) {
   const url = new URL(request.url);
   const search = await resolveSearchRequest(env, url);
-  const { query, page, explicitFilters, categories, tags, parsed, filters } = search;
+  const { query, page, categories, tags, parsed, filters } = search;
 
-  // 검색엔진 셸: 검색어도 필터도 없으면 검색창 + 문서고 도면 홈을 그린다.
+  // 검색어와 필터가 없으면 검색 입력부터 시작하는 빈 검색 셸을 그린다.
   if (!query && !search.hasExplicitFilter) {
-    const [homeRacks, homeRegions] = await Promise.all([
-      getRackSummaries(env),
-      getFloorPlanRegions(env)
-    ]);
     return dashboardPage({
       session,
       mode: "home",
       query: "",
       categories,
       tags,
-      filters: explicitFilters,
-      floorPlan: buildFloorPlanLayout(homeRacks, homeRegions)
+      filters
     });
   }
 
-  const [racks, regions, viewerSearch] = await Promise.all([
-    getRackSummaries(env),
-    getFloorPlanRegions(env),
-    getViewerSearchPayload(env, {
+  const viewerSearch = await getViewerSearchPayload(env, {
       q: parsed.text,
       category: filters.categoryId,
       zone: filters.zoneNumber,
@@ -53,8 +42,7 @@ export async function handleDashboard(request, env, session) {
       sort: filters.sort,
       page,
       pageSize: 12
-    })
-  ]);
+    });
 
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
   const didYouMean = await resolveSearchOutcome(env, search, totalItems);
@@ -65,7 +53,6 @@ export async function handleDashboard(request, env, session) {
     query,
     parsedQuery: parsed,
     viewerSearch: filters.status === "disposed" ? { ...viewerSearch, suggestions: [] } : viewerSearch,
-    floorPlan: buildFloorPlanLayout(racks, regions),
     categories,
     tags,
     filters,

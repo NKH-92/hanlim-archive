@@ -1,15 +1,15 @@
 // 전역 CSS의 검색 홈 조각. 순서는 styles.js에서 고정한다.
 
 export function searchHomeStyles() {
-  return `    .search-home { width: min(880px, 100%); margin: 0 auto; padding-top: clamp(16px, 6vh, 72px); display: grid; gap: var(--sp-4); }
-    .search-home .viewer-search-form.is-home { width: min(720px, 100%); justify-self: center; }
+  return `    .search-home { width: 100%; margin: 0 auto; padding-top: var(--sp-1); display: grid; gap: var(--sp-3); }
+    .search-home .viewer-search-form.is-home { width: 100%; }
     .home-floor-plan { width: 100%; }
     .search-home-hero { display: grid; gap: var(--sp-2); justify-items: center; text-align: center; }
     .search-home-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: var(--r-lg); background: var(--primary); color: var(--surface); font-size: 20px; }
     .search-home-hero h1 { font-size: 22px; }
     .search-home-sub { margin: 0; color: var(--gray-500); font-size: 13.5px; }
     .search-home .search-box input { min-height: 44px; font-size: 15px; }
-    .search-home .viewer-recents { justify-content: center; }
+    .search-home .viewer-recents { justify-content: flex-start; }
     .search-home-extras { display: grid; gap: var(--sp-4); }
     .search-home-links { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); }
     .search-home-links a { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--gray-600); font-size: 12.5px; font-weight: 600; text-decoration: none; transition: background .15s ease, color .15s ease, border-color .15s ease; }

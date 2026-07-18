@@ -1,9 +1,7 @@
 // 검색 뷰어(/app)·Q&A·검색 리포트 화면.
 
-import { sharedSearchCore } from "../searchCore.js";
 import { escapeHtml } from "../utils.js";
 import { searchCoreScript } from "./clientScript.js";
-import { floorPlanView } from "./floorPlanViews.js";
 import { alertWarning, emptyResult, emptyState, filterSelectRow, listUrl, page, paginationNav, sectionHeader, statusBadge } from "./layout.js";
 import {
   didYouMeanView,
@@ -14,14 +12,10 @@ import {
 
 export { didYouMeanView, highlight, parsedChipRow, searchInputBlock };
 
-// 정답 카드 판정에 compactSearchText를 쓴다(하이라이트는 searchFragments).
-const searchCore = sharedSearchCore;
-
 export function dashboardPage({
   session,
   query,
   viewerSearch = { items: [], pagination: { totalItems: 0, totalPages: 1, page: 1, pageSize: 12 }, facets: {}, suggestions: [] },
-  floorPlan = [],
   categories = [],
   tags = [],
   filters = {},
@@ -34,17 +28,13 @@ export function dashboardPage({
     tags: tags.map((item) => ({ id: Number(item.id), name: String(item.name || "") }))
   }).replace(/</g, "\\u003c");
 
-  // 홈 모드: 검색창 + 문서고 도면. 즉시 검색 결과가 뜨면 도면 위 해당 랙이 파랗게 강조된다.
+  // 홈 모드: 장식 없이 검색 입력이 첫 작업이 되도록 한다.
   if (mode === "home") {
-    const totalRacks = floorPlan.reduce((sum, region) => sum + region.racks.length, 0);
     return page("문서 검색", `
       <section class="search-home" data-search-home>
-        <div class="search-home-hero">
-          <span class="search-home-mark"><i class="fa-solid fa-building-columns"></i></span>
-          <h1 id="viewer-title">한림문서고</h1>
-          <p class="search-home-sub">문서명, 문서번호, 초성, 위치 단서를 입력하면 보관 위치를 바로 찾아드립니다.</p>
-        </div>
+        <h1 id="viewer-title" class="sr-only">문서 검색</h1>
         ${viewerSearchForm({ query: "", suggestions: [], categories, tags, filters, home: true })}
+        <p class="search-live-status" data-search-live aria-live="polite">검색어를 입력하면 보관중 문서를 바로 찾습니다.</p>
         <div class="quick-row viewer-recents" data-recent-searches></div>
 
         <section class="viewer-workspace is-home" data-viewer-app hidden>
@@ -57,33 +47,22 @@ export function dashboardPage({
           </article>
         </section>
 
-        ${floorPlan.length ? `
-        <section class="panel home-floor-plan" aria-labelledby="home-floor-plan-title">
-          <div class="section-title"><h2 id="home-floor-plan-title">문서고 도면</h2><span class="count-badge">${totalRacks}개 랙</span></div>
-          ${floorPlanView(floorPlan, new Set())}
-        </section>` : ""}
       </section>
       <script type="application/json" data-viewer-context>${viewerContext}</script>
       ${searchCoreScript()}
     `, session);
   }
 
-  // 검색 모드: 정답 카드 + 결과 리스트 + 위치 도면.
+  // 검색 모드: 고정 열의 행 목록만 보여 주어 비교와 스캔을 우선한다.
   const documents = viewerSearch.items || [];
   const suggestions = viewerSearch.suggestions || [];
-  const hits = new Set(documents.map((document) => document.location?.rackCode).filter(Boolean));
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
-  const isFirstPage = Number(viewerSearch.pagination?.page || 1) === 1;
-  const answerDecision = isFirstPage && query && (filters.sort || "relevance") === "relevance"
-    ? viewerDominantAnswerDecision(documents, query)
-    : null;
-  const answer = answerDecision?.show ? documents[0] : null;
-  const rest = answer ? documents.filter((item) => item.id !== answer.id) : documents;
 
   return page("문서 검색", `
     <section class="panel search-band" aria-labelledby="viewer-title">
-      <h1 id="viewer-title">문서 위치 검색</h1>
+      <h1 id="viewer-title" class="sr-only">문서 검색</h1>
       ${viewerSearchForm({ query, suggestions, categories, tags, filters })}
+        <p class="search-live-status" data-search-live aria-live="polite">${totalItems ? `${totalItems}건을 찾았습니다.` : "검색 결과가 없습니다."}</p>
       ${parsedChipRow(parsedQuery, query)}
       <div class="quick-row viewer-recents" data-recent-searches></div>
     </section>
@@ -95,82 +74,24 @@ export function dashboardPage({
           <span class="count-badge" data-results-count>${totalItems}건</span>
         </div>
         <div data-results-body>
-          ${answer ? answerCard(answer, query, answerDecision.grade) : ""}
-          ${answer && rest.length ? `<p class="rest-label">다른 결과 ${totalItems - 1}건</p>` : ""}
-          ${answer && !rest.length ? "" : viewerDocumentResults(rest, query)}
+          ${viewerDocumentResults(documents, query)}
           ${!documents.length && didYouMean.length ? didYouMeanView(didYouMean) : ""}
           ${viewerPagination(viewerSearch.pagination, { query, filters })}
         </div>
       </article>
 
-      <aside class="panel viewer-location-panel" aria-labelledby="viewer-location-title" data-viewer-map>
-        <div class="section-title">
-          <h2 id="viewer-location-title">문서고 도면</h2>
-        </div>
-        ${floorPlanView(floorPlan, hits)}
-      </aside>
     </section>
     <script type="application/json" data-viewer-context>${viewerContext}</script>
     ${searchCoreScript()}
   `, session);
 }
 
-// 서버용 필드 어댑터. 정답 판정 자체는 브라우저와 같은 searchCore 정책을 쓴다.
-function viewerDominantAnswerDecision(items, query = "") {
-  const first = items[0] || {};
-  return searchCore.decideDominantAnswer({
-    query,
-    documentNumber: first.documentNumber,
-    firstScore: first.relevanceScore,
-    secondScore: items[1]?.relevanceScore,
-    resultCount: items.length
-  });
-}
-
-function answerGradeChip(grade) {
-  return grade === "certain"
-    ? `<span class="answer-grade certain">확실</span>`
-    : `<span class="answer-grade likely">유력 · 확인 권장</span>`;
-}
-
-function answerCard(item, query, grade = "likely") {
-  const location = item.location || {};
-  const slot = [
-    location.columnNumber ? `${location.columnNumber}열` : "",
-    location.shelfNumber ? `${location.shelfNumber}선반` : ""
-  ].filter(Boolean).join(" ");
-  return `
-    <section class="answer-card" data-answer-card>
-      <div class="answer-head"><small class="answer-label">가장 정확한 결과</small>${answerGradeChip(grade)}</div>
-      <div class="answer-loc">
-        ${location.zoneNumber ? `${location.zoneNumber}구역 ` : ""}${location.rackLabel ? `${escapeHtml(location.rackLabel)}번 랙` : escapeHtml(location.rackCode || "")}
-        ${slot ? `<span>${slot}</span>` : ""}
-      </div>
-      <div class="answer-doc">
-        <a href="/documents/${item.id}" data-doc-click="${item.id}">${highlight(item.documentName || "문서명 없음", query)}</a>
-        ${item.status !== "active" ? statusBadge(item.status) : ""}
-        <div class="answer-meta">
-          <span class="mono">${highlight(item.documentNumber, query)}</span>
-          <span>${escapeHtml(item.revisionNumber)}</span>
-          <span>${escapeHtml(item.revisionDate || "제/개정일 미입력")}</span>
-          <span>${escapeHtml(item.disposalDueYear ? `${item.disposalDueYear}년 폐기 예정` : "폐기 예정 년도 미입력")}</span>
-          <span>${escapeHtml(item.categoryName || "-")}</span>
-        </div>
-      </div>
-      <div class="answer-actions">
-        <a class="button" href="/documents/${item.id}" data-doc-click="${item.id}"><i class="fa-solid fa-circle-info"></i>상세 정보</a>
-        <button type="button" class="button secondary" data-copy-text="${escapeHtml(location.label || "")}">위치 복사</button>
-      </div>
-    </section>
-  `;
-}
-
 function viewerSearchForm({ query, suggestions, categories, tags, filters, home = false }) {
-  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status === "disposed"].filter(Boolean).length;
+  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status && filters.status !== "active"].filter(Boolean).length;
   return `
     <form method="get" action="/app" class="viewer-search-form ${home ? "is-home" : ""}" data-search-form data-viewer-form data-auto-submit>
       ${searchInputBlock(query, suggestions)}
-      <details class="filter-details" ${activeFilterCount ? "open" : ""}>
+      <details class="filter-details" open>
         <summary><i class="fa-solid fa-sliders"></i>상세 필터${activeFilterCount ? `<span class="filter-count">${activeFilterCount}</span>` : ""}</summary>
         ${filterSelectRow({ categories, tags, filters, viewer: true })}
       </details>
@@ -182,43 +103,24 @@ function viewerDocumentResults(documents, query) {
   if (!documents.length) {
     return emptyResult("조건에 맞는 문서가 없습니다.");
   }
-  return `<div class="viewer-result-list">${documents.map((document) => viewerDocumentCard(document, query)).join("")}</div>`;
+  return `<div class="viewer-result-table" role="table" aria-label="문서 검색 결과">
+    <div class="viewer-result-header" role="row"><span>문서명</span><span>문서번호</span><span>개정</span><span>제·개정일</span><span>대분류</span><span>보관 위치</span><span>상태</span></div>
+    <div class="viewer-result-list" role="rowgroup">${documents.map((document) => viewerDocumentCard(document, query)).join("")}</div>
+  </div>`;
 }
 
 function viewerDocumentCard(document, query = "") {
   const location = document.location || {};
   const locationText = location.label || "위치 미지정";
-  const rackCode = location.rackCode || "";
-  const slot = [
-    location.columnNumber ? `${location.columnNumber}열` : "",
-    location.shelfNumber ? `${location.shelfNumber}선반` : ""
-  ].filter(Boolean).join(" ");
   return `
-    <article class="doc-row ${document.status !== "active" ? "is-disposed" : ""}">
-      <div class="doc-row-loc">
-        <div>
-          <span class="loc-code">${location.rackLabel ? `${location.zoneNumber ? `${location.zoneNumber}구역 ` : ""}${escapeHtml(location.rackLabel)}` : rackCode ? escapeHtml(rackCode) : "위치 미지정"}</span>
-          ${slot ? `<small class="loc-sub">${escapeHtml(slot)}</small>` : ""}
-        </div>
-        <button type="button" class="icon-button" data-copy-text="${escapeHtml(locationText)}" title="위치 복사" aria-label="위치 복사"><i class="fa-regular fa-copy"></i></button>
-      </div>
-      <div class="doc-row-main">
-        <div class="doc-row-title">
-          <a href="/documents/${document.id}" data-doc-click="${document.id}">${highlight(document.documentName || "문서명 없음", query)}</a>
-          ${document.status !== "active" ? statusBadge(document.status) : ""}
-        </div>
-        <div class="doc-row-meta">
-          <span class="mono">${highlight(document.documentNumber, query)}</span>
-          <span>${escapeHtml(document.revisionNumber)}</span>
-          <span>${escapeHtml(document.revisionDate || "제/개정일 미입력")}</span>
-          <span>${escapeHtml(document.disposalDueYear ? `${document.disposalDueYear}년 폐기 예정` : "폐기 예정 년도 미입력")}</span>
-          <span>${escapeHtml(document.categoryName || "-")}</span>
-          ${document.matchReason ? `<span class="match-line">${escapeHtml(document.matchReason)}</span>` : ""}
-        </div>
-      </div>
-      <div class="doc-row-actions">
-        <a class="button secondary sm" href="/documents/${document.id}" data-doc-click="${document.id}"><i class="fa-solid fa-circle-info"></i>상세</a>
-      </div>
+    <article class="viewer-result-row ${document.status !== "active" ? "is-disposed" : ""}" role="row">
+      <span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/${document.id}" data-doc-click="${document.id}">${highlight(document.documentName || "문서명 없음", query)}</a></span>
+      <span class="mono" role="cell" data-label="문서번호">${highlight(document.documentNumber, query)}</span>
+      <span role="cell" data-label="개정">${escapeHtml(document.revisionNumber || "-")}</span>
+      <span role="cell" data-label="제·개정일">${escapeHtml(document.revisionDate || "-")}</span>
+      <span role="cell" data-label="대분류">${escapeHtml(document.categoryName || "-")}</span>
+      <span class="viewer-result-location" role="cell" data-label="보관 위치">${escapeHtml(locationText)}</span>
+      <span role="cell" data-label="상태">${statusBadge(document.status)}</span>
     </article>
   `;
 }

@@ -62,42 +62,41 @@ function withCsrfToken(body, token) {
 }
 
 function header(session) {
-  const links = [
-    ["/app", "fa-magnifying-glass", "검색"],
-    ["/documents", "fa-file-lines", "전체 문서"],
-    ["/sets", "fa-layer-group", "문서 세트"],
-    ["/qa", "fa-circle-info", "Q&A"]
-  ];
+  const primaryLinks = [["/app", "fa-magnifying-glass", "문서검색"]];
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
-    links.push(["/documents/new", "fa-file-lines", "문서 등록"]);
-    links.push(["/documents/import", "fa-file-csv", "CSV 가져오기"]);
+    primaryLinks.push(["/documents/new", "fa-file-lines", "문서등록"]);
   }
   if (hasPermission(session, PERMISSIONS.MANAGE_DISPOSALS)) {
-    links.push(["/disposal-batches", "fa-box-archive", "폐기 캠페인"]);
+    primaryLinks.push(["/documents/disposal", "fa-box-archive", "문서폐기"]);
   }
-  if (hasPermission(session, PERMISSIONS.MANAGE_MASTERS)) {
-    links.push(["/racks", "fa-table-cells-large", "랙"]);
-    links.push(["/categories", "fa-list-check", "대분류"]);
-    links.push(["/tags", "fa-tags", "태그"]);
+
+  const settingsLinks = [];
+  if (session.role === "Admin" && hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
+    settingsLinks.push(["/documents/import", "fa-file-csv", "CSV 가져오기"]);
   }
-  if (hasPermission(session, PERMISSIONS.MANAGE_USERS)) {
-    links.push(["/admin/settings", "fa-users-gear", "사용자·권한"]);
+  if (session.role === "Admin" && hasPermission(session, PERMISSIONS.MANAGE_MASTERS)) {
+    settingsLinks.push(["/racks", "fa-table-cells-large", "랙·보관 위치"]);
+    settingsLinks.push(["/categories", "fa-list-check", "대분류"]);
+    settingsLinks.push(["/tags", "fa-tags", "태그"]);
   }
-  if (hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
-    links.push(["/admin/audit", "fa-list-check", "감사 이력"]);
+  if (session.role === "Admin" && hasPermission(session, PERMISSIONS.MANAGE_USERS)) {
+    settingsLinks.push(["/admin/settings", "fa-users-gear", "사용자·권한"]);
   }
-  if (hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS) || hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
-    links.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
+  if (session.role === "Admin" && hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
+    settingsLinks.push(["/admin/audit", "fa-list-check", "감사 이력"]);
   }
-  if (sessionHasManagementAccess(session)) {
-    links.push(["/admin", "fa-gear", "운영 관리"]);
+  if (session.role === "Admin" && (hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS) || hasPermission(session, PERMISSIONS.VIEW_AUDIT))) {
+    settingsLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
   }
-  const primaryPaths = new Set(["/app", "/documents", "/sets", "/qa", "/admin"]);
-  const navigationLinks = links
-    .filter(([href]) => primaryPaths.has(href))
+  if (session.role === "Admin" && sessionHasManagementAccess(session)) {
+    settingsLinks.push(["/admin", "fa-gear", "운영 관리"]);
+  }
+  const navigationLinks = primaryLinks
     .map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item"><i class="fa-solid ${icon}"></i>${text}</a>`)
     .join("");
-  const commandLinks = links.map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
+  const settingsNavigation = settingsLinks.map(([href, icon, text]) => `<a href="${href}" class="nav-sub-link"><i class="fa-solid ${icon}"></i>${escapeHtml(text)}</a>`).join("");
+  const mobileTabs = primaryLinks.map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}"></i><span>${text}</span></a>`).join("");
+  const commandLinks = [...primaryLinks, ...settingsLinks].map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
 
   return `
     <header class="topbar">
@@ -107,6 +106,10 @@ function header(session) {
       <nav aria-label="주 메뉴" data-nav-menu>
         <button type="button" class="drawer-close" data-drawer-close aria-label="메뉴 닫기">×</button>
         ${navigationLinks}
+        ${settingsNavigation ? `<details class="nav-settings">
+          <summary><i class="fa-solid fa-gear"></i>관리자 설정</summary>
+          <div>${settingsNavigation}</div>
+        </details>` : ""}
         <div class="nav-user">
           <span class="session-pill">${escapeHtml(session.displayName)} · ${session.role === "Admin" ? "관리자" : "사용자"}</span>
           <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key"></i>비밀번호</a>
@@ -124,6 +127,7 @@ function header(session) {
         <p class="muted">Ctrl+K로 열기 · Esc로 닫기</p>
       </dialog>
     </header>
+    <nav class="mobile-tabs" aria-label="주요 메뉴">${mobileTabs}</nav>
   `;
 }
 
@@ -181,6 +185,18 @@ export function timelineItem(title, meta, body) {
 // 문서 목록(/documents)과 뷰어 검색 폼(/app)이 같은 검색 필터를 공유한다.
 // viewer 변형은 라벨 노출·placeholder 문구·정렬 항목 순서만 다르고 구조는 동일하다.
 export function filterSelectRow({ categories, tags, filters, viewer = false }) {
+  if (viewer) {
+    const sortOptions = [["updated", "최신순"], ["location", "위치순"], ["docnum", "문서번호순"], ["category", "대분류순"]]
+      .map(([value, text]) => option(value, text, filters.sort))
+      .join("");
+    return `<div class="viewer-filter-row">
+          <label>문서 상태<select name="status">${option("active", "보관중 문서", filters.status || "active")}${option("disposed", "폐기 문서", filters.status || "active")}${option("all", "전체", filters.status || "active")}</select></label>
+          <label>대분류<select name="category"><option value="">전체</option>${categories.map((c) => option(c.id, c.name, filters.categoryId)).join("")}</select></label>
+          <label>보관 위치<select name="zone"><option value="">전체</option>${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}</select></label>
+          <label>정렬<select name="sort">${option("relevance", "정확도순", filters.sort || "relevance")}${sortOptions}</select></label>
+          <a class="button secondary sm" href="/app">초기화</a>
+        </div>`;
+  }
   const label = (text) => (viewer ? text : `<span class="sr-only">${text}</span>`);
   const blank = (text) => (viewer ? "전체" : `전체 ${text}`);
   const sortOptions = (viewer
@@ -209,8 +225,9 @@ export function filterSelectRow({ categories, tags, filters, viewer = false }) {
           </label>
           <label>${label("문서 상태")}
             <select name="status">
-              ${option("active", "보관중 문서", filters.status || "active")}
-              ${option("disposed", "폐기 문서만", filters.status || "active")}
+              ${option("active", "보관중", filters.status || "active")}
+              ${option("disposed", "폐기", filters.status || "active")}
+              ${option("all", "전체", filters.status || "active")}
             </select>
           </label>
           <label>${label("정렬")}

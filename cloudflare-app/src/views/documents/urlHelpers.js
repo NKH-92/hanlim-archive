@@ -4,6 +4,7 @@ import { listUrl } from "../layout.js";
 
 export function disposalListUrl(filters = {}) {
   const params = new URLSearchParams();
+  if (filters.query) params.set("q", filters.query);
   if (filters.categoryId) params.set("category", filters.categoryId);
   if (filters.rackId) params.set("rack", filters.rackId);
   if (filters.disposalDueYear) params.set("disposalDueYear", filters.disposalDueYear);

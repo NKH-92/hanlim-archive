@@ -4,7 +4,7 @@
 import { clean } from "../utils.js";
 
 const VALID_SORTS = new Set(["relevance", "updated", "docnum", "category", "location"]);
-const VALID_STATUSES = new Set(["active", "disposed"]);
+const VALID_STATUSES = new Set(["active", "all", "disposed"]);
 
 function readParam(params, ...names) {
   for (const name of names) {

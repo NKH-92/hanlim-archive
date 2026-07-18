@@ -1,69 +1,43 @@
-// 문서 등록 폼의 보관 위치 3단 선택기(랙→열→선반)와 면 표기 동기화.
+// 문서 등록 폼의 보관 위치 선택기. 서버 저장값은 rackSlotId/rackFace를 유지하고,
+// 브라우저에서는 실제 위치 표현 순서(구역→랙→면→열→선반)로 점진 향상한다.
 
 import { escapeHtml, readBoolean } from "../utils.js";
 
-// 위치 입력 편의 스크립트. 서버 검증(validateDocumentInput)이 최종 방어선이다.
-// 1) 랙당 42칸이 되면서 길어진 단일 목록 대신 랙 → 열 → 선반 3단으로 고른다(JS 미지원 시 원래 목록 사용).
-// 2) 선택된 랙에 맞춰 면 선택지를 실물 표기(13-1/13-2)로 바꾸고, 단면 랙이면 2면을 잠근다.
 export function locationPickerScript() {
   return `
     <script>
       (function () {
         var slotSelect = document.querySelector('select[name="rackSlotId"]');
         var faceSelect = document.querySelector('select[data-rack-face]');
-        if (!slotSelect) return;
+        if (!slotSelect || !faceSelect) return;
 
-        var faceA = faceSelect ? faceSelect.querySelector('option[value="A"]') : null;
-        var faceB = faceSelect ? faceSelect.querySelector('option[value="B"]') : null;
-        var syncFace = function () {
-          if (!faceSelect) return;
-          var opt = slotSelect.options[slotSelect.selectedIndex];
-          var rackNumber = opt ? opt.getAttribute('data-rack-number') || '' : '';
-          var single = opt ? opt.getAttribute('data-single-sided') === '1' : false;
-          if (single) {
-            faceSelect.value = 'A';
-            faceB.disabled = true;
-            faceA.textContent = rackNumber ? rackNumber + ' (단면 · 면 구분 없음)' : '단면 · 면 구분 없음';
-            faceB.textContent = '단면 랙 · 2면 없음';
-          } else {
-            faceB.disabled = false;
-            faceA.textContent = rackNumber ? rackNumber + '-1 (1면)' : '1면';
-            faceB.textContent = rackNumber ? rackNumber + '-2 (2면)' : '2면';
-          }
-        };
-        slotSelect.addEventListener('change', syncFace);
-
-        var slotOptions = Array.prototype.slice.call(slotSelect.options).filter(function (o) { return o.value; });
+        var slotOptions = Array.prototype.slice.call(slotSelect.options).filter(function (option) { return option.value; });
         var racks = [];
         var rackByKey = {};
-        slotOptions.forEach(function (o) {
-          var key = o.getAttribute('data-zone') + ':' + o.getAttribute('data-rack-number');
+        slotOptions.forEach(function (option) {
+          var key = option.getAttribute('data-zone') + ':' + option.getAttribute('data-rack-number');
           var rack = rackByKey[key];
           if (!rack) {
             rack = {
               key: key,
-              zone: o.getAttribute('data-zone'),
-              rackNumber: o.getAttribute('data-rack-number'),
-              single: o.getAttribute('data-single-sided') === '1',
-              columns: {},
-              shelves: {},
-              slots: {}
+              zone: option.getAttribute('data-zone'),
+              rackNumber: option.getAttribute('data-rack-number'),
+              single: option.getAttribute('data-single-sided') === '1',
+              columns: {}, shelves: {}, slots: {}
             };
             rackByKey[key] = rack;
             racks.push(rack);
           }
-          var column = o.getAttribute('data-column');
-          var shelf = o.getAttribute('data-shelf');
+          var column = option.getAttribute('data-column');
+          var shelf = option.getAttribute('data-shelf');
           rack.columns[column] = true;
           rack.shelves[shelf] = true;
-          rack.slots[column + ':' + shelf] = o.value;
+          rack.slots[column + ':' + shelf] = option.value;
         });
-        if (!racks.length) { syncFace(); return; }
+        if (!racks.length) return;
 
-        var numericKeys = function (map) {
-          return Object.keys(map).map(Number).sort(function (a, b) { return a - b; });
-        };
-        var fillSelect = function (select, placeholder, items, toLabel, selectedValue) {
+        var numericKeys = function (map) { return Object.keys(map).map(Number).sort(function (a, b) { return a - b; }); };
+        var fillSelect = function (select, placeholder, items, label, selected) {
           select.innerHTML = '';
           var blank = document.createElement('option');
           blank.value = '';
@@ -72,70 +46,116 @@ export function locationPickerScript() {
           items.forEach(function (item) {
             var option = document.createElement('option');
             option.value = String(item);
-            option.textContent = toLabel(item);
-            if (String(item) === String(selectedValue)) option.selected = true;
+            option.textContent = label(item);
+            if (String(item) === String(selected || '')) option.selected = true;
             select.appendChild(option);
           });
         };
+        var wrap = function (label, select) {
+          var holder = document.createElement('label');
+          var text = document.createElement('span');
+          text.textContent = label;
+          holder.appendChild(text);
+          holder.appendChild(select);
+          return holder;
+        };
 
         var row = document.createElement('div');
-        row.className = 'picker-row';
-        var rackSel = document.createElement('select');
-        var colSel = document.createElement('select');
-        var shelfSel = document.createElement('select');
-        [rackSel, colSel, shelfSel].forEach(function (select) {
-          select.required = true;
-          row.appendChild(select);
-        });
+        row.className = 'location-picker-steps';
+        var zoneSelect = document.createElement('select');
+        var rackSelect = document.createElement('select');
+        var faceProxy = document.createElement('select');
+        var columnSelect = document.createElement('select');
+        var shelfSelect = document.createElement('select');
+        zoneSelect.id = 'field-locationZone';
+        faceProxy.id = 'field-locationFace';
+        [zoneSelect, rackSelect, faceProxy, columnSelect, shelfSelect].forEach(function (select) { select.required = true; });
+        row.appendChild(wrap('구역', zoneSelect));
+        row.appendChild(wrap('랙', rackSelect));
+        row.appendChild(wrap('면', faceProxy));
+        row.appendChild(wrap('열', columnSelect));
+        row.appendChild(wrap('선반', shelfSelect));
 
-        var currentRack = function () { return rackByKey[rackSel.value] || null; };
+        var currentRack = function () { return rackByKey[rackSelect.value] || null; };
+        var syncFace = function () {
+          var rack = currentRack();
+          var selected = faceSelect.value === 'B' ? 'B' : 'A';
+          faceProxy.innerHTML = '';
+          var first = document.createElement('option');
+          first.value = 'A';
+          first.textContent = rack ? (rack.single ? rack.rackNumber + '번 랙 · 단면' : rack.rackNumber + '-1 · 1면') : '1면';
+          faceProxy.appendChild(first);
+          var second = document.createElement('option');
+          second.value = 'B';
+          second.textContent = rack ? rack.rackNumber + '-2 · 2면' : '2면';
+          second.disabled = !rack || rack.single;
+          faceProxy.appendChild(second);
+          if (rack && rack.single) selected = 'A';
+          faceProxy.value = selected;
+          faceSelect.value = selected;
+          var originalB = faceSelect.querySelector('option[value="B"]');
+          if (originalB) originalB.disabled = Boolean(rack && rack.single);
+        };
+        var refreshRacks = function (selectedRack) {
+          var matching = racks.filter(function (rack) { return rack.zone === zoneSelect.value; });
+          fillSelect(rackSelect, '랙 선택', matching.map(function (rack) { return rack.key; }), function (key) {
+            var rack = rackByKey[key];
+            return rack.rackNumber + '번 랙 · ' + (rack.single ? '단면' : '양면');
+          }, selectedRack);
+          rackSelect.disabled = !zoneSelect.value;
+        };
         var refreshCells = function (selectedColumn, selectedShelf) {
           var rack = currentRack();
-          colSel.disabled = shelfSel.disabled = !rack;
-          fillSelect(colSel, '열 선택', rack ? numericKeys(rack.columns) : [], function (n) { return n + '열 (면 안쪽부터)'; }, selectedColumn);
-          fillSelect(shelfSel, '선반 선택', rack ? numericKeys(rack.shelves) : [], function (n) { return n + '선반 (아래에서)'; }, selectedShelf);
+          columnSelect.disabled = shelfSelect.disabled = !rack;
+          fillSelect(columnSelect, '열 선택', rack ? numericKeys(rack.columns) : [], function (number) { return number + '열'; }, selectedColumn);
+          fillSelect(shelfSelect, '선반 선택', rack ? numericKeys(rack.shelves) : [], function (number) { return number + '선반'; }, selectedShelf);
+          syncFace();
         };
         var apply = function () {
           var rack = currentRack();
-          var slotId = rack && colSel.value && shelfSel.value ? rack.slots[colSel.value + ':' + shelfSel.value] || '' : '';
-          slotSelect.value = slotId;
+          slotSelect.value = rack && columnSelect.value && shelfSelect.value ? rack.slots[columnSelect.value + ':' + shelfSelect.value] || '' : '';
           syncFace();
         };
 
-        fillSelect(rackSel, '랙 선택', racks.map(function (rack) { return rack.key; }), function (key) {
-          var rack = rackByKey[key];
-          return rack.zone + '구역 ' + rack.rackNumber + '번 랙 · ' + (rack.single ? '단면' : '양면 ' + rack.rackNumber + '-1/' + rack.rackNumber + '-2');
-        }, '');
-
+        var zones = Array.from(new Set(racks.map(function (rack) { return rack.zone; }))).sort(function (a, b) { return Number(a) - Number(b); });
+        fillSelect(zoneSelect, '구역 선택', zones, function (zone) { return zone + '구역'; }, '');
         var initial = slotSelect.options[slotSelect.selectedIndex];
         if (initial && initial.value) {
-          rackSel.value = initial.getAttribute('data-zone') + ':' + initial.getAttribute('data-rack-number');
+          zoneSelect.value = initial.getAttribute('data-zone');
+          var initialRack = initial.getAttribute('data-zone') + ':' + initial.getAttribute('data-rack-number');
+          refreshRacks(initialRack);
           refreshCells(initial.getAttribute('data-column'), initial.getAttribute('data-shelf'));
         } else {
+          refreshRacks('');
           refreshCells('', '');
         }
 
-        rackSel.addEventListener('change', function () { refreshCells('', ''); apply(); });
-        colSel.addEventListener('change', apply);
-        shelfSel.addEventListener('change', apply);
+        zoneSelect.addEventListener('change', function () { refreshRacks(''); refreshCells('', ''); apply(); });
+        rackSelect.addEventListener('change', function () { refreshCells('', ''); apply(); });
+        columnSelect.addEventListener('change', apply);
+        shelfSelect.addEventListener('change', apply);
+        faceProxy.addEventListener('change', function () {
+          faceSelect.value = faceProxy.value;
+          faceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        });
 
-        // 원래 목록은 값 운반용으로만 남긴다. required를 3단 선택 쪽으로 옮겨
-        // 숨긴 select가 브라우저 필수 검증(포커스 불가 오류)에 걸리지 않게 한다.
         slotSelect.required = false;
-        slotSelect.style.display = 'none';
-        slotSelect.insertAdjacentElement('afterend', row);
+        slotSelect.closest('label').classList.add('enhanced-control-hidden');
+        faceSelect.required = false;
+        faceSelect.closest('label').classList.add('enhanced-control-hidden');
+        slotSelect.closest('label').insertAdjacentElement('afterend', row);
+        document.querySelectorAll('[data-error-summary] a[href="#field-rackSlotId"]').forEach(function (link) { link.setAttribute('href', '#field-locationZone'); });
+        document.querySelectorAll('[data-error-summary] a[href="#field-rackFace"]').forEach(function (link) { link.setAttribute('href', '#field-locationFace'); });
         syncFace();
       })();
     </script>
   `;
 }
 
-export function locationPicker(slots, selectedRackSlotId) {
-  // 위치 선택 스크립트(locationPickerScript)가 랙 → 열 → 선반 3단 선택과 면 표기 동기화에
-  // 쓸 수 있도록 각 칸의 좌표·단면 여부를 data 속성으로 싣는다.
+export function locationPicker(slots, selectedRackSlotId, error = "") {
   return `
-    <label>보관 위치 <em>*</em>
-      <select name="rackSlotId" required>
+    <label for="field-rackSlotId">보관 위치 <em>*</em>
+      <select id="field-rackSlotId" name="rackSlotId" required ${error ? 'aria-invalid="true" aria-describedby="error-rackSlotId"' : ""}>
         <option value="">위치 선택</option>
         ${slots.map((slot) => {
           const selected = String(slot.id) === String(selectedRackSlotId ?? "") ? " selected" : "";
@@ -151,5 +171,6 @@ export function locationPicker(slots, selectedRackSlotId) {
         }).join("")}
       </select>
     </label>
+    ${error ? `<p class="field-error" id="error-rackSlotId">${escapeHtml(error)}</p>` : ""}
   `;
 }

@@ -99,8 +99,17 @@ test("disposed suggestion requests never expose active-document suggestions", as
   assert.deepEqual(payload.suggestions, []);
 });
 
-test("dashboard status selector keeps active and disposed results mutually exclusive", async () => {
+test("dashboard status selector defaults to active and supports disposed or all", async () => {
   const user = { username: "viewer", displayName: "Viewer", role: "User" };
+
+  const homeEnv = dashboardSearchEnv();
+  const homeCookie = await createSessionCookie(user, homeEnv, false);
+  const homeResponse = await worker.fetch(new Request("https://archive.example.com/app", {
+    headers: { Cookie: homeCookie }
+  }), homeEnv);
+  const homeHtml = await homeResponse.text();
+  assert.match(homeHtml, /<option value="active" selected>보관중 문서<\/option>/);
+  assert.match(homeHtml, /<option value="updated" selected>최신순<\/option>/);
 
   const defaultEnv = dashboardSearchEnv();
   const defaultCookie = await createSessionCookie(user, defaultEnv, false);
@@ -129,7 +138,7 @@ test("dashboard status selector keeps active and disposed results mutually exclu
   assert.ok(disposedSearch);
   assert.match(disposedSearch.sql, /d\.status = \?/);
   assert.equal(disposedSearch.args[0], "disposed");
-  assert.match(disposedHtml, /<option value="disposed" selected>폐기 문서만<\/option>/);
+  assert.match(disposedHtml, /<option value="disposed" selected>폐기 문서<\/option>/);
   assert.match(disposedHtml, /폐기된 공정 밸리데이션 보고서/);
   assert.doesNotMatch(disposedHtml, />충전 공정 밸리데이션 보고서</);
 
@@ -147,6 +156,21 @@ test("dashboard status selector keeps active and disposed results mutually exclu
   assert.equal(legacySearch.args[0], "disposed");
   assert.match(legacyHtml, /폐기된 공정 밸리데이션 보고서/);
   assert.doesNotMatch(legacyHtml, />충전 공정 밸리데이션 보고서</);
+
+  const allEnv = dashboardSearchEnv();
+  const allCookie = await createSessionCookie(user, allEnv, false);
+  const allResponse = await worker.fetch(new Request("https://archive.example.com/app?q=PV&status=all", {
+    headers: { Cookie: allCookie }
+  }), allEnv);
+  const allHtml = await allResponse.text();
+  const allSearch = authoritativeDocumentSearch(allEnv.state.calls);
+
+  assert.equal(allResponse.status, 200);
+  assert.ok(allSearch);
+  assert.doesNotMatch(allSearch.sql, /d\.status = \?/);
+  assert.match(allHtml, /<option value="all" selected>전체<\/option>/);
+  assert.match(allHtml, /충전 공정 밸리데이션 보고서/);
+  assert.match(allHtml, /폐기된 공정 밸리데이션 보고서/);
 });
 
 test("bulk disposal redirect preserves filters and reports disposed and skipped counts", async () => {

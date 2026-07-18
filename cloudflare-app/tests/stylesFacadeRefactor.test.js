@@ -66,14 +66,14 @@ const approvedRgbaValues = [
   "rgba(255, 255, 255, .92)"
 ];
 
-test("전역 CSS 출력은 리팩토링 전 golden과 바이트 단위로 같다", () => {
+test("전역 CSS 출력은 현재 golden과 바이트 단위로 같다", () => {
   const css = styles();
 
-  assert.equal(css.length, 57082);
-  assert.equal(Buffer.byteLength(css), 57402);
+  assert.equal(css.length, 66865);
+  assert.equal(Buffer.byteLength(css), 67187);
   assert.equal(
     createHash("sha256").update(css).digest("hex"),
-    "6c2b83e9cd779961927c24f74ecaa2922393af47abe1768caaa4ab54917aefeb"
+    "c1d9b371e0966dd538b04c49c26b6a76777f0ce05d3037695e93614dddf6ebd9"
   );
 });
 

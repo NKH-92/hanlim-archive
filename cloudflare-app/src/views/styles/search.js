@@ -10,7 +10,7 @@ export function searchStyles() {
     .filter-details summary i { font-size: .85em; }
     .filter-details[open] summary { margin-bottom: var(--sp-2); color: var(--gray-700); }
     .filter-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 var(--sp-1); border-radius: 999px; background: var(--primary); color: var(--surface); font-size: 11px; font-weight: 700; }
-    .viewer-filter-row { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)) auto; gap: var(--sp-2); align-items: center; }
+    .viewer-filter-row { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)) auto; gap: var(--sp-2); align-items: center; }
     .quick-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--gray-500); font-weight: 600; font-size: 12.5px; }
     .viewer-recents:empty { display: none; }
     .quick-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--gray-500); font-weight: 600; font-size: 12.5px; }
@@ -47,7 +47,7 @@ export function searchStyles() {
     .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--sp-5); margin-bottom: var(--sp-4); }
     .narrow { max-width: 640px; margin-inline: auto; }
     .content-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, .8fr); gap: var(--sp-4); align-items: start; }
-    .viewer-workspace { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr); gap: var(--sp-4); align-items: start; }
+    .viewer-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
     .viewer-location-panel { position: sticky; top: var(--sp-4); }
     .viewer-secondary { grid-template-columns: minmax(0, 1fr) minmax(280px, .7fr); }
     .two-col, .admin-grid, .rack-grid { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
@@ -72,6 +72,17 @@ export function searchStyles() {
     .quality-strip .warn { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-3); border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 12.5px; font-weight: 600; }
 
     .viewer-result-list { display: grid; border-top: 1px solid var(--gray-100); }
+    .search-live-status { margin: 0; color: var(--gray-500); font-size: 12.5px; }
+    .viewer-result-table { overflow-x: auto; }
+    .viewer-result-header, .viewer-result-row { min-width: 980px; display: grid; grid-template-columns: minmax(220px, 2fr) 150px 80px 110px 110px minmax(190px, 1.5fr) 80px; align-items: center; gap: var(--sp-3); }
+    .viewer-result-header { min-height: 36px; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); background: var(--gray-50); color: var(--gray-600); font-size: 12px; font-weight: 600; }
+    .viewer-result-row { min-height: 48px; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--gray-100); font-size: 13px; transition: background .12s ease; }
+    .viewer-result-row:hover { background: var(--gray-50); }
+    .viewer-result-row.is-disposed { box-shadow: inset 3px 0 0 var(--gray-300); }
+    .viewer-result-row > span { min-width: 0; }
+    .viewer-result-name a { display: block; overflow: hidden; color: var(--gray-900); font-weight: 600; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+    .viewer-result-name a:hover { color: var(--primary); text-decoration: underline; }
+    .viewer-result-location { font-family: var(--font-mono); color: var(--primary); font-weight: 600; }
     .doc-row { display: grid; grid-template-columns: minmax(150px, 180px) minmax(0, 1fr) auto; gap: var(--sp-4); align-items: center; padding: var(--sp-3) var(--sp-2); border-bottom: 1px solid var(--gray-100); transition: background .15s ease; }
     .doc-row:hover { background: var(--gray-50); }
     /* 폐기 문서만 좌측 회색 레일로 표시(레이아웃 불변 inset). 보관중은 무표시. */

@@ -12,7 +12,7 @@
 
 Do / Don't
 - Do: 헤어라인(`--line`)으로 구획하고, 표 형태로 정렬한다. 숫자는 tabular-nums.
-- Do: 위치·문서번호·보관코드는 `--font-mono`.
+- Do: 위치·문서번호는 `--font-mono`. 내부 보관코드는 브라우저 업무 화면에 노출하지 않는다.
 - Don't: 카드마다 그림자를 주지 않는다(보더 우선, 그림자는 떠 있는 레이어 전용).
 - Don't: 섹션마다 eyebrow 라벨을 달지 않는다. 제목 하나로 충분하다.
 - Don't: 마케팅형 히어로 문구. 첫 화면 최상단은 검색 입력이다.
@@ -89,13 +89,14 @@ Do / Don't
   focus 보더 `--primary` + 3px `--ring` 링. placeholder `--gray-400`.
 - **테이블/리스트 행**: 헤더 `--gray-50` 배경 + 12px/600 `--gray-600`, 행 높이 ≥44px,
   행 구분 1px `--line`, hover `--gray-50`. 위치 셀은 `--font-mono` + `--primary` 텍스트.
-- **상태 배지**: pill, 12px/700, soft 배경 + 상태색 텍스트. 보관중=success, 대기=warning, 폐기=danger.
+- **상태 배지**: pill, 12px/700, soft 배경 + 상태색 텍스트. 보관중=success, 대기=warning, 폐기=중립 회색. `danger`는 폐기 버튼 같은 파괴적 동작에만 쓴다.
 - **칩(필터)**: pill, 12.5px/600, `--surface`+`--line` 보더, 활성 = `--primary-soft`+`--primary`.
 - **탭**: 언더라인 형. 비활성 `--gray-500`, 활성 `--gray-900` + 2px `--primary` 밑줄.
 - **패널**: `--surface` + 1px `--line` + `--r-lg`. 그림자 없음.
 - **사이드바**: `--surface`, 우측 1px `--line`. 항목 13.5px/600 `--gray-700`, 활성 `--primary-soft` 배경 + `--primary`.
+- **모바일 하단 탭**: 검색·등록·폐기 중 권한이 있는 핵심 메뉴만 표시. 높이 48px, `--surface` + 상단 `--line`, 활성은 사이드바와 같은 색 문법.
 - **검색 하이라이트(mark)**: `--primary-soft` 배경 + `--primary` 텍스트, radius 2px, 추가 padding 없음. 장식 금지, 검색어 일치 표시 전용.
-- **정답 카드(압도적 1위 결과)**: 패널 규격 + 좌측 4px `--primary` 보더(locator-hero와 동일 문법). 위치는 위치 디스플레이 lg, 페이지당 최대 1개.
+- **검색 결과**: 별도 정답 카드나 도면 없이 문서명·문서번호·개정·제/개정일·대분류·보관 위치·상태의 정렬된 행만 사용한다.
 - 비활성(disabled): opacity .45 + pointer-events 차단.
 
 ## 6. Motion

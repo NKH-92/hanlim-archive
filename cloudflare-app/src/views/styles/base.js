@@ -31,6 +31,13 @@ export function baseStyles() {
     .archive-nav-item i, .nav-sub-link i, .logout-link i { font-size: .9em; opacity: .85; width: 16px; text-align: center; }
     .archive-nav-item:hover, .nav-sub-link:hover, .logout-link:hover { background: var(--gray-100); color: var(--gray-900); }
     .archive-nav-item.active { background: var(--primary-soft); color: var(--primary); }
+    .nav-settings { margin-top: var(--sp-2); border-top: 1px solid var(--line); padding-top: var(--sp-2); }
+    .nav-settings summary { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); color: var(--gray-600); font-size: 13.5px; font-weight: 600; cursor: pointer; list-style: none; }
+    .nav-settings summary::-webkit-details-marker { display: none; }
+    .nav-settings summary:hover { background: var(--gray-100); color: var(--gray-900); }
+    .nav-settings summary i { width: 16px; text-align: center; }
+    .nav-settings > div { display: grid; gap: var(--sp-1); padding: var(--sp-1) 0 0 var(--sp-3); }
+    .mobile-tabs { display: none; }
     .nav-user { margin-left: auto; display: flex; align-items: center; gap: var(--sp-1); }
     .session-pill { padding: var(--sp-1) var(--sp-3); background: var(--gray-100); border-radius: 999px; color: var(--gray-700); font-size: 12px; font-weight: 600; white-space: nowrap; }
     .command-trigger { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 34px; padding: var(--sp-1) var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--gray-50); color: var(--gray-600); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
