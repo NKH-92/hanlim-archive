@@ -173,6 +173,22 @@ test("dashboard status selector defaults to active and supports disposed or all"
   assert.match(allHtml, /폐기된 공정 밸리데이션 보고서/);
 });
 
+test("every authenticated role can open the dedicated floor plan", async () => {
+  for (const role of ["User", "Admin"]) {
+    const env = floorPlanEnv(role);
+    const cookie = await createSessionCookie({ username: role.toLowerCase(), displayName: role, role }, env, false);
+    const response = await worker.fetch(new Request("https://archive.example.com/floor-plan", {
+      headers: { Cookie: cookie }
+    }), env);
+    const html = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(html, /<h1>문서고 도면<\/h1>/);
+    assert.match(html, /src="\/images\/Archive\.png"/);
+    assert.match(html, /href="\/app\?q=1-03&amp;sort=location"/);
+  }
+});
+
 test("bulk disposal redirect preserves filters and reports disposed and skipped counts", async () => {
   const env = bulkDisposalEnv();
   const user = { username: "admin", displayName: "관리자", role: "Admin" };
@@ -531,6 +547,63 @@ function viewerSearchEnv() {
               }
             };
           }
+        };
+      }
+    }
+  };
+}
+
+function floorPlanEnv(role = "User") {
+  return {
+    SESSION_SECRET,
+    DB: {
+      prepare(sql) {
+        const execution = {
+          async first() {
+            if (sql.includes("FROM app_users")) {
+              return {
+                username: role.toLowerCase(),
+                display_name: role,
+                status: "approved",
+                role
+              };
+            }
+            return null;
+          },
+          async all() {
+            if (sql.includes("FROM floor_plan_regions")) {
+              return { results: [{
+                region_key: "zone-1",
+                label: "1구역",
+                description: "좌상단 문서 보관 구역",
+                top_pct: 3.2,
+                left_pct: 4.7,
+                width_pct: 47.5,
+                height_pct: 38.2,
+                default_rack_count: 13,
+                is_active: 1
+              }] };
+            }
+            if (sql.includes("FROM racks r")) {
+              return { results: [{
+                id: 3,
+                zone_number: 1,
+                rack_number: 3,
+                code: "1-03",
+                is_single_sided: 0,
+                is_active: 1,
+                column_count: 7,
+                shelf_count: 6,
+                document_count: 2,
+                active_document_count: 2
+              }] };
+            }
+            return { results: [] };
+          }
+        };
+        return {
+          ...execution,
+          bind() { return execution; }
         };
       }
     }

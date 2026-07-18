@@ -69,11 +69,11 @@ const approvedRgbaValues = [
 test("전역 CSS 출력은 현재 golden과 바이트 단위로 같다", () => {
   const css = styles();
 
-  assert.equal(css.length, 66865);
-  assert.equal(Buffer.byteLength(css), 67187);
+  assert.equal(css.length, 66731);
+  assert.equal(Buffer.byteLength(css), 67051);
   assert.equal(
     createHash("sha256").update(css).digest("hex"),
-    "c1d9b371e0966dd538b04c49c26b6a76777f0ce05d3037695e93614dddf6ebd9"
+    "8b6108c62f25d4dc277ad095ee4415089ab761dbfa69d1016363813707fc40a9"
   );
 });
 

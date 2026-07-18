@@ -62,7 +62,10 @@ function withCsrfToken(body, token) {
 }
 
 function header(session) {
-  const primaryLinks = [["/app", "fa-magnifying-glass", "문서검색"]];
+  const primaryLinks = [
+    ["/app", "fa-magnifying-glass", "문서검색"],
+    ["/floor-plan", "fa-location-dot", "문서고 도면"]
+  ];
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
     primaryLinks.push(["/documents/new", "fa-file-lines", "문서등록"]);
   }

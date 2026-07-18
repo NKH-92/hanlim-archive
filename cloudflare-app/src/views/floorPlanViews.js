@@ -1,6 +1,7 @@
 // 문서고 도면(플로어 플랜)과 랙 지도 렌더링.
 
 import { escapeHtml, readBoolean } from "../utils.js";
+import { page } from "./layout.js";
 
 // 도면 위 랙 실루엣 한 개. 양면 랙은 좌(N-1면)·우(N-2면) 두 칸을 세로 점선으로 나눈다.
 // hit: 랙 전체 강조(검색 일치), hitFace('A'|'B'): 양면 랙에서 해당 면(반쪽)만 강조(문서 상세).
@@ -19,10 +20,10 @@ function floorRackMarkup(rack, { hit = false, hitFace = "", zoneNumber = 0 } = {
   const title = rack.isSingleSided
     ? `${rack.code} · 단면${isZoneOneRightSingle ? " · 우측 랙 방향 · 1열 오른쪽 시작" : ""}`
     : `${rack.code} · 양면 (좌 ${rack.rackNumber}-1: 1열 왼쪽 시작 / 우 ${rack.rackNumber}-2: 1열 오른쪽 시작)`;
-  return `<a class="${classes.join(" ")}"${faceAttr} href="/documents?q=${encodeURIComponent(rack.code)}&sort=location" style="--rack-left:${rack.leftPct}%;--rack-width:${rack.widthPct}%;" data-rack-code="${escapeHtml(rack.code)}" data-zone="${escapeHtml(String(zoneNumber))}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${faces}<span class="rack-num">${escapeHtml(badgeLabel)}</span></a>`;
+  return `<a class="${classes.join(" ")}"${faceAttr} href="/app?q=${encodeURIComponent(rack.code)}&amp;sort=location" style="--rack-left:${rack.leftPct}%;--rack-width:${rack.widthPct}%;" data-rack-code="${escapeHtml(rack.code)}" data-zone="${escapeHtml(String(zoneNumber))}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${faces}<span class="rack-num">${escapeHtml(badgeLabel)}</span></a>`;
 }
 
-export function floorPlanView(regions, hits) {
+export function floorPlanView(regions, hits = new Set()) {
   const activeRackCount = regions.reduce((sum, region) => sum + region.racks.filter((rack) => hits.has(rack.code)).length, 0);
   return `
     <div class="floor-plan-shell">
@@ -47,7 +48,7 @@ export function floorPlanView(regions, hits) {
         ${activeRackCount ? `<span><i class="legend-box hit"></i>검색 위치</span>` : ""}
       </div>
       <div class="zone-list">
-        ${regions.map((region) => `<a href="/app?zone=${region.zoneNumber}&sort=location"><strong>${escapeHtml(region.label)}</strong><span>${region.racks.length}개 랙</span></a>`).join("")}
+        ${regions.map((region) => `<a href="/app?zone=${region.zoneNumber}&amp;sort=location"><strong>${escapeHtml(region.label)}</strong><span>${region.racks.length}개 랙</span></a>`).join("")}
       </div>
     </div>
   `;
@@ -95,7 +96,7 @@ export function archiveMap(racks, hits) {
             const faceSummary = single
               ? `단면${hitA ? " 일치" : ""}`
               : `${rack.rack_number}-1${hitA ? " 일치" : ""} · ${rack.rack_number}-2${hitB ? " 일치" : ""}`;
-            return `<a class="rack-tile ${isHit ? "is-hit" : ""}" href="/documents?q=${encodeURIComponent(rack.code)}" title="${escapeHtml(rack.code)} ${rack.document_count || 0}건">
+            return `<a class="rack-tile ${isHit ? "is-hit" : ""}" href="/app?q=${encodeURIComponent(rack.code)}&amp;sort=location" title="${escapeHtml(rack.code)} ${rack.document_count || 0}건">
               <strong>${rack.rack_number}</strong>
               <span>${escapeHtml(rack.code)}</span>
               <small>${faceSummary}</small>
@@ -105,4 +106,23 @@ export function archiveMap(racks, hits) {
       }).join("")}
     </div>
   `;
+}
+
+export function floorPlanPage({ session, floorPlan = [] }) {
+  const rackCount = floorPlan.reduce((sum, region) => sum + region.racks.length, 0);
+  return page("문서고 도면", `
+    <section class="page-head floor-plan-page-head">
+      <div>
+        <nav class="breadcrumb" aria-label="경로"><a href="/app">문서검색</a><span>/</span><span>문서고 도면</span></nav>
+        <h1>문서고 도면</h1>
+        <p>구역과 랙의 실제 배치를 확인하고, 랙을 선택해 해당 위치의 문서를 검색합니다.</p>
+      </div>
+      <span class="count-badge">${rackCount}개 랙</span>
+    </section>
+    <section class="panel archive-floor-plan-page" aria-label="문서고 전체 도면">
+      ${floorPlan.length
+        ? floorPlanView(floorPlan)
+        : `<div class="empty-state"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><p>표시할 랙 도면이 없습니다.</p></div>`}
+    </section>
+  `, session);
 }

@@ -1,10 +1,11 @@
 // 문서 상세: 검색·등록·폐기를 잇는 텍스트 중심 연결 화면.
 
-import { escapeHtml, locationLabel } from "../../utils.js";
+import { escapeHtml, locationLabel, rackFaceLabel, readBoolean } from "../../utils.js";
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
+import { zoneFloorPlanView } from "../floorPlanViews.js";
 import { page, statusBadge, timeline, timelineItem } from "../layout.js";
 
-export function documentDetailsPage({ session, document, tags, disposalLogs, auditLogs, movements = [] }) {
+export function documentDetailsPage({ session, document, tags, disposalLogs, auditLogs, movements = [], floorPlan = [] }) {
   const canManageDocuments = hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS);
   const canManageDisposals = hasPermission(session, PERMISSIONS.MANAGE_DISPOSALS);
   const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
@@ -43,6 +44,11 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
       </article>
     </section>
 
+    <section class="document-location-visuals" aria-label="문서 보관 위치 도면">
+      ${renderDocumentFloorPlan(document, floorPlan)}
+      ${renderMiniVisualizer(document)}
+    </section>
+
     ${documentActions(document, { canManageDocuments, canManageDisposals, isAdmin: session.role === "Admin" })}
 
     ${canViewAudit ? `<details class="panel detail-history"><summary>감사 이력 <span class="count-badge">${auditLogs.length}건</span></summary>${timeline(auditLogs, renderAuditLog, "감사 이력이 없습니다.")}</details>` : ""}
@@ -78,6 +84,91 @@ function disposeModal(document) {
 
 function restoreModal(document) {
   return `<dialog id="restore-modal" class="modal"><form method="post" action="/documents/${document.id}/restore" class="modal-body"><h3>폐기 취소</h3><label>취소 사유 <em>*</em><textarea name="reason" rows="3" required></textarea></label><div class="modal-actions"><button type="button" class="button secondary" data-close-modal>닫기</button><button type="submit" class="button">폐기 취소</button></div></form></dialog>`;
+}
+
+// 상세 화면에 문서가 있는 구역을 즉시 표시한다. 접힘 UI를 쓰지 않아 진입 즉시 위치를 확인할 수 있다.
+function renderDocumentFloorPlan(document, floorPlan = []) {
+  if (!floorPlan.length) return "";
+
+  const region = floorPlan.find((item) => item.racks.some((rack) => rack.code === document.rack_code));
+  const rackLabel = rackFaceLabel(document);
+  const badge = `${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙`;
+
+  if (!region) {
+    return `
+      <section class="panel doc-floor-plan" aria-labelledby="location-map-title">
+        <div class="section-title"><h2 id="location-map-title">위치 도면</h2><span class="count-badge">${badge}</span></div>
+        <p class="muted">이 문서의 랙은 현재 도면에 표시되지 않는 구역에 있습니다.</p>
+      </section>
+    `;
+  }
+
+  const single = readBoolean(document.is_single_sided);
+  const orientation = rackViewOrientation(document);
+  return `
+    <section class="panel doc-floor-plan" aria-labelledby="location-map-title">
+      <div class="section-title"><h2 id="location-map-title">위치 도면 · ${escapeHtml(region.label)}</h2><span class="count-badge">${badge}</span></div>
+      <div class="doc-floor-plan-body">
+        ${zoneFloorPlanView(region, { hitCode: document.rack_code, hitFace: document.rack_face })}
+        <p class="muted">파란색이 이 문서가 보관된 ${single ? `단면 랙입니다. ${orientation.description}` : `${escapeHtml(rackLabel)} 면(양면 랙의 ${document.rack_face === "B" ? "우측" : "좌측"})입니다. 1열은 통로 안쪽인 ${orientation.originLabel}에서 시작합니다.`}</p>
+      </div>
+    </section>
+  `;
+}
+
+function renderMiniVisualizer(document) {
+  const cols = Math.max(1, Number(document.column_count || 1));
+  const rows = Math.max(1, Number(document.shelf_count || 3));
+  const activeCol = Number(document.column_number || 0);
+  const activeRow = Number(document.shelf_number || 0);
+  const orientation = rackViewOrientation(document);
+  const columns = Array.from({ length: cols }, (_, index) => index + 1);
+  if (orientation.origin === "right") columns.reverse();
+  let slots = "";
+
+  for (let row = rows; row >= 1; row -= 1) {
+    for (const col of columns) {
+      const active = col === activeCol && row === activeRow;
+      slots += `<div class="mini-slot ${active ? "active" : ""}" title="${col}열 ${row}선반"><span>${col}-${row}</span>${active ? `<i class="fa-solid fa-location-dot" aria-hidden="true"></i>` : ""}</div>`;
+    }
+  }
+
+  const ordinal = [
+    activeRow ? `아래에서 ${activeRow}번째 선반` : "",
+    activeCol ? `${orientation.originLabel}에서 ${activeCol}번째 열` : ""
+  ].filter(Boolean).join(" · ");
+  const rackLabel = rackFaceLabel(document);
+
+  return `
+    <section class="panel minimap-card" aria-labelledby="rack-position-title">
+      <div class="section-title"><h2 id="rack-position-title">랙 위치 · ${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙</h2><span class="count-badge">${activeCol}열 ${activeRow}선반</span></div>
+      <div class="mini-column-guide" data-column-origin="${orientation.origin}">
+        <span>${orientation.origin === "left" ? "1열 · 통로 안쪽" : `${cols}열 · 바깥쪽`}</span>
+        <strong>사용자 시선</strong>
+        <span>${orientation.origin === "right" ? "1열 · 통로 안쪽" : `${cols}열 · 바깥쪽`}</span>
+      </div>
+      <div class="mini-rack-stage">
+        <div class="mini-axis" aria-hidden="true"><span>위 ↑</span><span>아래 ↓</span></div>
+        <div class="mini-rack-grid" data-column-origin="${orientation.origin}" style="--cols:${cols};--rows:${rows}">${slots}</div>
+      </div>
+      <p class="mini-orientation-note">${escapeHtml(orientation.description)} 선반은 아래에서 1선반부터 위로 올라갑니다.</p>
+      ${ordinal ? `<p class="mini-compass"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> ${escapeHtml(ordinal)}${readBoolean(document.is_single_sided) ? "" : ` · 양면 랙 ${escapeHtml(rackLabel)} 면`}</p>` : ""}
+    </section>
+  `;
+}
+
+function rackViewOrientation(document) {
+  const isZoneOne = Number(document.zone_number) === 1;
+  const single = readBoolean(document.is_single_sided);
+  const isZoneOneRightSingle = isZoneOne && single && Number(document.rack_number) === 1;
+  const origin = document.rack_face === "B" || isZoneOneRightSingle ? "right" : "left";
+  const originLabel = origin === "right" ? "오른쪽" : "왼쪽";
+  const description = isZoneOneRightSingle
+    ? "1구역 1번 단면랙은 우측 랙과 같은 방향이므로 오른쪽이 1열입니다."
+    : single
+      ? `단면랙을 정면에서 본 모습이며 ${originLabel}이 1열입니다.`
+      : `${document.rack_face === "B" ? "우측 면" : "좌측 면"}을 정면에서 본 모습이며 ${originLabel}이 1열입니다.`;
+  return { origin, originLabel, description };
 }
 
 function renderAuditLog(log) {

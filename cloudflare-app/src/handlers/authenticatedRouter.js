@@ -24,6 +24,7 @@ import {
 import {
   handleAdminSearchReport,
   handleDashboard,
+  handleFloorPlan,
   handleSearchClick,
   handleSearchIndex,
   handleSearchSuggestions,
@@ -39,6 +40,10 @@ export async function routeAuthenticatedRequest(request, env, session, url, path
 
   if (path === "/app" && request.method === "GET") {
     return handleDashboard(request, env, session);
+  }
+
+  if (path === "/floor-plan" && request.method === "GET") {
+    return handleFloorPlan(env, session);
   }
 
   if (path === "/qa" && request.method === "GET") {

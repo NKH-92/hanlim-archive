@@ -61,20 +61,16 @@ export function adminStyles() {
     .detail-item { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--gray-100); }
     .detail-item small { color: var(--gray-500); font-size: 12px; font-weight: 600; }
     .detail-item strong { font-weight: 600; font-size: 13.5px; }
-    .minimap-card { margin-top: var(--sp-4); }
-    .doc-floor-plan { margin-top: var(--sp-4); }
-    .doc-floor-plan summary { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); list-style: none; cursor: pointer; font-size: 15px; font-weight: 700; }
-    .doc-floor-plan summary::-webkit-details-marker { display: none; }
-    .doc-floor-plan summary::after { content: "+"; color: var(--gray-500); font-size: 18px; line-height: 1; }
-    .doc-floor-plan[open] summary::after { content: "−"; }
-    .doc-floor-plan summary .count-badge { margin-left: auto; }
-    .doc-floor-plan-body { margin-top: var(--sp-4); }
-    .mini-rack-grid { display: grid; grid-template-columns: repeat(var(--cols), minmax(44px, 1fr)); gap: var(--sp-2); }
+    .document-location-visuals { display: grid; gap: var(--sp-4); margin-top: var(--sp-4); }
+    .document-location-visuals > .panel { margin: 0; }
+    .doc-floor-plan-body { display: grid; gap: var(--sp-3); }
+    .doc-floor-plan-body .muted { margin: 0; }
+    .mini-rack-grid { display: grid; grid-template-columns: repeat(var(--cols), minmax(44px, 1fr)); gap: var(--sp-2); min-width: calc(var(--cols) * 44px); }
     .mini-slot { min-height: 44px; border-radius: var(--r-sm); display: grid; place-items: center; background: var(--gray-50); border: 1px solid var(--gray-100); position: relative; color: var(--gray-500); font-size: 12px; }
     .mini-slot.active { background: var(--primary); border-color: var(--primary); color: var(--surface); font-weight: 700; }
     .mini-slot i { position: absolute; top: var(--sp-1); right: var(--sp-1); }
     /* 선반 나침반 */
-    .mini-rack-stage { display: flex; align-items: stretch; gap: var(--sp-3); }
+    .mini-rack-stage { display: flex; align-items: stretch; gap: var(--sp-3); overflow-x: auto; padding-bottom: var(--sp-1); }
     .mini-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--gray-500); padding: var(--sp-1) 0; white-space: nowrap; }
     .mini-rack-stage .mini-rack-grid { flex: 1; }
     .mini-column-guide { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); color: var(--gray-500); font-size: 11px; font-weight: 600; }

@@ -1,4 +1,5 @@
 import {
+  buildFloorPlanLayout,
   createDocument,
   disposeDocument,
   documentToFormValues,
@@ -8,6 +9,8 @@ import {
   getDocumentAuditLogs,
   getDocumentMovements,
   getDocumentTags,
+  getFloorPlanRegions,
+  getRackSummaries,
   loadDocumentFormOptions,
   permanentlyDeleteDocument,
   restoreDocument,
@@ -100,11 +103,13 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
 
     const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
     const canViewMovements = canViewAudit || hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS);
-    const [tags, disposalLogs, auditLogs, movements] = await Promise.all([
+    const [tags, disposalLogs, auditLogs, movements, racks, regions] = await Promise.all([
       getDocumentTags(env, id),
       getDisposalLogs(env, id),
       canViewAudit ? getDocumentAuditLogs(env, id) : Promise.resolve([]),
-      canViewMovements ? getDocumentMovements(env, id) : Promise.resolve([])
+      canViewMovements ? getDocumentMovements(env, id) : Promise.resolve([]),
+      getRackSummaries(env),
+      getFloorPlanRegions(env)
     ]);
 
     return documentDetailsPage({
@@ -113,7 +118,8 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       tags,
       disposalLogs,
       auditLogs,
-      movements
+      movements,
+      floorPlan: buildFloorPlanLayout(racks, regions)
     });
   }
 

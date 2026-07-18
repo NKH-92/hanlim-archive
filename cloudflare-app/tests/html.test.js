@@ -8,6 +8,7 @@ import {
   documentDetailsPage,
   documentFormPage,
   documentsPage,
+  floorPlanPage,
   page,
   qaPage,
   setDetailsPage
@@ -361,7 +362,32 @@ test("dashboard home mode starts with the search input and no hero or floor plan
   assert.doesNotMatch(html, /검색 리포트/, "일반 사용자에게 관리자 링크가 없다");
   const mainNav = html.match(/<nav aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(mainNav, /href="\/app"/);
+  assert.match(mainNav, /href="\/floor-plan"[^>]*>[\s\S]*?문서고 도면/);
   assert.doesNotMatch(mainNav, /href="\/(documents|sets|qa|racks|categories|tags|disposal-batches)"/);
+});
+
+test("floor plan page keeps the map separate from search and opens rack results for every user", async () => {
+  const html = await floorPlanPage({
+    session: { username: "viewer", displayName: "조회자", role: "User", csrfToken: "csrf-token-123" },
+    floorPlan: [{
+      key: "zone-1",
+      label: "1구역",
+      description: "좌상단 문서 보관 구역",
+      zoneNumber: 1,
+      topPct: 3.2,
+      leftPct: 4.7,
+      widthPct: 47.5,
+      heightPct: 38.2,
+      racks: [{ id: 3, code: "1-03", rackNumber: 3, documentCount: 2, isSingleSided: false, leftPct: 50, topPct: 50, widthPct: 4 }]
+    }]
+  }).text();
+  const main = html.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] || "";
+
+  assert.match(main, /<h1>문서고 도면<\/h1>/);
+  assert.match(main, /src="\/images\/Archive\.png"/);
+  assert.match(main, /data-rack-code="1-03"/);
+  assert.match(main, /href="\/app\?q=1-03&amp;sort=location"/);
+  assert.doesNotMatch(main, /href="\/documents\?q=/);
 });
 
 test("admin navigation exposes permission-scoped work routes", async () => {
@@ -371,12 +397,14 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   const nav = html.match(/<nav aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   const commands = html.match(/<dialog class="command-palette"[\s\S]*?<\/dialog>/)?.[0] || "";
   assert.match(nav, /href="\/app"[^>]*>[\s\S]*?문서검색/);
+  assert.match(nav, /href="\/floor-plan"[^>]*>[\s\S]*?문서고 도면/);
   assert.match(nav, /href="\/documents\/new"[^>]*>[\s\S]*?문서등록/);
   assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?문서폐기/);
   assert.match(nav, /class="nav-settings"/);
   assert.match(nav, />관리자 설정<\/summary>/);
   assert.match(html, /\.topbar ~ \.app-shell/);
   assert.match(commands, /href="\/documents\/new"[^>]*>[\s\S]*?문서등록/);
+  assert.match(commands, /href="\/floor-plan"[^>]*>[\s\S]*?문서고 도면/);
   assert.match(commands, /href="\/documents\/import"[^>]*>[\s\S]*?CSV 가져오기/);
   assert.match(commands, /href="\/racks"[^>]*>[\s\S]*?랙/);
   assert.match(commands, /href="\/categories"[^>]*>[\s\S]*?대분류/);
@@ -409,6 +437,7 @@ test("desktop navigation and mobile tabs hide every unauthorized work route", as
   const archiveManagerTabs = archiveManagerHtml.match(/<nav class="mobile-tabs"[\s\S]*?<\/nav>/)?.[0] || "";
   for (const navigation of [archiveManagerNav, archiveManagerTabs]) {
     assert.match(navigation, /href="\/app"/);
+    assert.match(navigation, /href="\/floor-plan"/);
     assert.match(navigation, /href="\/documents\/new"/);
     assert.doesNotMatch(navigation, /href="\/documents\/disposal"|관리자 설정/);
   }
@@ -423,6 +452,7 @@ test("desktop navigation and mobile tabs hide every unauthorized work route", as
   }).text();
   const disposalManagerTabs = disposalManagerHtml.match(/<nav class="mobile-tabs"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(disposalManagerTabs, /href="\/app"/);
+  assert.match(disposalManagerTabs, /href="\/floor-plan"/);
   assert.match(disposalManagerTabs, /href="\/documents\/disposal"/);
   assert.doesNotMatch(disposalManagerTabs, /href="\/documents\/new"|관리자 설정/);
 });
@@ -581,7 +611,22 @@ test("document details page keeps core information and permission-scoped actions
     note: ""
   };
   const session = { username: "admin", displayName: "관리자", role: "Admin", csrfToken: "csrf-token-123" };
-  const coreEmptyLogs = { tags: [], disposalLogs: [], auditLogs: [], movements: [] };
+  const coreEmptyLogs = {
+    tags: [],
+    disposalLogs: [],
+    auditLogs: [],
+    movements: [],
+    floorPlan: [{
+      key: "zone-1",
+      label: "1구역",
+      zoneNumber: 1,
+      topPct: 3.2,
+      leftPct: 4.7,
+      widthPct: 47.5,
+      heightPct: 38.2,
+      racks: [{ id: 3, code: "1-03", rackNumber: 3, isSingleSided: false, leftPct: 50, topPct: 50, widthPct: 4 }]
+    }]
+  };
   const coreAdminHtml = await documentDetailsPage({ session, document: baseDocument, ...coreEmptyLogs }).text();
   const coreAdminMain = coreAdminHtml.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] || "";
   assert.match(coreAdminHtml, /밸리데이션 보고서/);
@@ -593,7 +638,13 @@ test("document details page keeps core information and permission-scoped actions
   assert.match(coreAdminHtml, /href="\/documents\/7\/revise"[^>]*>새 개정 등록/);
   assert.match(coreAdminHtml, /data-open-modal="dispose-modal"/);
   assert.match(coreAdminHtml, /<details[^>]*>[\s\S]*감사 이력/);
-  assert.doesNotMatch(coreAdminMain, /floor-plan|mini-rack|위치 복사|같은 랙 문서 보기|\/documents\/7\/move/);
+  assert.match(coreAdminMain, /<section class="panel doc-floor-plan"/);
+  assert.match(coreAdminMain, /<h2 id="location-map-title">위치 도면 · 1구역<\/h2>/);
+  assert.match(coreAdminMain, /src="\/images\/Archive\.png"/);
+  assert.match(coreAdminMain, /data-face-hit="A"/);
+  assert.match(coreAdminMain, /class="mini-rack-grid"/);
+  assert.match(coreAdminMain, /class="mini-slot active" title="2열 3선반"/);
+  assert.doesNotMatch(coreAdminMain, /<details class="panel doc-floor-plan"|위치 복사|같은 랙 문서 보기|\/documents\/7\/move/);
   assert.doesNotMatch(coreAdminMain, /ARC-000007|완전 삭제|세트에 추가|QR/);
 
   const coreDisposedHtml = await documentDetailsPage({
@@ -617,5 +668,6 @@ test("document details page keeps core information and permission-scoped actions
   assert.doesNotMatch(coreViewerHtml, /data-open-modal="dispose-modal"|감사 이력|위치 이동/);
   const coreViewerNav = coreViewerHtml.match(/<nav aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(coreViewerNav, /href="\/app"/);
+  assert.match(coreViewerNav, /href="\/floor-plan"/);
   assert.doesNotMatch(coreViewerNav, /href="\/(documents|sets|qa|admin|racks|categories|tags)/);
 });

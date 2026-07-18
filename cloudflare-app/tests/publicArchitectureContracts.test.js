@@ -49,7 +49,7 @@ const HTML_EXPORTS = `
   disposalBatchFormPage disposalBatchListPage disposalWorkspacePage documentDetailsPage
   documentFormPage documentImportJobCreatePage documentImportJobDetailPage
   documentImportJobsPage documentsPage errorPage loginPage movementFormPage
-  movementHistory movementsPage notFoundPage page passwordPage qaPage rackConfigurePage
+  floorPlanPage movementHistory movementsPage notFoundPage page passwordPage qaPage rackConfigurePage
   rackDetailsPage rackFormPage racksPage searchReportPage setDetailsPage setFormPage
   setsPage signupPage tagsPage userPermissionsPage
 `.trim().split(/\s+/).sort();

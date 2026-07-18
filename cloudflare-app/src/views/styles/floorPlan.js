@@ -12,6 +12,8 @@ export function floorPlanStyles() {
     .legend-box.hit { background: var(--primary); border-color: var(--primary); }
 
     .floor-plan-shell { display: grid; gap: var(--sp-2); }
+    .floor-plan-page-head p { max-width: 720px; margin: var(--sp-1) 0 0; color: var(--gray-500); font-size: 13px; }
+    .archive-floor-plan-page { overflow: hidden; }
     .floor-plan-scroll { width: 100%; overflow-x: auto; padding-bottom: var(--sp-1); scrollbar-gutter: stable; }
     /* aspect-ratio는 반드시 도면 이미지 원본 비율(1024x797)과 같아야 퍼센트 오버레이가 어긋나지 않는다. */
     .floor-plan-media { position: relative; overflow: hidden; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--gray-100); aspect-ratio: 1024 / 797; }

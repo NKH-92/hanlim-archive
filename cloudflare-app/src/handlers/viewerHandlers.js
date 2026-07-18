@@ -1,5 +1,8 @@
 import { getAppConfig } from "../config.js";
 import {
+  buildFloorPlanLayout,
+  getFloorPlanRegions,
+  getRackSummaries,
   parseDocumentFilters,
   getSearchIndexDocuments,
   getSearchIndexMeta,
@@ -8,7 +11,7 @@ import {
   getViewerSearchPayload,
   recordSearchClick
 } from "../db.js";
-import { dashboardPage, qaPage, searchReportPage } from "../html.js";
+import { dashboardPage, floorPlanPage, qaPage, searchReportPage } from "../html.js";
 import { clean, jsonResponse } from "../utils.js";
 import { resolveSearchOutcome, resolveSearchRequest } from "./searchRequest.js";
 
@@ -62,6 +65,17 @@ export async function handleDashboard(request, env, session) {
 
 export function renderQa(session, env) {
   return qaPage({ session, support: getAppConfig(env).support });
+}
+
+export async function handleFloorPlan(env, session) {
+  const [racks, regions] = await Promise.all([
+    getRackSummaries(env),
+    getFloorPlanRegions(env)
+  ]);
+  return floorPlanPage({
+    session,
+    floorPlan: buildFloorPlanLayout(racks, regions)
+  });
 }
 
 export async function handleSearchSuggestions(request, env) {
