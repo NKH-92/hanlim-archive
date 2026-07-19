@@ -76,7 +76,13 @@ src/index.js            진입점: fetch 핸들러, 공개 경로, 미들웨어(
 ```powershell
 npm run check     # src/·scripts/ 전체 문법 검사 (파일 추가 시 자동 포함)
 npm test          # node:test 전체
+npm run verify    # 문법·타입·lint·형식·migration checksum/schema·전체 테스트
 npm run dev       # http://localhost:8787 (.dev.vars 필요)
 ```
+
+새 modular-monolith 경로는 `domains/<name>/{domain,application,infrastructure,web}` 순방향만
+허용한다. 다른 도메인은 공개 `index.js` 또는 명시적 `readModels/`만 사용하고,
+`platform/`은 업무 domain을 import하지 않는다. 현재 façade 구조를 옮기는 동안에는
+`tests/architectureBoundaries.test.js`가 기존 계층과 목표 계층을 함께 보호한다.
 배포는 main 푸시 시 GitHub Actions가 자동 수행(migration → deploy)하며,
 D1 주간 백업도 Actions(`d1-backup.yml`)가 수행한다. 수동 배포는 CLOUDFLARE_DEPLOYMENT.md 참고.
