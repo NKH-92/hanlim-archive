@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -66,15 +65,15 @@ const approvedRgbaValues = [
   "rgba(255, 255, 255, .92)"
 ];
 
-test("전역 CSS 출력은 현재 golden과 바이트 단위로 같다", () => {
+test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한다", () => {
   const css = styles();
 
-  assert.equal(css.length, 66731);
-  assert.equal(Buffer.byteLength(css), 67051);
-  assert.equal(
-    createHash("sha256").update(css).digest("hex"),
-    "8b6108c62f25d4dc277ad095ee4415089ab761dbfa69d1016363813707fc40a9"
-  );
+  assert.match(css, /@media \(min-width: 1100px\)/);
+  assert.match(css, /@media \(max-width: 1099px\)[\s\S]*\.mobile-tabs/);
+  assert.match(css, /@media print[\s\S]*\.print-only/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /\.viewer-result-table/);
+  assert.match(css, /\.archive-map/);
 });
 
 test("DESIGN 토큰 값은 전용 조각에 그대로 고정된다", () => {

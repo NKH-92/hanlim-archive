@@ -4,10 +4,10 @@ import test from "node:test";
 
 import { createSearchCore } from "../src/searchCore.js";
 
-const fixture = JSON.parse(await readFile(new URL("./fixtures/search-golden.json", import.meta.url), "utf8"));
+const fixture = JSON.parse(await readFile(new URL("./fixtures/search-behavior.json", import.meta.url), "utf8"));
 const core = createSearchCore();
 
-test("Phase 0 search golden은 점수·이유·정렬을 그대로 유지한다", () => {
+test("검색 점수·이유·정렬의 기준 동작을 유지한다", () => {
   for (const fixtureCase of fixture.cases) {
     const actual = fixture.documents
       .map((document) => ({
@@ -26,7 +26,7 @@ test("Phase 0 search golden은 점수·이유·정렬을 그대로 유지한다"
   }
 });
 
-test("Phase 0 search golden은 자연어 필터 분해 계약을 유지한다", () => {
+test("자연어 검색어의 필터 분해 계약을 유지한다", () => {
   const { query, context, expected } = fixture.parseCase;
   const actual = core.parseSearchQuery(query, context);
 

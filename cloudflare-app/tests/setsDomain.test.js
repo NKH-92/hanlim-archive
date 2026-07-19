@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import * as legacyFacade from "../src/data/setsData.js";
+import * as legacyAdapter from "../src/data/setsData.js";
 import * as sets from "../src/domains/sets/index.js";
 import { createSetMutationPlan } from "../src/domains/sets/infrastructure/mutationPlans.js";
 
@@ -51,7 +51,7 @@ test("세트 공개 API와 기존 data adapter는 같은 구현을 위임한다"
     "deleteDocumentSet", "addDocumentsToSet", "removeDocumentFromSet", "getDocumentSetLogs",
     "setDocumentSetLock"
   ]) {
-    assert.equal(legacyFacade[name], sets[name], name);
+    assert.equal(legacyAdapter[name], sets[name], name);
   }
 });
 

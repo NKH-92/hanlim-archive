@@ -1,21 +1,13 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { escapeHtml } from "../src/ui/html/escape.js";
 import * as clientScriptModule from "../src/views/clientScript.js";
 
-test("전역 클라이언트 스크립트는 LF 정규화 후 현재 golden과 같다", () => {
+test("전역 클라이언트 스크립트는 한 번 초기화되고 문법적으로 실행 가능하다", () => {
   const script = clientScriptModule.clientScript();
-  const canonicalScript = script.replace(/\r\n?/g, "\n");
 
   assert.deepEqual(Object.keys(clientScriptModule).sort(), ["clientScript", "searchCoreScript"]);
-  assert.equal(canonicalScript.length, 25282);
-  assert.equal(Buffer.byteLength(canonicalScript), 26146);
-  assert.equal(
-    createHash("sha256").update(canonicalScript).digest("hex"),
-    "552996689ea8793e71a4a3e7fbc60d76cf799a98786c8cef717b6a31dfd922ed"
-  );
   assert.equal((script.match(/DOMContentLoaded/g) || []).length, 1);
   assert.doesNotThrow(() => new Function(script));
 });

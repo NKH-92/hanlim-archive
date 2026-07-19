@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import * as documents from "../src/domains/documents/index.js";
-import * as documentRulesFacade from "../src/documentRules.js";
+import * as documentRulesAdapter from "../src/documentRules.js";
 import { prepareDocumentImportRows } from "../src/documentCsv.js";
 
 test("문서 폼 파서는 입력 정규화와 낙관적 잠금 값을 한 경계에서 처리한다", () => {
@@ -65,7 +65,7 @@ test("문서 infrastructure에는 FormData 처리 코드가 없다", async () =>
 
 test("CSV 가져오기와 UI는 동일한 문서 필드 검증 함수를 사용한다", () => {
   assert.equal(typeof documents.validateDocumentInput, "function");
-  assert.equal(documentRulesFacade.validateDocumentTextFields, documents.validateDocumentTextFields);
-  assert.equal(documentRulesFacade.validateDocumentRecordFields, documents.validateDocumentRecordFields);
+  assert.equal(documentRulesAdapter.validateDocumentTextFields, documents.validateDocumentTextFields);
+  assert.equal(documentRulesAdapter.validateDocumentRecordFields, documents.validateDocumentRecordFields);
   assert.equal(typeof prepareDocumentImportRows, "function");
 });
