@@ -84,5 +84,9 @@ npm run dev       # http://localhost:8787 (.dev.vars 필요)
 허용한다. 다른 도메인은 공개 `index.js` 또는 명시적 `readModels/`만 사용하고,
 `platform/`은 업무 domain을 import하지 않는다. 현재 façade 구조를 옮기는 동안에는
 `tests/architectureBoundaries.test.js`가 기존 계층과 목표 계층을 함께 보호한다.
+
+`domains/masters`는 이 구조를 끝까지 적용한 첫 pilot이다. 기존 `data/mastersData.js`,
+`handlers/adminHandlers.js`, `views/adminViews.js`의 관련 export는 호환 façade이며 신규 코드는
+`domains/masters/index.js` 공개 API를 사용한다.
 배포는 main 푸시 시 GitHub Actions가 자동 수행(migration → deploy)하며,
 D1 주간 백업도 Actions(`d1-backup.yml`)가 수행한다. 수동 배포는 CLOUDFLARE_DEPLOYMENT.md 참고.

@@ -18,6 +18,7 @@
     "src/platform/**/*.js",
     "src/shared/**/*.js",
     "src/ui/html/**/*.js",
-    "src/domains/racks/domain/**/*.js"
+    "src/domains/*/domain/**/*.js",
+    "src/domains/*/application/**/*.js"
   ]
 }

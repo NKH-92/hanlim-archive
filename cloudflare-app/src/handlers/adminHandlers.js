@@ -1,28 +1,29 @@
 import { changeUserPassword } from "../auth.js";
 import {
   approveUser,
-  deleteCategory,
-  deleteTag,
   getAppUsers,
-  getCategories,
   getDocumentQualitySummary,
   getSearchIndexStats,
-  getTags,
   rejectUser,
-  upsertCategory,
-  upsertTag
 } from "../db.js";
 import {
   adminDashboardPage,
   adminSettingsPage,
-  categoriesPage,
   errorPage,
   notFoundPage,
   passwordPage,
-  tagsPage
 } from "../html.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { clean, redirect } from "../utils.js";
+
+export {
+  renderCategories,
+  handleSaveCategory,
+  handleCategoryAction,
+  renderTags,
+  handleSaveTag,
+  handleTagAction
+} from "../domains/masters/index.js";
 
 export async function handleAdminDashboard(env, session) {
   const canManageUsers = hasPermission(session, PERMISSIONS.MANAGE_USERS);
@@ -60,83 +61,6 @@ export async function handleAdminUserAction(env, session, routeInfo) {
 
   const toast = routeInfo.action === "approve" ? "approved" : "rejected";
   return redirect(`/admin/settings?toast=${toast}`);
-}
-
-export async function renderCategories(env, session, error = "", values = {}) {
-  return categoriesPage({ session, categories: await getCategories(env), error, values });
-}
-
-export async function handleSaveCategory(request, env, session, id = 0) {
-  const form = await request.formData();
-  const values = {
-    id,
-    name: clean(form.get("name")),
-    description: clean(form.get("description")),
-    sortOrder: Number(form.get("sortOrder") || 0),
-    isActive: id ? form.get("isActive") === "1" : true
-  };
-  const result = await upsertCategory(env, values, session);
-
-  if (!result.ok) {
-    return renderCategories(env, session, result.message, values);
-  }
-
-  return redirect("/categories?toast=saved");
-}
-
-export async function handleCategoryAction(request, env, session, routeInfo) {
-  if (routeInfo.action === "edit") {
-    return handleSaveCategory(request, env, session, routeInfo.id);
-  }
-
-  if (routeInfo.action !== "delete") {
-    return notFoundPage(session);
-  }
-
-  const result = await deleteCategory(env, routeInfo.id, session);
-  if (!result.ok) {
-    return renderCategories(env, session, result.message);
-  }
-
-  return redirect("/categories?toast=saved");
-}
-
-export async function renderTags(env, session, error = "", values = {}) {
-  return tagsPage({ session, tags: await getTags(env), error, values });
-}
-
-export async function handleSaveTag(request, env, session, id = 0) {
-  const form = await request.formData();
-  const values = {
-    id,
-    name: clean(form.get("name")),
-    description: clean(form.get("description")),
-    isActive: id ? form.get("isActive") === "1" : true
-  };
-  const result = await upsertTag(env, values, session);
-
-  if (!result.ok) {
-    return renderTags(env, session, result.message, values);
-  }
-
-  return redirect("/tags?toast=saved");
-}
-
-export async function handleTagAction(request, env, session, routeInfo) {
-  if (routeInfo.action === "edit") {
-    return handleSaveTag(request, env, session, routeInfo.id);
-  }
-
-  if (routeInfo.action !== "delete") {
-    return notFoundPage(session);
-  }
-
-  const result = await deleteTag(env, routeInfo.id, session);
-  if (!result.ok) {
-    return renderTags(env, session, result.message);
-  }
-
-  return redirect("/tags?toast=saved");
 }
 
 export function renderPasswordPage(session) {

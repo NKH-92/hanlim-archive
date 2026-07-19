@@ -7,7 +7,7 @@ import {
   handleTagAction,
   renderCategories,
   renderTags
-} from "./adminHandlers.js";
+} from "../domains/masters/index.js";
 import { requireManageMasters, requireManageSets } from "./permissionGuards.js";
 import {
   handleRackConfigure,
