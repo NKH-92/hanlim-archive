@@ -18,7 +18,12 @@ export async function runReleaseSmoke({ baseUrl, username, password, fetchImpl =
   form.set("username", username);
   form.set("password", password);
   form.set("returnUrl", "/app?q=release-smoke");
-  const authenticated = await fetchImpl(`${origin}/login`, { method: "POST", body: form, redirect: "manual" });
+  const authenticated = await fetchImpl(`${origin}/login`, {
+    method: "POST",
+    headers: { Origin: origin },
+    body: form,
+    redirect: "manual"
+  });
   if (![302, 303].includes(authenticated.status)) {
     const ray = authenticated.headers.get("cf-ray") || "none";
     throw new Error(`smoke 계정 로그인 실패(status=${authenticated.status}, cf-ray=${ray})`);
