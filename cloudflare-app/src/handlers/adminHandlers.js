@@ -15,6 +15,7 @@ import {
 } from "../html.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { clean, redirect } from "../utils.js";
+import { validateNewPassword } from "../domains/identity/index.js";
 
 export {
   renderCategories,
@@ -77,9 +78,8 @@ export async function handleChangePassword(request, env, session) {
     return renderPasswordResult(session, { error: "모든 필드를 입력하세요." });
   }
 
-  if (newPassword.length < 8) {
-    return renderPasswordResult(session, { error: "새 비밀번호는 8자 이상이어야 합니다." });
-  }
+  const passwordValidation = validateNewPassword(newPassword);
+  if (!passwordValidation.ok) return renderPasswordResult(session, { error: passwordValidation.message });
 
   if (newPassword !== confirmPassword) {
     return renderPasswordResult(session, { error: "새 비밀번호가 일치하지 않습니다." });

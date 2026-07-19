@@ -66,6 +66,8 @@
 
 ## 세부 정책
 
+- navigation capability는 direct URL authorization과 별개다. 세부 permission을 가진 User는
+  직접 URL로 허용되지만 고급 설정 submenu는 기존 UI 계약대로 Admin에게만 표시된다.
 - `/admin`은 management permission 중 하나라도 있어야 열리며, 내부 card/data는 각 권한에 따라 다르다.
 - 문서 상세 자체는 모든 인증 사용자에게 열리지만 감사 이력은 audit, 이동 이력은 move 또는 audit일 때만 조회한다.
 - 문서 폐기 해제는 `can_manage_disposals`가 아니라 현재 `Admin` 역할을 직접 요구한다.

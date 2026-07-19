@@ -1,7 +1,7 @@
 // 페이지 골격(page)과 여러 화면이 공유하는 범용 프래그먼트.
 
 import { bytesToBase64Url, escapeHtml } from "../utils.js";
-import { hasPermission, PERMISSIONS, sessionHasManagementAccess } from "../permissions.js";
+import { capabilitiesFromSession } from "../domains/identity/index.js";
 import { htmlContentSecurityPolicy } from "../security.js";
 import { clientScript } from "./clientScript.js";
 import { styles } from "./styles.js";
@@ -62,36 +62,37 @@ function withCsrfToken(body, token) {
 }
 
 function header(session) {
+  const capabilities = capabilitiesFromSession(session);
   const primaryLinks = [
     ["/app", "fa-magnifying-glass", "문서검색"],
     ["/floor-plan", "fa-location-dot", "문서고 도면"]
   ];
-  if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
+  if (capabilities.canManageDocuments) {
     primaryLinks.push(["/documents/new", "fa-file-lines", "문서등록"]);
   }
-  if (hasPermission(session, PERMISSIONS.MANAGE_DISPOSALS)) {
+  if (capabilities.canManageDisposals) {
     primaryLinks.push(["/documents/disposal", "fa-box-archive", "문서폐기"]);
   }
 
   const settingsLinks = [];
-  if (session.role === "Admin" && hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
+  if (capabilities.canShowAdminSettings && capabilities.canManageDocuments) {
     settingsLinks.push(["/documents/import", "fa-file-csv", "CSV 가져오기"]);
   }
-  if (session.role === "Admin" && hasPermission(session, PERMISSIONS.MANAGE_MASTERS)) {
+  if (capabilities.canShowAdminSettings && capabilities.canManageMasters) {
     settingsLinks.push(["/racks", "fa-table-cells-large", "랙·보관 위치"]);
     settingsLinks.push(["/categories", "fa-list-check", "대분류"]);
     settingsLinks.push(["/tags", "fa-tags", "태그"]);
   }
-  if (session.role === "Admin" && hasPermission(session, PERMISSIONS.MANAGE_USERS)) {
+  if (capabilities.canShowAdminSettings && capabilities.canManageUsers) {
     settingsLinks.push(["/admin/settings", "fa-users-gear", "사용자·권한"]);
   }
-  if (session.role === "Admin" && hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
+  if (capabilities.canShowAdminSettings && capabilities.canViewAudit) {
     settingsLinks.push(["/admin/audit", "fa-list-check", "감사 이력"]);
   }
-  if (session.role === "Admin" && (hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS) || hasPermission(session, PERMISSIONS.VIEW_AUDIT))) {
+  if (capabilities.canShowAdminSettings && capabilities.canViewMovements) {
     settingsLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
   }
-  if (session.role === "Admin" && sessionHasManagementAccess(session)) {
+  if (capabilities.canShowAdminSettings && capabilities.canOpenManagement) {
     settingsLinks.push(["/admin", "fa-gear", "운영 관리"]);
   }
   const navigationLinks = primaryLinks

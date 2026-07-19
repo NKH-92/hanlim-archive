@@ -88,5 +88,9 @@ npm run dev       # http://localhost:8787 (.dev.vars 필요)
 `domains/masters`는 이 구조를 끝까지 적용한 첫 pilot이다. 기존 `data/mastersData.js`,
 `handlers/adminHandlers.js`, `views/adminViews.js`의 관련 export는 호환 façade이며 신규 코드는
 `domains/masters/index.js` 공개 API를 사용한다.
+
+`domains/identity`는 Actor, 비밀번호 정책, 사용자 상태 machine과 navigation capability의
+단일 출처다. session cookie와 password crypto 구현은 기존 `auth/*`에 두되 identity policy를
+사용하며, 공개 `/signup` route는 항상 404다.
 배포는 main 푸시 시 GitHub Actions가 자동 수행(migration → deploy)하며,
 D1 주간 백업도 Actions(`d1-backup.yml`)가 수행한다. 수동 배포는 CLOUDFLARE_DEPLOYMENT.md 참고.

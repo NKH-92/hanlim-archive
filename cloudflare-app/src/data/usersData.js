@@ -2,6 +2,8 @@ import { createPasswordRecord } from "../auth.js";
 import { permissionFlags, PERMISSION_KEYS } from "../permissions.js";
 import { clean } from "../utils.js";
 import { createSystemAuditStatement } from "./systemAuditData.js";
+import { actorUsername, canTransitionUser, transitionFor, validateNewPassword } from "../domains/identity/index.js";
+import { createUserPermissionMutationPlan, createUserStatusMutationPlan } from "../domains/identity/infrastructure/userMutationPlans.js";
 
 const USER_PERMISSION_COLUMNS = PERMISSION_KEYS.join(", ");
 
@@ -60,9 +62,8 @@ export async function createSignupRequest(env, values) {
     return { ok: false, message: "아이디는 4자 이상이어야 합니다." };
   }
 
-  if (!password || password.length < 8) {
-    return { ok: false, message: "비밀번호는 8자 이상이어야 합니다." };
-  }
+  const passwordValidation = validateNewPassword(password, { label: "비밀번호" });
+  if (!passwordValidation.ok) return passwordValidation;
 
   const existing = await env.DB.prepare(`
     SELECT id, status
@@ -114,8 +115,6 @@ export async function createSignupRequest(env, values) {
 
 export async function approveUser(env, id, actor) {
   return transitionUserStatus(env, id, actor, {
-    fromStatuses: ["pending", "rejected"],
-    toStatus: "approved",
     action: "approve",
     summary: "사용자 승인",
     updateSql: `
@@ -132,8 +131,6 @@ export async function approveUser(env, id, actor) {
 
 export async function rejectUser(env, id, actor) {
   return transitionUserStatus(env, id, actor, {
-    fromStatuses: ["pending"],
-    toStatus: "rejected",
     action: "reject",
     summary: "가입 요청 반려",
     updateSql: `
@@ -150,8 +147,6 @@ export async function rejectUser(env, id, actor) {
 
 export async function disableUser(env, id, actor) {
   return transitionUserStatus(env, id, actor, {
-    fromStatuses: ["approved"],
-    toStatus: "disabled",
     action: "disable",
     summary: "사용자 사용중지",
     updateSql: "status = 'disabled', updated_at = CURRENT_TIMESTAMP"
@@ -160,8 +155,6 @@ export async function disableUser(env, id, actor) {
 
 export async function enableUser(env, id, actor) {
   return transitionUserStatus(env, id, actor, {
-    fromStatuses: ["disabled"],
-    toStatus: "approved",
     action: "enable",
     summary: "사용자 다시 사용",
     updateSql: "status = 'approved', updated_at = CURRENT_TIMESTAMP"
@@ -201,7 +194,8 @@ export async function updateUserPermissions(env, id, permissions, actor) {
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ? AND role = 'User' AND updated_at = ?
   `).bind(...values, user.id, expectedUpdatedAt);
-  const results = await env.DB.batch([audit, update]);
+  const plan = createUserPermissionMutationPlan(audit, update, `app_users:${user.id}:${expectedUpdatedAt}`);
+  const results = await env.DB.batch(plan.execution().statements);
 
   return changed(results[1])
     ? { ok: true }
@@ -209,14 +203,15 @@ export async function updateUserPermissions(env, id, permissions, actor) {
 }
 
 async function transitionUserStatus(env, id, actor, spec) {
+  const transition = transitionFor(spec.action);
   const user = await getAppUser(env, id);
-  if (!user || user.role !== "User" || !spec.fromStatuses.includes(user.status)) {
+  if (!canTransitionUser(user, spec.action)) {
     return { ok: false, message: "처리할 수 있는 사용자를 찾지 못했습니다." };
   }
 
-  const placeholders = spec.fromStatuses.map(() => "?").join(", ");
+  const placeholders = transition.from.map(() => "?").join(", ");
   const guardSql = `FROM app_users WHERE id = ? AND role = 'User' AND status IN (${placeholders})`;
-  const guardBinds = [user.id, ...spec.fromStatuses];
+  const guardBinds = [user.id, ...transition.from];
   const audit = createSystemAuditStatement(env, {
     entityType: "user",
     entityId: user.id,
@@ -226,15 +221,16 @@ async function transitionUserStatus(env, id, actor, spec) {
     summary: spec.summary,
     details: {
       before: userAuditSnapshot(user),
-      after: { ...userAuditSnapshot(user), status: spec.toStatus }
+      after: { ...userAuditSnapshot(user), status: transition.to }
     }
   }, { guardSql, guardBinds });
   const update = env.DB.prepare(`
     UPDATE app_users
     SET ${spec.updateSql}
     WHERE id = ? AND role = 'User' AND status IN (${placeholders})
-  `).bind(...(spec.updateBinds || []), user.id, ...spec.fromStatuses);
-  const results = await env.DB.batch([audit, update]);
+  `).bind(...(spec.updateBinds || []), user.id, ...transition.from);
+  const plan = createUserStatusMutationPlan(spec.action, audit, update, `app_users:${user.id}:${transition.from.join("|")}`);
+  const results = await env.DB.batch(plan.execution().statements);
 
   return changed(results[1])
     ? { ok: true }
@@ -249,10 +245,6 @@ function userAuditSnapshot(user) {
     status: user.status,
     permissions: permissionFlags(user)
   };
-}
-
-function actorUsername(actor) {
-  return clean(typeof actor === "string" ? actor : actor?.username) || "system";
 }
 
 function changed(result) {

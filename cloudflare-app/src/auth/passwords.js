@@ -1,4 +1,5 @@
 import { base64UrlToBytes, bytesToBase64Url, constantTimeEqual } from "../utils.js";
+import { validateNewPassword } from "../domains/identity/index.js";
 
 const PASSWORD_ITERATIONS = 100000;
 
@@ -53,9 +54,8 @@ export async function changeUserPassword(env, username, currentPassword, newPass
     return { ok: false, message: "현재 비밀번호가 올바르지 않습니다." };
   }
 
-  if (newPassword.length < 8) {
-    return { ok: false, message: "새 비밀번호는 8자 이상이어야 합니다." };
-  }
+  const passwordValidation = validateNewPassword(newPassword);
+  if (!passwordValidation.ok) return passwordValidation;
 
   const record = await createPasswordRecord(newPassword);
   await env.DB.prepare(`

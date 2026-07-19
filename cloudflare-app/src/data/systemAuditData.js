@@ -1,5 +1,5 @@
-import { permissionSnapshot } from "../permissions.js";
 import { clean } from "../utils.js";
+import { auditActorSnapshot } from "../domains/identity/index.js";
 
 const DEFAULT_PAGE_SIZE = 30;
 const MAX_PAGE_SIZE = 100;
@@ -15,7 +15,7 @@ export function createSystemAuditStatement(env, {
   summary,
   details = null
 }, { guardSql = "", guardBinds = [] } = {}) {
-  const actorSnapshot = normalizeActor(actor);
+  const actorSnapshot = auditActorSnapshot(actor);
   const values = [
     clean(entityType),
     entityId === null || entityId === undefined ? null : String(entityId),
@@ -165,19 +165,6 @@ function buildAuditWhere(filters) {
   return {
     where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
     binds
-  };
-}
-
-function normalizeActor(actor = {}) {
-  if (typeof actor === "string") {
-    const label = clean(actor) || "시스템";
-    return { userId: null, username: label, displayName: label, permissions: {} };
-  }
-  return {
-    userId: positiveInteger(actor.userId ?? actor.id, null),
-    username: clean(actor.username) || "system",
-    displayName: clean(actor.displayName ?? actor.display_name) || clean(actor.username) || "시스템",
-    permissions: permissionSnapshot(actor)
   };
 }
 
