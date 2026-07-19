@@ -1,5 +1,9 @@
 # Route Catalog
 
+> Phase 3 이후 실행 가능한 route descriptor와 권한 metadata의 최신 목록은
+> [`generated/ROUTE_PERMISSION_CATALOG.md`](generated/ROUTE_PERMISSION_CATALOG.md)에서 자동 생성한다.
+> 이 문서의 아래 내용은 Phase 0 동작 기준선과 dispatcher 우선순위를 설명한다.
+
 기준일 2026-07-19, HEAD `aa076e44f96686994c089d51b977cef024f8c1a0`의 실제 dispatcher를
 기록한다. 이 문서는 목표 설계가 아니라 현재 동작의 characterization이다.
 

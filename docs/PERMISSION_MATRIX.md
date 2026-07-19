@@ -1,5 +1,9 @@
 # Permission Matrix
 
+> Route descriptor에서 자동 생성한 최신 route-permission 대응표는
+> [`generated/ROUTE_PERMISSION_CATALOG.md`](generated/ROUTE_PERMISSION_CATALOG.md)를 사용한다.
+> 이 문서는 역할 판정과 세부 정책의 설명 자료로 유지한다.
+
 기준일 2026-07-19의 `src/permissions.js`, server guard, handler 내부 판정을 기록한다.
 화면 메뉴 노출은 편의 기능이며 이 표의 server guard가 권한 원본이다.
 
