@@ -34,6 +34,9 @@ test("production deploy는 승인, 백업, migration, deploy, smoke, rollback �
   }
   assert.match(deploy, /if: steps\.smoke\.outcome == 'failure'/);
   assert.match(deploy, /if: always\(\)/);
+  assert.match(deploy, /wrangler deployments status --json/);
+  assert.match(deploy, /select\(\.percentage == 100\).*\.version_id/);
+  assert.doesNotMatch(deploy, /versions list --json > release-evidence\/versions-before\.json/);
   assert.equal(deploy.match(/set -o pipefail/g)?.length, 5);
   assert.doesNotMatch(deploy, /123456|SESSION_SECRET/);
 });

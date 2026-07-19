@@ -56,8 +56,8 @@ jobs:
           retention-days: 90
       - name: Capture current Worker version
         run: |
-          npx wrangler versions list --json > release-evidence/versions-before.json
-          PREVIOUS_VERSION_ID="$(jq -r 'if type == "array" then .[0].id else (.items[0].id // .versions[0].id) end // empty' release-evidence/versions-before.json)"
+          npx wrangler deployments status --json > release-evidence/deployment-before.json
+          PREVIOUS_VERSION_ID="$(jq -r '.versions[] | select(.percentage == 100) | .version_id' release-evidence/deployment-before.json)"
           test -n "$PREVIOUS_VERSION_ID"
           echo "PREVIOUS_VERSION_ID=$PREVIOUS_VERSION_ID" >> "$GITHUB_ENV"
       - name: Create encrypted pre-deploy D1 backup
