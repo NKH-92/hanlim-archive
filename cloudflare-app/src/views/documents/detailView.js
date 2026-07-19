@@ -4,6 +4,7 @@ import { escapeHtml, locationLabel, rackFaceLabel, readBoolean } from "../../uti
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
 import { zoneFloorPlanView } from "../floorPlanViews.js";
 import { page, statusBadge, timeline, timelineItem } from "../layout.js";
+import { rackViewOrientation } from "../../domains/racks/domain/orientation.js";
 
 export function documentDetailsPage({ session, document, tags, disposalLogs, auditLogs, movements = [], floorPlan = [] }) {
   const canManageDocuments = hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS);
@@ -155,20 +156,6 @@ function renderMiniVisualizer(document) {
       ${ordinal ? `<p class="mini-compass"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> ${escapeHtml(ordinal)}${readBoolean(document.is_single_sided) ? "" : ` · 양면 랙 ${escapeHtml(rackLabel)} 면`}</p>` : ""}
     </section>
   `;
-}
-
-function rackViewOrientation(document) {
-  const isZoneOne = Number(document.zone_number) === 1;
-  const single = readBoolean(document.is_single_sided);
-  const isZoneOneRightSingle = isZoneOne && single && Number(document.rack_number) === 1;
-  const origin = document.rack_face === "B" || isZoneOneRightSingle ? "right" : "left";
-  const originLabel = origin === "right" ? "오른쪽" : "왼쪽";
-  const description = isZoneOneRightSingle
-    ? "1구역 1번 단면랙은 우측 랙과 같은 방향이므로 오른쪽이 1열입니다."
-    : single
-      ? `단면랙을 정면에서 본 모습이며 ${originLabel}이 1열입니다.`
-      : `${document.rack_face === "B" ? "우측 면" : "좌측 면"}을 정면에서 본 모습이며 ${originLabel}이 1열입니다.`;
-  return { origin, originLabel, description };
 }
 
 function renderAuditLog(log) {

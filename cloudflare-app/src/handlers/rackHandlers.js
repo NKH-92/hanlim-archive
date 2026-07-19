@@ -11,7 +11,7 @@ import {
   getRackGrid,
   getRackSummaries,
   upsertRack
-} from "../db.js";
+} from "../domains/racks/index.js";
 import { notFoundPage, rackConfigurePage, rackDetailsPage, rackFormPage, racksPage } from "../html.js";
 import { clean, logError, redirect } from "../utils.js";
 import { requireManageMasters } from "./permissionGuards.js";

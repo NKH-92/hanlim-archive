@@ -6,48 +6,17 @@ import {
   MAX_RACK_SHELVES,
   RACK_ZONES
 } from "../config.js";
-import { clean, logError, readBoolean } from "../utils.js";
+import { clean, logError } from "../utils.js";
 import { DOCUMENT_BASE_JOINS, DOCUMENT_LOCATION_COLUMNS } from "./sqlShared.js";
 import { createSystemAuditStatement } from "./systemAuditData.js";
+import { DEFAULT_FLOOR_PLAN_REGIONS, buildFloorPlanLayout } from "../domains/racks/domain/floorPlan.js";
+import { presentSlotOption } from "../domains/racks/web/presenters.js";
+import { createRackConfigurationPlan, createRackCreatePlan, createRackResizePlan } from "../domains/racks/infrastructure/rackMutationPlans.js";
+
+export { DEFAULT_FLOOR_PLAN_REGIONS, buildFloorPlanLayout };
 
 // 좌표는 Archive.png(1024x797) 회색 구역 실측 비율. 컨테이너 aspect-ratio가
 // 이미지 비율과 일치해야 오버레이가 어긋나지 않는다 (html.js .floor-plan-media 참조).
-export const DEFAULT_FLOOR_PLAN_REGIONS = Object.freeze([
-  Object.freeze({
-    region_key: "zone-1",
-    label: "1구역",
-    description: "좌상단 문서 보관 구역",
-    top_pct: 3.2,
-    left_pct: 4.7,
-    width_pct: 47.5,
-    height_pct: 38.2,
-    default_rack_count: 13,
-    is_active: 1
-  }),
-  Object.freeze({
-    region_key: "zone-2",
-    label: "2구역",
-    description: "좌하단 문서 보관 구역",
-    top_pct: 55.8,
-    left_pct: 2.5,
-    width_pct: 43.9,
-    height_pct: 38.9,
-    default_rack_count: 10,
-    is_active: 1
-  }),
-  Object.freeze({
-    region_key: "zone-3",
-    label: "3구역",
-    description: "우하단 문서 보관 구역",
-    top_pct: 55.8,
-    left_pct: 52.2,
-    width_pct: 39.1,
-    height_pct: 38.9,
-    default_rack_count: 10,
-    is_active: 1
-  })
-]);
-
 export async function getFloorPlanRegions(env) {
   try {
     const result = await env.DB.prepare(`
@@ -73,55 +42,6 @@ export async function getFloorPlanRegions(env) {
     logError("db.getFloorPlanRegions", error);
     return DEFAULT_FLOOR_PLAN_REGIONS.map((region) => ({ ...region }));
   }
-}
-
-function zoneFromRegion(region) {
-  const matched = clean(region.region_key).match(/(\d+)/);
-  return matched ? Number(matched[1]) : Number(region.zone_number || 0);
-}
-
-function clampPercent(value, fallback) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.max(0, Math.min(number, 100));
-}
-
-export function buildFloorPlanLayout(racks, regions = DEFAULT_FLOOR_PLAN_REGIONS) {
-  const layout = regions.map((region) => {
-    const zoneNumber = zoneFromRegion(region);
-    const zoneRacks = racks
-      .filter((rack) => Number(rack.zone_number) === zoneNumber)
-      .sort((left, right) => Number(left.rack_number || 0) - Number(right.rack_number || 0));
-    const count = Math.max(zoneRacks.length, Number(region.default_rack_count || 0), 1);
-    // 실제 문서고 구조: 세로로 긴 랙이 구역 안에 좌→우로 일렬 배치(좌측이 1번).
-    // 각 랙은 자기 슬롯(구역 폭/count)의 중앙에 서고, 슬롯의 일부만 차지해 랙 사이 통로가 보인다.
-    const slotWidth = 100 / count;
-    const barWidthPct = Math.round(slotWidth * 62) / 100;
-
-    return {
-      key: clean(region.region_key) || `zone-${zoneNumber}`,
-      label: clean(region.label) || `${zoneNumber}구역`,
-      description: clean(region.description),
-      zoneNumber,
-      topPct: clampPercent(region.top_pct, 0),
-      leftPct: clampPercent(region.left_pct, 0),
-      widthPct: clampPercent(region.width_pct, 30),
-      heightPct: clampPercent(region.height_pct, 30),
-      racks: zoneRacks.map((rack, index) => ({
-        id: Number(rack.id),
-        code: clean(rack.code),
-        rackNumber: Number(rack.rack_number || 0),
-        documentCount: Number(rack.active_document_count || rack.document_count || 0),
-        isSingleSided: readBoolean(rack.is_single_sided),
-        leftPct: clampPercent(slotWidth * (index + 0.5), 50),
-        topPct: 50,
-        widthPct: barWidthPct
-      }))
-    };
-  });
-
-  // 랙이 없는 구역(현재 2·3구역)은 도면에서 감춘다. 증설로 랙이 생기면 자동으로 다시 나타난다.
-  return layout.filter((region) => region.racks.length > 0);
 }
 
 export async function getRackSummaries(env) {
@@ -226,10 +146,7 @@ export async function getSlotOptions(env) {
     ORDER BY r.zone_number, r.rack_number, rs.column_number, rs.shelf_number
   `).all();
 
-  return (result.results ?? []).map((slot) => ({
-    ...slot,
-    label: `${slot.zone_number}구역 / ${slot.rack_number}번랙 / ${slot.column_number}열 / ${slot.shelf_number}선반${slot.is_single_sided ? " / 단면" : ""}`
-  }));
+  return (result.results ?? []).map(presentSlotOption);
 }
 
 export async function upsertRack(env, values, actor = {}) {
@@ -285,7 +202,7 @@ export async function upsertRack(env, values, actor = {}) {
             AND (rs.column_number > ? OR rs.shelf_number > ?)
         )`;
     const resizeGuardBinds = [values.id, values.columnCount, values.shelfCount];
-    const results = await env.DB.batch([
+    const resizeStatements = [
       createSystemAuditStatement(env, {
         entityType: "rack",
         entityId: values.id,
@@ -331,13 +248,15 @@ export async function upsertRack(env, values, actor = {}) {
         values.shelfCount
       ),
       ...createRackSlotSyncStatements(env, values.id, values.columnCount, values.shelfCount)
-    ]);
+    ];
+    const resizePlan = createRackResizePlan(resizeStatements, `rack:${values.id}:${values.columnCount}x${values.shelfCount}`);
+    const results = await env.DB.batch(resizePlan.execution().statements);
     if (!Number(results[1]?.meta?.changes || 0)) throw new Error("랙을 찾을 수 없습니다.");
 
     return values.id;
   }
 
-  const results = await env.DB.batch([
+  const createStatements = [
     env.DB.prepare(`
       INSERT INTO racks (
         zone_number,
@@ -372,7 +291,9 @@ export async function upsertRack(env, values, actor = {}) {
       details: { after: { ...after, isActive: true } }
     }, { guardSql: "FROM racks WHERE code = ?", guardBinds: [code] }),
     createRackSlotInsertStatementByCode(env, code, values.columnCount, values.shelfCount)
-  ]);
+  ];
+  const createPlan = createRackCreatePlan(createStatements, `rack:${code}`);
+  const results = await env.DB.batch(createPlan.execution().statements);
   const id = Number(results[0]?.results?.[0]?.id || results[0]?.meta?.last_row_id || 0);
   if (!id) throw new Error("생성한 랙을 확인할 수 없습니다.");
 
@@ -516,7 +437,7 @@ export async function configureRackCounts(env, counts, actor = {}) {
   const before = Object.fromEntries(RACK_ZONES.map((zone) => [zone, 0]));
   for (const row of beforeCounts.results ?? []) before[row.zone_number] = Number(row.count || 0);
 
-  await env.DB.batch([
+  const configurationStatements = [
     createSystemAuditStatement(env, {
       entityType: "rack_configuration",
       entityReference: "zones-1-3",
@@ -620,7 +541,9 @@ export async function configureRackCounts(env, counts, actor = {}) {
         is_active = 1,
         updated_at = CURRENT_TIMESTAMP
     `).bind(DEFAULT_RACK_COLUMNS, DEFAULT_RACK_SHELVES, MAX_RACKS_PER_ZONE)
-  ]);
+  ];
+  const configurationPlan = createRackConfigurationPlan(configurationStatements);
+  await env.DB.batch(configurationPlan.execution().statements);
 
   return { ok: true };
 }

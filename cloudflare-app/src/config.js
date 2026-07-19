@@ -1,13 +1,16 @@
 import { FREE_TIER_BUDGET } from "./freeTierBudget.js";
+import {
+  DEFAULT_RACK_COLUMNS,
+  DEFAULT_RACK_SHELVES,
+  MAX_RACK_COLUMNS,
+  MAX_RACKS_PER_ZONE,
+  MAX_RACK_SHELVES,
+  RACK_ZONES
+} from "./domains/racks/domain/rackConfig.js";
 
-export const RACK_ZONES = Object.freeze([1, 2, 3]);
-export const MAX_RACKS_PER_ZONE = 15;
-export const MAX_RACK_COLUMNS = 20;
-export const MAX_RACK_SHELVES = 20;
 // 문서고 실물 규격: 랙 한 면은 좌우 7열 × 상하 6선반 = 42칸이다(단면·양면 공통).
 // 랙 구조는 이 값으로 고정 운영하며, UI에서 열/선반 수를 바꾸지 않는다 (migration 0017).
-export const DEFAULT_RACK_COLUMNS = 7;
-export const DEFAULT_RACK_SHELVES = 6;
+export { DEFAULT_RACK_COLUMNS, DEFAULT_RACK_SHELVES, MAX_RACK_COLUMNS, MAX_RACKS_PER_ZONE, MAX_RACK_SHELVES, RACK_ZONES };
 
 // maxRows는 한 요청 안에서 문서를 순차 등록할 때의 상한이다. 각 행이 D1 배치(subrequest)를
 // 소비하므로 Workers 무료티어의 요청당 subrequest 한도를 넘지 않게 보수적으로 잡는다.

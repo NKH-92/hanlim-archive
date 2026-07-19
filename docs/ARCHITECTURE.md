@@ -92,5 +92,9 @@ npm run dev       # http://localhost:8787 (.dev.vars 필요)
 `domains/identity`는 Actor, 비밀번호 정책, 사용자 상태 machine과 navigation capability의
 단일 출처다. session cookie와 password crypto 구현은 기존 `auth/*`에 두되 identity policy를
 사용하며, 공개 `/signup` route는 항상 404다.
+
+`domains/racks`는 물리 위치(A/B face, 7×6, mirror), 도면 geometry, slot presenter와 rack
+query/command 경계를 소유한다. `config.js`와 `data/racksData.js`는 이전 기간의 compatibility
+경계다.
 배포는 main 푸시 시 GitHub Actions가 자동 수행(migration → deploy)하며,
 D1 주간 백업도 Actions(`d1-backup.yml`)가 수행한다. 수동 배포는 CLOUDFLARE_DEPLOYMENT.md 참고.
