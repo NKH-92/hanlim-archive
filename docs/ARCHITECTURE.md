@@ -111,3 +111,9 @@ presenter를 소유한다. 저장 행의 snake_case는 infrastructure 경계의 
 대량 폐기·영구삭제의 감사/이력/변경 순서와 guard, statement budget은 ADR 0008의 계약이다.
 기존 `data/documentMutations.js`와 `data/movementData.js`는 SQL adapter이며 `db.js`는 도메인 공개
 command API에 위임한다.
+# Document Sets 도메인
+
+`domains/sets`는 세트 조회·CRUD·잠금 policy·항목 변경·이력과 presenter를 소유한다.
+mutation은 `sets.create/update/delete/add/remove/lock/unlock` BatchPlan으로 이력 선행 순서와
+`is_locked = 0` guard를 고정한다. HTTP 경계는 command에 Actor 객체를 전달하며
+`data/setsData.js`는 compatibility facade로만 남는다.
