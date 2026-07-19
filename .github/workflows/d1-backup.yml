@@ -3,7 +3,7 @@ name: D1 Backup
 # 위치 DB(hanlim-archive) 전체를 주 1회 SQL 덤프로 내보내 아티팩트로 보존한다.
 # Cloudflare Time Travel(30일)로는 막지 못하는 계정 삭제·DB 손상·30일 초과·외부 감사 보존을 대비한다.
 # 등록이 필요한 시크릿(리포지토리 Settings > Secrets and variables > Actions):
-#   - CLOUDFLARE_D1_BACKUP_API_TOKEN : 대상 계정의 Account > D1 > Read 전용 토큰(배포 토큰과 분리)
+#   - CLOUDFLARE_D1_BACKUP_API_TOKEN : 대상 계정의 Account > D1 > Edit(Write) 전용 토큰(원격 export 요구 권한, 배포 토큰과 분리)
 #   - D1_BACKUP_PASSPHRASE : 백업 전용 32자 이상 무작위 암호(배포 변수와 분리)
 # 계정 ID는 비밀정보가 아니므로 아래 env에 직접 적어 둔다.
 on:
