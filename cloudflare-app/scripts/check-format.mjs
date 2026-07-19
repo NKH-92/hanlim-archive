@@ -6,8 +6,6 @@ const ROOTS = ["src", "scripts", "tests"];
 const ROOT_FILES = ["eslint.config.js", "jsconfig.check.json", "package.json"];
 const EXTENSIONS = new Set([".js", ".mjs", ".json"]);
 const violations = [];
-// 기존 HTML byte contract를 바꾸지 않기 위한 Phase 0 예외다. 줄이 이동하면 예외가 자동 소멸한다.
-const BASELINE_EXCEPTIONS = new Set(["src/views/floorPlanViews.js:42: 줄 끝 공백"]);
 
 for (const file of [...await collectTargets(), ...ROOT_FILES]) {
   const source = await readFile(file, "utf8");
@@ -17,9 +15,8 @@ for (const file of [...await collectTargets(), ...ROOT_FILES]) {
   }
 }
 
-const newViolations = violations.filter((violation) => !BASELINE_EXCEPTIONS.has(violation));
-if (newViolations.length) {
-  console.error(newViolations.join("\n"));
+if (violations.length) {
+  console.error(violations.join("\n"));
   process.exit(1);
 }
 console.log("✓ 최소 형식 검사 통과");
