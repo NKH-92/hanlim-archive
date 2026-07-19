@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+
+import { generateReleaseEvidence } from "../scripts/generate-release-evidence.mjs";
+import { runReleaseSmoke } from "../scripts/smoke-release.mjs";
+
+test("release evidence는 migration checksum과 schema manifest를 보존한다", async (context) => {
+  const target = await mkdtemp(path.join(tmpdir(), "hanlim-release-"));
+  context.after(() => rm(target, { recursive: true, force: true }));
+  const evidence = await generateReleaseEvidence({ outDir: target, env: { SOURCE_REVISION: "abc123", SOURCE_REF: "test" } });
+  const manifest = JSON.parse(await readFile(path.join(target, "migration-manifest.json"), "utf8"));
+
+  assert.equal(evidence.sourceRevision, "abc123");
+  assert.equal(evidence.migrationCount, 27);
+  assert.equal(Object.keys(manifest.checksums).length, 27);
+  assert.ok(manifest.schema.tables.includes("documents"));
+  assert.match(evidence.migrationManifestSha256, /^[a-f0-9]{64}$/);
+});
+
+test("release smoke는 health, login, signup, 인증 검색 계약을 확인한다", async () => {
+  const calls = [];
+  const responses = [
+    new Response('{"ok":true}', { status: 200, headers: { "Content-Type": "application/json" } }),
+    new Response('<input name="username">', { status: 200 }),
+    new Response("not found", { status: 404 }),
+    new Response(null, { status: 302, headers: { Location: "/app?q=release-smoke", "Set-Cookie": "hanlim_session=token; Path=/" } }),
+    new Response('<main data-viewer-app></main>', { status: 200 })
+  ];
+  const result = await runReleaseSmoke({
+    baseUrl: "https://archive.example.com/",
+    username: "smoke@example.com",
+    password: "secret-value",
+    fetchImpl: async (url, options = {}) => { calls.push({ url, options }); return responses.shift(); }
+  });
+
+  assert.deepEqual(result, { health: 200, login: 200, signup: 404, search: 200 });
+  assert.equal(calls.at(-1).options.headers.Cookie, "hanlim_session=token");
+});

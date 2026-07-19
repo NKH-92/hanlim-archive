@@ -1,0 +1,8 @@
+* @NKH-92
+
+/.github/workflows/ @NKH-92
+/cloudflare-app/migrations/ @NKH-92
+/cloudflare-app/src/platform/security/ @NKH-92
+/cloudflare-app/src/platform/web/ @NKH-92
+/cloudflare-app/src/domains/audit/ @NKH-92
+/docs/operations/ @NKH-92

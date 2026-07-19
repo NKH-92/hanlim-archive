@@ -19,14 +19,18 @@
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
     "verify": "npm run check && npm run typecheck && npm run lint && npm run format:check && npm run check:migrations && npm run check:routes && npm run check:browser && npm test",
+    "audit:dependencies": "npm audit --audit-level=high",
+    "release:evidence": "node scripts/generate-release-evidence.mjs",
+    "smoke:release": "node scripts/smoke-release.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:dry": "wrangler deploy --dry-run",
     "db:migrate:local": "wrangler d1 migrations apply hanlim-archive --local",
     "db:migrate:remote": "wrangler d1 migrations apply hanlim-archive --remote"
   },
   "devDependencies": {
     "eslint": "10.7.0",
     "typescript": "7.0.2",
-    "wrangler": "^4.13.2"
+    "wrangler": "^4.112.0"
   }
 }
