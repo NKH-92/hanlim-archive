@@ -1,4 +1,4 @@
-import { validateDocumentRecordFields, validateDocumentTextFields } from "./documentRules.js";
+import { validateDocumentRecordFields, validateDocumentTextFields } from "./domains/documents/index.js";
 import { clean, csvEscape, locationLabel, normalizeRackFace, parseCsv } from "./utils.js";
 
 const DOCUMENT_CSV_HEADER = Object.freeze([

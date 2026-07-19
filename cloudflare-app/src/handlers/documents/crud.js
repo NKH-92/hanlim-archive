@@ -2,22 +2,24 @@ import {
   buildFloorPlanLayout,
   createDocument,
   disposeDocument,
+  getDocumentMovements,
+  getFloorPlanRegions,
+  getRackSummaries,
+  permanentlyDeleteDocument,
+  restoreDocument,
+  updateDocument
+} from "../../db.js";
+import {
   documentToFormValues,
   findDuplicateDocument,
   getDisposalLogs,
   getDocument,
   getDocumentAuditLogs,
-  getDocumentMovements,
   getDocumentTags,
-  getFloorPlanRegions,
-  getRackSummaries,
   loadDocumentFormOptions,
-  permanentlyDeleteDocument,
-  restoreDocument,
-  updateDocument,
   validateDocumentInputDetails,
   valuesFromDocumentForm
-} from "../../db.js";
+} from "../../domains/documents/index.js";
 import {
   accessDeniedPage,
   documentDetailsPage,
