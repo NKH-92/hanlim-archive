@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const SOURCE_ROOT = fileURLToPath(new URL("../src/", import.meta.url));
+const LEGACY_UTILS_IMPORTERS = new Set(JSON.parse(await readFile(new URL("./fixtures/legacy-utils-importers.json", import.meta.url), "utf8")));
 
 test("목표 modular-monolith 계층은 역방향·도메인 내부 결합을 만들지 않는다", async () => {
   const violations = [];
@@ -19,6 +20,18 @@ test("목표 modular-monolith 계층은 역방향·도메인 내부 결합을 �
     }
   }
   assert.deepEqual(violations, []);
+});
+
+test("호환 utils façade에 신규 의존성을 추가하지 않는다", async () => {
+  const newImporters = [];
+  for (const file of await javascriptFiles(SOURCE_ROOT)) {
+    const importer = slash(path.relative(SOURCE_ROOT, file));
+    if (importer === "utils.js") continue;
+    const source = await readFile(file, "utf8");
+    const importsUtils = moduleSpecifiers(source).some((specifier) => specifier.endsWith("/utils.js") || specifier === "./utils.js");
+    if (importsUtils && !LEGACY_UTILS_IMPORTERS.has(importer)) newImporters.push(importer);
+  }
+  assert.deepEqual(newImporters, []);
 });
 
 function targetArchitectureViolation(importer, target) {

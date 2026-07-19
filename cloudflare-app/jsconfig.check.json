@@ -13,6 +13,11 @@
   "include": [
     "src/freeTierBudget.js",
     "src/permissions.js",
-    "src/routes.js"
+    "src/routes.js",
+    "src/app/**/*.js",
+    "src/platform/**/*.js",
+    "src/shared/**/*.js",
+    "src/ui/html/**/*.js",
+    "src/domains/racks/domain/**/*.js"
   ]
 }
