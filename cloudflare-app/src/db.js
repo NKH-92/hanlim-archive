@@ -56,6 +56,7 @@ export {
 export {
   createDocument,
   updateDocument,
+  moveDocument,
   disposeDocument,
   disposeDocumentsBulk,
   restoreDocument,
@@ -146,7 +147,6 @@ export {
 } from "./data/importJobData.js";
 
 export {
-  moveDocument,
   getDocumentMovements,
   getDocumentMovementPage
 } from "./data/movementData.js";

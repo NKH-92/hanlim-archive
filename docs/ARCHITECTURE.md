@@ -104,3 +104,10 @@ D1 주간 백업도 Actions(`d1-backup.yml`)가 수행한다. 수동 배포는 C
 presenter를 소유한다. 저장 행의 snake_case는 infrastructure 경계의 표현이며 camelCase 변환은
 `web/presenters.js`에서 수행한다. `storage_code`는 공개 read model에 노출하지 않는다. 기존
 `db.js`, `documentRules.js`, `data/documentsData.js` export는 단계적 이전을 위한 compatibility facade다.
+# 문서 명령과 원자 batch
+
+문서 쓰기는 `domains/documents/application/commandService.js`의 command 포트와
+`infrastructure/mutationPlans.js`의 이름 있는 `BatchPlan`을 거친다. 생성·수정·이동·상태 전이·
+대량 폐기·영구삭제의 감사/이력/변경 순서와 guard, statement budget은 ADR 0008의 계약이다.
+기존 `data/documentMutations.js`와 `data/movementData.js`는 SQL adapter이며 `db.js`는 도메인 공개
+command API에 위임한다.
