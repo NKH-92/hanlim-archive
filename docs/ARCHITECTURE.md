@@ -117,3 +117,9 @@ command API에 위임한다.
 mutation은 `sets.create/update/delete/add/remove/lock/unlock` BatchPlan으로 이력 선행 순서와
 `is_locked = 0` guard를 고정한다. HTTP 경계는 command에 Actor 객체를 전달하며
 `data/setsData.js`는 compatibility facade로만 남는다.
+# 재개 가능한 장기 작업 도메인
+
+`domains/disposal`과 `domains/imports`는 각각 독립된 상태 machine, D1 repository, BatchPlan,
+aggregate/export query를 소유한다. 두 도메인은 claim token과 statement budget 계약 외에 범용 job
+framework를 공유하지 않는다. 브라우저 요청이 끊겨도 DB의 pending/processing 상태에서 재개하며
+terminal 상태 재호출은 mutation을 만들지 않는다.
