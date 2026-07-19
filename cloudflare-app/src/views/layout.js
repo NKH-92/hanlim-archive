@@ -1,6 +1,6 @@
 // 페이지 골격(page)과 여러 화면이 공유하는 범용 프래그먼트.
 
-import { escapeHtml } from "../utils.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { capabilitiesFromSession } from "../domains/identity/index.js";
 import { secureHtmlDocument } from "../platform/web/htmlSecurity.js";
 import { createRenderContext } from "../platform/web/renderContext.js";

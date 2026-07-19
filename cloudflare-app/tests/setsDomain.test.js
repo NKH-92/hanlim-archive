@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import * as dbFacade from "../src/db.js";
 import * as legacyFacade from "../src/data/setsData.js";
 import * as sets from "../src/domains/sets/index.js";
 import { createSetMutationPlan } from "../src/domains/sets/infrastructure/mutationPlans.js";
@@ -46,13 +45,12 @@ test("세트 presenter는 저장 행과 화면 모델 변환을 한 경계에 �
   });
 });
 
-test("세트 공개 API와 compatibility facade는 같은 구현을 위임한다", () => {
+test("세트 공개 API와 기존 data adapter는 같은 구현을 위임한다", () => {
   for (const name of [
     "getDocumentSets", "getDocumentSet", "getDocumentSetDocuments", "upsertDocumentSet",
     "deleteDocumentSet", "addDocumentsToSet", "removeDocumentFromSet", "getDocumentSetLogs",
     "setDocumentSetLock"
   ]) {
-    assert.equal(dbFacade[name], sets[name], name);
     assert.equal(legacyFacade[name], sets[name], name);
   }
 });

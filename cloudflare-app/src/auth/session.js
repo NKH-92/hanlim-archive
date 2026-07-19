@@ -1,9 +1,9 @@
 import {
   base64UrlToBytes,
   bytesToBase64Url,
-  constantTimeEqual,
-  parseCookies
-} from "../utils.js";
+  constantTimeEqual
+} from "../platform/crypto/encoding.js";
+import { parseCookies } from "../platform/http/cookies.js";
 import { permissionFlags } from "../permissions.js";
 import { normalizeRole } from "./shared.js";
 

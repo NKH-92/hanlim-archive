@@ -2,18 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import {
-  adminDashboardPage,
-  dashboardPage,
-  disposalWorkspacePage,
-  documentDetailsPage,
-  documentFormPage,
-  documentsPage,
-  floorPlanPage,
-  page,
-  qaPage,
-  setDetailsPage
-} from "../src/html.js";
+import { adminDashboardPage } from "../src/views/adminViews.js";
+import { disposalWorkspacePage, documentDetailsPage, documentFormPage, documentsPage } from "../src/views/documentViews.js";
+import { floorPlanPage } from "../src/views/floorPlanViews.js";
+import { page } from "../src/views/layout.js";
+import { dashboardPage, qaPage } from "../src/views/searchViews.js";
+import { setDetailsPage } from "../src/views/setViews.js";
 
 const APP_SCRIPT = await readFile(new URL("../public/assets/app.js", import.meta.url), "utf8");
 const APP_STYLES = await readFile(new URL("../public/assets/app.css", import.meta.url), "utf8");

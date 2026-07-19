@@ -2,11 +2,8 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import {
-  DATA_QUALITY_ISSUES,
-  getDataQualityPage,
-  getDocumentQualitySummary
-} from "../src/db.js";
+import { DATA_QUALITY_ISSUES, getDataQualityPage } from "../src/domains/dataQuality/index.js";
+import { getDocumentQualitySummary } from "../src/domains/documents/index.js";
 
 const SUMMARY_FIELDS = Object.freeze({
   "duplicate-number": "duplicateDocumentNumbers",

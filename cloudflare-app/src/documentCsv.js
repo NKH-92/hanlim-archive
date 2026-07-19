@@ -1,5 +1,8 @@
 import { validateDocumentRecordFields, validateDocumentTextFields } from "./domains/documents/index.js";
-import { clean, csvEscape, locationLabel, normalizeRackFace, parseCsv } from "./utils.js";
+import { locationLabel, normalizeRackFace } from "./domains/racks/index.js";
+import { parseCsv } from "./shared/csv/parser.js";
+import { csvEscape } from "./shared/csv/writer.js";
+import { clean } from "./shared/text/normalize.js";
 
 const DOCUMENT_CSV_HEADER = Object.freeze([
   "문서명",

@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { htmlContentSecurityPolicy, withSecurityHeaders } from "../src/security.js";
-import { page } from "../src/html.js";
-import { sanitizeReturnUrl } from "../src/utils.js";
+import { page } from "../src/views/layout.js";
+import { sanitizeReturnUrl } from "../src/platform/security/returnUrl.js";
 
 test("withSecurityHeaders injects base headers and a restrictive fallback CSP", () => {
   const original = new Response("{}", { headers: { "Content-Type": "application/json" } });

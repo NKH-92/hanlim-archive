@@ -2,13 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  addDocumentsToSet,
-  buildFloorPlanLayout,
-  buildSearchSuggestions,
-  buildViewerFacets,
-  compactSearchText,
-  deleteDocumentSet,
-  documentToViewerItem,
   disposeDocument,
   disposeDocumentsBulk,
   findDuplicateDocument,
@@ -17,25 +10,36 @@ import {
   getDocumentCount,
   getDocumentPage,
   getDisposalCandidates,
+  parseDisposalFilters,
+  parseDocumentNumberList,
+  permanentlyDeleteDocument,
+  restoreDocument,
+  updateDocument,
+  validateDocumentInput,
+  valuesFromDocumentForm
+} from "../src/domains/documents/index.js";
+import { buildFloorPlanLayout } from "../src/domains/racks/index.js";
+import {
+  buildSearchSuggestions,
+  buildViewerFacets,
+  compactSearchText,
+  documentToViewerItem,
   getSearchIndexDocuments,
   getSearchIndexMeta,
   levenshteinDistance,
   MAX_SEARCH_RESULTS,
   parseDocumentFilters,
-  parseDisposalFilters,
-  parseDocumentNumberList,
   parseSearchQuery,
-  permanentlyDeleteDocument,
-  removeDocumentFromSet,
-  restoreDocument,
   scoreDocumentMatch,
   searchDocuments,
-  searchTokens,
-  updateDocument,
-  upsertDocumentSet,
-  validateDocumentInput,
-  valuesFromDocumentForm
-} from "../src/db.js";
+  searchTokens
+} from "../src/domains/search/index.js";
+import {
+  addDocumentsToSet,
+  deleteDocumentSet,
+  removeDocumentFromSet,
+  upsertDocumentSet
+} from "../src/domains/sets/index.js";
 import { FREE_TIER_BUDGET } from "../src/freeTierBudget.js";
 
 test("parseDocumentNumberList splits, trims, and dedupes pasted numbers", () => {

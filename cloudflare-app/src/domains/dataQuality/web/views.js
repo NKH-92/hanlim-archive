@@ -1,7 +1,8 @@
 // 데이터 품질 숫자를 실제 문서 수정 작업으로 연결하는 관리자 화면.
 
-import { escapeHtml, locationLabel } from "../utils.js";
-import { emptyState, page, paginationNav, sectionHeader, statusBadge } from "./layout.js";
+import { locationLabel } from "../../racks/index.js";
+import { escapeHtml } from "../../../ui/html/escape.js";
+import { emptyState, page, paginationNav, sectionHeader, statusBadge } from "../../../views/layout.js";
 
 export function dataQualityPage({ session, result }) {
   const issueLinks = result.issues.map(({ key, label }) =>

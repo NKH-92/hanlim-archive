@@ -1,6 +1,6 @@
 // 문서 목록과 소량 폐기 작업공간 화면.
 
-import { escapeHtml } from "../../utils.js";
+import { escapeHtml } from "../../ui/html/escape.js";
 import { documentResults } from "../documentTableViews.js";
 import { filterSelectRow, option, page } from "../layout.js";
 import { didYouMeanView, parsedChipRow, searchInputBlock } from "../searchFragments.js";

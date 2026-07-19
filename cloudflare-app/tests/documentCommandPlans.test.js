@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import * as dbFacade from "../src/db.js";
 import * as legacyMutations from "../src/data/documentMutations.js";
 import { moveDocument as legacyMoveDocument } from "../src/data/movementData.js";
 import * as documents from "../src/domains/documents/index.js";
@@ -74,16 +73,14 @@ test("대량 폐기 plan은 조회 2문장을 제외한 38문장 예산을 강�
   assert.doesNotThrow(() => plan.execution());
 });
 
-test("도메인 command service와 db compatibility facade는 기존 구현에 동일하게 위임한다", () => {
+test("도메인 command service와 infrastructure adapter는 동일 구현에 위임한다", () => {
   for (const name of [
     "createDocument", "updateDocument", "disposeDocument", "disposeDocumentsBulk",
     "restoreDocument", "permanentlyDeleteDocument"
   ]) {
     assert.equal(documents[name], legacyMutations[name], name);
-    assert.equal(dbFacade[name], documents[name], name);
   }
   assert.equal(documents.moveDocument, legacyMoveDocument);
-  assert.equal(dbFacade.moveDocument, documents.moveDocument);
 });
 
 function step(name, guard, auditEventId = null, expectChanged = false) {

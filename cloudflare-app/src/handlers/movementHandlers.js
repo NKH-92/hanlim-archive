@@ -4,11 +4,13 @@ import {
   getDocument,
   getDocumentMovementPage,
   getDocumentMovements,
-  getSlotOptions,
   moveDocument
-} from "../db.js";
-import { movementFormPage, movementsPage, notFoundPage } from "../html.js";
-import { clean, redirect } from "../utils.js";
+} from "../domains/documents/index.js";
+import { getSlotOptions } from "../domains/racks/index.js";
+import { movementFormPage, movementsPage } from "../views/movementViews.js";
+import { notFoundPage } from "../views/authViews.js";
+import { redirect } from "../platform/http/responses.js";
+import { clean } from "../shared/text/normalize.js";
 import { requireAnyPermission, requireMoveDocuments } from "./permissionGuards.js";
 import { PERMISSIONS } from "../permissions.js";
 

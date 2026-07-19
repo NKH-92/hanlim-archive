@@ -1,6 +1,8 @@
 // 문서 상세: 검색·등록·폐기를 잇는 텍스트 중심 연결 화면.
 
-import { escapeHtml, locationLabel, rackFaceLabel, readBoolean } from "../../utils.js";
+import { locationLabel, rackFaceLabel } from "../../domains/racks/index.js";
+import { readBoolean } from "../../shared/coercion.js";
+import { escapeHtml } from "../../ui/html/escape.js";
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
 import { zoneFloorPlanView } from "../floorPlanViews.js";
 import { page, statusBadge, timeline, timelineItem } from "../layout.js";

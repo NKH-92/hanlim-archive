@@ -1,6 +1,6 @@
 import { FREE_TIER_BUDGET } from "../../../config.js";
 import { clean } from "../../../shared/text/normalize.js";
-import { createSystemAuditStatement } from "../../../data/systemAuditData.js";
+import { createSystemAuditStatement } from "../../audit/index.js";
 import { hasChanged } from "../../../data/sqlShared.js";
 import { disposalStatements } from "./plans.js";
 

@@ -1,6 +1,7 @@
 // 문서 결과 테이블: /documents 목록과 /racks/:id 상세가 같은 표 마크업을 쓴다.
 
-import { escapeHtml, locationLabel, rackFaceLabel } from "../utils.js";
+import { locationLabel, rackFaceLabel } from "../domains/racks/index.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { emptyResult, statusBadge } from "./layout.js";
 import { highlight } from "./searchFragments.js";
 

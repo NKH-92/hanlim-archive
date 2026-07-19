@@ -2,21 +2,21 @@
 
 ## 기준 상태
 
-- 확인일: 2026-07-17
+- 확인일: 2026-07-19
 - 배포 대상: `cloudflare-app/`
 - `npm run check`: 전체 소스·스크립트 문법 검사
 - `npm test`: node:test 전체 통과
-- 기준 브랜치: `codex/audit-trail-detail-cleanup`
+- 기준 브랜치: `codex/refactor-phase-13-admin-read-models`
 
 ## 유지할 구조
 
-요청은 `src/index.js → handlers → html.js/db.js 배럴 → views/data` 순서로만 흐른다.
-핸들러 밖에서는 뷰와 데이터 내부 모듈을 직접 가져오지 않는다. Workers 소스에서는 Node API를
-사용하지 않으며, SQL은 데이터 계층에만 둔다.
+요청은 `src/index.js → handlers → domain public API/readModels/views → platform/shared` 순서로 흐른다.
+cross-domain 조회는 `readModels/`에서만 조합하며 삭제된 `db.js`/`html.js`/`utils.js` 전역 façade는
+사용하지 않는다. Workers 소스에서는 Node API를 사용하지 않고 SQL은 infrastructure에 둔다.
 
 ## 변경 시 불변식
 
-1. `createSearchCore()`와 `escapeHtml()`은 브라우저에 `toString()`으로 직렬화되므로 외부 스코프에 의존하지 않는다.
+1. `searchCore.js`는 server/browser 공통 ESM이며, `escapeHtml()`만 bootstrap 계약상 자기완결적이어야 한다.
 2. HTML은 반드시 `page()`를 거쳐 CSP nonce를 주입한다.
 3. 다중 상태 변경은 `env.DB.batch()`에 넣고 감사 INSERT를 UPDATE/DELETE보다 먼저 실행한다.
 4. 문서 수정과 위치 이동은 `updated_at`과 단조 증가 `row_version` 낙관적 잠금을 함께 사용한다.

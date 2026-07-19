@@ -1,6 +1,7 @@
 // 보관 랙 화면.
 
-import { escapeHtml, readBoolean } from "../utils.js";
+import { readBoolean } from "../shared/coercion.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { documentResults } from "./documentTableViews.js";
 import { displayedColumns, rackColumnOrigin } from "../domains/racks/domain/orientation.js";
 import { alertDanger, page } from "./layout.js";

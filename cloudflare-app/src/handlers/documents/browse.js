@@ -3,15 +3,15 @@ import {
   buildSearchSuggestions,
   MAX_SEARCH_RESULTS,
   searchDocumentsWithSuggestions
-} from "../../db.js";
+} from "../../domains/search/index.js";
 import {
   getDocumentCount,
   getDocumentPage,
   getDocumentsForExport
 } from "../../domains/documents/index.js";
 import { buildDocumentCsv } from "../../documentCsv.js";
-import { documentsPage } from "../../html.js";
-import { paginateSlice } from "../../utils.js";
+import { documentsPage } from "../../views/documentViews.js";
+import { paginateSlice } from "../../shared/pagination.js";
 import { csvDownloadResponse } from "../responseHelpers.js";
 import { resolveSearchOutcome, resolveSearchRequest } from "../searchRequest.js";
 

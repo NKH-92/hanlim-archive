@@ -4,7 +4,7 @@ import { locationLabel } from "../../racks/index.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { getDocument } from "../../../data/documentsData.js";
 import { AUDIT_LOG_INSERT_WITH_ACTOR, hasChanged } from "../../../data/sqlShared.js";
-import { createSystemAuditStatement } from "../../../data/systemAuditData.js";
+import { createSystemAuditStatement } from "../../audit/index.js";
 import { createDocumentMovePlan, executableStatements } from "./mutationPlans.js";
 
 function actorSnapshot(session = {}) {

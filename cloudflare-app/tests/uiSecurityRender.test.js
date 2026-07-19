@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { secureHtmlDocument, scanHtmlOpeningTags } from "../src/platform/web/htmlSecurity.js";
 import { safeEmbeddedJson } from "../src/platform/web/renderContext.js";
-import { documentFormPage } from "../src/html.js";
+import { documentFormPage } from "../src/views/documentViews.js";
 
 test("HTML tokenizer는 모든 POST form에 정확히 한 CSRF token을 넣는다", async () => {
   const response = documentFormPage({

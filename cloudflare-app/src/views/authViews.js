@@ -1,6 +1,6 @@
 // 로그인·가입 요청·오류 페이지.
 
-import { escapeHtml } from "../utils.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { alertDanger, alertWarning, page } from "./layout.js";
 
 export function loginPage({ returnUrl, error, setupWarning, signupSubmitted }) {

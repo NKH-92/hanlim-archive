@@ -1,4 +1,4 @@
-import { clean } from "../utils.js";
+import { clean } from "../shared/text/normalize.js";
 
 // 데이터 모듈들이 반복하던 공용 SQL 조각과 소형 헬퍼.
 // D1로 보내는 SQL 텍스트가 기존과 바이트 단위로 동일해야 하므로

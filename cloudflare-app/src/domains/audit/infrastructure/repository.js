@@ -1,5 +1,5 @@
-import { clean } from "../utils.js";
-import { auditActorSnapshot } from "../domains/identity/index.js";
+import { auditActorSnapshot } from "../../identity/index.js";
+import { clean } from "../../../shared/text/normalize.js";
 
 const DEFAULT_PAGE_SIZE = 30;
 const MAX_PAGE_SIZE = 100;

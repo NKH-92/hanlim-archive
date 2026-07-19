@@ -8,7 +8,7 @@ import {
 import { FREE_TIER_BUDGET } from "../../../config.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { getDocument, getDocumentTags, getDisposalLogs } from "../../../data/documentsData.js";
-import { createSystemAuditStatement } from "../../../data/systemAuditData.js";
+import { createSystemAuditStatement } from "../../audit/index.js";
 import {
   createDocumentBulkDisposePlan,
   createDocumentCreatePlan,

@@ -4,14 +4,12 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import {
-  DATA_QUALITY_ISSUES,
   addDocumentsToSet,
-  getDataQualityPage,
-  normalizeDataQualityIssue,
   removeDocumentFromSet,
-  upsertDocumentSet,
-  upsertRack
-} from "../src/db.js";
+  upsertDocumentSet
+} from "../src/domains/sets/index.js";
+import { upsertRack } from "../src/domains/racks/index.js";
+import { DATA_QUALITY_ISSUES, getDataQualityPage, normalizeDataQualityIssue } from "../src/domains/dataQuality/index.js";
 import { FREE_TIER_BUDGET } from "../src/freeTierBudget.js";
 
 const actor = {

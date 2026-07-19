@@ -1,8 +1,5 @@
 import { getAppConfig } from "../config.js";
 import {
-  buildFloorPlanLayout,
-  getFloorPlanRegions,
-  getRackSummaries,
   parseDocumentFilters,
   getSearchIndexDocuments,
   getSearchIndexMeta,
@@ -10,9 +7,12 @@ import {
   getSearchSuggestions,
   getViewerSearchPayload,
   recordSearchClick
-} from "../db.js";
-import { dashboardPage, floorPlanPage, qaPage, searchReportPage } from "../html.js";
-import { clean, jsonResponse } from "../utils.js";
+} from "../domains/search/index.js";
+import { buildFloorPlanLayout, getFloorPlanRegions, getRackSummaries } from "../domains/racks/index.js";
+import { dashboardPage, qaPage, searchReportPage } from "../views/searchViews.js";
+import { floorPlanPage } from "../views/floorPlanViews.js";
+import { jsonResponse } from "../platform/http/responses.js";
+import { clean } from "../shared/text/normalize.js";
 import { resolveSearchOutcome, resolveSearchRequest } from "./searchRequest.js";
 
 export async function handleDashboard(request, env, session) {

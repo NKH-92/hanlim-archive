@@ -1,7 +1,7 @@
 // 문서 검색 필터: URL/API 파라미터 파싱과 SQL WHERE 절 생성을 한곳에 둔다.
 // /app·/documents·/api/viewer/search가 같은 의미의 category/zone/tag/status를 쓰게 한다.
 
-import { clean } from "../utils.js";
+import { clean } from "../shared/text/normalize.js";
 
 const VALID_SORTS = new Set(["relevance", "updated", "docnum", "category", "location"]);
 const VALID_STATUSES = new Set(["active", "all", "disposed"]);

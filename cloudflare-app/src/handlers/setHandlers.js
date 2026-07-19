@@ -1,22 +1,23 @@
 import {
   addDocumentsToSet,
   deleteDocumentSet,
-  findDocumentsByNumbers,
   getDocumentSet,
   getDocumentSetDocuments,
   getDocumentSetLogs,
   getDocumentSets,
-  getRackSummaries,
-  parseDocumentNumberList,
   removeDocumentFromSet,
-  searchDocuments,
   setDocumentSetLock,
   upsertDocumentSet
-} from "../db.js";
+} from "../domains/sets/index.js";
+import { findDocumentsByNumbers, parseDocumentNumberList } from "../domains/documents/index.js";
+import { getRackSummaries } from "../domains/racks/index.js";
+import { searchDocuments } from "../domains/search/index.js";
 import { buildDocumentSetCsv } from "../documentCsv.js";
-import { errorPage, notFoundPage, setDetailsPage, setFormPage, setsPage } from "../html.js";
+import { errorPage, notFoundPage } from "../views/authViews.js";
+import { setDetailsPage, setFormPage, setsPage } from "../views/setViews.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
-import { clean, redirect } from "../utils.js";
+import { redirect } from "../platform/http/responses.js";
+import { clean } from "../shared/text/normalize.js";
 import { requireManageSets } from "./permissionGuards.js";
 import { csvDownloadResponse } from "./responseHelpers.js";
 

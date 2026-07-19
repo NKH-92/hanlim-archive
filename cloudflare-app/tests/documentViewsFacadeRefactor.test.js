@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
-import * as html from "../src/html.js";
 import * as documentViews from "../src/views/documentViews.js";
 
 const session = Object.freeze({
@@ -32,7 +31,7 @@ const document = Object.freeze({
   shelf_count: 2
 });
 
-test("documentViews 호환 façade와 html 배럴의 공개 export 표면은 그대로다", () => {
+test("documentViews는 문서 화면의 명시적 공개 표면을 제공한다", () => {
   assert.deepEqual(Object.keys(documentViews).sort(), [
     "disposalWorkspacePage",
     "documentDetailsPage",
@@ -40,9 +39,6 @@ test("documentViews 호환 façade와 html 배럴의 공개 export 표면은 그
     "documentResults",
     "documentsPage"
   ]);
-  for (const name of ["disposalWorkspacePage", "documentDetailsPage", "documentFormPage", "documentsPage"]) {
-    assert.equal(html[name], documentViews[name]);
-  }
 });
 
 test("대표 문서 목록·폐기·폼·상세 출력은 nonce 정규화 후 현재 golden과 같다", async () => {

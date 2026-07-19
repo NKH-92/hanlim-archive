@@ -4,7 +4,7 @@ import {
   PERMISSION_PRESETS,
   permissionFlags
 } from "../permissions.js";
-import { escapeHtml } from "../utils.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { alertDanger, page } from "./layout.js";
 
 export function userPermissionsPage({ session, user, error = "" }) {

@@ -1,5 +1,5 @@
 import { clean } from "../../../shared/text/normalize.js";
-import { createSystemAuditStatement } from "../../../data/systemAuditData.js";
+import { createSystemAuditStatement } from "../../audit/index.js";
 import {
   DOCUMENT_CORE_COLUMNS,
   DOCUMENT_JOIN_TABLES,

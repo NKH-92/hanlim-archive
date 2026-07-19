@@ -1,4 +1,4 @@
-import { base64UrlToBytes, bytesToBase64Url, constantTimeEqual } from "../utils.js";
+import { base64UrlToBytes, bytesToBase64Url, constantTimeEqual } from "../platform/crypto/encoding.js";
 import { validateNewPassword } from "../domains/identity/index.js";
 
 const PASSWORD_ITERATIONS = 100000;

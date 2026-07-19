@@ -1,4 +1,4 @@
-import { accessDeniedPage } from "../html.js";
+import { accessDeniedPage } from "../views/authViews.js";
 import { hasAnyPermission, hasPermission, PERMISSIONS, sessionHasManagementAccess } from "../permissions.js";
 
 export function requirePermission(session, permission) {

@@ -1,5 +1,5 @@
 import { collectDocumentFieldErrors, validateDocumentRecordFields, validateDocumentTextFields } from "../domains/documents/domain/validation.js";
-import { clean } from "../utils.js";
+import { clean } from "../shared/text/normalize.js";
 import {
   DOCUMENT_BASE_JOINS,
   DOCUMENT_CORE_COLUMNS,
@@ -7,7 +7,7 @@ import {
   DOCUMENT_TAG_CONCAT,
   DOCUMENT_TAG_JOINS
 } from "./sqlShared.js";
-import { DATA_QUALITY_ISSUES } from "./dataQualityData.js";
+import { DATA_QUALITY_ISSUES } from "../domains/dataQuality/index.js";
 import { getActiveCategories, getActiveTags, getCategories, getTags } from "./mastersData.js";
 import { getSlotOptions } from "./racksData.js";
 import { buildDocumentFilterWhere } from "./searchFilters.js";

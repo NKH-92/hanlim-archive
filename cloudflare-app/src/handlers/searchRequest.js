@@ -1,14 +1,13 @@
 // 검색 요청 공통 파이프라인: /app 대시보드와 /documents 목록이 같은
 // 파라미터 해석·필터 병합 규칙(명시 파라미터 > 검색어 추출 필터)을 쓰도록 한 곳에 모은다.
 import {
-  getActiveCategories,
-  getActiveTags,
   getDidYouMeanSuggestions,
   parseDocumentFilters,
   parseSearchQuery,
   recordSearchLog
-} from "../db.js";
-import { clean } from "../utils.js";
+} from "../domains/search/index.js";
+import { getActiveCategories, getActiveTags } from "../domains/masters/index.js";
+import { clean } from "../shared/text/normalize.js";
 
 export async function resolveSearchRequest(env, url) {
   const query = clean(url.searchParams.get("q"));

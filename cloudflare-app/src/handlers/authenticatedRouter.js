@@ -1,8 +1,8 @@
 // 인증 이후의 애플리케이션 라우트. dispatcher 호출 순서가 응답 우선순위다.
-import { accessDeniedPage, notFoundPage } from "../html.js";
+import { accessDeniedPage, notFoundPage } from "../views/authViews.js";
 import { sessionHasManagementAccess } from "../permissions.js";
 import { matchAdminUserRoute } from "../routes.js";
-import { redirect } from "../utils.js";
+import { redirect } from "../platform/http/responses.js";
 import { resolveAuthenticatedRoute } from "../app/routeRegistry.js";
 import {
   handleAdminDashboard,

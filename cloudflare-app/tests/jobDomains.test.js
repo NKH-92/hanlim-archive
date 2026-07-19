@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import * as dbFacade from "../src/db.js";
 import * as disposal from "../src/domains/disposal/index.js";
 import { createDisposalPlan } from "../src/domains/disposal/infrastructure/plans.js";
 import * as imports from "../src/domains/imports/index.js";
@@ -45,15 +44,15 @@ test("disposal과 import는 서로 독립된 plan id와 statement budget을 갖�
   assert.ok(disposalPlan.steps.every((step) => step.guard === "processing+claim-token"));
 });
 
-test("장기 작업 공개 API는 기존 db facade surface를 유지한다", () => {
+test("장기 작업 공개 API는 각 도메인의 명시적 surface를 제공한다", () => {
   for (const name of [
     "normalizeDisposalCriteria", "createDisposalBatch", "freezeDisposalBatch", "startDisposalBatch",
     "processDisposalBatch", "cancelDisposalBatch", "getDisposalBatchExportRows"
-  ]) assert.equal(dbFacade[name], disposal[name], name);
+  ]) assert.equal(typeof disposal[name], "function", name);
   for (const name of [
     "createDocumentImportJob", "processDocumentImportJob", "failDocumentImportItem",
     "cancelDocumentImportJob", "getDocumentImportFailureRows"
-  ]) assert.equal(dbFacade[name], imports[name], name);
+  ]) assert.equal(typeof imports[name], "function", name);
 });
 
 test("두 장기 작업 도메인은 범용 job framework나 상호 의존을 만들지 않는다", async () => {

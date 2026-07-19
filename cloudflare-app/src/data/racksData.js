@@ -6,9 +6,10 @@ import {
   MAX_RACK_SHELVES,
   RACK_ZONES
 } from "../config.js";
-import { clean, logError } from "../utils.js";
+import { logError } from "../platform/observability/logger.js";
+import { clean } from "../shared/text/normalize.js";
 import { DOCUMENT_BASE_JOINS, DOCUMENT_LOCATION_COLUMNS } from "./sqlShared.js";
-import { createSystemAuditStatement } from "./systemAuditData.js";
+import { createSystemAuditStatement } from "../domains/audit/index.js";
 import { DEFAULT_FLOOR_PLAN_REGIONS, buildFloorPlanLayout } from "../domains/racks/domain/floorPlan.js";
 import { presentSlotOption } from "../domains/racks/web/presenters.js";
 import { createRackConfigurationPlan, createRackCreatePlan, createRackResizePlan } from "../domains/racks/infrastructure/rackMutationPlans.js";
@@ -16,7 +17,7 @@ import { createRackConfigurationPlan, createRackCreatePlan, createRackResizePlan
 export { DEFAULT_FLOOR_PLAN_REGIONS, buildFloorPlanLayout };
 
 // 좌표는 Archive.png(1024x797) 회색 구역 실측 비율. 컨테이너 aspect-ratio가
-// 이미지 비율과 일치해야 오버레이가 어긋나지 않는다 (html.js .floor-plan-media 참조).
+// 이미지 비율과 일치해야 오버레이가 어긋나지 않는다 (views/floorPlanViews.js 참조).
 export async function getFloorPlanRegions(env) {
   try {
     const result = await env.DB.prepare(`

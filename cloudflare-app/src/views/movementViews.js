@@ -1,7 +1,8 @@
 // 문서 위치 이동 전용 화면과 전역 이동 이력.
 
 import { hasPermission, PERMISSIONS } from "../permissions.js";
-import { escapeHtml, locationLabel } from "../utils.js";
+import { locationLabel } from "../domains/racks/index.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { locationPicker, locationPickerScript } from "./documentLocationPicker.js";
 import { alertDanger, emptyState, option, page, paginationNav, sectionHeader } from "./layout.js";
 

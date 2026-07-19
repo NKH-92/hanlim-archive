@@ -1,6 +1,6 @@
 // 관리자 화면: 관리 설정·사용자 승인·분류/태그·비밀번호.
 
-import { escapeHtml } from "../utils.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { alertDanger, alertWarning, emptyState, page, sectionHeader } from "./layout.js";
 

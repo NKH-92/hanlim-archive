@@ -1,5 +1,5 @@
-import { escapeHtml } from "../utils.js";
-import { page, paginationNav } from "./layout.js";
+import { escapeHtml } from "../../../ui/html/escape.js";
+import { page, paginationNav } from "../../../views/layout.js";
 
 const ENTITY_LABELS = Object.freeze({
   user: "사용자",

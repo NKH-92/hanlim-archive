@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
 
-import { documentFormPage } from "../src/html.js";
+import { documentFormPage } from "../src/views/documentViews.js";
 import worker from "../src/index.js";
 import { sharedSearchCore } from "../src/searchCore.js";
 import { sharedSearchCore as browserSearchCore } from "../public/assets/search-core.js";
-import { escapeHtml } from "../src/utils.js";
+import { escapeHtml } from "../src/ui/html/escape.js";
 
 test("browser ESM 검색 코어는 서버 모듈과 같은 결과를 낸다", () => {
   const document = {

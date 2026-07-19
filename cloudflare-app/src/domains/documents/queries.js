@@ -4,5 +4,7 @@ import * as repository from "./infrastructure/queries.js";
 const queries = createDocumentQueries(repository);
 export const {
   getDocumentPage, getDocumentCount, getDocumentsForExport, getDocument, findDuplicateDocument,
-  getDocumentTags, getDisposalLogs, getDocumentAuditLogs, findDocumentsByNumbers, loadDocumentFormOptions
+  getDocumentTags, getDisposalLogs, getDocumentAuditLogs, getDocumentQualitySummary,
+  getDisposalCandidates, getDisposalDueYears, parseDisposalFilters, parseDocumentNumberList,
+  findDocumentsByNumbers, loadDocumentFormOptions
 } = queries;

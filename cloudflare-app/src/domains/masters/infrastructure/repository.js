@@ -1,5 +1,5 @@
 import { createBatchPlan } from "../../../platform/d1/batchPlan.js";
-import { createSystemAuditStatement } from "../../../data/systemAuditData.js";
+import { createSystemAuditStatement } from "../../audit/index.js";
 import { MASTER_TYPES, masterSnapshot } from "../domain/policy.js";
 
 export async function listMasters(env, type, { activeOnly = false } = {}) {

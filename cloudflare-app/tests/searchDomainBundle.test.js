@@ -2,16 +2,15 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import * as dbFacade from "../src/db.js";
 import * as search from "../src/domains/search/index.js";
 import { searchCoreScript } from "../src/views/clientScript.js";
 
-test("검색 repository/service/presenter 공개 API는 기존 facade와 동일 구현을 사용한다", () => {
+test("검색 repository/service/presenter 공개 API는 도메인에서 제공된다", () => {
   for (const name of [
     "searchDocuments", "searchDocumentsWithSuggestions", "getSearchIndexMeta",
     "getSearchIndexDocuments", "getSearchSuggestions", "recordSearchClick",
     "recordSearchLog", "getSearchReport", "documentToViewerItem", "buildViewerFacets"
-  ]) assert.equal(search[name], dbFacade[name], name);
+  ]) assert.equal(typeof search[name], "function", name);
 });
 
 test("검색 browser bootstrap에는 source serialization과 __name shim이 없다", async () => {

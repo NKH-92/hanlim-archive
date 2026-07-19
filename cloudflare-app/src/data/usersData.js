@@ -1,8 +1,10 @@
-import { createPasswordRecord } from "../auth.js";
+import { createPasswordRecord } from "../auth/passwords.js";
 import { permissionFlags, PERMISSION_KEYS } from "../permissions.js";
-import { clean } from "../utils.js";
-import { createSystemAuditStatement } from "./systemAuditData.js";
-import { actorUsername, canTransitionUser, transitionFor, validateNewPassword } from "../domains/identity/index.js";
+import { clean } from "../shared/text/normalize.js";
+import { createSystemAuditStatement } from "../domains/audit/index.js";
+import { actorUsername } from "../domains/identity/domain/actor.js";
+import { validateNewPassword } from "../domains/identity/domain/passwordPolicy.js";
+import { canTransitionUser, transitionFor } from "../domains/identity/domain/userState.js";
 import { createUserPermissionMutationPlan, createUserStatusMutationPlan } from "../domains/identity/infrastructure/userMutationPlans.js";
 
 const USER_PERMISSION_COLUMNS = PERMISSION_KEYS.join(", ");

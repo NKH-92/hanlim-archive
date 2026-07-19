@@ -2,18 +2,22 @@ import { FREE_TIER_BUDGET } from "../../config.js";
 import {
   createSelectedDisposalBatch,
   createDisposalBatch,
+  getDisposalHistoryPage,
+  processDisposalBatch,
+  startDisposalBatch
+} from "../../domains/disposal/index.js";
+import {
   disposeDocumentsBulk,
   getDisposalCandidates,
   getDisposalDueYears,
-  getDisposalHistoryPage,
-  getRackSummaries,
   loadDocumentFormOptions,
-  parseDisposalFilters,
-  processDisposalBatch,
-  startDisposalBatch
-} from "../../db.js";
-import { disposalWorkspacePage, errorPage } from "../../html.js";
-import { clean, redirect } from "../../utils.js";
+  parseDisposalFilters
+} from "../../domains/documents/index.js";
+import { getRackSummaries } from "../../domains/racks/index.js";
+import { disposalWorkspacePage } from "../../views/documentViews.js";
+import { errorPage } from "../../views/authViews.js";
+import { redirect } from "../../platform/http/responses.js";
+import { clean } from "../../shared/text/normalize.js";
 
 export async function handleDisposalWorkspace(request, env, session) {
   const params = new URL(request.url).searchParams;

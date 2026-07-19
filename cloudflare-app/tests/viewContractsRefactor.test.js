@@ -1,25 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  canMoveDocuments,
-  dataQualityPage,
-  disposalBatchFormPage,
-  disposalBatchListPage,
-  documentImportJobCreatePage,
-  documentImportJobsPage,
-  loginPage,
-  movementFormPage,
-  movementsPage,
-  passwordPage,
-  rackConfigurePage,
-  rackDetailsPage,
-  rackFormPage,
-  racksPage,
-  searchReportPage,
-  setFormPage,
-  setsPage
-} from "../src/html.js";
+import { dataQualityPage } from "../src/domains/dataQuality/index.js";
+import { loginPage } from "../src/views/authViews.js";
+import { passwordPage } from "../src/views/adminViews.js";
+import { disposalBatchFormPage, disposalBatchListPage } from "../src/views/disposalBatchViews.js";
+import { documentImportJobCreatePage, documentImportJobsPage } from "../src/views/importJobViews.js";
+import { canMoveDocuments, movementFormPage, movementsPage } from "../src/views/movementViews.js";
+import { rackConfigurePage, rackDetailsPage, rackFormPage, racksPage } from "../src/views/rackViews.js";
+import { searchReportPage } from "../src/views/searchViews.js";
+import { setFormPage, setsPage } from "../src/views/setViews.js";
 
 const CSRF_TOKEN = "view-contract-csrf-token-1234567890";
 const admin = { username: "admin@hanlim.com", displayName: "관리자", role: "Admin", csrfToken: CSRF_TOKEN };

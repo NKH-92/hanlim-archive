@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createDocument, moveDocument, processDisposalBatch } from "../src/db.js";
+import { processDisposalBatch } from "../src/domains/disposal/index.js";
+import { createDocument, moveDocument } from "../src/domains/documents/index.js";
 import { actorFixture } from "./helpers/fixtures.js";
 
 const actor = actorFixture();

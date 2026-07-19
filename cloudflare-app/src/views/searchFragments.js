@@ -2,7 +2,8 @@
 // (즉시 검색 클라이언트 템플릿과의 통합은 ARCHITECTURE상 의도적으로 하지 않는다.)
 
 import { sharedSearchCore } from "../searchCore.js";
-import { escapeHtml, locationLabel } from "../utils.js";
+import { locationLabel } from "../domains/racks/index.js";
+import { escapeHtml } from "../ui/html/escape.js";
 
 const searchCore = sharedSearchCore;
 

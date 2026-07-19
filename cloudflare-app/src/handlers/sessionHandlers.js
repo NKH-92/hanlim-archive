@@ -7,8 +7,10 @@ import {
   recordLoginFailure,
   validateUser
 } from "../auth.js";
-import { loginPage } from "../html.js";
-import { clean, redirect, sanitizeReturnUrl } from "../utils.js";
+import { loginPage } from "../views/authViews.js";
+import { redirect } from "../platform/http/responses.js";
+import { sanitizeReturnUrl } from "../platform/security/returnUrl.js";
+import { clean } from "../shared/text/normalize.js";
 
 export function renderLogin(url, env) {
   return loginPage({

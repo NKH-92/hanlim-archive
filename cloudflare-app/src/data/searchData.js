@@ -1,6 +1,9 @@
 import { sharedSearchCore } from "../searchCore.js";
 import { FREE_TIER_BUDGET } from "../config.js";
-import { clean, locationLabel, paginateSlice, rackFaceLabel, readBoolean } from "../utils.js";
+import { locationLabel, rackFaceLabel } from "../domains/racks/index.js";
+import { paginateSlice } from "../shared/pagination.js";
+import { readBoolean } from "../shared/coercion.js";
+import { clean } from "../shared/text/normalize.js";
 import { getDocumentCount, getDocumentPage } from "./documentsData.js";
 import {
   getDocumentClickPopularity,
@@ -29,7 +32,7 @@ export const levenshteinDistance = searchCore.levenshteinDistance;
 export const scoreDocumentMatch = searchCore.scoreDocumentMatch;
 export const parseSearchQuery = searchCore.parseSearchQuery;
 
-// 분석 API는 배럴(db.js) 공개 표면을 유지하기 위해 여기서 재수출한다.
+// 검색 분석 API는 검색 도메인의 infrastructure adapter가 이 모듈에서 재수출한다.
 export { getSearchReport, recordSearchClick, recordSearchLog };
 
 const compareSearchResults = searchCore.compareSearchResults;

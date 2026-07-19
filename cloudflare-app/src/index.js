@@ -1,10 +1,14 @@
 // 엔트리포인트: 공개 경로와 공통 인증·보안 파이프라인만 담당한다.
 import { readSession } from "./auth.js";
-import { errorPage, notFoundPage } from "./html.js";
+import { errorPage, notFoundPage } from "./views/authViews.js";
 import { withSecurityHeaders } from "./security.js";
 import { routeAuthenticatedRequest } from "./handlers/authenticatedRouter.js";
 import { handleLogin, handleLogout, renderLogin } from "./handlers/sessionHandlers.js";
-import { isTrustedPostOrigin, isValidCsrfToken, logError, normalizePath, redirect } from "./utils.js";
+import { normalizePath } from "./platform/http/routeMatcher.js";
+import { redirect } from "./platform/http/responses.js";
+import { logError } from "./platform/observability/logger.js";
+import { isValidCsrfToken } from "./platform/security/csrf.js";
+import { isTrustedPostOrigin } from "./platform/security/origin.js";
 import { resolveAuthenticatedRoute, resolvePublicRoute } from "./app/routeRegistry.js";
 
 export default {

@@ -3,8 +3,17 @@ import * as repository from "./infrastructure/repository.js";
 
 const service = createSearchService(repository);
 export const {
-  searchDocuments, searchDocumentsWithSuggestions, getSearchIndexMeta, getSearchIndexDocuments,
-  getSearchSuggestions, recordSearchClick, recordSearchLog, getSearchReport
+  searchDocuments, searchDocumentsWithSuggestions, buildSearchSuggestions, getDidYouMeanSuggestions,
+  getSearchIndexMeta, getSearchIndexDocuments, getSearchSuggestions, getSearchIndexStats,
+  getViewerSearchPayload, parseDocumentFilters, recordSearchClick, recordSearchLog, getSearchReport
 } = service;
 export { documentToViewerItem, buildViewerFacets } from "./web/presenters.js";
 export { createSearchCore, sharedSearchCore } from "../../searchCore.js";
+export { MAX_SEARCH_RESULTS, parseSearchQuery } from "../../data/searchData.js";
+export const {
+  compactSearchText,
+  levenshteinDistance,
+  normalizeSearchText,
+  scoreDocumentMatch,
+  searchTokens
+} = service;

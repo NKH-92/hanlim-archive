@@ -2,20 +2,17 @@ import { changeUserPassword } from "../auth.js";
 import {
   approveUser,
   getAppUsers,
-  getDocumentQualitySummary,
-  getSearchIndexStats,
   rejectUser,
-} from "../db.js";
+} from "../domains/identity/index.js";
 import {
   adminDashboardPage,
   adminSettingsPage,
-  errorPage,
-  notFoundPage,
   passwordPage,
-} from "../html.js";
-import { hasPermission, PERMISSIONS } from "../permissions.js";
-import { clean, redirect } from "../utils.js";
+} from "../views/adminViews.js";
+import { errorPage, notFoundPage } from "../views/authViews.js";
+import { redirect } from "../platform/http/responses.js";
 import { validateNewPassword } from "../domains/identity/index.js";
+import { loadAdminDashboardReadModel } from "../readModels/adminDashboard.js";
 
 export {
   renderCategories,
@@ -27,17 +24,7 @@ export {
 } from "../domains/masters/index.js";
 
 export async function handleAdminDashboard(env, session) {
-  const canManageUsers = hasPermission(session, PERMISSIONS.MANAGE_USERS);
-  const canManageDocuments = hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS);
-  const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
-  const [users, quality, searchIndex] = await Promise.all([
-    canManageUsers ? getAppUsers(env) : Promise.resolve([]),
-    canManageDocuments ? getDocumentQualitySummary(env) : Promise.resolve(null),
-    canViewAudit ? getSearchIndexStats(env) : Promise.resolve(null)
-  ]);
-  const pendingCount = users.filter((user) => user.status === "pending").length;
-
-  return adminDashboardPage({ session, pendingCount, quality, searchIndex });
+  return adminDashboardPage({ session, ...await loadAdminDashboardReadModel(env, session) });
 }
 
 export async function handleAdminSettings(env, session) {

@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import * as dbFacade from "../src/db.js";
-import * as htmlFacade from "../src/html.js";
 import * as masters from "../src/domains/masters/index.js";
 import { validateMasterValues } from "../src/domains/masters/domain/policy.js";
 import { parseCategoryForm, parseTagForm } from "../src/domains/masters/web/forms.js";
@@ -19,12 +17,12 @@ test("masters form parser와 validation은 HTTP 입력을 정규화하고 기존
   });
 });
 
-test("masters 공개 API는 db/html compatibility façade에서 동일 함수로 위임된다", () => {
+test("masters 공개 API는 query·command·view를 한 경계에서 제공한다", () => {
   for (const name of ["getCategories", "getActiveCategories", "getTags", "getActiveTags", "upsertCategory", "deleteCategory", "upsertTag", "deleteTag"]) {
-    assert.equal(dbFacade[name], masters[name], name);
+    assert.equal(typeof masters[name], "function", name);
   }
-  assert.equal(htmlFacade.categoriesPage, masters.categoriesPage);
-  assert.equal(htmlFacade.tagsPage, masters.tagsPage);
+  assert.equal(typeof masters.categoriesPage, "function");
+  assert.equal(typeof masters.tagsPage, "function");
 });
 
 test("masters의 SQL은 infrastructure에만 존재한다", async () => {
