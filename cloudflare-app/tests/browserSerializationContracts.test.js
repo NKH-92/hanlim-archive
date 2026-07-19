@@ -1,18 +1,16 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
 
 import { documentFormPage } from "../src/html.js";
 import worker from "../src/index.js";
-import { createSearchCore } from "../src/searchCore.js";
+import { sharedSearchCore } from "../src/searchCore.js";
+import { sharedSearchCore as browserSearchCore } from "../public/assets/search-core.js";
 import { escapeHtml } from "../src/utils.js";
 
-test("createSearchCore.toString()은 fresh realm에서 외부 모듈 없이 실행된다", () => {
-  const context = vm.createContext(Object.create(null));
-  const core = vm.runInContext(`(${createSearchCore.toString()})()`, context, {
-    filename: "serialized-search-core.js"
-  });
-  const document = vm.runInContext(`({
+test("browser ESM 검색 코어는 서버 모듈과 같은 결과를 낸다", () => {
+  const document = {
     id: 7,
     document_number: "PV-2026-014",
     revision_number: "Rev.1",
@@ -27,12 +25,21 @@ test("createSearchCore.toString()은 fresh realm에서 외부 모듈 없이 실�
     shelf_number: 3,
     rack_face: "B",
     updated_at: "2026-07-17"
-  })`, context);
+  };
 
-  assert.equal(core.rackFaceLabel(document), "13-2");
-  assert.equal(core.documentLocationText(document), "1구역 13-2번 랙 2열 3선반");
-  assert.ok(core.scoreDocumentMatch(document, "PV 밸리데이션").relevance_score > 0);
-  assert.equal(core.highlightHtml("<PV-2026>", "PV", (value) => core.clean(value)), "<<mark>PV</mark>-2026>");
+  for (const core of [sharedSearchCore, browserSearchCore]) {
+    assert.equal(core.rackFaceLabel(document), "13-2");
+    assert.equal(core.documentLocationText(document), "1구역 13-2번 랙 2열 3선반");
+    assert.ok(core.scoreDocumentMatch(document, "PV 밸리데이션").relevance_score > 0);
+    assert.equal(core.highlightHtml("<PV-2026>", "PV", (value) => core.clean(value)), "<<mark>PV</mark>-2026>");
+  }
+});
+
+test("browser 검색 asset은 source serialization 없이 src/searchCore.js에서 생성된다", async () => {
+  const source = (await readFile(new URL("../src/searchCore.js", import.meta.url), "utf8")).replaceAll("\r\n", "\n");
+  const asset = (await readFile(new URL("../public/assets/search-core.js", import.meta.url), "utf8")).replaceAll("\r\n", "\n");
+  assert.equal(asset, `// generated from src/searchCore.js; do not edit\n${source}`);
+  assert.doesNotMatch(asset, /\.toString\(\)|window\.__name/);
 });
 
 test("escapeHtml.toString()은 fresh realm에서 자기완결적으로 실행된다", () => {

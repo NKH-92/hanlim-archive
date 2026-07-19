@@ -2,7 +2,6 @@
 
 export function bootstrapScript(escapeHtmlSource) {
   return `    document.addEventListener('DOMContentLoaded', function () {
-      window.__name = window.__name || function (target) { return target; };
       var escapeHtmlClient = (${escapeHtmlSource});
       var nav = document.querySelector('[data-nav-menu]');
       var scrim = document.querySelector('[data-nav-scrim]');

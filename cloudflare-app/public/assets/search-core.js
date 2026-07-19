@@ -1,3 +1,4 @@
+// generated from src/searchCore.js; do not edit
 // 검색 코어: 서버(data/searchData.js)와 브라우저(즉시 검색)가 같은 코드를 쓴다.
 // 서버와 browser ESM asset이 함께 사용하는 검색 코어다.
 // scripts/build-browser-assets.mjs가 이 모듈을 정적 asset으로 그대로 복사한다.

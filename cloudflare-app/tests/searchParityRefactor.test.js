@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
 
+import { sharedSearchCore as browserSearchCore } from "../public/assets/search-core.js";
 import { createSearchCore } from "../src/searchCore.js";
 import { clientScript, searchCoreScript } from "../src/views/clientScript.js";
 import { dashboardPage } from "../src/views/searchViews.js";
@@ -145,10 +146,9 @@ async function renderBrowser(documents, query) {
     URLSearchParams
   };
   sandbox.window = sandbox;
+  sandbox.SearchCore = browserSearchCore;
 
   const context = vm.createContext(sandbox);
-  const coreSource = searchCoreScript().replace(/^<script>|<\/script>$/g, "");
-  vm.runInContext(coreSource, context);
   vm.runInContext(clientScript(), context);
   listeners.DOMContentLoaded();
   await new Promise((resolve) => setImmediate(resolve));
@@ -215,9 +215,8 @@ test("server and browser always keep row-only behavior for dominant and ambiguou
   assert.match(ambiguousBrowser.html, /^<div class="viewer-result-table"/);
 });
 
-test("serialized search core remains self-contained and executable", () => {
-  const sandbox = { window: { __name: (target) => target } };
-  const core = vm.runInNewContext(`(${createSearchCore.toString()})()`, sandbox);
+test("browser search core is loaded as a static ESM asset", () => {
+  const core = createSearchCore();
 
   assert.equal(core.compactSearchText(" PV-2026 / 014 "), "pv2026014");
   assert.equal(core.rackFaceLabel(browserItem()), "1-1");
@@ -227,7 +226,7 @@ test("serialized search core remains self-contained and executable", () => {
     firstScore: 500,
     resultCount: 2
   }).grade, "certain");
-  assert.match(searchCoreScript(), /^<script>window\.__name = window\.__name \|\| function/);
+  assert.equal(searchCoreScript(), `<script type="module" src="/assets/search-core.js"></script>`);
 });
 
 test("dominant-answer policy keeps exact, single, threshold, and ambiguous boundaries", () => {
