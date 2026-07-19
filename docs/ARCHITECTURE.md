@@ -129,3 +129,9 @@ terminal 상태 재호출은 mutation을 만들지 않는다.
 `public/assets/search-core.js`로 생성하고 `check:browser`가 drift를 차단한다. runtime source
 serialization과 `__name` shim은 사용하지 않는다. 검색 query/service/presenter 경계는
 `domains/search`가 소유한다.
+# UI shell과 보안 렌더링
+
+전역 CSS/JS는 `build:browser`가 생성하는 `public/assets/app.css`, `app.js` 정적 asset이다.
+`RenderContext`는 요청별 nonce/CSRF를 소유하고 `secureHtmlDocument`의 HTML tokenizer가 POST form과
+inline executable tag를 구조적으로 판독한다. 정규식 보안 후처리는 사용하지 않으며 embedded JSON은
+`safeEmbeddedJson`을 사용한다.

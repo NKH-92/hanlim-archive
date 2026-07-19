@@ -97,7 +97,7 @@ async function nonceContract(response, label) {
 
   const html = await response.text();
   const tags = [...html.matchAll(/<(script|style)\b[^>]*>/gi)];
-  assert.ok(tags.length >= 2, `${label} inline tags`);
+  assert.ok(tags.length >= 1, `${label} executable/style tags`);
   for (const tag of tags) {
     const nonces = [...tag[0].matchAll(/\bnonce="([^"]+)"/gi)].map((match) => match[1]);
     assert.deepEqual(nonces, [nonce], `${label} ${tag[1]} nonce: ${tag[0].slice(0, 100)}`);

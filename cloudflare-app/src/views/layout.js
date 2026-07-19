@@ -1,17 +1,18 @@
 // 페이지 골격(page)과 여러 화면이 공유하는 범용 프래그먼트.
 
-import { bytesToBase64Url, escapeHtml } from "../utils.js";
+import { escapeHtml } from "../utils.js";
 import { capabilitiesFromSession } from "../domains/identity/index.js";
+import { secureHtmlDocument } from "../platform/web/htmlSecurity.js";
+import { createRenderContext } from "../platform/web/renderContext.js";
 import { htmlContentSecurityPolicy } from "../security.js";
-import { clientScript } from "./clientScript.js";
-import { styles } from "./styles.js";
 
 export function page(title, body, session, status = 200) {
   // 요청별 CSP nonce. 인라인 <script>/<style>에 주입하고 응답 헤더의 script-src와 짝을 맞춘다.
-  const nonce = createNonce();
+  const renderContext = createRenderContext(session);
+  const nonce = renderContext.nonce;
 
   // CSRF는 헤더 로그아웃 폼까지 포함해 전체 HTML의 POST form에 주입한다.
-  let html = `<!doctype html>
+  const html = `<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
@@ -19,8 +20,8 @@ export function page(title, body, session, status = 200) {
   <title>${escapeHtml(title)} - 한림문서고</title>
   <meta name="description" content="한림문서고 문서 검색 및 보관 위치 안내 시스템">
   ${session?.csrfToken ? `<meta name="csrf-token" content="${escapeHtml(session.csrfToken)}">` : ""}
-  <style>${styles()}</style>
-  <script>${clientScript()}</script>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script nonce="${nonce}" src="/assets/app.js" defer></script>
 </head>
 <body>
   <a href="#main-content" class="skip-nav">본문 바로가기</a>
@@ -29,12 +30,9 @@ export function page(title, body, session, status = 200) {
 </body>
 </html>`;
 
-  if (session?.csrfToken) {
-    html = withCsrfToken(html, session.csrfToken);
-  }
-  html = applyNonce(html, nonce);
+  const securedHtml = secureHtmlDocument(html, renderContext);
 
-  return new Response(html, {
+  return new Response(securedHtml, {
     status,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
@@ -44,22 +42,9 @@ export function page(title, body, session, status = 200) {
   });
 }
 
-function createNonce() {
-  return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(16)));
-}
 
 // 인라인 <script>/<style> 태그에 CSP nonce를 주입한다. 본문의 사용자 값은 모두 escapeHtml로
 // "<"가 이스케이프되므로 실제 스크립트/스타일 태그에만 매칭된다.
-function applyNonce(html, nonce) {
-  return html
-    .replace(/<script(?=[\s>])(?![^>]*\bnonce=)/gi, `<script nonce="${nonce}"`)
-    .replace(/<style(?=[\s>])(?![^>]*\bnonce=)/gi, `<style nonce="${nonce}"`);
-}
-
-function withCsrfToken(body, token) {
-  const hiddenInput = `<input type="hidden" name="csrf_token" value="${escapeHtml(token)}">`;
-  return body.replace(/<form\b(?=[^>]*\bmethod=["']post["'])[^>]*>/gi, (formTag) => `${formTag}${hiddenInput}`);
-}
 
 function header(session) {
   const capabilities = capabilitiesFromSession(session);
