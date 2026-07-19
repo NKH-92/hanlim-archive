@@ -19,7 +19,10 @@ export async function runReleaseSmoke({ baseUrl, username, password, fetchImpl =
   form.set("password", password);
   form.set("returnUrl", "/app?q=release-smoke");
   const authenticated = await fetchImpl(`${origin}/login`, { method: "POST", body: form, redirect: "manual" });
-  if (![302, 303].includes(authenticated.status)) throw new Error("smoke 계정 로그인 실패");
+  if (![302, 303].includes(authenticated.status)) {
+    const ray = authenticated.headers.get("cf-ray") || "none";
+    throw new Error(`smoke 계정 로그인 실패(status=${authenticated.status}, cf-ray=${ray})`);
+  }
   const location = authenticated.headers.get("location") || "";
   if (location.startsWith("/account/password")) throw new Error("smoke 계정은 최초 비밀번호 변경이 완료되어야 합니다.");
   const cookie = (authenticated.headers.get("set-cookie") || "").split(";", 1)[0];
