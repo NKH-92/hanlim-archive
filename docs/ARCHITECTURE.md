@@ -1,7 +1,7 @@
 # 아키텍처 및 유지보수 가이드
 
-이 문서는 코드 수정 전에 반드시 읽는다. UI 시각 규칙은 [DESIGN.md](../DESIGN.md), 운영 절차는
-[CLOUDFLARE_DEPLOYMENT.md](../CLOUDFLARE_DEPLOYMENT.md)를 따른다.
+이 문서는 코드 수정 전에 반드시 읽는다. UI 시각 규칙은 [DESIGN.md](./DESIGN.md), 운영 절차는
+[OPERATIONS.md](./OPERATIONS.md), 권한 정책은 [PERMISSIONS.md](./PERMISSIONS.md)를 따른다.
 
 ## 의존성 방향
 
@@ -26,6 +26,7 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 - `platform/`은 업무 도메인을 import하지 않는다.
 - 삭제된 전역 façade `db.js`, `html.js`, `utils.js`를 다시 만들거나 import하지 않는다.
 - Workers 배포 소스에서 Node API를 사용하지 않는다.
+- 코드 주석은 한국어로 작성한다.
 
 `tests/architectureBoundaries.test.js`와 `tests/publicArchitectureContracts.test.js`가 이 규칙과
 전역 façade 소비자 0을 검사한다.
@@ -72,6 +73,29 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
    mutation을 만들지 않아야 한다.
 10. **migration append-only**: 과거 migration과 checksum은 수정하지 않는다. 스키마 변경은 항상
     다음 번호의 새 migration이며 수동 SQL을 운영 절차로 만들지 않는다.
+
+## 데이터 무결성 계약
+
+- audit/history INSERT는 상태 UPDATE/DELETE보다 먼저 같은 `env.DB.batch()`에서 실행한다.
+- 선행 INSERT도 application 사전조회가 아니라 같은 pre-state SQL guard를 사용한다.
+- batch 마지막 mutation의 변경 행 수로 no-op과 낙관적 잠금 경합을 감지한다.
+- 모든 SQL 값은 bind parameter로 전달하고 요청당 D1 statement 예산 40을 넘지 않는다.
+- 폐기·CSV 작업은 claim token과 terminal 상태를 보존해 재호출 시 중복 기록을 만들지 않는다.
+- 감사·이동·세트 이력은 append-only trigger를 유지하고, 내부 `storage_code`는 DB·감사 내부에서만 사용한다.
+
+상세 route와 permission 대응표는 `npm run docs:routes`로 생성되는
+[route catalog](./generated/ROUTE_PERMISSION_CATALOG.md)를 사용한다. 이 파일은 직접 편집하지 않는다.
+
+## 검증 매핑
+
+| 계약 | 대표 테스트 |
+|---|---|
+| 계층 방향·공개 API | `architectureBoundaries.test.js`, `publicArchitectureContracts.test.js` |
+| migration 연속성·schema·FK | `migrationChainContracts.test.js` |
+| D1 순서·guard·rollback | `criticalMutationContracts.test.js`, `dataIntegrity.test.js` |
+| 인증·권한·CSP·CSRF | `auth.test.js`, `permissions.test.js`, `security.test.js` |
+| 폐기·CSV 재개와 예산 | `batchJobs.test.js`, `freeTierBudget.test.js` |
+| 검색 server/browser 일치 | `searchParity.test.js`, `searchBehavior.test.js` |
 
 ## 변경 절차
 

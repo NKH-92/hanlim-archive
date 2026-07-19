@@ -1,53 +1,39 @@
 # 한림 문서고 관리 시스템
 
-Cloudflare Workers + D1 기반 문서고 관리 시스템입니다. 이 저장소의 실제 배포 대상은 `cloudflare-app`입니다.
+Cloudflare Workers와 D1으로 운영하는 사내 문서 검색·위치확인 시스템입니다. 실제 배포 대상은 `cloudflare-app/`입니다.
 
-## 구성
+## 핵심 기능
 
-- Runtime: Cloudflare Workers / Database: Cloudflare D1 / Static assets: Workers Static Assets
-- 진입점: `cloudflare-app/src/index.js` → 라우트 핸들러 `src/handlers/`
-- 도메인 계층: `src/domains/<name>/index.js` → domain/application/infrastructure/web
-- 조립 계층: `src/handlers/`, cross-domain 조회는 `src/readModels/`
-- UI·플랫폼: `src/views/`, `src/platform/`, `src/shared/`
-- Migrations: `cloudflare-app/migrations` (append-only)
+- 등록 계정 로그인과 권한별 접근 제어
+- 문서 검색·등록·수정·위치 이동·폐기·복구
+- 랙 도면과 열·선반 기반 위치 확인
+- 문서 세트, CSV 가져오기·내보내기, 감사로그
+- 중단 후 재개할 수 있는 폐기 캠페인과 CSV 작업
 
-계층 규칙과 불변식은 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md), 남은 개선 후보는 [docs/ROADMAP.md](./docs/ROADMAP.md)를 참고합니다.
+## 기술 구성과 디렉터리
 
-## 주요 기능
-
-- 등록된 사내 이메일 로그인, 최초 로그인 비밀번호 변경 강제
-- 일반 사용자 문서 조회 및 검색
-- 세분 권한에 따른 문서 등록·수정·이동·폐기·복구·영구 삭제
-- 세분 권한에 따른 카테고리·태그·랙·보관 위치 관리
-- 문서 세트 저장 및 위치 일괄 조회 (감사 준비문서 리스트)
-- 문서 세트 변경 이력 (생성/수정/추가/제외/삭제 기록)
-- 이메일·접속 IP별 로그인 시도 제한 (10분 내 5회 실패 시 10분 제한)
-- CSV 내보내기 및 가져오기
-- 도면 기반 문서고 위치 조회
-
-## 문서고 물리 구조
-
-- 현재 랙은 **1구역에만 총 13개**이며, 좌측부터 1번 랙입니다 (migration 0018).
-  2·3구역은 증설 대비로 구조만 남겨 두었고 랙이 없는 구역은 도면에 표시하지 않습니다.
-- 랙은 **단면 또는 양면**입니다. 13번 랙이 단면이면 `13`, 양면이면 면 단위로 `13-1` / `13-2`로 부릅니다.
-  (내부 저장값은 A/B이며 화면 표기·CSV 입출력은 1/2를 씁니다. CSV 가져오기는 구표기 A/B도 허용합니다.)
-- 랙 한 면은 **좌우 7열 × 상하 6선반 = 42칸**으로 고정입니다 (migration 0017).
-  선반은 아래에서 위로 1~6을 셉니다. 열은 각 면의 통로 안쪽부터 세므로 좌측 면은 왼쪽이 1열,
-  우측 면은 오른쪽이 1열입니다. 1구역 1번 단면랙은 우측 면과 같은 방향으로 오른쪽이 1열입니다.
-- 1구역 도면의 위쪽은 벽면입니다. 도면에는 랙이 세로로 긴 막대로 그려지고, 서가 위치는 사용자가
-  해당 면을 정면에서 바라보는 방향으로 표시됩니다.
+| 위치 | 역할 |
+|---|---|
+| `cloudflare-app/src/` | 순수 JavaScript ESM Worker 런타임 |
+| `cloudflare-app/public/` | 빌드된 정적 CSS·JavaScript와 이미지 |
+| `cloudflare-app/migrations/` | append-only D1 schema 이력 |
+| `cloudflare-app/tests/` | Node.js 계약·회귀 테스트 |
+| `.github/workflows/` | CI, 운영 배포, 암호화 D1 백업 |
+| `docs/` | 아키텍처, 디자인, 운영 runbook |
 
 ## 로컬 실행
 
+Node.js 24를 사용합니다.
+
 ```powershell
 cd .\cloudflare-app
-npm install
+npm ci
 Copy-Item .\.dev.vars.example .\.dev.vars
 npm run db:migrate:local
 npm run dev
 ```
 
-`.dev.vars`에는 최소 32자 이상의 `SESSION_SECRET`을 설정합니다.
+`.dev.vars`의 `SESSION_SECRET`에는 최소 32자의 무작위 값을 사용합니다. 기본 계정·비밀번호나 실제 secret은 저장소와 문서에 기록하지 않습니다.
 
 ## 검증
 
@@ -58,15 +44,14 @@ npm test
 npm run verify
 ```
 
-## 배포
+`main` push는 GitHub Actions의 운영 D1 migration과 Worker 배포로 이어집니다. 기능 브랜치와 PR을 사용하고, 원격 migration이나 운영 배포는 [운영 절차](./docs/OPERATIONS.md)에 따른 승인된 workflow에서만 수행합니다.
 
-```powershell
-cd .\cloudflare-app
-npm run db:migrate:remote
-npm run deploy
-```
+## 문서
 
-`0027_initial_admin_and_forced_password_change.sql`이 최초 관리자 `nkh92@hanlim.com`을 등록합니다.
-초기 비밀번호 `123456`으로 로그인하면 다른 기능보다 비밀번호 변경 화면이 우선되며, 8자 이상의 새 비밀번호로 바꾸기 전에는 시스템을 사용할 수 없습니다. 공개 가입 경로는 비활성화되어 있습니다.
-
-자세한 절차는 [CLOUDFLARE_DEPLOYMENT.md](./CLOUDFLARE_DEPLOYMENT.md)를 참고합니다.
+- [아키텍처 및 개발 규칙](./docs/ARCHITECTURE.md)
+- [UI 디자인 규칙](./docs/DESIGN.md)
+- [배포 및 운영 절차](./docs/OPERATIONS.md)
+- [백업 및 복구](./docs/BACKUP_RESTORE.md)
+- [권한 운영](./docs/PERMISSIONS.md)
+- [폐기 캠페인 운영](./docs/DISPOSAL_WORKFLOW.md)
+- [개선 백로그](./docs/ROADMAP.md)

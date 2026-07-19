@@ -5,4 +5,5 @@
 /cloudflare-app/src/platform/security/ @NKH-92
 /cloudflare-app/src/platform/web/ @NKH-92
 /cloudflare-app/src/domains/audit/ @NKH-92
-/docs/operations/ @NKH-92
+/docs/OPERATIONS.md @NKH-92
+/docs/BACKUP_RESTORE.md @NKH-92
