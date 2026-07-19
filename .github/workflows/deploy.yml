@@ -42,6 +42,7 @@ jobs:
       - name: Build release evidence
         run: |
           npm run release:evidence -- --out release-evidence
+          set -o pipefail
           npm run deploy:dry 2>&1 | tee release-evidence/bundle-report.txt
           npm audit --json > release-evidence/dependency-audit.json
       - name: Upload pre-mutation migration evidence
@@ -96,9 +97,13 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Apply D1 migrations
-        run: npx wrangler d1 migrations apply hanlim-archive --remote 2>&1 | tee release-evidence/migration-apply.txt
+        run: |
+          set -o pipefail
+          npx wrangler d1 migrations apply hanlim-archive --remote 2>&1 | tee release-evidence/migration-apply.txt
       - name: Deploy Worker
-        run: npx wrangler deploy 2>&1 | tee release-evidence/deploy.txt
+        run: |
+          set -o pipefail
+          npx wrangler deploy 2>&1 | tee release-evidence/deploy.txt
       - name: Capture deployed Worker version
         run: npx wrangler versions list --json > release-evidence/versions-after.json
       - name: Post-deploy login and read-only search smoke
@@ -108,10 +113,14 @@ jobs:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
           SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
           SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
-        run: npm run smoke:release 2>&1 | tee release-evidence/smoke.txt
+        run: |
+          set -o pipefail
+          npm run smoke:release 2>&1 | tee release-evidence/smoke.txt
       - name: Roll back Worker after smoke failure
         if: steps.smoke.outcome == 'failure'
-        run: npx wrangler rollback "$PREVIOUS_VERSION_ID" --yes --message "Automated rollback after smoke failure for $GITHUB_SHA" 2>&1 | tee release-evidence/rollback.txt
+        run: |
+          set -o pipefail
+          npx wrangler rollback "$PREVIOUS_VERSION_ID" --yes --message "Automated rollback after smoke failure for $GITHUB_SHA" 2>&1 | tee release-evidence/rollback.txt
       - name: Mark failed release
         if: steps.smoke.outcome == 'failure'
         run: exit 1
