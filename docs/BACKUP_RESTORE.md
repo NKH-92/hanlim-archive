@@ -4,7 +4,7 @@
 
 ## 준비
 
-- GitHub Actions secret `CLOUDFLARE_D1_BACKUP_API_TOKEN`에는 대상 계정의 `Account > D1 > Read`만 허용한 백업 전용 토큰을 등록한다. 배포 토큰과 공유하지 않는다.
+- GitHub Actions secret `CLOUDFLARE_D1_BACKUP_API_TOKEN`에는 대상 계정의 `Account > D1 > Edit`(API 표기 `Write`)만 허용한 백업 전용 토큰을 등록한다. Cloudflare 원격 export API가 쓰기 권한을 요구하므로 `Read` 토큰으로는 백업이 실패하며, 이 토큰은 배포 토큰과 공유하지 않는다.
 - GitHub Actions secret `D1_BACKUP_PASSPHRASE`에는 32자 이상 무작위 암호를 비밀관리 절차로 등록한다. 채팅·이슈·로그에 적지 않는다.
 - D1 전체 export 중에는 데이터베이스의 다른 요청이 차단될 수 있으므로 정기 백업은 저사용 시간에 실행하고, 수동 백업은 점검창을 공지한 뒤 실행한다.
 - 백업과 운영 배포는 Actions의 `d1-production-maintenance` 동시성 그룹으로 직렬화하며 백업 작업은 30분 후 자동 종료한다.
