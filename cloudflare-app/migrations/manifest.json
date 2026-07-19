@@ -27,7 +27,8 @@
     "0024_document_movements.sql": "e873c0e58f9e11434456f71a9c754a14c95fc45a2e95b7765eeeeecb16a50491",
     "0025_document_set_lock.sql": "dd35004a2083305f264808eb09601f7373832100908ef7fb4cef23ee062fc818",
     "0026_document_row_version.sql": "440777baf752fbfbd8b488b9907602bc79bab26e383373bc8e3807c50a29bf7e",
-    "0027_initial_admin_and_forced_password_change.sql": "d3c53689fe74cde9f7ffa02c4625714bb904c207adb4bf1aae062094fa6bf9d2"
+    "0027_initial_admin_and_forced_password_change.sql": "d3c53689fe74cde9f7ffa02c4625714bb904c207adb4bf1aae062094fa6bf9d2",
+    "0028_provision_release_smoke_user.sql": "add6e66cb6a639c3c2b66af5c6f3fda611b47ba1182f9fbb66b52111f6e0ab4d"
   },
   "schema": {
     "tables": [

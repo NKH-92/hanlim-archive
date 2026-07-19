@@ -39,7 +39,9 @@ jobs:
       - name: Migration and schema evidence
         run: npm run release:evidence -- --out release-evidence
       - name: Worker dry-run and bundle report
-        run: npm run deploy:dry 2>&1 | tee release-evidence/bundle-report.txt
+        run: |
+          set -o pipefail
+          npm run deploy:dry 2>&1 | tee release-evidence/bundle-report.txt
       - name: Upload CI evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
