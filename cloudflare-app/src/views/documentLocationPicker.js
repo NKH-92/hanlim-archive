@@ -1,7 +1,8 @@
 // 문서 등록 폼의 보관 위치 선택기. 서버 저장값은 rackSlotId/rackFace를 유지하고,
 // 브라우저에서는 실제 위치 표현 순서(구역→랙→면→열→선반)로 점진 향상한다.
 
-import { escapeHtml, readBoolean } from "../utils.js";
+import { readBoolean } from "../shared/coercion.js";
+import { escapeHtml } from "../ui/html/escape.js";
 
 export function locationPickerScript() {
   return `

@@ -1,5 +1,4 @@
-import { getSystemAuditPage } from "../db.js";
-import { auditPage } from "../html.js";
+import { auditPage, getSystemAuditPage } from "../domains/audit/index.js";
 
 export async function handleSystemAudit(request, env, session) {
   const url = new URL(request.url);

@@ -1,32 +1,31 @@
 import {
-  buildFloorPlanLayout,
   createDocument,
   disposeDocument,
+  getDocumentMovements,
+  permanentlyDeleteDocument,
+  restoreDocument,
+  updateDocument
+} from "../../domains/documents/index.js";
+import { buildFloorPlanLayout, getFloorPlanRegions, getRackSummaries } from "../../domains/racks/index.js";
+import {
   documentToFormValues,
   findDuplicateDocument,
   getDisposalLogs,
   getDocument,
   getDocumentAuditLogs,
-  getDocumentMovements,
   getDocumentTags,
-  getFloorPlanRegions,
-  getRackSummaries,
   loadDocumentFormOptions,
-  permanentlyDeleteDocument,
-  restoreDocument,
-  updateDocument,
   validateDocumentInputDetails,
   valuesFromDocumentForm
-} from "../../db.js";
+} from "../../domains/documents/index.js";
 import {
-  accessDeniedPage,
   documentDetailsPage,
-  documentFormPage,
-  errorPage,
-  notFoundPage
-} from "../../html.js";
+  documentFormPage
+} from "../../views/documentViews.js";
+import { accessDeniedPage, errorPage, notFoundPage } from "../../views/authViews.js";
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
-import { clean, jsonResponse, redirect } from "../../utils.js";
+import { jsonResponse, redirect } from "../../platform/http/responses.js";
+import { clean } from "../../shared/text/normalize.js";
 import { requireManageDisposals, requireManageDocuments } from "../permissionGuards.js";
 
 export async function renderCreateDocument(env, session, values = {}, validation = null, title = "문서 등록") {

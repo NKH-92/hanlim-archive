@@ -5,59 +5,10 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import * as db from "../src/db.js";
-import * as html from "../src/html.js";
 import worker, * as workerModule from "../src/index.js";
 
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SOURCE_ROOT = path.join(APP_ROOT, "src");
-
-const DB_EXPORTS = `
-  DATA_QUALITY_ISSUES DEFAULT_FLOOR_PLAN_REGIONS MAX_SEARCH_RESULTS
-  addDocumentsToSet approveUser buildDocumentFilterWhere buildFloorPlanLayout
-  buildSearchSuggestions buildViewerFacets cancelDisposalBatch cancelDocumentImportJob
-  compactSearchText configureRackCounts createDisposalBatch createSelectedDisposalBatch createDocument
-  createDocumentImportJob createSignupRequest createSystemAuditStatement deleteCategory
-  deleteDocumentSet deleteTag disableUser disposeDocument disposeDocumentsBulk
-  documentToFormValues documentToViewerItem enableUser failDocumentImportItem
-  findDocumentsByNumbers findDuplicateDocument freezeDisposalBatch getActiveCategories getActiveTags
-  getAppUser getAppUsers getCategories getCategoryDocumentIndex getDataQualityPage
-  getDidYouMeanSuggestions getDisposalBatch getDisposalBatchExportRows
-  getDisposalBatchItems getDisposalCandidates getDisposalDueYears getDisposalHistoryPage getDisposalLogs
-  getDocument getDocumentAuditLogs getDocumentCount getDocumentImportFailureRows
-  getDocumentImportItems getDocumentImportJob getDocumentMovementPage
-  getDocumentMovements getDocumentPage getDocumentQualitySummary getDocumentSet
-  getDocumentSetDocuments getDocumentSetLogs getDocumentSets getDocumentTags
-  getDocumentsForExport getFloorPlanRegions getRackDetails getRackDocuments getRackGrid
-  getRackSummaries getSearchIndexDocuments getSearchIndexMeta getSearchIndexStats
-  getSearchReport getSearchSuggestions getSlotOptions getSystemAuditPage getTags
-  getViewerSearchPayload levenshteinDistance listDisposalBatches listDocumentImportJobs
-  loadDocumentFormOptions moveDocument normalizeAuditFilters normalizeDataQualityIssue
-  normalizeDisposalCriteria normalizeSearchText parseDisposalFilters parseDocumentFilters
-  parseDocumentNumberList parseSearchQuery permanentlyDeleteDocument
-  previewDisposalCandidates processDisposalBatch processDocumentImportJob recordSearchClick
-  recordSearchLog rejectUser removeDocumentFromSet restoreDocument scoreDocumentMatch
-  searchDocuments searchDocumentsWithSuggestions searchTokens
-  setDisposalBatchItemExcluded setDocumentSetLock startDisposalBatch updateDisposalBatch
-  updateDocument updateUserPermissions upsertCategory upsertDocumentSet upsertRack
-  upsertTag validateDisposalBatchDraft validateDocumentInput validateDocumentInputDetails valuesFromDocumentForm
-`.trim().split(/\s+/).sort();
-
-const HTML_EXPORTS = `
-  accessDeniedPage adminDashboardPage adminSettingsPage auditPage canMoveDocuments
-  categoriesPage dashboardPage dataQualityPage disposalBatchDetailPage
-  disposalBatchFormPage disposalBatchListPage disposalWorkspacePage documentDetailsPage
-  documentFormPage documentImportJobCreatePage documentImportJobDetailPage
-  documentImportJobsPage documentsPage errorPage loginPage movementFormPage
-  floorPlanPage movementHistory movementsPage notFoundPage page passwordPage qaPage rackConfigurePage
-  rackDetailsPage rackFormPage racksPage searchReportPage setDetailsPage setFormPage
-  setsPage signupPage tagsPage userPermissionsPage
-`.trim().split(/\s+/).sort();
-
-test("db.js와 html.js 배럴의 공개 export 표면은 유지된다", () => {
-  assert.deepEqual(Object.keys(db).sort(), DB_EXPORTS);
-  assert.deepEqual(Object.keys(html).sort(), HTML_EXPORTS);
-});
 
 test("Worker 모듈은 default fetch 하나만 공개하고 healthz 응답 계약을 지킨다", async () => {
   assert.deepEqual(Object.keys(workerModule).sort(), ["default"]);
@@ -122,12 +73,8 @@ function invalidLayerImport(importer, target) {
   const isView = target.startsWith("views/");
   const isHandler = target.startsWith("handlers/");
 
-  if (importer === "db.js" && !isData) return "db.js 배럴은 data/*만 재수출해야 함";
-  if (importer === "html.js" && !isView) return "html.js 배럴은 views/*만 재수출해야 함";
-  if (importer === "index.js" && (isData || isView)) return "index.js는 data/view leaf 대신 배럴·handler를 사용해야 함";
-  if (importer.startsWith("handlers/") && (isData || isView)) {
-    return "handler는 data/view leaf 대신 db.js/html.js 배럴을 사용해야 함";
-  }
+  if (["db.js", "html.js", "utils.js"].includes(target)) return "제거 대상 전역 호환 façade를 import할 수 없음";
+  if (importer === "index.js" && isData) return "index.js는 data leaf 대신 domain·handler를 사용해야 함";
   if (importer.startsWith("views/") && (isData || isHandler || ["db.js", "html.js", "index.js"].includes(target))) {
     return "view에서 상위 계층을 역참조할 수 없음";
   }

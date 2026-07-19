@@ -5,23 +5,24 @@ import {
   getDisposalBatch,
   getDisposalBatchExportRows,
   getDisposalBatchItems,
-  getRackSummaries,
   listDisposalBatches,
-  loadDocumentFormOptions,
   previewDisposalCandidates,
   processDisposalBatch,
   setDisposalBatchItemExcluded,
   startDisposalBatch,
   updateDisposalBatch
-} from "../db.js";
+} from "../domains/disposal/index.js";
+import { loadDocumentFormOptions } from "../domains/documents/index.js";
+import { getRackSummaries } from "../domains/racks/index.js";
 import {
   disposalBatchDetailPage,
   disposalBatchFormPage,
-  disposalBatchListPage,
-  errorPage,
-  notFoundPage
-} from "../html.js";
-import { clean, csvEscape, jsonResponse, redirect } from "../utils.js";
+  disposalBatchListPage
+} from "../views/disposalBatchViews.js";
+import { errorPage, notFoundPage } from "../views/authViews.js";
+import { jsonResponse, redirect } from "../platform/http/responses.js";
+import { csvEscape } from "../shared/csv/writer.js";
+import { clean } from "../shared/text/normalize.js";
 import { requireManageDisposals } from "./permissionGuards.js";
 import { csvDownloadResponse } from "./responseHelpers.js";
 

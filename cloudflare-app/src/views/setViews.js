@@ -1,7 +1,8 @@
 // 문서 세트 화면.
 
 import { hasPermission, PERMISSIONS } from "../permissions.js";
-import { escapeHtml, locationLabel } from "../utils.js";
+import { locationLabel } from "../domains/racks/index.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { archiveMap } from "./floorPlanViews.js";
 import { alertDanger, alertWarning, emptyState, metric, page, sectionHeader, statusBadge, timeline, timelineItem } from "./layout.js";
 

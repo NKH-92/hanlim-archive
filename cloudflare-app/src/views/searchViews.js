@@ -1,6 +1,7 @@
 // 검색 뷰어(/app)·Q&A·검색 리포트 화면.
 
-import { escapeHtml } from "../utils.js";
+import { escapeHtml } from "../ui/html/escape.js";
+import { safeEmbeddedJson } from "../platform/web/renderContext.js";
 import { searchCoreScript } from "./clientScript.js";
 import { alertWarning, emptyResult, emptyState, filterSelectRow, listUrl, page, paginationNav, sectionHeader, statusBadge } from "./layout.js";
 import {
@@ -23,10 +24,10 @@ export function dashboardPage({
   didYouMean = [],
   mode = "results"
 }) {
-  const viewerContext = JSON.stringify({
+  const viewerContext = safeEmbeddedJson({
     categories: categories.map((item) => ({ id: Number(item.id), name: String(item.name || "") })),
     tags: tags.map((item) => ({ id: Number(item.id), name: String(item.name || "") }))
-  }).replace(/</g, "\\u003c");
+  });
 
   // 홈 모드: 장식 없이 검색 입력이 첫 작업이 되도록 한다.
   if (mode === "home") {

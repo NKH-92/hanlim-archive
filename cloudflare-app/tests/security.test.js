@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { htmlContentSecurityPolicy, withSecurityHeaders } from "../src/security.js";
-import { page } from "../src/html.js";
-import { sanitizeReturnUrl } from "../src/utils.js";
+import { page } from "../src/views/layout.js";
+import { sanitizeReturnUrl } from "../src/platform/security/returnUrl.js";
 
 test("withSecurityHeaders injects base headers and a restrictive fallback CSP", () => {
   const original = new Response("{}", { headers: { "Content-Type": "application/json" } });
@@ -61,7 +62,8 @@ test("page() emits a CSP whose nonce matches every inline script and style tag",
   // 외부 CDN 없이 로컬 아이콘 스타일만 사용한다.
   assert.ok(!html.includes("cdn.jsdelivr.net"));
   assert.ok(!html.includes("cdnjs.cloudflare.com"));
-  assert.match(html, /--icon-mask:/);
+  assert.match(html, /href="\/assets\/app\.css"/);
+  assert.match(await readFile(new URL("../public/assets/app.css", import.meta.url), "utf8"), /--icon-mask:/);
 });
 
 test("sanitizeReturnUrl blocks open-redirect vectors but keeps internal paths", () => {

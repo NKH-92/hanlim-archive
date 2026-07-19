@@ -11,9 +11,12 @@ import {
   getRackGrid,
   getRackSummaries,
   upsertRack
-} from "../db.js";
-import { notFoundPage, rackConfigurePage, rackDetailsPage, rackFormPage, racksPage } from "../html.js";
-import { clean, logError, redirect } from "../utils.js";
+} from "../domains/racks/index.js";
+import { notFoundPage } from "../views/authViews.js";
+import { rackConfigurePage, rackDetailsPage, rackFormPage, racksPage } from "../views/rackViews.js";
+import { redirect } from "../platform/http/responses.js";
+import { logError } from "../platform/observability/logger.js";
+import { clean } from "../shared/text/normalize.js";
 import { requireManageMasters } from "./permissionGuards.js";
 
 export async function handleRacks(env, session) {

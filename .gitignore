@@ -1,8 +1,16 @@
 .env
 node_modules/
+.pnpm-store/
 backups/
 output/
 .wrangler*/
 .superloopy/
+.tmp/
 .tmp-web-ai/
 cloudflare-app/.dev.vars
+cloudflare-app/release-evidence/
+cloudflare-app/release-backup/
+cloudflare-app/backup-artifact/
+hl-archive-github-deploy.txt
+.DS_Store
+Thumbs.db

@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
-import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-const MIGRATIONS_URL = new URL("../migrations/", import.meta.url);
+import { createMigratedDatabase, migrationFiles } from "./helpers/migratedDatabase.js";
+
 const BASELINE_LAST_MIGRATION = 26;
 
 const CORE_TABLES = [
@@ -44,7 +43,7 @@ const IMMUTABILITY_TRIGGERS = [
 ].sort();
 
 test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0001~0026 이력을 보존한다", async () => {
-  const migrations = await migrationFiles();
+  const migrations = await validatedMigrationFiles();
   assert.ok(migrations.length >= BASELINE_LAST_MIGRATION);
 
   const numbers = migrations.map(({ number }) => number);
@@ -58,20 +57,9 @@ test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0
 });
 
 test("전체 migration을 순차 적용하면 핵심 schema와 FK 무결성이 유지된다", async () => {
-  const migrations = await migrationFiles();
-  const database = new DatabaseSync(":memory:");
+  const database = await createMigratedDatabase();
 
   try {
-    for (const migration of migrations) {
-      const sql = await readFile(new URL(migration.name, MIGRATIONS_URL), "utf8");
-      try {
-        database.exec(sql);
-      } catch (error) {
-        error.message = `${migration.name}: ${error.message}`;
-        throw error;
-      }
-    }
-
     assert.equal(database.prepare("PRAGMA foreign_keys").get().foreign_keys, 1);
     assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
 
@@ -95,12 +83,12 @@ test("전체 migration을 순차 적용하면 핵심 schema와 FK 무결성이 �
   }
 });
 
-async function migrationFiles() {
-  const names = (await readdir(MIGRATIONS_URL)).filter((name) => name.endsWith(".sql")).sort();
-  const migrations = names.map((name) => {
+async function validatedMigrationFiles() {
+  const migrations = (await migrationFiles()).map(({ name, number }) => {
     const match = name.match(/^(\d{4})_[a-z0-9_]+\.sql$/);
     assert.ok(match, `migration 파일명 형식 오류: ${name}`);
-    return { name, number: Number(match[1]) };
+    assert.equal(number, Number(match[1]));
+    return { name, number };
   }).sort((left, right) => left.number - right.number || left.name.localeCompare(right.name));
 
   const duplicateNumbers = migrations

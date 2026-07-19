@@ -19,3 +19,5 @@ export {
   readSession,
   SESSION_COOKIE
 } from "./auth/session.js";
+
+export { sessionToActor } from "./domains/identity/index.js";

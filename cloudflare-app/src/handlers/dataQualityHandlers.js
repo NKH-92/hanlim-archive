@@ -1,7 +1,6 @@
 // 데이터 품질 작업목록 라우트.
 
-import { getDataQualityPage } from "../db.js";
-import { dataQualityPage } from "../html.js";
+import { dataQualityPage, getDataQualityPage } from "../domains/dataQuality/index.js";
 import { requireManageDocuments } from "./permissionGuards.js";
 
 export async function handleDataQuality(request, env, session) {

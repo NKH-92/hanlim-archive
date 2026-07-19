@@ -1,4 +1,4 @@
-import { escapeHtml } from "../utils.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { alertDanger, option, page } from "./layout.js";
 
 const STATUS_LABELS = Object.freeze({

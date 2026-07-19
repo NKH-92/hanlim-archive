@@ -1,16 +1,23 @@
 name: CI
 
-# 배포 전 필수 상태검사: 문법 검사 + 단위 테스트를 push/PR마다 강제한다.
-# GMP 맥락에서 "테스트 통과"가 개발자 로컬에만 의존하지 않고 증빙·강제되도록 한다.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  verify:
+    name: required / verify
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: cloudflare-app
@@ -22,5 +29,21 @@ jobs:
           cache: npm
           cache-dependency-path: cloudflare-app/package-lock.json
       - run: npm ci
-      - run: npm run check
-      - run: npm test
+      - name: Verify source, contracts, migrations, and tests
+        run: npm run verify
+      - name: Dependency audit
+        run: |
+          mkdir -p release-evidence
+          npm run audit:dependencies
+          npm audit --json > release-evidence/dependency-audit.json
+      - name: Migration and schema evidence
+        run: npm run release:evidence -- --out release-evidence
+      - name: Worker dry-run and bundle report
+        run: npm run deploy:dry 2>&1 | tee release-evidence/bundle-report.txt
+      - name: Upload CI evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-evidence-${{ github.sha }}
+          path: cloudflare-app/release-evidence/
+          if-no-files-found: error
+          retention-days: 35

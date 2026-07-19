@@ -7,9 +7,10 @@ import {
   recordLoginFailure,
   validateUser
 } from "../auth.js";
-import { createSignupRequest } from "../db.js";
-import { loginPage, signupPage } from "../html.js";
-import { clean, redirect, sanitizeReturnUrl } from "../utils.js";
+import { loginPage } from "../views/authViews.js";
+import { redirect } from "../platform/http/responses.js";
+import { sanitizeReturnUrl } from "../platform/security/returnUrl.js";
+import { clean } from "../shared/text/normalize.js";
 
 export function renderLogin(url, env) {
   return loginPage({
@@ -50,26 +51,6 @@ export async function handleLogin(request, env) {
 
 export function handleLogout(url) {
   return redirect("/login", { "Set-Cookie": expiredSessionCookie(url.protocol === "https:") });
-}
-
-export function renderSignup() {
-  return signupPage({});
-}
-
-export async function handleSignup(request, env) {
-  const form = await request.formData();
-  const values = {
-    username: clean(form.get("username")),
-    displayName: clean(form.get("displayName")),
-    password: String(form.get("password") ?? "")
-  };
-  const result = await createSignupRequest(env, values);
-
-  if (!result.ok) {
-    return signupPage({ values, error: result.message });
-  }
-
-  return redirect("/login?signup=1");
 }
 
 // 계정명만으로 잠그면 이메일을 아는 제3자가 관리자의 로그인을 방해할 수 있다.

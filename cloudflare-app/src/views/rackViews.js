@@ -1,7 +1,9 @@
 // 보관 랙 화면.
 
-import { escapeHtml, readBoolean } from "../utils.js";
+import { readBoolean } from "../shared/coercion.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { documentResults } from "./documentTableViews.js";
+import { displayedColumns, rackColumnOrigin } from "../domains/racks/domain/orientation.js";
 import { alertDanger, page } from "./layout.js";
 
 export function racksPage({ session, racks }) {
@@ -53,9 +55,8 @@ export function rackDetailsPage({ session, rack, documents, grid = [], selectedF
 
 function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
   const single = readBoolean(rack.is_single_sided);
-  const columns = Array.from({ length: 7 }, (_, index) => index + 1);
   const origin = rackColumnOrigin(rack, face);
-  if (origin === "right") columns.reverse();
+  const columns = displayedColumns(rack, face, 7);
   const byCell = new Map(grid.map((row) => [
     `${row.rack_face}:${Number(row.column_number)}:${Number(row.shelf_number)}`,
     row
@@ -93,11 +94,6 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
     </div>
     <p class="muted">위에서 6선반 → 아래에서 1선반 순서입니다. 숫자를 선택하면 해당 위치의 문서 목록으로 이동합니다.</p>
   </section>`;
-}
-
-function rackColumnOrigin(rack, face) {
-  if (Number(rack.zone_number) === 1 && readBoolean(rack.is_single_sided) && Number(rack.rack_number) === 1) return "right";
-  return face === "B" ? "right" : "left";
 }
 
 export function rackFormPage({ session, values = {}, action, title, error = "" }) {

@@ -1,6 +1,6 @@
 // 문서 목록과 폐기 작업공간이 공유하는 툴바·피드백·페이지 조각.
 
-import { escapeHtml } from "../../utils.js";
+import { escapeHtml } from "../../ui/html/escape.js";
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
 import { alertDanger, alertWarning, paginationNav } from "../layout.js";
 import { documentListUrl } from "./urlHelpers.js";

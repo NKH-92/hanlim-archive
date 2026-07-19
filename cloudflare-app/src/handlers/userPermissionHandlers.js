@@ -3,14 +3,15 @@ import {
   enableUser,
   getAppUser,
   updateUserPermissions
-} from "../db.js";
-import { errorPage, notFoundPage, userPermissionsPage } from "../html.js";
+} from "../domains/identity/index.js";
+import { errorPage, notFoundPage } from "../views/authViews.js";
+import { userPermissionsPage } from "../views/permissionViews.js";
 import {
   PERMISSION_KEYS,
   PERMISSION_PRESETS,
   permissionsForPreset
 } from "../permissions.js";
-import { redirect } from "../utils.js";
+import { redirect } from "../platform/http/responses.js";
 
 export async function renderUserPermissions(env, session, userId, error = "") {
   const user = await getAppUser(env, userId);

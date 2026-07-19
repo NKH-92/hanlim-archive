@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createDocument, moveDocument, processDisposalBatch } from "../src/db.js";
+import { processDisposalBatch } from "../src/domains/disposal/index.js";
+import { createDocument, moveDocument } from "../src/domains/documents/index.js";
+import { actorFixture } from "./helpers/fixtures.js";
 
-const actor = {
-  userId: 17,
-  username: "archive.admin",
-  displayName: "문서고 관리자",
-  role: "Admin"
-};
+const actor = actorFixture();
 
 test("moveDocument는 4개 핵심 기록을 동일 guard와 고정 순서로 한 batch에 쓴다", async () => {
   const expectedUpdatedAt = "2026-07-17 09:10:11";

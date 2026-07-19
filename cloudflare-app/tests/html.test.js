@@ -1,18 +1,16 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import {
-  adminDashboardPage,
-  dashboardPage,
-  disposalWorkspacePage,
-  documentDetailsPage,
-  documentFormPage,
-  documentsPage,
-  floorPlanPage,
-  page,
-  qaPage,
-  setDetailsPage
-} from "../src/html.js";
+import { adminDashboardPage } from "../src/views/adminViews.js";
+import { disposalWorkspacePage, documentDetailsPage, documentFormPage, documentsPage } from "../src/views/documentViews.js";
+import { floorPlanPage } from "../src/views/floorPlanViews.js";
+import { page } from "../src/views/layout.js";
+import { dashboardPage, qaPage } from "../src/views/searchViews.js";
+import { setDetailsPage } from "../src/views/setViews.js";
+
+const APP_SCRIPT = await readFile(new URL("../public/assets/app.js", import.meta.url), "utf8");
+const APP_STYLES = await readFile(new URL("../public/assets/app.css", import.meta.url), "utf8");
 
 test("page injects csrf token into authenticated post forms", async () => {
   const response = page("Test", `
@@ -73,7 +71,7 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(html, /data-bulk-select-all/);
   assert.match(html, /class="doc-table is-bulk-selectable"/);
   assert.match(html, /bulk-select-all-text">현재 목록 전체 선택<\/span>/);
-  assert.match(html, /\.doc-table\.is-bulk-selectable thead \{ display: block; \}/);
+  assert.match(APP_STYLES, /\.doc-table\.is-bulk-selectable thead \{ display: block; \}/);
   assert.match(html, /data-bulk-item/);
   assert.match(html, />폐기 대상<\/a>/);
   assert.match(html, />폐기 이력<\/a>/);
@@ -128,9 +126,9 @@ test("copy controls use delegated events for dynamically rendered search results
   });
   const html = await response.text();
 
-  assert.match(html, /document\.addEventListener\('click'/);
-  assert.match(html, /closest\('\[data-copy-text\]'\)/);
-  assert.match(html, /button\.textContent = '복사됨'/);
+  assert.match(APP_SCRIPT, /document\.addEventListener\('click'/);
+  assert.match(APP_SCRIPT, /closest\('\[data-copy-text\]'\)/);
+  assert.match(APP_SCRIPT, /button\.textContent = '복사됨'/);
 });
 
 test("Q&A renders optional support settings without a hard-coded address", async () => {
@@ -312,7 +310,7 @@ test("dashboard page renders search-first row results without a floor plan", asy
     assert.match(html, new RegExp(">" + label + "<"));
   }
   assert.match(html, /<mark>PV<\/mark>/, "검색어 일치 부분이 하이라이트된다");
-  assert.match(html, /window\.SearchCore/, "즉시 검색 코어가 내려간다");
+  assert.match(APP_SCRIPT, /window\.SearchCore/, "즉시 검색 코어가 정적 자산에 포함된다");
   assert.match(html, /<select name="status">[\s\S]*?보관중 문서[\s\S]*?폐기 문서[\s\S]*?전체/);
   assert.doesNotMatch(html, /name="includeDisposed"/);
   assert.match(html, /href="\/app" class="brand"/);
@@ -322,7 +320,7 @@ test("dashboard page renders search-first row results without a floor plan", asy
   assert.match(html, /class="mobile-tabs"[\s\S]*?href="\/app"/);
   assert.match(html, /data-command-palette/);
   assert.match(html, /Ctrl\+K/);
-  assert.match(html, /suggestionUrl \+= '&status=disposed'/, "폐기 검색 자동완성도 상태를 전달한다");
+  assert.match(APP_SCRIPT, /suggestionUrl \+= '&status=disposed'/, "폐기 검색 자동완성도 상태를 전달한다");
   assert.doesNotMatch(html, />Dashboard</);
 });
 
@@ -358,7 +356,7 @@ test("dashboard home mode starts with the search input and no hero or floor plan
   assert.match(html, /<details class="filter-details" open>/);
   assert.doesNotMatch(main, /search-home-hero|home-floor-plan|문서고 도면|data-rack-code/);
   assert.doesNotMatch(html, /자주 찾는 문서/, "자주 찾는 문서 기능은 제거되었다");
-  assert.match(html, /window\.SearchCore/);
+  assert.match(APP_SCRIPT, /window\.SearchCore/);
   assert.doesNotMatch(html, /검색 리포트/, "일반 사용자에게 관리자 링크가 없다");
   const mainNav = html.match(/<nav aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(mainNav, /href="\/app"/);
@@ -402,7 +400,7 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?문서폐기/);
   assert.match(nav, /class="nav-settings"/);
   assert.match(nav, />관리자 설정<\/summary>/);
-  assert.match(html, /\.topbar ~ \.app-shell/);
+  assert.match(APP_STYLES, /\.topbar ~ \.app-shell/);
   assert.match(commands, /href="\/documents\/new"[^>]*>[\s\S]*?문서등록/);
   assert.match(commands, /href="\/floor-plan"[^>]*>[\s\S]*?문서고 도면/);
   assert.match(commands, /href="\/documents\/import"[^>]*>[\s\S]*?CSV 가져오기/);
@@ -490,7 +488,7 @@ test("ordinary document management list has no disposal selection and keeps mobi
   assert.doesNotMatch(main, /is-bulk-selectable/);
   assert.match(main, /<select name="status">[\s\S]*?보관중[\s\S]*?폐기[\s\S]*?전체/);
   assert.doesNotMatch(main, /action="\/documents\/bulk-dispose"/);
-  assert.match(html, /@media \(max-width: 760px\)[\s\S]*?\.doc-table/);
+  assert.match(APP_STYLES, /@media \(max-width: 760px\)[\s\S]*?\.doc-table/);
 });
 
 test("set details page lists documents in location order with admin tools", async () => {

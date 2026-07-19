@@ -1,6 +1,6 @@
 // 문서 등록·수정 폼. 위치 선택기와 스크립트 삽입 순서를 그대로 유지한다.
 
-import { escapeHtml } from "../../utils.js";
+import { escapeHtml } from "../../ui/html/escape.js";
 import { locationPicker, locationPickerScript } from "../documentLocationPicker.js";
 import { formValue, option, page } from "../layout.js";
 

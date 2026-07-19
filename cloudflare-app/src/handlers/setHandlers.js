@@ -1,22 +1,23 @@
 import {
   addDocumentsToSet,
   deleteDocumentSet,
-  findDocumentsByNumbers,
   getDocumentSet,
   getDocumentSetDocuments,
   getDocumentSetLogs,
   getDocumentSets,
-  getRackSummaries,
-  parseDocumentNumberList,
   removeDocumentFromSet,
-  searchDocuments,
   setDocumentSetLock,
   upsertDocumentSet
-} from "../db.js";
+} from "../domains/sets/index.js";
+import { findDocumentsByNumbers, parseDocumentNumberList } from "../domains/documents/index.js";
+import { getRackSummaries } from "../domains/racks/index.js";
+import { searchDocuments } from "../domains/search/index.js";
 import { buildDocumentSetCsv } from "../documentCsv.js";
-import { errorPage, notFoundPage, setDetailsPage, setFormPage, setsPage } from "../html.js";
+import { errorPage, notFoundPage } from "../views/authViews.js";
+import { setDetailsPage, setFormPage, setsPage } from "../views/setViews.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
-import { clean, redirect } from "../utils.js";
+import { redirect } from "../platform/http/responses.js";
+import { clean } from "../shared/text/normalize.js";
 import { requireManageSets } from "./permissionGuards.js";
 import { csvDownloadResponse } from "./responseHelpers.js";
 
@@ -68,7 +69,7 @@ export async function handleSaveSet(request, env, session, id = 0) {
     name: clean(form.get("name")),
     description: clean(form.get("description"))
   };
-  const result = await upsertDocumentSet(env, values, session.displayName);
+  const result = await upsertDocumentSet(env, values, session);
 
   if (!result.ok) {
     return setFormPage({
@@ -123,7 +124,7 @@ export async function handleSetRoute(request, env, session, routeInfo) {
       return denied;
     }
 
-    const result = await deleteDocumentSet(env, id, session.displayName);
+    const result = await deleteDocumentSet(env, id, session);
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
@@ -143,7 +144,7 @@ export async function handleSetRoute(request, env, session, routeInfo) {
 
     const form = await request.formData();
     const documentId = Number(form.get("documentId"));
-    const result = await removeDocumentFromSet(env, id, documentId, session.displayName);
+    const result = await removeDocumentFromSet(env, id, documentId, session);
 
     if (!result.ok) {
       return renderSetDetails(env, session, id, { error: result.message });
@@ -179,7 +180,7 @@ async function handleAddSetDocuments(request, env, session, setId) {
   const documentId = Number(form.get("documentId"));
 
   if (documentId) {
-    const { added } = await addDocumentsToSet(env, setId, [documentId], session.displayName);
+    const { added } = await addDocumentsToSet(env, setId, [documentId], session);
     return renderSetDetails(env, session, setId, {
       addQuery: clean(form.get("add-q")),
       addResult: { added, missing: [] }
@@ -197,7 +198,7 @@ async function handleAddSetDocuments(request, env, session, setId) {
   }
 
   const { documents, missing } = await findDocumentsByNumbers(env, numbers);
-  const { added } = await addDocumentsToSet(env, setId, documents.map((document) => document.id), session.displayName);
+  const { added } = await addDocumentsToSet(env, setId, documents.map((document) => document.id), session);
 
   return renderSetDetails(env, session, setId, { addResult: { added, missing } });
 }

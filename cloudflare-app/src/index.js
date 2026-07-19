@@ -1,10 +1,15 @@
 // 엔트리포인트: 공개 경로와 공통 인증·보안 파이프라인만 담당한다.
 import { readSession } from "./auth.js";
-import { errorPage, notFoundPage } from "./html.js";
+import { errorPage, notFoundPage } from "./views/authViews.js";
 import { withSecurityHeaders } from "./security.js";
 import { routeAuthenticatedRequest } from "./handlers/authenticatedRouter.js";
 import { handleLogin, handleLogout, renderLogin } from "./handlers/sessionHandlers.js";
-import { isTrustedPostOrigin, isValidCsrfToken, logError, normalizePath, redirect } from "./utils.js";
+import { normalizePath } from "./platform/http/routeMatcher.js";
+import { redirect } from "./platform/http/responses.js";
+import { logError } from "./platform/observability/logger.js";
+import { isValidCsrfToken } from "./platform/security/csrf.js";
+import { isTrustedPostOrigin } from "./platform/security/origin.js";
+import { resolveAuthenticatedRoute, resolvePublicRoute } from "./app/routeRegistry.js";
 
 export default {
   async fetch(request, env) {
@@ -16,7 +21,9 @@ export default {
       // 상관용 짧은 reqId만 사용자에게 주고, 전체 오류는 서버 로그에만 남긴다.
       const url = new URL(request.url);
       const reqId = shortRequestId();
-      logError("worker.fetch", error, { reqId, method: request.method, path: normalizePath(url.pathname) });
+      const path = normalizePath(url.pathname);
+      const routeId = (resolvePublicRoute(path, request.method) || resolveAuthenticatedRoute(path, request.method))?.descriptor.id || "unmatched";
+      logError("worker.fetch", error, { reqId, routeId, method: request.method, path });
       const session = await readSession(request, env).catch(() => null);
       response = errorPage(
         `처리 중 오류가 발생했습니다. 계속되면 관리자에게 오류코드 ${reqId} 를 알려주세요.`,
@@ -39,13 +46,14 @@ function shortRequestId() {
 async function route(request, env) {
   const url = new URL(request.url);
   const path = normalizePath(url.pathname);
+  const publicRoute = resolvePublicRoute(path, request.method);
 
-  if (path.startsWith("/images/") || path === "/favicon.ico") {
+  if (publicRoute?.descriptor.family === "assets") {
     return env.ASSETS.fetch(request);
   }
 
   // 무인증 헬스체크: D1 도달성까지 확인해 외부 업타임 모니터가 종단 상태를 알 수 있게 한다.
-  if (path === "/healthz" && request.method === "GET") {
+  if (publicRoute?.descriptor.id === "health.read") {
     return handleHealthCheck(env);
   }
 
@@ -53,15 +61,15 @@ async function route(request, env) {
     return errorPage("잘못된 요청 출처입니다.", null, 403);
   }
 
-  if (path === "/login" && request.method === "GET") {
+  if (publicRoute?.descriptor.id === "session.login.form") {
     return renderLogin(url, env);
   }
 
-  if (path === "/login" && request.method === "POST") {
+  if (publicRoute?.descriptor.id === "session.login") {
     return handleLogin(request, env);
   }
 
-  if (path === "/signup") {
+  if (publicRoute?.descriptor.id === "session.signup.blocked") {
     return notFoundPage(null);
   }
 

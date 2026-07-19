@@ -46,3 +46,18 @@
 9. 복구 후 `/healthz`가 200인지, 검색·상세 화면이 정상인지 확인하고 복구 일시·작업자·검증 건수를 감사 기록에 남긴다.
 
 복구가 끝나면 원문 `restore.sql`, 압축 해제 파일, `$RESTORE_STATE` 격리 디렉터리와 셸 기록을 안전하게 삭제하고 암호 환경변수를 해제한다.
+
+## 운영 사고 복구
+
+이 절차는 데이터 손상 사고에서만 사용한다. 운영 D1에 직접 덮어쓰지 않고 격리 DB에서 먼저 검증한다.
+
+1. incident 책임자와 복구 승인자를 지정하고 쓰기 변경을 중지한다.
+2. 대상 release SHA, 손상 시각, Time Travel 가능 시점, pre-deploy·주간 backup artifact를 기록한다.
+3. 암호화 파일의 checksum을 검증하고 passphrase는 환경변수로만 주입한다.
+4. 새 격리 D1에 복원한 뒤 migration manifest, `PRAGMA foreign_key_check`, 핵심 행 수를 확인한다.
+5. 복구 대상 Worker를 격리 DB에 연결해 health, login, read-only 검색과 감사 이력을 검증한다.
+6. 누락 범위와 예상 중단 시간을 승인자에게 제출하고 Time Travel 또는 검증된 backup 중 손실이 가장 적은 안을 승인받는다.
+7. 운영 복구 직전 현재 상태도 별도 backup으로 보존한다.
+8. 복구 후 Worker version, migration 상태, health/login/search, 감사·문서 건수를 다시 확인한다.
+
+원시 dump와 복호화 파일은 보존 정책에 따라 안전하게 파기한다. incident 기록에는 SHA, backup checksum, 승인자, 명령 결과와 검증 결과만 남긴다. 실제 원격 복구 명령은 Cloudflare의 당시 공식 절차를 확인한 뒤 수행한다.

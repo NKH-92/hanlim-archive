@@ -1,6 +1,6 @@
 // 검색 코어: 서버(data/searchData.js)와 브라우저(즉시 검색)가 같은 코드를 쓴다.
-// createSearchCore는 외부 스코프를 참조하지 않는 완전 독립 팩토리여야 한다.
-// 클라이언트에는 views/clientScript.js가 createSearchCore.toString()으로 소스를 그대로 내려보낸다.
+// 서버와 browser ESM asset이 함께 사용하는 검색 코어다.
+// scripts/build-browser-assets.mjs가 이 모듈을 정적 asset으로 그대로 복사한다.
 export function createSearchCore() {
   function clean(value) {
     return String(value ?? "").trim();
@@ -564,3 +564,7 @@ export function createSearchCore() {
 // 서버 공용 인스턴스. 서버 코드는 이 인스턴스를 공유하고,
 // 브라우저는 searchCoreScript()가 팩토리 소스를 내려보내 따로 생성한다.
 export const sharedSearchCore = createSearchCore();
+
+if (typeof window !== "undefined") {
+  if (!Reflect.get(window, "SearchCore")) Reflect.set(window, "SearchCore", sharedSearchCore);
+}

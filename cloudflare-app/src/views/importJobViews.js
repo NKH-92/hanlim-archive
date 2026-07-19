@@ -1,4 +1,4 @@
-import { escapeHtml } from "../utils.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { alertDanger, page } from "./layout.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "준비", processing: "처리 중", completed: "완료", cancelled: "취소", pending: "대기", failed: "실패" });

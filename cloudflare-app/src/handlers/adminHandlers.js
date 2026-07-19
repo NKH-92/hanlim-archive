@@ -1,41 +1,30 @@
 import { changeUserPassword } from "../auth.js";
 import {
   approveUser,
-  deleteCategory,
-  deleteTag,
   getAppUsers,
-  getCategories,
-  getDocumentQualitySummary,
-  getSearchIndexStats,
-  getTags,
   rejectUser,
-  upsertCategory,
-  upsertTag
-} from "../db.js";
+} from "../domains/identity/index.js";
 import {
   adminDashboardPage,
   adminSettingsPage,
-  categoriesPage,
-  errorPage,
-  notFoundPage,
   passwordPage,
-  tagsPage
-} from "../html.js";
-import { hasPermission, PERMISSIONS } from "../permissions.js";
-import { clean, redirect } from "../utils.js";
+} from "../views/adminViews.js";
+import { errorPage, notFoundPage } from "../views/authViews.js";
+import { redirect } from "../platform/http/responses.js";
+import { validateNewPassword } from "../domains/identity/index.js";
+import { loadAdminDashboardReadModel } from "../readModels/adminDashboard.js";
+
+export {
+  renderCategories,
+  handleSaveCategory,
+  handleCategoryAction,
+  renderTags,
+  handleSaveTag,
+  handleTagAction
+} from "../domains/masters/index.js";
 
 export async function handleAdminDashboard(env, session) {
-  const canManageUsers = hasPermission(session, PERMISSIONS.MANAGE_USERS);
-  const canManageDocuments = hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS);
-  const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
-  const [users, quality, searchIndex] = await Promise.all([
-    canManageUsers ? getAppUsers(env) : Promise.resolve([]),
-    canManageDocuments ? getDocumentQualitySummary(env) : Promise.resolve(null),
-    canViewAudit ? getSearchIndexStats(env) : Promise.resolve(null)
-  ]);
-  const pendingCount = users.filter((user) => user.status === "pending").length;
-
-  return adminDashboardPage({ session, pendingCount, quality, searchIndex });
+  return adminDashboardPage({ session, ...await loadAdminDashboardReadModel(env, session) });
 }
 
 export async function handleAdminSettings(env, session) {
@@ -62,83 +51,6 @@ export async function handleAdminUserAction(env, session, routeInfo) {
   return redirect(`/admin/settings?toast=${toast}`);
 }
 
-export async function renderCategories(env, session, error = "", values = {}) {
-  return categoriesPage({ session, categories: await getCategories(env), error, values });
-}
-
-export async function handleSaveCategory(request, env, session, id = 0) {
-  const form = await request.formData();
-  const values = {
-    id,
-    name: clean(form.get("name")),
-    description: clean(form.get("description")),
-    sortOrder: Number(form.get("sortOrder") || 0),
-    isActive: id ? form.get("isActive") === "1" : true
-  };
-  const result = await upsertCategory(env, values, session);
-
-  if (!result.ok) {
-    return renderCategories(env, session, result.message, values);
-  }
-
-  return redirect("/categories?toast=saved");
-}
-
-export async function handleCategoryAction(request, env, session, routeInfo) {
-  if (routeInfo.action === "edit") {
-    return handleSaveCategory(request, env, session, routeInfo.id);
-  }
-
-  if (routeInfo.action !== "delete") {
-    return notFoundPage(session);
-  }
-
-  const result = await deleteCategory(env, routeInfo.id, session);
-  if (!result.ok) {
-    return renderCategories(env, session, result.message);
-  }
-
-  return redirect("/categories?toast=saved");
-}
-
-export async function renderTags(env, session, error = "", values = {}) {
-  return tagsPage({ session, tags: await getTags(env), error, values });
-}
-
-export async function handleSaveTag(request, env, session, id = 0) {
-  const form = await request.formData();
-  const values = {
-    id,
-    name: clean(form.get("name")),
-    description: clean(form.get("description")),
-    isActive: id ? form.get("isActive") === "1" : true
-  };
-  const result = await upsertTag(env, values, session);
-
-  if (!result.ok) {
-    return renderTags(env, session, result.message, values);
-  }
-
-  return redirect("/tags?toast=saved");
-}
-
-export async function handleTagAction(request, env, session, routeInfo) {
-  if (routeInfo.action === "edit") {
-    return handleSaveTag(request, env, session, routeInfo.id);
-  }
-
-  if (routeInfo.action !== "delete") {
-    return notFoundPage(session);
-  }
-
-  const result = await deleteTag(env, routeInfo.id, session);
-  if (!result.ok) {
-    return renderTags(env, session, result.message);
-  }
-
-  return redirect("/tags?toast=saved");
-}
-
 export function renderPasswordPage(session) {
   return renderPasswordResult(session);
 }
@@ -153,9 +65,8 @@ export async function handleChangePassword(request, env, session) {
     return renderPasswordResult(session, { error: "모든 필드를 입력하세요." });
   }
 
-  if (newPassword.length < 8) {
-    return renderPasswordResult(session, { error: "새 비밀번호는 8자 이상이어야 합니다." });
-  }
+  const passwordValidation = validateNewPassword(newPassword);
+  if (!passwordValidation.ok) return renderPasswordResult(session, { error: passwordValidation.message });
 
   if (newPassword !== confirmPassword) {
     return renderPasswordResult(session, { error: "새 비밀번호가 일치하지 않습니다." });

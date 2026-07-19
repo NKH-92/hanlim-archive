@@ -5,8 +5,8 @@ import {
   createSystemAuditStatement,
   getSystemAuditPage,
   normalizeAuditFilters
-} from "../src/data/systemAuditData.js";
-import { auditPage } from "../src/views/auditViews.js";
+} from "../src/domains/audit/index.js";
+import { auditPage } from "../src/domains/audit/index.js";
 
 test("createSystemAuditStatement는 행위자·권한 snapshot과 pre-state guard를 함께 바인딩한다", () => {
   const env = statementEnv();

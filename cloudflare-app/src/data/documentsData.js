@@ -1,5 +1,5 @@
-import { collectDocumentFieldErrors, validateDocumentRecordFields, validateDocumentTextFields } from "../documentRules.js";
-import { clean, normalizeRackFace } from "../utils.js";
+import { collectDocumentFieldErrors, validateDocumentRecordFields, validateDocumentTextFields } from "../domains/documents/domain/validation.js";
+import { clean } from "../shared/text/normalize.js";
 import {
   DOCUMENT_BASE_JOINS,
   DOCUMENT_CORE_COLUMNS,
@@ -7,10 +7,13 @@ import {
   DOCUMENT_TAG_CONCAT,
   DOCUMENT_TAG_JOINS
 } from "./sqlShared.js";
-import { DATA_QUALITY_ISSUES } from "./dataQualityData.js";
+import { DATA_QUALITY_ISSUES } from "../domains/dataQuality/index.js";
 import { getActiveCategories, getActiveTags, getCategories, getTags } from "./mastersData.js";
 import { getSlotOptions } from "./racksData.js";
 import { buildDocumentFilterWhere } from "./searchFilters.js";
+
+export { documentToFormValues } from "../domains/documents/web/presenters.js";
+export { valuesFromDocumentForm } from "../domains/documents/web/forms.js";
 
 export async function getCategoryDocumentIndex(env) {
   const result = await env.DB.prepare(`
@@ -377,44 +380,6 @@ export async function findDocumentsByNumbers(env, numbers) {
 
   const missing = numbers.filter((number) => !matched.has(number.toUpperCase()));
   return { documents, missing };
-}
-
-export function documentToFormValues(document) {
-  return {
-    documentNumber: document.document_number,
-    revisionNumber: document.revision_number,
-    revisionDate: document.revision_date || "",
-    disposalDueYear: document.disposal_due_year ?? "",
-    documentName: document.document_name,
-    categoryId: document.category_id,
-    rackSlotId: document.rack_slot_id,
-    rackFace: document.rack_face,
-    note: document.note || "",
-    updatedAt: document.updated_at,
-    rowVersion: document.row_version
-  };
-}
-
-export function valuesFromDocumentForm(form) {
-  const expectedUpdatedAt = clean(form.get("expectedUpdatedAt"));
-  const expectedRowVersion = Number(form.get("expectedRowVersion"));
-  return {
-    documentNumber: clean(form.get("documentNumber")),
-    revisionNumber: clean(form.get("revisionNumber")),
-    revisionDate: clean(form.get("revisionDate")),
-    disposalDueYear: clean(form.get("disposalDueYear")),
-    documentName: clean(form.get("documentName")),
-    categoryId: Number(form.get("categoryId")),
-    rackSlotId: Number(form.get("rackSlotId")),
-    rackFace: normalizeRackFace(form.get("rackFace")),
-    note: clean(form.get("note")),
-    tagIds: form.getAll("tagIds").map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
-    // 검증 실패로 수정 폼을 다시 그려도 잠금 토큰을 잃지 않도록 뷰용 이름도 함께 보존한다.
-    expectedUpdatedAt,
-    expectedRowVersion,
-    updatedAt: expectedUpdatedAt,
-    rowVersion: expectedRowVersion
-  };
 }
 
 export async function loadDocumentFormOptions(env, { activeOnly = false, includeSlots = true } = {}) {

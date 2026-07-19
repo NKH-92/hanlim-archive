@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { csvEscape, isTrustedPostOrigin, isValidCsrfToken, locationLabel, normalizeRackFace, parseCsv, rackFaceLabel } from "../src/utils.js";
+import { locationLabel, normalizeRackFace, rackFaceLabel } from "../src/domains/racks/index.js";
+import { isValidCsrfToken } from "../src/platform/security/csrf.js";
+import { isTrustedPostOrigin } from "../src/platform/security/origin.js";
+import { parseCsv } from "../src/shared/csv/parser.js";
+import { csvEscape } from "../src/shared/csv/writer.js";
 
 test("rackFaceLabel follows the physical naming: single 13, double 13-1/13-2", () => {
   assert.equal(rackFaceLabel({ rack_number: 13, rack_face: "A", is_single_sided: 0 }), "13-1");

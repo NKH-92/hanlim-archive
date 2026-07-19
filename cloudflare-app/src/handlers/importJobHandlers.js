@@ -6,18 +6,20 @@ import {
   getDocumentImportItems,
   getDocumentImportJob,
   listDocumentImportJobs,
-  loadDocumentFormOptions,
   processDocumentImportJob
-} from "../db.js";
+} from "../domains/imports/index.js";
+import { loadDocumentFormOptions } from "../domains/documents/index.js";
 import {
   documentImportJobCreatePage,
   documentImportJobDetailPage,
-  documentImportJobsPage,
-  errorPage,
-  notFoundPage
-} from "../html.js";
+  documentImportJobsPage
+} from "../views/importJobViews.js";
+import { errorPage, notFoundPage } from "../views/authViews.js";
 import { prepareDocumentImportRows, readDocumentImportRows } from "../documentCsv.js";
-import { clean, csvEscape, jsonResponse, logError, redirect } from "../utils.js";
+import { jsonResponse, redirect } from "../platform/http/responses.js";
+import { logError } from "../platform/observability/logger.js";
+import { csvEscape } from "../shared/csv/writer.js";
+import { clean } from "../shared/text/normalize.js";
 import { requireManageDocuments } from "./permissionGuards.js";
 import { csvDownloadResponse } from "./responseHelpers.js";
 

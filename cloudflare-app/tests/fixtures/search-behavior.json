@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-19",
+  "sort": "relevance",
+  "documents": [
+    {
+      "id": 1,
+      "document_number": "PV-2026-014",
+      "revision_number": "Rev.2",
+      "document_name": "정제공정 밸리데이션 보고서",
+      "category_name": "PV",
+      "tag_names": "밸리데이션; 정제",
+      "note": "원본 보관",
+      "zone_number": 2,
+      "rack_number": 1,
+      "is_single_sided": 0,
+      "column_number": 3,
+      "shelf_number": 2,
+      "rack_face": "A",
+      "updated_at": "2026-07-18 09:00:00",
+      "storage_code": "ARC-900014"
+    },
+    {
+      "id": 2,
+      "document_number": "PV-2026-015",
+      "revision_number": "Rev.1",
+      "document_name": "충전공정 밸리데이션 보고서",
+      "category_name": "PV",
+      "tag_names": "밸리데이션; 충전",
+      "note": "",
+      "zone_number": 1,
+      "rack_number": 3,
+      "is_single_sided": 0,
+      "column_number": 2,
+      "shelf_number": 4,
+      "rack_face": "B",
+      "updated_at": "2026-07-19 10:00:00",
+      "storage_code": "ARC-900015"
+    },
+    {
+      "id": 3,
+      "document_number": "MBR-2026-001",
+      "revision_number": "03",
+      "document_name": "완제 제조기록서",
+      "category_name": "제조기록서",
+      "tag_names": "완제; 생산",
+      "note": "서명본",
+      "zone_number": 1,
+      "rack_number": 1,
+      "is_single_sided": 1,
+      "column_number": 7,
+      "shelf_number": 6,
+      "rack_face": "A",
+      "updated_at": "2026-07-17 08:00:00",
+      "storage_code": "ARC-900016"
+    },
+    {
+      "id": 4,
+      "document_number": "SOP-QA-101",
+      "revision_number": "Rev.5",
+      "document_name": "문서관리 표준작업절차서",
+      "category_name": "SOP",
+      "tag_names": "문서관리; 품질",
+      "note": "교육용",
+      "zone_number": 1,
+      "rack_number": 13,
+      "is_single_sided": 0,
+      "column_number": 1,
+      "shelf_number": 1,
+      "rack_face": "B",
+      "updated_at": "2026-07-16 12:00:00",
+      "storage_code": "ARC-900017"
+    },
+    {
+      "id": 5,
+      "document_number": "PV-2025-099",
+      "revision_number": "Rev.1",
+      "document_name": "세척 밸리데이션 계획서",
+      "category_name": "PV",
+      "tag_names": "밸리데이션; 세척",
+      "note": "종료",
+      "zone_number": 2,
+      "rack_number": 1,
+      "is_single_sided": 0,
+      "column_number": 4,
+      "shelf_number": 2,
+      "rack_face": "B",
+      "updated_at": "2026-07-15 11:00:00",
+      "storage_code": "ARC-900018"
+    }
+  ],
+  "cases": [
+    {
+      "name": "문서번호 정확 검색",
+      "query": "PV-2026-014",
+      "expected": [
+        { "id": 1, "score": 818, "reason": "문서번호 앞부분 일치, 문서번호 부분 일치" },
+        { "id": 2, "score": 693, "reason": "문서번호 앞부분 일치, 문서번호 부분 일치" },
+        { "id": 5, "score": 194, "reason": "문서번호 앞부분 일치, 문서번호 유사 일치" }
+      ]
+    },
+    {
+      "name": "문서명 부분 검색과 최신순 tie-break",
+      "query": "밸리데이션",
+      "expected": [
+        { "id": 2, "score": 167, "reason": "문서명 부분 일치" },
+        { "id": 1, "score": 167, "reason": "문서명 부분 일치" },
+        { "id": 5, "score": 167, "reason": "문서명 부분 일치" }
+      ]
+    },
+    {
+      "name": "한글 오타 허용",
+      "query": "밸리데이선",
+      "expected": [
+        { "id": 2, "score": 142, "reason": "문서명 유사 일치" },
+        { "id": 1, "score": 142, "reason": "문서명 유사 일치" },
+        { "id": 5, "score": 142, "reason": "문서명 유사 일치" }
+      ]
+    },
+    {
+      "name": "초성 검색",
+      "query": "ㅈㅈㄱㄹㅅ",
+      "expected": [
+        { "id": 3, "score": 147, "reason": "문서명 초성 일치" }
+      ]
+    },
+    {
+      "name": "영문 자판으로 입력한 한글",
+      "query": "qofflepdl",
+      "expected": [
+        { "id": 2, "score": 155, "reason": "문서명 부분 일치(한/영 자판 보정)" },
+        { "id": 1, "score": 155, "reason": "문서명 부분 일치(한/영 자판 보정)" },
+        { "id": 5, "score": 155, "reason": "문서명 부분 일치(한/영 자판 보정)" }
+      ]
+    },
+    {
+      "name": "양면 랙 물리 표기",
+      "query": "13-2",
+      "expected": [
+        { "id": 4, "score": 396, "reason": "랙 위치 부분 일치" },
+        { "id": 1, "score": 214, "reason": "랙 위치 부분 일치, 문서번호 부분 일치" }
+      ]
+    },
+    {
+      "name": "내부 보관코드 비검색",
+      "query": "ARC-900014",
+      "expected": []
+    },
+    {
+      "name": "짧은 코드 tie-break",
+      "query": "PV",
+      "expected": [
+        { "id": 2, "score": 212, "reason": "문서번호 앞부분 일치" },
+        { "id": 1, "score": 212, "reason": "문서번호 앞부분 일치" },
+        { "id": 5, "score": 212, "reason": "문서번호 앞부분 일치" }
+      ]
+    }
+  ],
+  "parseCase": {
+    "query": "2구역 PV 밸리데이션 2026",
+    "context": {
+      "categories": [
+        { "id": 3, "name": "PV" },
+        { "id": 5, "name": "제조기록서" }
+      ],
+      "tags": [
+        { "id": 9, "name": "밸리데이션" }
+      ]
+    },
+    "expected": {
+      "text": "2026",
+      "filters": { "zoneNumber": 2, "categoryId": 3, "tagId": 9 },
+      "chipTypes": ["zone", "category", "tag"]
+    }
+  }
+}

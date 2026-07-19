@@ -2,7 +2,8 @@
 // 마이그레이션 0014 이전 배포에서도 검색이 죽지 않도록 전부 실패 허용.
 
 import { sharedSearchCore } from "../searchCore.js";
-import { clean, logError } from "../utils.js";
+import { logError } from "../platform/observability/logger.js";
+import { clean } from "../shared/text/normalize.js";
 
 const { compactSearchText } = sharedSearchCore;
 

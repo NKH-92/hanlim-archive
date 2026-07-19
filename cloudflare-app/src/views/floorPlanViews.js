@@ -1,6 +1,7 @@
 // 문서고 도면(플로어 플랜)과 랙 지도 렌더링.
 
-import { escapeHtml, readBoolean } from "../utils.js";
+import { readBoolean } from "../shared/coercion.js";
+import { escapeHtml } from "../ui/html/escape.js";
 import { page } from "./layout.js";
 
 // 도면 위 랙 실루엣 한 개. 양면 랙은 좌(N-1면)·우(N-2면) 두 칸을 세로 점선으로 나눈다.
@@ -39,7 +40,7 @@ export function floorPlanView(regions, hits = new Set()) {
           `).join("")}
         </div>
       </div>
-      
+
       <div class="floor-plan-summary">
         ${activeRackCount ? `<span>일치 랙 ${activeRackCount}개</span>` : ""}
         <span><i class="legend-box"></i>양면 랙</span>
