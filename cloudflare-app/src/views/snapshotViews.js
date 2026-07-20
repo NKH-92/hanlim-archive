@@ -30,6 +30,7 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
     </tr>
   `).join("");
   return page("엑셀 문서대장 관리", `
+    <script src="/assets/jszip.min.js"></script>
     <script src="/assets/exceljs.min.js"></script>
     <section class="page-head">
       <div><h1>엑셀 문서대장 관리</h1><p class="muted">엑셀 파일 한 건을 검증한 뒤 현재 문서대장 전체와 동기화합니다.</p></div>
@@ -88,6 +89,7 @@ export function documentSnapshotDetailPage({ session, snapshot, rows = [], error
     ? `<div class="alert success" role="status">이 엑셀 파일이 현재 문서대장으로 반영되었습니다.</div>`
     : "";
   return page(`${snapshot.snapshot_code} 엑셀 동기화`, `
+    <script src="/assets/jszip.min.js"></script>
     <script src="/assets/exceljs.min.js"></script>
     <section class="page-head">
       <div><h1>${escapeHtml(snapshot.snapshot_code)}</h1><p class="muted">${escapeHtml(snapshot.source_name)}</p></div>
