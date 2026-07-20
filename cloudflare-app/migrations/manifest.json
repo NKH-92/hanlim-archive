@@ -29,7 +29,8 @@
     "0026_document_row_version.sql": "440777baf752fbfbd8b488b9907602bc79bab26e383373bc8e3807c50a29bf7e",
     "0027_initial_admin_and_forced_password_change.sql": "d3c53689fe74cde9f7ffa02c4625714bb904c207adb4bf1aae062094fa6bf9d2",
     "0028_provision_release_smoke_user.sql": "add6e66cb6a639c3c2b66af5c6f3fda611b47ba1182f9fbb66b52111f6e0ab4d",
-    "0029_rotate_release_smoke_credential.sql": "9ceba45534cd83d6faa388c20a4d18cad8727d4bc23ccd89b80f7b400a0770c0"
+    "0029_rotate_release_smoke_credential.sql": "9ceba45534cd83d6faa388c20a4d18cad8727d4bc23ccd89b80f7b400a0770c0",
+    "0030_excel_snapshot_sync.sql": "f611de84266d1037534542ad7cb5c33bd234eb8afd061367587817564d703e97"
   },
   "schema": {
     "tables": [
@@ -45,6 +46,9 @@
       "document_set_items",
       "document_set_logs",
       "document_sets",
+      "document_snapshot_rows",
+      "document_snapshots",
+      "document_sync_state",
       "document_tags",
       "documents",
       "floor_plan_regions",
@@ -60,10 +64,14 @@
       "trg_disposal_logs_no_update",
       "trg_document_audit_logs_no_delete",
       "trg_document_audit_logs_no_update",
+      "trg_document_excel_row_key",
       "trg_document_movements_no_delete",
       "trg_document_movements_no_update",
       "trg_document_set_logs_no_delete",
       "trg_document_set_logs_no_update",
+      "trg_document_sync_version_delete",
+      "trg_document_sync_version_insert",
+      "trg_document_sync_version_update",
       "trg_system_audit_logs_no_delete",
       "trg_system_audit_logs_no_update"
     ]

@@ -82,6 +82,9 @@ export function responsivePrintStyles() {
       .search-box button { grid-column: 1 / -1; width: 100%; }
       .filter-row, .viewer-filter-row, .disposal-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .master-row, .master-form, .admin-link-grid, .set-add-grid { grid-template-columns: 1fr; }
+      .snapshot-intro { grid-template-columns: 1fr; }
+      .snapshot-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .snapshot-apply-row { flex-direction: column; align-items: stretch; }
       .doc-row { grid-template-columns: 1fr; gap: var(--sp-2); align-items: start; padding: var(--sp-3) var(--sp-2); }
       .doc-row-actions { flex-direction: row; justify-content: flex-start; }
       .viewer-result-table { overflow: visible; }

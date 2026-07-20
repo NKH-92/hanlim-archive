@@ -87,6 +87,7 @@ export async function getSearchReport(env) {
         SELECT d.id, d.document_number, d.document_name, SUM(sc.hits) AS click_count
         FROM search_clicks sc
         JOIN documents d ON d.id = sc.document_id
+        WHERE d.sync_state = 'current'
         GROUP BY d.id
         ORDER BY click_count DESC
         LIMIT 10

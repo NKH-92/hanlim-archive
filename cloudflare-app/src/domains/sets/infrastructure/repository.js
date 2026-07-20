@@ -288,7 +288,7 @@ async function getAddableSetDocuments(env, setId, ids) {
     FROM documents d
     JOIN document_sets s ON s.id = ? AND s.is_locked = 0
     LEFT JOIN document_set_items i ON i.set_id = s.id AND i.document_id = d.id
-    WHERE d.id IN (${placeholders}) AND i.document_id IS NULL
+    WHERE d.id IN (${placeholders}) AND i.document_id IS NULL AND d.sync_state = 'current'
     ORDER BY d.document_number, d.id
   `).bind(setId, ...ids).all();
 

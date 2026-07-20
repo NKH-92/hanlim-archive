@@ -10,6 +10,7 @@ import { canMoveDocuments, movementFormPage, movementsPage } from "../src/views/
 import { rackConfigurePage, rackDetailsPage, rackFormPage, racksPage } from "../src/views/rackViews.js";
 import { searchReportPage } from "../src/views/searchViews.js";
 import { setFormPage, setsPage } from "../src/views/setViews.js";
+import { documentSnapshotDetailPage, documentSnapshotPage } from "../src/views/snapshotViews.js";
 
 const CSRF_TOKEN = "view-contract-csrf-token-1234567890";
 const admin = { username: "admin@hanlim.com", displayName: "관리자", role: "Admin", csrfToken: CSRF_TOKEN };
@@ -206,6 +207,32 @@ test("CSV 가져오기 목록과 생성 폼은 작업 링크·multipart 입력 �
   assertPostForm(form, "/document-import-jobs", ["csvFile", "csvText"]);
   assert.match(form, /enctype="multipart\/form-data"/);
   assert.match(form, /accept="\.csv,text\/csv"/);
+});
+
+test("엑셀 대장 화면은 한 파일 업로드·추출·변경 미리보기 후 명시적 반영을 제공한다", async () => {
+  const manager = await htmlPage(documentSnapshotPage({
+    session: admin,
+    state: { currentVersion: 3, updatedAt: "2026-07-20" },
+    snapshots: []
+  }), "엑셀 문서대장 관리");
+  assert.match(manager, /data-excel-snapshot-upload/);
+  assert.match(manager, /accept="\.xlsx/);
+  assert.match(manager, /data-excel-export/);
+  assert.match(manager, /현재 대장 버전/);
+  assert.match(manager, /기존 문서를 즉시 지우지 않습니다/);
+
+  const detail = await htmlPage(documentSnapshotDetailPage({
+    session: admin,
+    snapshot: {
+      id: 7, snapshot_code: "SNP-2026-0007", source_name: "대장.xlsx", status: "ready",
+      total_count: 300, create_count: 20, update_count: 3, unchanged_count: 275, exclude_count: 2,
+      base_version: 3, previous_snapshot_id: 6, created_by_name: "관리자", created_at: "2026-07-20"
+    },
+    rows: [{ row_number: 2, action: "update", normalized_json: JSON.stringify({ values: { documentNumber: "DOC-1", revisionNumber: "Rev.0", documentName: "변경 문서" } }) }]
+  }), "SNP-2026-0007 엑셀 동기화");
+  assertPostForm(detail, "/document-snapshots/7/apply", []);
+  assert.match(detail, /추가[\s\S]*20/);
+  assert.match(detail, /변경 문서/);
 });
 
 test("폐기 캠페인 목록과 초안 폼은 조건 필드·민감 값 escape 계약을 유지한다", async () => {

@@ -18,6 +18,9 @@ const CORE_TABLES = [
   "document_set_items",
   "document_set_logs",
   "document_sets",
+  "document_snapshot_rows",
+  "document_snapshots",
+  "document_sync_state",
   "document_tags",
   "documents",
   "floor_plan_regions",
@@ -34,10 +37,14 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_disposal_logs_no_update",
   "trg_document_audit_logs_no_delete",
   "trg_document_audit_logs_no_update",
+  "trg_document_excel_row_key",
   "trg_document_movements_no_delete",
   "trg_document_movements_no_update",
   "trg_document_set_logs_no_delete",
   "trg_document_set_logs_no_update",
+  "trg_document_sync_version_delete",
+  "trg_document_sync_version_insert",
+  "trg_document_sync_version_update",
   "trg_system_audit_logs_no_delete",
   "trg_system_audit_logs_no_update"
 ].sort();
@@ -74,9 +81,9 @@ test("전체 migration을 순차 적용하면 핵심 schema와 FK 무결성이 �
       ORDER BY name
     `).all().map(({ name }) => name);
 
-    assert.equal(tables.length, 22, "핵심 업무 테이블 수");
+    assert.equal(tables.length, 25, "핵심 업무 테이블 수");
     assert.deepEqual(tables, CORE_TABLES);
-    assert.equal(triggers.length, 9, "감사·이력 불변성 trigger 수");
+    assert.equal(triggers.length, 13, "감사·이력·동기화 trigger 수");
     assert.deepEqual(triggers, IMMUTABILITY_TRIGGERS);
   } finally {
     database.close();

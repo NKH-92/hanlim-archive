@@ -62,7 +62,7 @@ export async function getRackSummaries(env) {
       SUM(CASE WHEN d.status = 'active' THEN 1 ELSE 0 END) AS active_document_count
     FROM racks r
     LEFT JOIN rack_slots rs ON rs.rack_id = r.id
-    LEFT JOIN documents d ON d.rack_slot_id = rs.id
+    LEFT JOIN documents d ON d.rack_slot_id = rs.id AND d.sync_state = 'current'
     WHERE r.is_active = 1
     GROUP BY r.id
     ORDER BY r.zone_number, r.rack_number
@@ -96,7 +96,7 @@ export async function getRackDocuments(env, rackId) {
       rs.shelf_number,
       rs.slot_code
     ${DOCUMENT_BASE_JOINS}
-    WHERE r.id = ?
+    WHERE r.id = ? AND d.sync_state = 'current'
     ORDER BY d.rack_face, rs.column_number, rs.shelf_number, d.document_number
   `).bind(rackId).all();
 
@@ -122,6 +122,7 @@ export async function getRackGrid(env, rackId) {
     LEFT JOIN documents d
       ON d.rack_slot_id = rs.id
       AND d.rack_face = faces.rack_face
+      AND d.sync_state = 'current'
     WHERE r.id = ? AND r.is_active = 1
     GROUP BY faces.rack_face, rs.column_number, rs.shelf_number
     ORDER BY faces.rack_face, rs.shelf_number DESC, rs.column_number
@@ -416,7 +417,7 @@ export async function configureRackCounts(env, counts, actor = {}) {
     SELECT r.zone_number, MAX(r.rack_number) AS max_used_rack
     FROM racks r
     JOIN rack_slots rs ON rs.rack_id = r.id
-    JOIN documents d ON d.rack_slot_id = rs.id
+    JOIN documents d ON d.rack_slot_id = rs.id AND d.sync_state = 'current'
     GROUP BY r.zone_number
   `).all();
 

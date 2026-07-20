@@ -143,6 +143,7 @@ function qualityDatabase() {
       (9, 1, 1, 'TEXT-001', 'Rev.0', 'Ã 깨진 문서', '', 2030, 'A', 'disposed'),
       (10, 1, 1, 'YEAR-001', 'Rev.0', '연도 누락', '', NULL, 'A', 'active');
     INSERT INTO document_tags VALUES (1, 1), (2, 1);
+    ALTER TABLE documents ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'current';
   `);
   return database;
 }

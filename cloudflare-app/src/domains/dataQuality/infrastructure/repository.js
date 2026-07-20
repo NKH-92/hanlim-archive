@@ -15,7 +15,7 @@ export async function getDataQualityPage(env, issueValue, page = 1, pageSize = 3
     LEFT JOIN rack_slots rs ON rs.id = d.rack_slot_id
     LEFT JOIN racks r ON r.id = rs.rack_id`;
   const results = await env.DB.batch([
-    env.DB.prepare(`SELECT COUNT(*) AS count ${joins} WHERE ${definition.condition}`),
+    env.DB.prepare(`SELECT COUNT(*) AS count ${joins} WHERE d.sync_state = 'current' AND ${definition.condition}`),
     env.DB.prepare(`
       SELECT
         d.id,
@@ -36,7 +36,7 @@ export async function getDataQualityPage(env, issueValue, page = 1, pageSize = 3
         rs.shelf_number,
         rs.is_active AS slot_is_active
       ${joins}
-      WHERE ${definition.condition}
+      WHERE d.sync_state = 'current' AND ${definition.condition}
       ORDER BY d.document_number, d.revision_number, d.id
       LIMIT ? OFFSET ?
     `).bind(safePageSize, (safePage - 1) * safePageSize)

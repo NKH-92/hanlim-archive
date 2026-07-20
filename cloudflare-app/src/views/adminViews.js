@@ -23,7 +23,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, sear
   }
   const dataLinks = [];
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
-    dataLinks.push(["/documents/import", "fa-file-csv", "CSV 가져오기", "분할 대량 등록 작업"]);
+    dataLinks.push(["/documents/import", "fa-file-excel", "엑셀 문서대장", "전체 동기화·인쇄용 추출"]);
     dataLinks.push(["/admin/data-quality", "fa-list-check", "데이터 품질", "문제 문서 작업 목록"]);
   }
   if (hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {

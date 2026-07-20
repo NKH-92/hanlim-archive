@@ -28,7 +28,7 @@ export async function getCategoryDocumentIndex(env) {
       MIN(r.zone_number) AS first_zone_number,
       MIN(r.rack_number) AS first_rack_number
     FROM categories c
-    LEFT JOIN documents d ON d.category_id = c.id
+    LEFT JOIN documents d ON d.category_id = c.id AND d.sync_state = 'current'
     LEFT JOIN rack_slots rs ON rs.id = d.rack_slot_id
     LEFT JOIN racks r ON r.id = rs.rack_id
     GROUP BY c.id
@@ -61,6 +61,7 @@ export async function getDocumentQualitySummary(env) {
     LEFT JOIN racks r ON r.id = rs.rack_id
     LEFT JOIN categories c ON c.id = d.category_id
     LEFT JOIN tagged_documents td ON td.document_id = d.id
+    WHERE d.sync_state = 'current'
   `).first();
 
   return {
@@ -86,6 +87,7 @@ export async function getDocumentsForExport(env) {
       ${DOCUMENT_TAG_CONCAT}
     ${DOCUMENT_BASE_JOINS}
     ${DOCUMENT_TAG_JOINS}
+    WHERE d.sync_state = 'current'
     GROUP BY d.id
     ORDER BY d.id
   `).all();
@@ -190,6 +192,7 @@ export async function findDuplicateDocument(env, documentNumber, revisionNumber,
     FROM documents d
     WHERE UPPER(d.document_number) = UPPER(?)
       AND UPPER(d.revision_number) = UPPER(?)
+      AND d.sync_state = 'current'
       AND (? = 0 OR d.id <> ?)
     ORDER BY CASE WHEN d.status = 'active' THEN 0 ELSE 1 END, d.id DESC
     LIMIT 1
@@ -369,7 +372,7 @@ export async function findDocumentsByNumbers(env, numbers) {
   const result = await env.DB.prepare(`
     SELECT id, document_number
     FROM documents
-    WHERE UPPER(document_number) IN (${placeholders})
+    WHERE UPPER(document_number) IN (${placeholders}) AND sync_state = 'current'
   `).bind(...upperNumbers).all();
   const documents = result.results ?? [];
   const matched = new Set();
@@ -409,14 +412,14 @@ export async function getDisposalDueYears(env) {
   const result = await env.DB.prepare(`
     SELECT DISTINCT disposal_due_year AS year
     FROM documents
-    WHERE status = 'active' AND disposal_due_year IS NOT NULL
+    WHERE status = 'active' AND sync_state = 'current' AND disposal_due_year IS NOT NULL
     ORDER BY disposal_due_year
   `).all();
   return (result.results ?? []).map((row) => Number(row.year)).filter(Boolean);
 }
 
 export async function getDisposalCandidates(env, filters = {}, limit = 201) {
-  const clauses = ["d.status = 'active'"];
+  const clauses = ["d.status = 'active'", "d.sync_state = 'current'"];
   const binds = [];
   const query = clean(filters.query);
   if (query) {

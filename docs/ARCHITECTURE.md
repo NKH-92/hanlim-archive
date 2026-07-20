@@ -39,6 +39,7 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 | `src/domains/documents/` | 문서 검증·폼·조회·명령·낙관적 잠금·BatchPlan |
 | `src/domains/disposal/` | 폐기 작업 상태 machine, 동결 snapshot, 재개 처리 |
 | `src/domains/imports/` | CSV 작업 상태 machine, staging, 재개 처리 |
+| `src/domains/snapshots/` | 엑셀 전체 대장 staging, 검증·diff, 원자 반영, 버전 충돌 방지 |
 | `src/domains/identity/` | Actor, 사용자 상태, 비밀번호 policy, capability, 사용자 command/query |
 | `src/domains/masters/` | 대분류·태그 query/command/view |
 | `src/domains/racks/` | 랙 규격, 면·열 방향, 도면 geometry, slot, query/command |
@@ -62,7 +63,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
    소유하고 `secureHtmlDocument`가 실제 opening tag를 판독해 모든 POST form에 token 하나,
    모든 inline executable script/style에 nonce 하나를 적용한다. 정규식 보안 후처리를 추가하지 않는다.
 4. **정적 UI asset**: 전역 CSS/JS는 `src/views/styles.js`, `clientScript.js`에서 build 시 생성한
-   `public/assets/app.css`, `app.js`다. `check:browser`가 세 asset의 drift를 차단한다.
+   `public/assets/app.css`, `app.js`다. ExcelJS도 build 시 `public/assets/exceljs.min.js`로 고정하며
+   `check:browser`가 네 asset의 drift를 차단한다.
 5. **D1 원자성**: 다중 변경은 `env.DB.batch()` 한 경계에 둔다. 감사·이력 INSERT가 상태
    UPDATE/DELETE보다 먼저 오고, 마지막 mutation guard가 no-op과 경합을 검출해야 한다.
 6. **낙관적 잠금**: 문서 수정·이동은 `updated_at`과 단조 증가 `row_version`을 함께 검사한다.
@@ -73,6 +75,11 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
    mutation을 만들지 않아야 한다.
 10. **migration append-only**: 과거 migration과 checksum은 수정하지 않는다. 스키마 변경은 항상
     다음 번호의 새 migration이며 수동 SQL을 운영 절차로 만들지 않는다.
+11. **엑셀 대장 전체 동기화**: 사용자가 올리는 한 파일은 현재 대장의 완전한 snapshot이다. 브라우저는
+    XLSX를 읽고 만들며 Worker는 정규화된 50행 이하 chunk만 받는다. 검증 실패·버전 경합은 현재 문서를
+    한 행도 바꾸지 않고, 빠진 문서는 hard delete 대신 `sync_state = 'excluded'`로 이력만 보존한다.
+12. **엑셀 행 식별자**: 보이는 13개 한글 열의 순서와 이름은 고정한다. `excel_row_key`는 숨김 14열에만
+    기록하며 `storage_code`를 대체 공개하지 않는다. 파일의 `baseVersion`이 현재 버전과 다르면 반영을 막는다.
 
 ## 데이터 무결성 계약
 
@@ -82,6 +89,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 - 모든 SQL 값은 bind parameter로 전달하고 요청당 D1 statement 예산 40을 넘지 않는다.
 - 폐기·CSV 작업은 claim token과 terminal 상태를 보존해 재호출 시 중복 기록을 만들지 않는다.
 - 감사·이동·세트 이력은 append-only trigger를 유지하고, 내부 `storage_code`는 DB·감사 내부에서만 사용한다.
+- 엑셀 snapshot apply는 claim → 문서별 감사 → set-based diff → 전역 감사 → version 확정을 40문장 이하
+  한 `env.DB.batch()`에 두며, 이전 snapshot id와 정규화 행을 보존한다.
 
 상세 route와 permission 대응표는 `npm run docs:routes`로 생성되는
 [route catalog](./generated/ROUTE_PERMISSION_CATALOG.md)를 사용한다. 이 파일은 직접 편집하지 않는다.
@@ -95,6 +104,7 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 | D1 순서·guard·rollback | `criticalMutationContracts.test.js`, `dataIntegrity.test.js` |
 | 인증·권한·CSP·CSRF | `auth.test.js`, `permissions.test.js`, `security.test.js` |
 | 폐기·CSV 재개와 예산 | `batchJobs.test.js`, `freeTierBudget.test.js` |
+| 엑셀 300건 교체·diff·구버전 차단 | `excelSnapshotSync.test.js` |
 | 검색 server/browser 일치 | `searchParity.test.js`, `searchBehavior.test.js` |
 
 ## 변경 절차
