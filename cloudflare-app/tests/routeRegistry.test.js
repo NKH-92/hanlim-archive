@@ -23,6 +23,7 @@ test("route registry는 id·method 충돌 없이 public/authenticated 경계를 
 test("matcher와 named URL builder는 정적 route를 동적 parameter보다 우선한다", () => {
   assert.equal(resolveAuthenticatedRoute("/documents/disposal", "GET").descriptor.id, "documents.disposal");
   assert.deepEqual(resolveAuthenticatedRoute("/disposal-batches/7/items/9/exclude", "POST").params, { id: 7, itemId: 9 });
+  assert.equal(resolvePublicRoute("/assets/app.css", "GET").descriptor.id, "assets.generated");
   assert.equal(resolvePublicRoute("/images/floor/zone1.svg", "GET").descriptor.id, "assets.images");
   assert.equal(urlFor("documents.edit", { id: 42 }, { returnTo: "/sets/1" }), "/documents/42/edit?returnTo=%2Fsets%2F1");
 });

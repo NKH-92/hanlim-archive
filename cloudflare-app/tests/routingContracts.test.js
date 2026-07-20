@@ -7,6 +7,32 @@ import worker from "../src/index.js";
 const ORIGIN = "https://archive.example.com";
 const SESSION_SECRET = "test-session-secret-with-at-least-32-characters";
 
+test("전역 CSS와 JS asset은 인증 없이 정적 asset binding에서 제공한다", async (t) => {
+  const contentTypes = new Map([
+    ["/assets/app.css", "text/css; charset=utf-8"],
+    ["/assets/app.js", "application/javascript; charset=utf-8"]
+  ]);
+  const env = {
+    ASSETS: {
+      fetch(request) {
+        const path = new URL(request.url).pathname;
+        return new Response(`asset:${path}`, {
+          headers: { "Content-Type": contentTypes.get(path) || "application/octet-stream" }
+        });
+      }
+    }
+  };
+
+  for (const [path, contentType] of contentTypes) {
+    await t.test(path, async () => {
+      const response = await worker.fetch(new Request(`${ORIGIN}${path}`), env);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("Content-Type"), contentType);
+      assert.equal(await response.text(), `asset:${path}`);
+    });
+  }
+});
+
 test("진입점의 공개·인증 경계는 라우터 분리 후에도 응답 우선순위를 유지한다", async (t) => {
   const normalEnv = sessionEnv(false);
   const forcedEnv = sessionEnv(true);
