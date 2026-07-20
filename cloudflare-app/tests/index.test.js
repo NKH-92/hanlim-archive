@@ -185,7 +185,7 @@ test("every authenticated role can open the dedicated floor plan", async () => {
     assert.equal(response.status, 200);
     assert.match(html, /<h1>문서고 도면<\/h1>/);
     assert.match(html, /src="\/images\/Archive\.png"/);
-    assert.match(html, /href="\/app\?q=1-03&amp;sort=location"/);
+    assert.match(html, /href="\/documents\?rack=3&amp;status=active&amp;sort=location"/);
   }
 });
 
