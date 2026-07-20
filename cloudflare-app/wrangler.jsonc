@@ -20,5 +20,9 @@
       "database_id": "1262ca00-b431-490c-aad2-539d77d4f73f",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  // 엑셀 전체 대장 반영 개방 단계: disabled → admin-only → permissioned
+  "vars": {
+    "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only"
+  }
 }

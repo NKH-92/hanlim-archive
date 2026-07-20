@@ -104,7 +104,8 @@ function envWithUser({
   canManageSets = 0,
   canManageMasters = 0,
   canManageUsers = 0,
-  canViewAudit = 0
+  canViewAudit = 0,
+  canApplyDocumentSnapshots = 0
 } = {}) {
   return {
     SESSION_SECRET,
@@ -128,7 +129,8 @@ function envWithUser({
                   can_manage_sets: canManageSets,
                   can_manage_masters: canManageMasters,
                   can_manage_users: canManageUsers,
-                  can_view_audit: canViewAudit
+                  can_view_audit: canViewAudit,
+                  can_apply_document_snapshots: canApplyDocumentSnapshots
                 };
               }
             };

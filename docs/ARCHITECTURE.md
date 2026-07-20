@@ -76,8 +76,10 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 10. **migration append-only**: 과거 migration과 checksum은 수정하지 않는다. 스키마 변경은 항상
     다음 번호의 새 migration이며 수동 SQL을 운영 절차로 만들지 않는다.
 11. **엑셀 대장 전체 동기화**: 사용자가 올리는 한 파일은 현재 대장의 완전한 snapshot이다. 브라우저는
-    XLSX를 읽고 만들며 Worker는 정규화된 50행 이하 chunk만 받는다. 검증 실패·버전 경합은 현재 문서를
-    한 행도 바꾸지 않고, 빠진 문서는 hard delete 대신 `sync_state = 'excluded'`로 이력만 보존한다.
+    XLSX를 읽고 만들며 Worker는 정규화된 50행 이하 chunk만 받는다. 검증 실패·권한 부족·버전 경합은
+    현재 문서를 한 행도 바꾸지 않고, 빠진 문서는 hard delete 대신 `document_snapshot_exclusions`와
+    `sync_state = 'excluded'`로 이력만 보존한다. 최종 반영은 전용 권한과 위치·폐기 권한을 우회하지 않으며,
+    날짜는 UTC calendar date로만 왕복한다.
 12. **엑셀 행 식별자**: 보이는 13개 한글 열의 순서와 이름은 고정한다. `excel_row_key`는 숨김 14열에만
     기록하며 `storage_code`를 대체 공개하지 않는다. 파일의 `baseVersion`이 현재 버전과 다르면 반영을 막는다.
 13. **OOXML 호환성**: 일반 XLSX는 ExcelJS로 바로 읽고, 표준 namespace 접두사와 절대 relationship을 쓰는

@@ -18,6 +18,7 @@ const CORE_TABLES = [
   "document_set_items",
   "document_set_logs",
   "document_sets",
+  "document_snapshot_exclusions",
   "document_snapshot_rows",
   "document_snapshots",
   "document_sync_state",
@@ -34,6 +35,9 @@ const CORE_TABLES = [
 ].sort();
 
 const IMMUTABILITY_TRIGGERS = [
+  "trg_category_sync_version_delete",
+  "trg_category_sync_version_insert",
+  "trg_category_sync_version_update",
   "trg_disposal_logs_no_update",
   "trg_document_audit_logs_no_delete",
   "trg_document_audit_logs_no_update",
@@ -45,8 +49,19 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_document_sync_version_delete",
   "trg_document_sync_version_insert",
   "trg_document_sync_version_update",
+  "trg_document_tag_sync_version_delete",
+  "trg_document_tag_sync_version_insert",
+  "trg_rack_slot_sync_version_delete",
+  "trg_rack_slot_sync_version_insert",
+  "trg_rack_slot_sync_version_update",
+  "trg_rack_sync_version_delete",
+  "trg_rack_sync_version_insert",
+  "trg_rack_sync_version_update",
   "trg_system_audit_logs_no_delete",
-  "trg_system_audit_logs_no_update"
+  "trg_system_audit_logs_no_update",
+  "trg_tag_sync_version_delete",
+  "trg_tag_sync_version_insert",
+  "trg_tag_sync_version_update"
 ].sort();
 
 test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0001~0026 이력을 보존한다", async () => {
@@ -81,9 +96,9 @@ test("전체 migration을 순차 적용하면 핵심 schema와 FK 무결성이 �
       ORDER BY name
     `).all().map(({ name }) => name);
 
-    assert.equal(tables.length, 25, "핵심 업무 테이블 수");
+    assert.equal(tables.length, CORE_TABLES.length, "핵심 업무 테이블 수");
     assert.deepEqual(tables, CORE_TABLES);
-    assert.equal(triggers.length, 13, "감사·이력·동기화 trigger 수");
+    assert.equal(triggers.length, IMMUTABILITY_TRIGGERS.length, "감사·이력·동기화 trigger 수");
     assert.deepEqual(triggers, IMMUTABILITY_TRIGGERS);
   } finally {
     database.close();

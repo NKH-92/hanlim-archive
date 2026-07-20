@@ -87,7 +87,8 @@ export async function readSession(request, env) {
         can_manage_sets,
         can_manage_masters,
         can_manage_users,
-        can_view_audit
+        can_view_audit,
+        can_apply_document_snapshots
       FROM app_users
       WHERE username = ?
       LIMIT 1

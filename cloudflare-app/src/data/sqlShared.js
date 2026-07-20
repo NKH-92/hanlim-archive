@@ -12,7 +12,9 @@ export const DOCUMENT_CORE_COLUMNS = `d.storage_code,
       d.document_name,
       d.note,
       d.rack_face,
-      d.status,`;
+      d.status,
+      d.sync_state,
+      d.last_snapshot_id,`;
 
 export const DOCUMENT_LOCATION_COLUMNS = `c.name AS category_name,
       r.code AS rack_code,

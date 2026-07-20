@@ -19,7 +19,7 @@ export function setsPage({ session, sets }) {
     ${sets.length ? `<section class="rack-grid">
       ${sets.map((set) => `
         <a class="panel rack-card" href="/sets/${set.id}">
-          <small>문서 ${Number(set.document_count || 0)}건${Number(set.disposed_count || 0) ? ` · 폐기 ${Number(set.disposed_count)}건 포함` : ""}${Number(set.is_locked) ? " · 잠김" : ""}</small>
+          <small>문서 ${Number(set.document_count || set.documentCount || 0)}건${Number(set.excluded_count || set.excludedCount || 0) ? ` · 대장 제외 ${Number(set.excluded_count || set.excludedCount)}건` : ""}${Number(set.disposed_count || set.disposedCount || 0) ? ` · 폐기 ${Number(set.disposed_count || set.disposedCount)}건 포함` : ""}${Number(set.is_locked) || set.isLocked ? " · 잠김" : ""}</small>
           <strong>${escapeHtml(set.name)}</strong>
           <span>${escapeHtml(set.description || "설명 없음")}</span>
         </a>
@@ -46,9 +46,11 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
   const canManage = hasPermission(session, PERMISSIONS.MANAGE_SETS);
   const isLocked = Number(set.is_locked) === 1;
   const disposedCount = documents.filter((doc) => doc.status !== "active").length;
-  const rackCount = new Set(documents.map((doc) => doc.rack_code)).size;
-  const zoneCount = new Set(documents.map((doc) => doc.zone_number)).size;
-  const hits = new Set(documents.map((doc) => `${doc.rack_code}:${doc.rack_face}`));
+  const excludedCount = documents.filter((doc) => doc.sync_state === "excluded").length;
+  const currentDocuments = documents.filter((doc) => doc.sync_state !== "excluded");
+  const rackCount = new Set(currentDocuments.map((doc) => doc.rack_code)).size;
+  const zoneCount = new Set(currentDocuments.map((doc) => doc.zone_number)).size;
+  const hits = new Set(currentDocuments.map((doc) => `${doc.rack_code}:${doc.rack_face}`));
 
   return page(`${set.name} 세트`, `
     <section class="page-head">
@@ -61,10 +63,13 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
     </section>
     ${error ? alertDanger(error) : ""}
     ${isLocked ? alertWarning(`이 세트는 편집 잠금 상태입니다.${set.lock_reason ? ` 사유: ${set.lock_reason}` : ""}`) : ""}
+    ${excludedCount ? alertWarning(`대장 제외 문서 ${excludedCount}건이 세트에 포함되어 있습니다. 연결은 감사 근거로 보존되며 랙 지도에는 현재 대장 문서만 표시합니다.`) : ""}
     ${addResult ? setAddResultView(addResult, set) : ""}
     ${setPrintHeader({ set, session, documents, printedAt })}
     <section class="metric-strip" aria-label="세트 요약">
       ${metric("문서", documents.length, "세트에 등록된 문서")}
+      ${metric("현재 대장", currentDocuments.length, "sync_state=current")}
+      ${metric("대장 제외", excludedCount, excludedCount ? "목록 확인 필요" : "없음")}
       ${metric("보관 랙", rackCount, `${zoneCount}개 구역`)}
       ${metric("폐기 포함", disposedCount, disposedCount ? "목록 확인 필요" : "없음")}
     </section>
@@ -100,9 +105,9 @@ function setDocumentTable(set, documents, canEdit) {
   return `
     <div class="table-wrap"><table class="set-doc-table">
       <caption class="sr-only">${escapeHtml(set.name)} 세트 문서 위치 목록</caption>
-      <thead><tr><th class="print-only print-check-column">확인</th><th>순번</th><th>보관 위치</th><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>상태</th>${canEdit ? "<th class=\"screen-only\">관리</th>" : ""}</tr></thead>
+      <thead><tr><th class="print-only print-check-column">확인</th><th>순번</th><th>보관 위치</th><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>상태</th><th>대장 포함</th>${canEdit ? "<th class=\"screen-only\">관리</th>" : ""}</tr></thead>
       <tbody>${documents.map((doc, index) => `
-        <tr class="${doc.status !== "active" ? "is-disposed" : ""}">
+        <tr class="${doc.status !== "active" ? "is-disposed" : ""}${doc.sync_state === "excluded" ? " is-excluded" : ""}">
           <td class="print-only print-check-cell">□</td>
           <td>${index + 1}</td>
           <td><strong>${escapeHtml(locationLabel(doc))}</strong></td>
@@ -111,6 +116,7 @@ function setDocumentTable(set, documents, canEdit) {
           <td><a href="/documents/${doc.id}">${escapeHtml(doc.document_name)}</a></td>
           <td>${escapeHtml(doc.category_name)}</td>
           <td>${statusBadge(doc.status)}</td>
+          <td>${doc.sync_state === "excluded" ? `<span class="status disposed">대장 제외</span>` : `<span class="status active">포함</span>`}</td>
           ${canEdit ? `<td class="screen-only"><form method="post" action="/sets/${set.id}/remove" data-confirm="세트에서 이 문서를 제외할까요?"><input type="hidden" name="documentId" value="${doc.id}"><button type="submit" class="danger-button sm">제외</button></form></td>` : ""}
         </tr>
       `).join("")}</tbody>

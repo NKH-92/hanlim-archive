@@ -160,6 +160,9 @@ export async function getDocument(env, id) {
       d.rack_slot_id,
       d.rack_face,
       d.status,
+      d.sync_state,
+      d.last_snapshot_id,
+      d.excel_row_key,
       d.updated_at,
       d.row_version,
       ${DOCUMENT_LOCATION_COLUMNS}

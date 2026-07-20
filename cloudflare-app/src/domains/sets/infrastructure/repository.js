@@ -22,6 +22,8 @@ export async function getDocumentSets(env) {
       s.created_at,
       s.updated_at,
       COUNT(i.document_id) AS document_count,
+      SUM(CASE WHEN d.sync_state = 'current' THEN 1 ELSE 0 END) AS current_count,
+      SUM(CASE WHEN d.sync_state = 'excluded' THEN 1 ELSE 0 END) AS excluded_count,
       SUM(CASE WHEN d.status = 'disposed' THEN 1 ELSE 0 END) AS disposed_count
     FROM document_sets s
     LEFT JOIN document_set_items i ON i.set_id = s.id

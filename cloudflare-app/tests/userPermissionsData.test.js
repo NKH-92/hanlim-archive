@@ -49,7 +49,7 @@ test("rejectUser는 승인된 사용자를 rejected로 재사용하지 않는다
   assert.equal(env.state.batches.length, 0);
 });
 
-test("updateUserPermissions는 7개 플래그와 전후 snapshot을 원자적으로 기록한다", async () => {
+test("updateUserPermissions는 권한 플래그와 전후 snapshot을 원자적으로 기록한다", async () => {
   const env = userMutationEnv(userRow());
   const result = await updateUserPermissions(env, 7, {
     can_manage_documents: true,
@@ -61,8 +61,8 @@ test("updateUserPermissions는 7개 플래그와 전후 snapshot을 원자적으
   const [audit, update] = env.state.batches[0];
   assert.match(audit.sql, /action/);
   assert.equal(audit.args[3], "permissions_update");
-  assert.match(update.sql, /can_manage_documents = \?[\s\S]*can_view_audit = \?/);
-  assert.deepEqual(update.args.slice(0, 7), [1, 1, 0, 1, 0, 0, 0]);
+  assert.match(update.sql, /can_manage_documents = \?[\s\S]*can_apply_document_snapshots = \?/);
+  assert.deepEqual(update.args.slice(0, 8), [1, 1, 0, 1, 0, 0, 0, 0]);
   const details = JSON.parse(audit.args[9]);
   assert.equal(details.before.permissions.can_manage_documents, false);
   assert.equal(details.after.permissions.can_manage_documents, true);
@@ -83,6 +83,7 @@ function userRow(overrides = {}) {
     can_manage_masters: 0,
     can_manage_users: 0,
     can_view_audit: 0,
+    can_apply_document_snapshots: 0,
     ...overrides
   };
 }

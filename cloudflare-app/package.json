@@ -20,6 +20,7 @@
     "test:coverage": "node --test --experimental-test-coverage",
     "verify": "npm run check && npm run typecheck && npm run lint && npm run format:check && npm run check:migrations && npm run check:routes && npm run check:browser && npm test",
     "audit:dependencies": "npm audit --audit-level=high",
+    "audit:excel-snapshots": "node scripts/audit-excel-snapshot-data.mjs",
     "release:evidence": "node scripts/generate-release-evidence.mjs",
     "smoke:release": "node scripts/smoke-release.mjs",
     "dev": "wrangler dev",

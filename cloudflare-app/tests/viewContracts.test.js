@@ -227,13 +227,29 @@ test("엑셀 대장 화면은 한 파일 업로드·추출·변경 미리보기 
     snapshot: {
       id: 7, snapshot_code: "SNP-2026-0007", source_name: "대장.xlsx", status: "ready",
       total_count: 300, create_count: 20, update_count: 3, unchanged_count: 275, exclude_count: 2,
-      base_version: 3, previous_snapshot_id: 6, created_by_name: "관리자", created_at: "2026-07-20"
+      metadata_count: 2, move_count: 1, dispose_count: 0, restore_count: 0, tag_change_count: 0, reinclude_count: 0,
+      base_version: 3, previous_snapshot_id: 6, created_by_name: "관리자", created_at: "2026-07-20",
+      source_hash: "a".repeat(64)
     },
-    rows: [{ row_number: 2, action: "update", normalized_json: JSON.stringify({ values: { documentNumber: "DOC-1", revisionNumber: "Rev.0", documentName: "변경 문서" } }) }]
+    rows: [{
+      row_number: 2,
+      action: "update",
+      changed_fields_json: JSON.stringify(["documentName"]),
+      change_flags_json: JSON.stringify(["METADATA"]),
+      after_json: JSON.stringify({ values: { documentNumber: "DOC-1", revisionNumber: "Rev.0", documentName: "변경 문서", status: "active" } }),
+      before_json: JSON.stringify({ values: { documentNumber: "DOC-1", revisionNumber: "Rev.0", documentName: "이전 문서", status: "active" } })
+    }],
+    exclusions: [{
+      before_json: JSON.stringify({ values: { documentNumber: "DOC-EX", revisionNumber: "Rev.0", documentName: "제외 예정 문서", status: "active" } })
+    }],
+    canApply: true,
+    requiredPermissions: ["can_manage_documents", "can_apply_document_snapshots", "can_move_documents"]
   }), "SNP-2026-0007 엑셀 동기화");
-  assertPostForm(detail, "/document-snapshots/7/apply", []);
-  assert.match(detail, /추가[\s\S]*20/);
+  assertPostForm(detail, "/document-snapshots/7/apply", ["applyReason", "approvalReference", "confirmedExcludeCount", "confirmExclude"]);
+  assert.match(detail, /신규[\s\S]*20/);
   assert.match(detail, /변경 문서/);
+  assert.match(detail, /제외 예정 문서/);
+  assert.match(detail, /대장 제외 예정/);
 });
 
 test("폐기 캠페인 목록과 초안 폼은 조건 필드·민감 값 escape 계약을 유지한다", async () => {

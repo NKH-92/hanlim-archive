@@ -6,13 +6,14 @@ Admin은 세부 flag와 관계없이 모든 권한을 가진다. 일반 User는 
 
 | 권한 | 허용 업무 |
 |---|---|
-| `can_manage_documents` | 문서 등록·수정, CSV 가져오기, 데이터 품질 수정 |
+| `can_manage_documents` | 문서 등록·수정, CSV 가져오기, 데이터 품질 수정, 엑셀 대장 추출·검증 |
 | `can_move_documents` | 문서 위치 이동과 이동 이력 |
 | `can_manage_disposals` | 폐기 캠페인, 폐기, 영구삭제 |
 | `can_manage_sets` | 세트 생성·수정·잠금·문서 추가/제외 |
 | `can_manage_masters` | 랙·대분류·태그 관리 |
 | `can_manage_users` | 등록 계정 상태·권한 변경 |
 | `can_view_audit` | 전역 감사, 검색 리포트, 문서 감사 이력 |
+| `can_apply_document_snapshots` | 엑셀 전체 대장 최종 반영(기본 0, archive_manager에도 자동 부여하지 않음) |
 
 ## 주요 route 정책
 
@@ -20,6 +21,8 @@ Admin은 세부 flag와 관계없이 모든 권한을 가진다. 일반 User는 
 |---|---|
 | 검색·문서 조회·도면·세트 조회 | 인증 사용자 |
 | 문서 생성·수정·CSV·데이터 품질 | `can_manage_documents` |
+| 엑셀 대장 추출·업로드·prepare | `can_manage_documents` |
+| 엑셀 대장 최종 반영 | `can_manage_documents` + `can_apply_document_snapshots` (+ 위치/폐기 변경 시 각 권한, 폐기 해제는 Admin) |
 | 위치 이동 | `can_move_documents` |
 | 이동 이력 | `can_move_documents` 또는 `can_view_audit` |
 | 폐기·캠페인·영구삭제 | `can_manage_disposals` |

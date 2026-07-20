@@ -20,3 +20,4 @@ export const requireManageSets = (session) => requirePermission(session, PERMISS
 export const requireManageMasters = (session) => requirePermission(session, PERMISSIONS.MANAGE_MASTERS);
 export const requireManageUsers = (session) => requirePermission(session, PERMISSIONS.MANAGE_USERS);
 export const requireViewAudit = (session) => requirePermission(session, PERMISSIONS.VIEW_AUDIT);
+export const requireApplyDocumentSnapshots = (session) => requirePermission(session, PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS);

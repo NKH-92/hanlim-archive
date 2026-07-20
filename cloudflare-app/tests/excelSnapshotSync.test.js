@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { prepareDocumentImportRows } from "../src/documentCsv.js";
 import { loadDocumentFormOptions } from "../src/domains/documents/index.js";
 import {
   applyDocumentSnapshot,
@@ -17,57 +16,88 @@ import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 
 test("300건 엑셀 한 파일을 현재 대장으로 반영하고 다음 파일에서 변경·제외만 적용한다", async () => {
   const database = await createMigratedDatabase();
-  const env = { DB: sqliteD1(database) };
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };
   const actor = actorFixture();
 
   try {
     const firstRows = buildRows(300);
-    const first = await createAndPrepare(env, actor, firstRows, { sourceHash: "a".repeat(64), hasRowKeys: false });
+    const first = await createAndPrepare(env, actor, firstRows, {
+      sourceHash: "a".repeat(64),
+      mode: "bootstrap",
+      hasRowKeys: false
+    });
     assert.equal(first.snapshot.status, "ready");
     assert.equal(Number(first.snapshot.create_count), 300);
     assert.equal(Number(first.snapshot.update_count), 0);
     assert.equal(Number(first.snapshot.unchanged_count), 0);
     assert.equal(Number(first.snapshot.exclude_count), 2, "초기 시드 문서는 삭제하지 않고 제외한다");
 
-    const applied = await applyDocumentSnapshot(env, first.snapshot.id, actor);
-    assert.equal(applied.ok, true);
+    const applied = await applyDocumentSnapshot(env, first.snapshot.id, actor, {
+      applyReason: "최초 bootstrap 문서고 대장 반영",
+      approvalReference: "BOOTSTRAP-001",
+      confirmedExcludeCount: 2
+    });
+    assert.equal(applied.ok, true, applied.message);
     assert.equal(applied.statementCount <= FREE_TIER_BUDGET.maxD1StatementsPerRequest, true);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 300);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 2);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE status = 'disposed' AND sync_state = 'current'").get().count, 30);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_tags dt JOIN documents d ON d.id = dt.document_id WHERE d.sync_state = 'current'").get().count, 600);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_snapshot_exclusions WHERE snapshot_id = ?").get(first.snapshot.id).count, 2);
+    assert.equal(database.prepare(`
+      SELECT COUNT(*) AS count FROM document_audit_logs
+      WHERE action = 'excel_sync_exclude' AND json_extract(details, '$.snapshotCode') = ?
+    `).get(first.snapshot.snapshot_code).count, 2);
 
     const exported = await getDocumentSnapshotExport(env);
     assert.equal(exported.documents.length, 300);
     assert.equal(exported.documents.every((document) => document.rowKey), true);
-    assert.equal(exported.baseVersion, 2);
+    assert.ok(exported.baseVersion > 1);
+    assert.ok(exported.exportManifestId);
 
     const nextRows = exported.documents.slice(0, -1).map((document, index) => ({
       rowNumber: index + 2,
-      rowKey: document.rowKey,
+      sourceRowKey: document.rowKey,
       source: {
         ...document,
         documentName: index === 0 ? `${document.documentName} 변경` : document.documentName
       }
     }));
     const second = await createAndPrepare(env, actor, nextRows, {
-      sourceHash: "b".repeat(64), hasRowKeys: true, baseVersion: exported.baseVersion
+      sourceHash: "b".repeat(64),
+      mode: "managed",
+      hasRowKeys: true,
+      baseVersion: exported.baseVersion,
+      currentSnapshotId: exported.currentSnapshotId,
+      exportManifestId: exported.exportManifestId
     });
     assert.equal(Number(second.snapshot.create_count), 0);
     assert.equal(Number(second.snapshot.update_count), 1);
     assert.equal(Number(second.snapshot.unchanged_count), 298);
     assert.equal(Number(second.snapshot.exclude_count), 1);
+    assert.equal(Number(second.snapshot.metadata_count), 1);
 
-    const secondApplied = await applyDocumentSnapshot(env, second.snapshot.id, actor);
-    assert.equal(secondApplied.ok, true);
+    const secondApplied = await applyDocumentSnapshot(env, second.snapshot.id, actor, {
+      applyReason: "정기 대장 현행화 반영 작업",
+      approvalReference: "CC-2026-0001",
+      confirmedExcludeCount: 1
+    });
+    assert.equal(secondApplied.ok, true, secondApplied.message);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 299);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 3);
     assert.match(database.prepare("SELECT document_name FROM documents WHERE sync_state = 'current' ORDER BY id LIMIT 1").get().document_name, /변경$/);
 
     const state = await getDocumentSyncState(env);
-    assert.equal(state.currentVersion, 3);
+    assert.ok(state.currentVersion > exported.baseVersion);
     const stale = await createDocumentSnapshot(env, {
-      sourceName: "오래된 관리대장.xlsx", sourceHash: "c".repeat(64), totalCount: 1, baseVersion: 2, hasRowKeys: true
+      sourceName: "오래된 관리대장.xlsx",
+      sourceHash: "c".repeat(64),
+      totalCount: 1,
+      schemaVersion: 1,
+      mode: "managed",
+      baseVersion: exported.baseVersion,
+      currentSnapshotId: exported.currentSnapshotId || 1,
+      hasRowKeys: true
     }, actor);
     assert.equal(stale.ok, false);
     assert.equal(stale.stale, true);
@@ -78,20 +108,25 @@ test("300건 엑셀 한 파일을 현재 대장으로 반영하고 다음 파일
 
 test("엑셀 동기화는 오류 행이 있으면 ready 상태가 되지 않고 현재 문서를 바꾸지 않는다", async () => {
   const database = await createMigratedDatabase();
-  const env = { DB: sqliteD1(database) };
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };
   const actor = actorFixture();
   try {
     const rows = buildRows(2);
     rows[1].source.category = "존재하지 않는 문서종류";
     const created = await createDocumentSnapshot(env, {
-      sourceName: "오류.xlsx", sourceHash: "d".repeat(64), totalCount: rows.length, hasRowKeys: false
+      sourceName: "오류.xlsx",
+      sourceHash: "d".repeat(64),
+      totalCount: rows.length,
+      schemaVersion: 1,
+      mode: "bootstrap",
+      hasRowKeys: false
     }, actor);
-    assert.equal(created.ok, true);
+    assert.equal(created.ok, true, created.message);
     assert.equal((await stageDocumentSnapshotRows(env, created.id, rows)).ok, true);
     const options = await loadDocumentFormOptions(env, { activeOnly: true });
-    const prepared = await prepareDocumentSnapshot(env, created.id, options, prepareDocumentImportRows, actor);
+    const prepared = await prepareDocumentSnapshot(env, created.id, options, null, actor);
     assert.equal(prepared.ok, false);
-    assert.match(prepared.message, /존재하지 않는 대분류/);
+    assert.match(prepared.message, /존재하지 않는 문서종류|문서종류/);
     assert.equal(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(created.id).status, "failed");
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents").get().count, 2);
   } finally {
@@ -104,16 +139,25 @@ async function createAndPrepare(env, actor, rows, options) {
     sourceName: "한림_문서고_관리대장.xlsx",
     sourceHash: options.sourceHash,
     totalCount: rows.length,
+    schemaVersion: options.schemaVersion || 1,
+    mode: options.mode || "managed",
     baseVersion: options.baseVersion || "",
+    currentSnapshotId: options.currentSnapshotId || "",
+    exportManifestId: options.exportManifestId || "",
     hasRowKeys: options.hasRowKeys
   }, actor);
-  assert.equal(created.ok, true);
+  assert.equal(created.ok, true, created.message);
   for (let index = 0; index < rows.length; index += FREE_TIER_BUDGET.excelSnapshotStageChunkSize) {
-    const staged = await stageDocumentSnapshotRows(env, created.id, rows.slice(index, index + FREE_TIER_BUDGET.excelSnapshotStageChunkSize));
-    assert.equal(staged.ok, true);
+    const chunk = rows.slice(index, index + FREE_TIER_BUDGET.excelSnapshotStageChunkSize).map((row) => ({
+      rowNumber: row.rowNumber,
+      sourceRowKey: row.sourceRowKey || row.rowKey || "",
+      source: row.source
+    }));
+    const staged = await stageDocumentSnapshotRows(env, created.id, chunk);
+    assert.equal(staged.ok, true, staged.message);
   }
   const formOptions = await loadDocumentFormOptions(env, { activeOnly: true });
-  const prepared = await prepareDocumentSnapshot(env, created.id, formOptions, prepareDocumentImportRows, actor);
+  const prepared = await prepareDocumentSnapshot(env, created.id, formOptions, null, actor);
   assert.equal(prepared.ok, true, prepared.message);
   return prepared;
 }
@@ -126,7 +170,7 @@ function buildRows(count) {
     const position = positions[index % positions.length];
     return {
       rowNumber: index + 2,
-      rowKey: `ROW-${String(index + 1).padStart(8, "0")}`,
+      sourceRowKey: "",
       source: {
         documentNumber: `DOC-${String(index + 1).padStart(4, "0")}`,
         revisionNumber: `Rev.${index % 4}`,

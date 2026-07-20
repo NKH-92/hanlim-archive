@@ -5,7 +5,8 @@ export const PERMISSIONS = Object.freeze({
   MANAGE_SETS: "can_manage_sets",
   MANAGE_MASTERS: "can_manage_masters",
   MANAGE_USERS: "can_manage_users",
-  VIEW_AUDIT: "can_view_audit"
+  VIEW_AUDIT: "can_view_audit",
+  APPLY_DOCUMENT_SNAPSHOTS: "can_apply_document_snapshots"
 });
 
 export const PERMISSION_KEYS = Object.freeze(Object.values(PERMISSIONS));
@@ -17,7 +18,8 @@ export const PERMISSION_LABELS = Object.freeze({
   [PERMISSIONS.MANAGE_SETS]: "문서 세트 관리",
   [PERMISSIONS.MANAGE_MASTERS]: "랙·대분류·태그 관리",
   [PERMISSIONS.MANAGE_USERS]: "사용자·권한 관리",
-  [PERMISSIONS.VIEW_AUDIT]: "전역 감사조회"
+  [PERMISSIONS.VIEW_AUDIT]: "전역 감사조회",
+  [PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS]: "엑셀 전체 대장 반영"
 });
 
 export const PERMISSION_PRESETS = Object.freeze({

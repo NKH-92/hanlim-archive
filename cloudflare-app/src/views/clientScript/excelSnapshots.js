@@ -12,19 +12,40 @@ export function excelSnapshotScript() {
       function excelCellText(cell) {
         var value = cell && cell.value;
         if (value === null || value === undefined) return '';
-        if (value instanceof Date) return value.toISOString().slice(0, 10);
+        if (value instanceof Date) {
+          return excelUtcDateOnly(value);
+        }
         if (typeof value === 'object' && value.result !== undefined) value = value.result;
         if (typeof value === 'object' && Array.isArray(value.richText)) return value.richText.map(function (part) { return part.text || ''; }).join('').trim();
         if (typeof value === 'object' && value.text !== undefined) return String(value.text).trim();
         return String(value).trim();
       }
 
+      function excelUtcDateOnly(date) {
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+        var year = date.getUTCFullYear();
+        var month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        var day = String(date.getUTCDate()).padStart(2, '0');
+        return year + '-' + month + '-' + day;
+      }
+
+      function excelDateOnlyToUtcDate(value) {
+        var match = String(value || '').match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+        if (!match) return null;
+        var year = Number(match[1]);
+        var month = Number(match[2]);
+        var day = Number(match[3]);
+        var date = new Date(Date.UTC(year, month - 1, day));
+        if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+        return date;
+      }
+
       function excelDateText(cell) {
         var value = cell && cell.value;
-        if (value instanceof Date) return value.toISOString().slice(0, 10);
+        if (value instanceof Date) return excelUtcDateOnly(value);
         if (typeof value === 'number' && Number.isFinite(value)) {
           var date = new Date(Date.UTC(1899, 11, 30) + Math.round(value * 86400000));
-          return date.toISOString().slice(0, 10);
+          return excelUtcDateOnly(date);
         }
         return excelCellText(cell);
       }
@@ -41,15 +62,16 @@ export function excelSnapshotScript() {
 
       function excelMeta(workbook) {
         var sheet = workbook.getWorksheet('_시스템정보');
-        if (!sheet) return { baseVersion: 0, schemaVersion: 1 };
+        if (!sheet) return { hasSystemInfo: false, baseVersion: 0, schemaVersion: 0, currentSnapshotId: 0, exportManifestId: '' };
         var values = {};
         sheet.eachRow(function (row) { values[excelCellText(row.getCell(1))] = excelCellText(row.getCell(2)); });
-        return { baseVersion: Number(values.baseVersion || 0), schemaVersion: Number(values.schemaVersion || 1) };
-      }
-
-      function excelRowKey() {
-        if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-        return 'HLM-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14);
+        return {
+          hasSystemInfo: true,
+          baseVersion: Number(values.baseVersion || 0),
+          schemaVersion: Number(values.schemaVersion || 0),
+          currentSnapshotId: Number(values.currentSnapshotId || 0),
+          exportManifestId: values.exportManifestId || values.sourceExportId || ''
+        };
       }
 
       ${excelOpenXmlCompatibilityScript()}
@@ -72,7 +94,7 @@ export function excelSnapshotScript() {
           if (originalKey) originalKeyCount += 1;
           rows.push({
             rowNumber: rowNumber,
-            rowKey: originalKey || excelRowKey(),
+            sourceRowKey: originalKey || '',
             source: {
               documentNumber: visible[0], revisionNumber: visible[1], revisionDate: excelDateText(row.getCell(3)),
               disposalDueYear: visible[3], documentName: visible[4], category: visible[5], rackNumber: visible[6],
@@ -82,16 +104,30 @@ export function excelSnapshotScript() {
         }
         if (!rows.length) throw new Error('엑셀에 동기화할 문서가 없습니다.');
         if (rows.length > 1000) throw new Error('엑셀 문서는 최대 1,000건까지 동기화할 수 있습니다.');
+        if (meta.hasSystemInfo) {
+          if (!meta.schemaVersion) throw new Error('관리 파일의 schemaVersion이 없습니다.');
+          if (!meta.baseVersion) throw new Error('관리 파일의 baseVersion이 없습니다.');
+          if (!meta.currentSnapshotId && !meta.exportManifestId) throw new Error('관리 파일의 currentSnapshotId 또는 exportManifestId가 필요합니다.');
+        }
         var digest = await crypto.subtle.digest('SHA-256', buffer);
         var hash = Array.from(new Uint8Array(digest)).map(function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
-        return { rows: rows, hash: hash, baseVersion: meta.baseVersion, schemaVersion: meta.schemaVersion, hasRowKeys: originalKeyCount === rows.length };
+        return {
+          rows: rows,
+          hash: hash,
+          mode: meta.hasSystemInfo ? 'managed' : 'bootstrap',
+          baseVersion: meta.baseVersion,
+          schemaVersion: meta.hasSystemInfo ? meta.schemaVersion : 1,
+          currentSnapshotId: meta.currentSnapshotId,
+          exportManifestId: meta.exportManifestId,
+          hasRowKeys: originalKeyCount === rows.length
+        };
       }
 
       function excelSummary(parsed, file) {
         var node = document.querySelector('[data-excel-file-summary]');
         if (!node) return;
         node.hidden = false;
-        node.textContent = file.name + ' · ' + parsed.rows.length.toLocaleString('ko-KR') + '건' + (parsed.baseVersion ? ' · 대장 버전 ' + parsed.baseVersion : ' · 최초 연결 파일');
+        node.textContent = file.name + ' · ' + parsed.rows.length.toLocaleString('ko-KR') + '건' + (parsed.mode === 'managed' ? ' · 대장 버전 ' + parsed.baseVersion : ' · bootstrap(메타데이터 없음)');
       }
 
       function excelProgress(done, total, message) {
@@ -136,14 +172,31 @@ export function excelSnapshotScript() {
             if (!excelCachedParsed || excelCachedFile !== file) excelCachedParsed = await readExcelSnapshot(file);
             button.disabled = true;
             excelProgress(1, excelCachedParsed.rows.length + 2, '동기화 작업을 준비하고 있습니다.');
+            if (excelCachedParsed.mode === 'bootstrap') {
+              var confirmed = window.confirm('시스템 정보가 없는 파일입니다. Admin bootstrap으로 최초 연결할까요? 운영 backup을 확인한 뒤에만 진행하세요.');
+              if (!confirmed) throw new Error('bootstrap 반영이 취소되었습니다.');
+            }
             var created = await excelPost('/document-snapshots', {
-              sourceName: file.name, sourceHash: excelCachedParsed.hash, totalCount: String(excelCachedParsed.rows.length),
+              sourceName: file.name,
+              sourceHash: excelCachedParsed.hash,
+              clientSourceHash: excelCachedParsed.hash,
+              totalCount: String(excelCachedParsed.rows.length),
+              schemaVersion: String(excelCachedParsed.schemaVersion || 1),
               baseVersion: excelCachedParsed.baseVersion ? String(excelCachedParsed.baseVersion) : '',
+              currentSnapshotId: excelCachedParsed.currentSnapshotId ? String(excelCachedParsed.currentSnapshotId) : '',
+              exportManifestId: excelCachedParsed.exportManifestId || '',
+              mode: excelCachedParsed.mode,
               hasRowKeys: excelCachedParsed.hasRowKeys ? '1' : ''
             });
             var chunkSize = 50;
             for (var index = 0; index < excelCachedParsed.rows.length; index += chunkSize) {
-              var chunk = excelCachedParsed.rows.slice(index, index + chunkSize);
+              var chunk = excelCachedParsed.rows.slice(index, index + chunkSize).map(function (entry) {
+                return {
+                  rowNumber: entry.rowNumber,
+                  sourceRowKey: entry.sourceRowKey || '',
+                  source: entry.source
+                };
+              });
               await excelPost('/document-snapshots/' + created.id + '/rows', { rows: JSON.stringify(chunk) });
               excelProgress(Math.min(index + chunk.length, excelCachedParsed.rows.length), excelCachedParsed.rows.length + 2, '엑셀 행을 안전하게 나누어 전송하고 있습니다.');
             }
@@ -170,8 +223,8 @@ export function excelSnapshotScript() {
       }
 
       function excelDataValues(document) {
-        var revisionDate = document.revisionDate ? new Date(document.revisionDate + 'T00:00:00') : '';
-        return [document.documentNumber, document.revisionNumber, revisionDate, document.disposalDueYear || '', document.documentName,
+        var revisionDate = document.revisionDate ? excelDateOnlyToUtcDate(document.revisionDate) : '';
+        return [document.documentNumber, document.revisionNumber, revisionDate || '', document.disposalDueYear || '', document.documentName,
           document.category, document.rackNumber, document.rackColumn, document.shelfNumber, document.rackFace,
           document.tags || '', document.note || '', document.status, document.rowKey];
       }
@@ -273,8 +326,12 @@ export function excelSnapshotScript() {
 
         var meta = workbook.addWorksheet('_시스템정보', { state: 'veryHidden' });
         meta.addRows([
-          ['schemaVersion', payload.schemaVersion], ['baseVersion', payload.baseVersion], ['currentSnapshotId', payload.currentSnapshotId || ''],
-          ['exportedAt', payload.exportedAt], ['rowCount', payload.documents.length]
+          ['schemaVersion', payload.schemaVersion],
+          ['baseVersion', payload.baseVersion],
+          ['currentSnapshotId', payload.currentSnapshotId || ''],
+          ['exportManifestId', payload.exportManifestId || ''],
+          ['exportedAt', payload.exportedAt],
+          ['rowCount', payload.documents.length]
         ]);
         var output = await workbook.xlsx.writeBuffer();
         var blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

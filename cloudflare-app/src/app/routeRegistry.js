@@ -95,7 +95,7 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("snapshots.details", "snapshots", "GET", "/document-snapshots/:id", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("snapshots.rows", "snapshots", "POST", "/document-snapshots/:id/rows", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("snapshots.prepare", "snapshots", "POST", "/document-snapshots/:id/prepare", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
-  route("snapshots.apply", "snapshots", "POST", "/document-snapshots/:id/apply", { permission: PERMISSIONS.MANAGE_DOCUMENTS })
+  route("snapshots.apply", "snapshots", "POST", "/document-snapshots/:id/apply", { permission: PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS })
 ]);
 
 export const ROUTES = Object.freeze([...PUBLIC_ROUTES, ...AUTHENTICATED_ROUTES]);

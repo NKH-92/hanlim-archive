@@ -15,12 +15,17 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
   const canViewMovements = canViewAudit || hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS);
   const location = locationLabel(document);
   const latestDisposal = disposalLogs.find((log) => log.action === "disposed");
+  const isExcluded = document.sync_state === "excluded";
+  const syncBadge = isExcluded
+    ? `<span class="status disposed" title="현재 대장에는 포함되지 않은 문서">현재 대장 제외</span>`
+    : `<span class="status active">현재 대장 포함</span>`;
 
   return page(document.document_name, `
     <section class="document-detail-head">
       <nav class="breadcrumb" aria-label="경로"><a href="/app">문서검색</a><span>/</span><span>문서 상세</span></nav>
-      <div class="document-title-row"><div><h1>${escapeHtml(document.document_name)}</h1><p><span class="mono">${escapeHtml(document.document_number)}</span> · ${escapeHtml(document.revision_number)}</p></div>${statusBadge(document.status)}</div>
+      <div class="document-title-row"><div><h1>${escapeHtml(document.document_name)}</h1><p><span class="mono">${escapeHtml(document.document_number)}</span> · ${escapeHtml(document.revision_number)}</p></div>${statusBadge(document.status)} ${syncBadge}</div>
       <div class="document-location-summary"><small>보관 위치</small><strong class="mono">${escapeHtml(location)}</strong></div>
+      ${isExcluded ? `<div class="alert warning" role="status">이 문서는 현재 대장에서 제외된 상태입니다. 일반 수정·이동·폐기는 할 수 없으며, 최신 대장 파일에 다시 포함하여 재등록하세요.${document.last_snapshot_id ? ` 마지막 관련 스냅샷: <a href="/document-snapshots/${Number(document.last_snapshot_id)}">#${Number(document.last_snapshot_id)}</a>` : ""}</div>` : ""}
     </section>
 
     <section class="document-detail-sections">
@@ -39,7 +44,8 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
         <h2>보존 정보</h2>
         <dl>
           ${detailRow("폐기 예정 년도", document.disposal_due_year ? `${document.disposal_due_year}년` : "미입력")}
-          ${detailRow("상태", document.status === "active" ? "보관중" : "폐기")}
+          ${detailRow("문서 상태", document.status === "active" ? "보관중" : "폐기")}
+          ${detailRow("대장 포함 상태", isExcluded ? "현재 대장 제외" : "현재 대장 포함")}
           ${detailRow("비고", document.note || "-")}
           ${document.status === "disposed" ? detailRow("폐기 사유", latestDisposal?.reason || "-") : ""}
           ${document.status === "disposed" ? detailRow("폐기 처리일", latestDisposal?.created_at || "-") : ""}
@@ -52,12 +58,12 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
       ${renderMiniVisualizer(document)}
     </section>
 
-    ${documentActions(document, { canManageDocuments, canManageDisposals, isAdmin: session.role === "Admin" })}
+    ${isExcluded ? "" : documentActions(document, { canManageDocuments, canManageDisposals, isAdmin: session.role === "Admin" })}
 
     ${canViewAudit ? `<details class="panel detail-history"><summary>감사 이력 <span class="count-badge">${auditLogs.length}건</span></summary>${timeline(auditLogs, renderAuditLog, "감사 이력이 없습니다.")}</details>` : ""}
     ${canViewMovements ? `<details class="panel detail-history"><summary>위치 이동 이력 <span class="count-badge">${movements.length}건</span></summary>${timeline(movements, renderMovementLog, "위치 이동 이력이 없습니다.")}</details>` : ""}
-    ${canManageDisposals && document.status === "active" ? disposeModal(document) : ""}
-    ${session.role === "Admin" && document.status === "disposed" ? restoreModal(document) : ""}
+    ${!isExcluded && canManageDisposals && document.status === "active" ? disposeModal(document) : ""}
+    ${!isExcluded && session.role === "Admin" && document.status === "disposed" ? restoreModal(document) : ""}
   `, session);
 }
 
