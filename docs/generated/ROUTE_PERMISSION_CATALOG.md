@@ -6,6 +6,7 @@
 
 | route id | method | path | auth | permission/policy |
 |---|---|---|---|---|
+| `assets.generated` | `*` | `/assets/:path*` | public | public |
 | `assets.images` | `*` | `/images/:path*` | public | public |
 | `assets.favicon` | `*` | `/favicon.ico` | public | public |
 | `health.read` | `GET` | `/healthz` | public | public |
@@ -121,4 +122,4 @@
 | policy:always-404 | `session.signup.blocked` |
 | policy:any-management-permission | `admin.dashboard` |
 | policy:move-or-audit | `admin.movements` |
-| public | `assets.images`, `assets.favicon`, `health.read`, `session.login.form`, `session.login` |
+| public | `assets.generated`, `assets.images`, `assets.favicon`, `health.read`, `session.login.form`, `session.login` |

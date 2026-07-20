@@ -11,6 +11,7 @@ const route = (id, family, method, path, options = {}) => Object.freeze({
 });
 
 export const PUBLIC_ROUTES = Object.freeze([
+  route("assets.generated", "assets", ANY, "/assets/:path*", { auth: "public" }),
   route("assets.images", "assets", ANY, "/images/:path*", { auth: "public" }),
   route("assets.favicon", "assets", ANY, "/favicon.ico", { auth: "public" }),
   route("health.read", "health", "GET", "/healthz", { auth: "public" }),
