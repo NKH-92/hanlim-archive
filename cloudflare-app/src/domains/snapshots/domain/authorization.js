@@ -30,58 +30,72 @@ export function requiredPermissionsForDiff(summary = {}) {
 
 export function evaluateSnapshotApplyAuthorization(session, summary = {}, env = {}, { bootstrap = false } = {}) {
   const mode = resolveSnapshotApplyMode(env);
+  const requiredPermissions = requiredPermissionsForDiff(summary);
+  const missingPermissions = missingPermissionsForSession(session, requiredPermissions);
+  if (Number(summary.restoreCount) > 0 && session?.role !== "Admin" && !missingPermissions.includes("Admin")) {
+    missingPermissions.push("Admin");
+  }
+
   if (mode === APPLY_MODES.DISABLED) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_APPLY_DISABLED,
-      "엑셀 전체 대장 반영이 일시적으로 비활성화되어 있습니다."
+      "엑셀 전체 대장 반영이 일시적으로 비활성화되어 있습니다.",
+      { requiredPermissions, missingPermissions, mode }
     );
   }
   if (mode === APPLY_MODES.ADMIN_ONLY && session?.role !== "Admin") {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_APPLY_PERMISSION_REQUIRED,
-      "현재 반영 모드는 Admin 전용입니다."
+      "현재 반영 모드는 Admin 전용입니다.",
+      { requiredPermissions: [...requiredPermissions, "Admin"], missingPermissions: ["Admin"], mode }
     );
   }
   if (!hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_APPLY_PERMISSION_REQUIRED,
-      "문서 등록·수정 권한이 필요합니다."
+      "문서 등록·수정 권한이 필요합니다.",
+      { requiredPermissions, missingPermissions, mode }
     );
   }
   if (!hasPermission(session, PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS)) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_APPLY_PERMISSION_REQUIRED,
-      "엑셀 전체 대장 반영 권한이 필요합니다."
+      "엑셀 전체 대장 반영 권한이 필요합니다.",
+      { requiredPermissions, missingPermissions, mode }
     );
   }
   if (bootstrap && session?.role !== "Admin") {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_BOOTSTRAP_FORBIDDEN,
-      "메타데이터 없는 bootstrap 반영은 Admin만 수행할 수 있습니다."
+      "메타데이터 없는 bootstrap 반영은 Admin만 수행할 수 있습니다.",
+      { requiredPermissions: [...requiredPermissions, "Admin"], missingPermissions: ["Admin"], mode }
     );
   }
   if (Number(summary.moveCount) > 0 && !hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS)) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_MOVE_PERMISSION_REQUIRED,
-      `위치 변경 ${summary.moveCount}건을 반영하려면 문서 위치 이동 권한이 필요합니다.`
+      `위치 변경 ${summary.moveCount}건을 반영하려면 문서 위치 이동 권한이 필요합니다.`,
+      { requiredPermissions, missingPermissions, mode }
     );
   }
   if (Number(summary.disposeCount) > 0 && !hasPermission(session, PERMISSIONS.MANAGE_DISPOSALS)) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_DISPOSAL_PERMISSION_REQUIRED,
-      `폐기 ${summary.disposeCount}건을 반영하려면 폐기 관리 권한이 필요합니다.`
+      `폐기 ${summary.disposeCount}건을 반영하려면 폐기 관리 권한이 필요합니다.`,
+      { requiredPermissions, missingPermissions, mode }
     );
   }
   if (Number(summary.restoreCount) > 0 && session?.role !== "Admin") {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_RESTORE_ADMIN_REQUIRED,
-      `폐기 해제 ${summary.restoreCount}건을 반영하려면 Admin 권한이 필요합니다.`
+      `폐기 해제 ${summary.restoreCount}건을 반영하려면 Admin 권한이 필요합니다.`,
+      { requiredPermissions: [...requiredPermissions, "Admin"], missingPermissions, mode }
     );
   }
   return {
     ok: true,
     mode,
-    requiredPermissions: requiredPermissionsForDiff(summary),
+    requiredPermissions,
     missingPermissions: []
   };
 }

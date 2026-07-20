@@ -106,6 +106,37 @@ test("300건 엑셀 한 파일을 현재 대장으로 반영하고 다음 파일
   }
 });
 
+test("1,000건 엑셀 반영은 단일 batch와 statement 예산 안에서 원자 처리된다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };
+  const actor = actorFixture();
+
+  try {
+    const rows = buildRows(1000);
+    const prepared = await createAndPrepare(env, actor, rows, {
+      sourceHash: "e".repeat(64),
+      mode: "bootstrap",
+      hasRowKeys: false
+    });
+    assert.equal(Number(prepared.snapshot.create_count), 1000);
+    assert.equal(Number(prepared.snapshot.exclude_count), 2);
+
+    const applied = await applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+      applyReason: "1,000건 규모 원자 반영 검증",
+      approvalReference: "SCALE-1000",
+      confirmedExcludeCount: 2
+    });
+    assert.equal(applied.ok, true, applied.message);
+    assert.ok(applied.statementCount <= FREE_TIER_BUDGET.maxD1StatementsPerRequest);
+    assert.equal(applied.statementCount, 17);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 1000);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 2);
+    assert.equal(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(prepared.snapshot.id).status, "completed");
+  } finally {
+    database.close();
+  }
+});
+
 test("엑셀 동기화는 오류 행이 있으면 ready 상태가 되지 않고 현재 문서를 바꾸지 않는다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };

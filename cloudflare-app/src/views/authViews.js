@@ -30,7 +30,7 @@ export function loginPage({ returnUrl, error, setupWarning, signupSubmitted }) {
   `, null);
 }
 
-export function signupPage({ values = {}, error = "" }) {
+export function signupPage({ values = { username: "", displayName: "" }, error = "" }) {
   return page("가입 요청", `
     <section class="login-shell">
       <div class="login-side">
@@ -42,8 +42,8 @@ export function signupPage({ values = {}, error = "" }) {
         <h2>가입 요청</h2>
         ${error ? alertDanger(error) : ""}
         <form method="post" action="/signup" class="stack">
-          <label>아이디<input name="username" value="${escapeHtml(values.username)}" autocomplete="username" required></label>
-          <label>이름<input name="displayName" value="${escapeHtml(values.displayName)}" required></label>
+          <label>아이디<input name="username" value="${escapeHtml(values.username || "")}" autocomplete="username" required></label>
+          <label>이름<input name="displayName" value="${escapeHtml(values.displayName || "")}" required></label>
           <label>비밀번호<input name="password" type="password" autocomplete="new-password" required></label>
           <button type="submit" class="primary">가입 요청</button>
         </form>

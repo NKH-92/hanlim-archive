@@ -73,11 +73,15 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
   for (const item of items) {
     const identity = documentIdentity(item.values.documentNumber, item.values.revisionNumber);
     if (fileIdentity.has(identity)) {
+      const priorRow = fileIdentity.get(identity);
       errors.push({
         rowNumber: item.rowNumber,
         field: "identity",
         code: SNAPSHOT_ERROR_CODES.SNAPSHOT_IDENTITY_DUPLICATE,
-        message: "파일 안에 같은 문서번호·개정번호가 중복되어 있습니다."
+        message: `파일 안에 같은 문서번호·개정번호가 중복되어 있습니다. (${item.values.documentNumber} / ${item.values.revisionNumber}, ${priorRow}행과 충돌)`,
+        documentNumber: item.values.documentNumber,
+        revisionNumber: item.values.revisionNumber,
+        conflictRowNumber: priorRow
       });
     } else {
       fileIdentity.set(identity, item.rowNumber);
@@ -86,11 +90,14 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
     const sourceKey = clean(item.sourceRowKey || item.rowKey);
     if (sourceKey) {
       if (fileKeys.has(sourceKey)) {
+        const priorRow = fileKeys.get(sourceKey);
         errors.push({
           rowNumber: item.rowNumber,
           field: "sourceRowKey",
           code: SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_DUPLICATE,
-          message: "파일 안에 같은 숨김 관리 ID가 중복되어 있습니다."
+          message: `파일 안에 같은 숨김 관리 ID가 중복되어 있습니다. (${sourceKey}, ${priorRow}행과 충돌)`,
+          rowKey: sourceKey,
+          conflictRowNumber: priorRow
         });
       } else {
         fileKeys.set(sourceKey, item.rowNumber);
@@ -103,11 +110,17 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
       if (!document) {
         const currentHits = byIdentityCurrent.get(identity) || [];
         if (currentHits.length) {
+          const hit = currentHits[0];
           errors.push({
             rowNumber: item.rowNumber,
             field: "sourceRowKey",
             code: SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_UNKNOWN,
-            message: "관리 ID가 기존 문서와 일치하지 않습니다."
+            message: `관리 ID가 기존 문서와 일치하지 않습니다. (행 관리 ID ${sourceKey}, 동일 문서번호·개정의 현재 문서 ${hit.document_number}/${hit.revision_number}, id=${hit.id}, rowKey=${hit.excel_row_key || "-"})`,
+            documentNumber: item.values.documentNumber,
+            revisionNumber: item.values.revisionNumber,
+            existingDocumentId: Number(hit.id),
+            existingRowKey: hit.excel_row_key || "",
+            rowKey: sourceKey
           });
           continue;
         }
@@ -116,7 +129,10 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
             rowNumber: item.rowNumber,
             field: "sourceRowKey",
             code: SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_UNKNOWN,
-            message: "알 수 없는 외부 관리 ID는 거부됩니다."
+            message: `알 수 없는 외부 관리 ID는 거부됩니다. (${sourceKey}, ${item.values.documentNumber}/${item.values.revisionNumber})`,
+            documentNumber: item.values.documentNumber,
+            revisionNumber: item.values.revisionNumber,
+            rowKey: sourceKey
           });
           continue;
         }
@@ -125,20 +141,30 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
       const currentHits = byIdentityCurrent.get(identity) || [];
       const excludedHits = byIdentityExcluded.get(identity) || [];
       if (currentHits.length) {
+        const hit = currentHits[0];
         errors.push({
           rowNumber: item.rowNumber,
           field: "sourceRowKey",
           code: SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_MISSING_FOR_EXISTING,
-          message: "기존 문서의 관리 ID가 삭제되어 있습니다. 추출 파일의 숨김 관리 ID를 복구하세요."
+          message: `기존 문서의 관리 ID가 삭제되어 있습니다. (${hit.document_number}/${hit.revision_number}, id=${hit.id}, 복구할 rowKey=${hit.excel_row_key || "-"})`,
+          documentNumber: hit.document_number,
+          revisionNumber: hit.revision_number,
+          existingDocumentId: Number(hit.id),
+          existingRowKey: hit.excel_row_key || ""
         });
         continue;
       }
       if (excludedHits.length) {
+        const hit = excludedHits[0];
         errors.push({
           rowNumber: item.rowNumber,
           field: "sourceRowKey",
           code: SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_MISSING_FOR_EXISTING,
-          message: "제외 문서와 같은 문서번호·개정번호입니다. 원래 관리 ID를 복구해 재포함하세요."
+          message: `제외 문서와 같은 문서번호·개정번호입니다. (${hit.document_number}/${hit.revision_number}, id=${hit.id}, 복구할 rowKey=${hit.excel_row_key || "-"})`,
+          documentNumber: hit.document_number,
+          revisionNumber: hit.revision_number,
+          existingDocumentId: Number(hit.id),
+          existingRowKey: hit.excel_row_key || ""
         });
         continue;
       }
@@ -149,7 +175,11 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
         rowNumber: item.rowNumber,
         field: "match",
         code: SNAPSHOT_ERROR_CODES.SNAPSHOT_IDENTITY_CONFLICT,
-        message: "서로 다른 행이 같은 기존 문서에 매칭되었습니다."
+        message: `서로 다른 행이 같은 기존 문서에 매칭되었습니다. (${document.document_number}/${document.revision_number}, id=${document.id}, rowKey=${document.excel_row_key || sourceKey || "-"})`,
+        documentNumber: document.document_number,
+        revisionNumber: document.revision_number,
+        existingDocumentId: Number(document.id),
+        existingRowKey: document.excel_row_key || ""
       });
       continue;
     }
@@ -157,11 +187,17 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
     if (document) {
       const documentIdentityKey = documentIdentity(document.document_number, document.revision_number);
       if (documentIdentityKey !== identity && (byIdentityCurrent.get(identity) || []).some((candidate) => Number(candidate.id) !== Number(document.id))) {
+        const conflict = (byIdentityCurrent.get(identity) || []).find((candidate) => Number(candidate.id) !== Number(document.id));
         errors.push({
           rowNumber: item.rowNumber,
           field: "identity",
           code: SNAPSHOT_ERROR_CODES.SNAPSHOT_IDENTITY_CONFLICT,
-          message: "관리 ID가 가리키는 문서와 문서번호·개정번호가 다른 현재 문서와 충돌합니다."
+          message: `관리 ID가 가리키는 문서(${document.document_number}/${document.revision_number}, id=${document.id})와 행의 문서번호·개정번호(${item.values.documentNumber}/${item.values.revisionNumber})가 다른 현재 문서(id=${conflict?.id || "?"})와 충돌합니다.`,
+          documentNumber: item.values.documentNumber,
+          revisionNumber: item.values.revisionNumber,
+          existingDocumentId: Number(document.id),
+          existingRowKey: document.excel_row_key || "",
+          conflictDocumentId: conflict ? Number(conflict.id) : null
         });
       }
       if (documentIdentityKey !== identity) identityChangeCount += 1;

@@ -441,7 +441,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
           create_count = ?, update_count = ?, unchanged_count = ?, exclude_count = ?,
           metadata_count = ?, move_count = ?, dispose_count = ?, restore_count = ?,
           tag_change_count = ?, reinclude_count = ?,
-          required_permissions_json = ?, canonical_rows_hash = ?,
+          required_permissions_json = ?, warnings_json = ?, canonical_rows_hash = ?,
           error_summary = NULL, prepared_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND status = 'staging' AND base_version = (
         SELECT current_version FROM document_sync_state WHERE id = 1
@@ -459,6 +459,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
       summary.tagChangeCount,
       summary.reincludeCount,
       JSON.stringify(requiredPermissions),
+      JSON.stringify(warnings),
       canonicalRowsHash,
       snapshotId
     ),
@@ -474,7 +475,15 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
   const results = await env.DB.batch(snapshotStatements("prepare", statements));
   const ready = results[3]?.results?.[0];
   if (!ready) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "검증 중 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요.", { stale: true });
+    return failSnapshotValidation(
+      env,
+      snapshotId,
+      "검증 중 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요.",
+      actor,
+      true,
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE,
+      { stale: true, warnings }
+    );
   }
   return {
     ok: true,

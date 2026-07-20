@@ -1,6 +1,7 @@
 import { loadDocumentFormOptions } from "../domains/documents/index.js";
 import {
   applyDocumentSnapshot,
+  computeRiskWarnings,
   createDocumentSnapshot,
   evaluateSnapshotApplyAuthorization,
   getDocumentSnapshot,
@@ -102,6 +103,7 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
     const auth = evaluateSnapshotApplyAuthorization(session, summary, env, {
       bootstrap: snapshot.mode === "bootstrap"
     });
+    const warnings = parseSnapshotWarnings(snapshot, summary, auth);
     const applied = new URL(request.url).searchParams.get("applied") === "1";
     return documentSnapshotDetailPage({
       session,
@@ -112,6 +114,8 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
       canApply: snapshot.status === "ready" && auth.ok,
       applyBlockReason: auth.ok ? "" : auth.message,
       requiredPermissions: auth.requiredPermissions || [],
+      missingPermissions: auth.missingPermissions || [],
+      warnings,
       applyMode: resolveSnapshotApplyMode(env)
     });
   }
@@ -157,6 +161,21 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
         if (status === 403) {
           return errorPage(result.message, session, 403);
         }
+        const summary = {
+          createCount: Number(snapshot.create_count || 0),
+          updateCount: Number(snapshot.update_count || 0),
+          unchangedCount: Number(snapshot.unchanged_count || 0),
+          excludeCount: Number(snapshot.exclude_count || 0),
+          metadataCount: Number(snapshot.metadata_count || 0),
+          moveCount: Number(snapshot.move_count || 0),
+          disposeCount: Number(snapshot.dispose_count || 0),
+          restoreCount: Number(snapshot.restore_count || 0),
+          tagChangeCount: Number(snapshot.tag_change_count || 0),
+          reincludeCount: Number(snapshot.reinclude_count || 0)
+        };
+        const auth = evaluateSnapshotApplyAuthorization(session, summary, env, {
+          bootstrap: snapshot.mode === "bootstrap"
+        });
         return documentSnapshotDetailPage({
           session,
           snapshot,
@@ -165,7 +184,11 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
           error: result.message,
           canApply: false,
           applyBlockReason: result.message,
-          applyMode: resolveSnapshotApplyMode(env)
+          requiredPermissions: auth.requiredPermissions || result.requiredPermissions || [],
+          missingPermissions: auth.missingPermissions || result.missingPermissions || [],
+          warnings: parseSnapshotWarnings(snapshot, summary, auth),
+          applyMode: resolveSnapshotApplyMode(env),
+          status
         });
       }
       return redirect(`/document-snapshots/${id}?applied=1`);
@@ -182,4 +205,32 @@ export async function handleDocumentSnapshotExport(env, session) {
   if (denied) return denied;
   const payload = await getDocumentSnapshotExport(env);
   return jsonResponse({ ok: true, ...payload });
+}
+
+function parseSnapshotWarnings(snapshot, summary, auth) {
+  let stored = [];
+  try {
+    const parsed = JSON.parse(snapshot.warnings_json || "[]");
+    if (Array.isArray(parsed)) stored = parsed;
+  } catch {
+    stored = [];
+  }
+  const missing = auth.missingPermissions || [];
+  if (!stored.length) {
+    return computeRiskWarnings({
+      summary,
+      currentDocumentCount: Number(snapshot.total_count || 0) + Number(snapshot.exclude_count || 0),
+      missingPermissions: missing
+    });
+  }
+  const withoutMissing = stored.filter((warning) => warning.code !== "MISSING_PERMISSION");
+  if (!missing.length) return withoutMissing;
+  return [
+    ...withoutMissing,
+    {
+      code: "MISSING_PERMISSION",
+      level: "danger",
+      message: `부족한 권한: ${missing.join(", ")}`
+    }
+  ];
 }

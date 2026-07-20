@@ -261,11 +261,13 @@
         return date;
       }
 
-      function excelDateText(cell) {
+      function excelDateText(cell, workbook) {
         var value = cell && cell.value;
         if (value instanceof Date) return excelUtcDateOnly(value);
         if (typeof value === 'number' && Number.isFinite(value)) {
-          var date = new Date(Date.UTC(1899, 11, 30) + Math.round(value * 86400000));
+          var date1904 = !!(workbook && workbook.properties && workbook.properties.date1904);
+          var epoch = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
+          var date = new Date(epoch + Math.round(value * 86400000));
           return excelUtcDateOnly(date);
         }
         return excelCellText(cell);
@@ -392,7 +394,7 @@
             rowNumber: rowNumber,
             sourceRowKey: originalKey || '',
             source: {
-              documentNumber: visible[0], revisionNumber: visible[1], revisionDate: excelDateText(row.getCell(3)),
+              documentNumber: visible[0], revisionNumber: visible[1], revisionDate: excelDateText(row.getCell(3), workbook),
               disposalDueYear: visible[3], documentName: visible[4], category: visible[5], rackNumber: visible[6],
               rackColumn: visible[7], shelfNumber: visible[8], rackFace: visible[9], tags: visible[10], note: visible[11], status: visible[12]
             }

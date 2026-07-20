@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-07-20T12:58:46.333Z",
+  "dbPath": "reports/excel-snapshot-audit/local-sample.sqlite",
+  "findings": {
+    "currentIdentityDuplicates": [],
+    "updateAndExcludeSameSnapshot": [],
+    "dateMinusOneDayCandidates": [],
+    "excludedDocumentsInSets": [],
+    "abandonedSnapshots": []
+  },
+  "summary": {
+    "currentIdentityDuplicates": 0,
+    "updateAndExcludeSameSnapshot": 0,
+    "dateMinusOneDayCandidates": 0,
+    "excludedDocumentsInSets": 0,
+    "abandonedSnapshots": 0
+  }
+}

@@ -281,6 +281,7 @@ export async function createDocument(env, values, actor, actorRole = "User") {
   const createdId = result[0]?.results?.[0]?.id;
 
   if (!createdId) {
+    /** @type {Error & { code?: string }} */
     const error = new Error("같은 문서번호와 개정번호가 이미 등록되어 있습니다.");
     error.code = "DUPLICATE_DOCUMENT";
     throw error;

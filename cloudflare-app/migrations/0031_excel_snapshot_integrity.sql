@@ -27,6 +27,9 @@ ALTER TABLE document_snapshots
 ADD COLUMN required_permissions_json TEXT;
 
 ALTER TABLE document_snapshots
+ADD COLUMN warnings_json TEXT;
+
+ALTER TABLE document_snapshots
 ADD COLUMN canonical_rows_hash TEXT;
 
 ALTER TABLE document_snapshots

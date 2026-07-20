@@ -266,7 +266,12 @@ test("미리보기 UI는 제외 목록과 before/after를 포함한다", async (
       before_json: JSON.stringify({ schemaVersion: 1, rowKey: "HLM-7", values: { documentNumber: "DOC-EX", revisionNumber: "Rev.0", documentName: "제외문서", status: "active", rackCode: "1-01", rackFace: "A" } })
     }],
     canApply: true,
-    requiredPermissions: [PERMISSIONS.MANAGE_DOCUMENTS, PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS, PERMISSIONS.MOVE_DOCUMENTS]
+    requiredPermissions: [PERMISSIONS.MANAGE_DOCUMENTS, PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS, PERMISSIONS.MOVE_DOCUMENTS],
+    missingPermissions: [],
+    warnings: [
+      { code: "EXCLUSION", level: "danger", message: "업로드 파일에 없는 문서 1건이 대장에서 제외됩니다." },
+      { code: "LARGE_CHANGE", level: "warning", message: "현재 대장의 10% 이상이 변경됩니다." }
+    ]
   });
   const html = await response.text();
 
@@ -276,6 +281,9 @@ test("미리보기 UI는 제외 목록과 before/after를 포함한다", async (
   assert.match(html, /documentName: 이후/);
   assert.match(html, /name="applyReason"/);
   assert.match(html, /name="confirmedExcludeCount"/);
+  assert.match(html, /EXCLUSION/);
+  assert.match(html, /LARGE_CHANGE/);
+  assert.match(html, /snapshot-warnings/);
 });
 
 test("canonical rows hash는 배열 순서가 달라도 동일하다", async () => {
@@ -310,6 +318,267 @@ test("exclusion 목록 API와 table 행 수가 일치한다", async () => {
     database.close();
   }
 });
+
+test("동시 apply claim은 한 번만 완료되고 completed 재호출은 alreadyApplied다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "admin-only" };
+  const actor = actorFixture();
+  try {
+    const prepared = await bootstrapReadySnapshot(env, actor, [row(2, "DOC-CLAIM", "Rev.0")], "6".repeat(64));
+    const [first, second] = await Promise.all([
+      applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+        applyReason: "동시 반영 경쟁 검증 A",
+        approvalReference: "RACE-A",
+        confirmedExcludeCount: Number(prepared.snapshot.exclude_count || 0)
+      }),
+      applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+        applyReason: "동시 반영 경쟁 검증 B",
+        approvalReference: "RACE-B",
+        confirmedExcludeCount: Number(prepared.snapshot.exclude_count || 0)
+      })
+    ]);
+    const completed = [first, second].filter((result) => result.ok && !result.alreadyApplied);
+    const rejectedOrIdempotent = [first, second].filter((result) => !result.ok || result.alreadyApplied);
+    assert.equal(completed.length, 1, `exactly one apply should mutate: ${JSON.stringify([first, second])}`);
+    assert.equal(rejectedOrIdempotent.length, 1);
+    assert.equal(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(prepared.snapshot.id).status, "completed");
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE document_number = 'DOC-CLAIM' AND sync_state = 'current'").get().count, 1);
+
+    const again = await applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+      applyReason: "완료 후 재호출",
+      approvalReference: "RACE-C",
+      confirmedExcludeCount: Number(prepared.snapshot.exclude_count || 0)
+    });
+    assert.equal(again.ok, true);
+    assert.equal(again.alreadyApplied, true);
+  } finally {
+    database.close();
+  }
+});
+
+test("apply batch 중간 SQL 실패 시 문서·snapshot이 롤백된다", async () => {
+  const database = await createMigratedDatabase();
+  const base = sqliteD1(database);
+  const env = {
+    DB: {
+      prepare: (sql) => base.prepare(sql),
+      async batch(statements) {
+        const isApplyBatch = /SET status = 'applying'/i.test(statements[0]?.sql || "");
+        database.exec("BEGIN IMMEDIATE");
+        try {
+          const results = [];
+          for (let index = 0; index < statements.length; index += 1) {
+            const { sql, args } = statements[index];
+            if (isApplyBatch && index === 7) {
+              throw new Error("injected mid-batch failure");
+            }
+            if (/\bRETURNING\b/i.test(sql)) {
+              const rows = database.prepare(sql).all(...args);
+              results.push({
+                results: rows,
+                meta: {
+                  changes: Number(database.prepare("SELECT changes() AS count").get().count || 0),
+                  last_row_id: Number(database.prepare("SELECT last_insert_rowid() AS id").get().id || 0)
+                }
+              });
+            } else {
+              const result = database.prepare(sql).run(...args);
+              results.push({ results: [], meta: { changes: Number(result.changes || 0), last_row_id: Number(result.lastInsertRowid || 0) } });
+            }
+          }
+          database.exec("COMMIT");
+          return results;
+        } catch (error) {
+          database.exec("ROLLBACK");
+          throw error;
+        }
+      }
+    },
+    EXCEL_SNAPSHOT_APPLY_MODE: "admin-only"
+  };
+  const actor = actorFixture();
+  try {
+    const prepared = await bootstrapReadySnapshot(env, actor, [row(2, "DOC-FAIL", "Rev.0")], "7".repeat(64));
+    const beforeDocs = database.prepare("SELECT COUNT(*) AS count FROM documents").get().count;
+    await assert.rejects(
+      () => applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+        applyReason: "중간 실패 롤백 검증",
+        approvalReference: "FAIL-1",
+        confirmedExcludeCount: Number(prepared.snapshot.exclude_count || 0)
+      }),
+      /injected mid-batch failure/
+    );
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents").get().count, beforeDocs);
+    assert.equal(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(prepared.snapshot.id).status, "ready");
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE document_number = 'DOC-FAIL'").get().count, 0);
+  } finally {
+    database.close();
+  }
+});
+
+test("prepare 이후 unique identity 경합은 apply batch를 롤백한다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "admin-only" };
+  const actor = actorFixture();
+  try {
+    const prepared = await bootstrapReadySnapshot(env, actor, [row(2, "DOC-UNIQ", "Rev.0")], "8".repeat(64));
+    const slot = database.prepare("SELECT id FROM rack_slots ORDER BY id LIMIT 1").get();
+    const category = database.prepare("SELECT id FROM categories WHERE name = 'PV'").get();
+    database.prepare(`
+      INSERT INTO documents (
+        storage_code, excel_row_key, category_id, document_number, revision_number,
+        revision_date, disposal_due_year, document_name, note, rack_slot_id, rack_face,
+        status, sync_state, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'current', CURRENT_TIMESTAMP)
+    `).run(
+      "ARC-RACE-1",
+      "HLM-RACE-UNIQ",
+      category.id,
+      "DOC-UNIQ",
+      "Rev.0",
+      "2026-07-20",
+      2031,
+      "경합 문서",
+      "",
+      slot.id,
+      "A",
+      "active"
+    );
+    // 문서 INSERT 트리거가 version을 올리므로, unique index 경합만 검증하려면 claim 기준 버전을 맞춘다.
+    const state = database.prepare("SELECT current_version FROM document_sync_state WHERE id = 1").get();
+    database.prepare("UPDATE document_snapshots SET base_version = ? WHERE id = ?").run(state.current_version, prepared.snapshot.id);
+    const beforeCount = database.prepare("SELECT COUNT(*) AS count FROM documents WHERE document_number = 'DOC-UNIQ'").get().count;
+    await assert.rejects(
+      () => applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+        applyReason: "unique index 경합 롤백 검증",
+        approvalReference: "UNIQ-1",
+        confirmedExcludeCount: Number(prepared.snapshot.exclude_count || 0)
+      })
+    );
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE document_number = 'DOC-UNIQ'").get().count, beforeCount);
+    assert.notEqual(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(prepared.snapshot.id).status, "completed");
+  } finally {
+    database.close();
+  }
+});
+
+test("같은 위치 유지 update는 movement 0이고 폐기 해제는 restore log를 남긴다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "admin-only" };
+  const actor = actorFixture();
+  try {
+    const first = [row(2, "DOC-REST", "Rev.0", { status: "폐기" })];
+    const created = await createDocumentSnapshot(env, {
+      sourceName: "restore.xlsx", sourceHash: "9".repeat(64), totalCount: 1, schemaVersion: 1, mode: "bootstrap"
+    }, actor);
+    await stageDocumentSnapshotRows(env, created.id, first);
+    const prepared = await prepareDocumentSnapshot(env, created.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, actor);
+    await applyDocumentSnapshot(env, created.id, actor, {
+      applyReason: "폐기 문서 bootstrap",
+      approvalReference: "RST-1",
+      confirmedExcludeCount: Number(prepared.snapshot.exclude_count || 0)
+    });
+    const document = database.prepare("SELECT * FROM documents WHERE document_number = 'DOC-REST'").get();
+    const state = database.prepare("SELECT current_version, current_snapshot_id FROM document_sync_state WHERE id = 1").get();
+    const secondRows = [{
+      rowNumber: 2,
+      sourceRowKey: document.excel_row_key,
+      source: {
+        documentNumber: "DOC-REST",
+        revisionNumber: "Rev.0",
+        revisionDate: "2026-07-20",
+        disposalDueYear: "2031",
+        documentName: "무결성 검증 문서",
+        category: "PV",
+        rackNumber: "1",
+        rackColumn: "1",
+        shelfNumber: "1",
+        rackFace: "단면",
+        tags: "중요문서",
+        note: "이름만 유지 위치 동일",
+        status: "보관중"
+      }
+    }];
+    const second = await createDocumentSnapshot(env, {
+      sourceName: "restore2.xlsx",
+      sourceHash: "a".repeat(64),
+      totalCount: 1,
+      schemaVersion: 1,
+      mode: "managed",
+      baseVersion: state.current_version,
+      currentSnapshotId: state.current_snapshot_id,
+      hasRowKeys: true
+    }, actor);
+    await stageDocumentSnapshotRows(env, second.id, secondRows);
+    const prepared2 = await prepareDocumentSnapshot(env, second.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, actor);
+    assert.equal(Number(prepared2.snapshot.move_count), 0);
+    assert.equal(Number(prepared2.snapshot.restore_count), 1);
+    const applied2 = await applyDocumentSnapshot(env, second.id, actor, {
+      applyReason: "폐기 해제와 동일 위치 검증",
+      approvalReference: "RST-2",
+      confirmedExcludeCount: 0
+    });
+    assert.equal(applied2.ok, true, applied2.message);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_movements WHERE document_id = ?").get(document.id).count, 0);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM disposal_logs WHERE document_id = ? AND action = 'restored'").get(document.id).count, 1);
+  } finally {
+    database.close();
+  }
+});
+
+test("prepare 중 문서고 version이 바뀌면 snapshot이 failed로 terminal 처리된다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  const actor = actorFixture();
+  try {
+    const rows = [row(2, "DOC-STALE-P", "Rev.0")];
+    const created = await createDocumentSnapshot(env, {
+      sourceName: "stale-prepare.xlsx", sourceHash: "c".repeat(64), totalCount: 1, schemaVersion: 1, mode: "bootstrap"
+    }, actor);
+    await stageDocumentSnapshotRows(env, created.id, rows);
+    database.prepare("UPDATE document_sync_state SET current_version = current_version + 1 WHERE id = 1").run();
+    const prepared = await prepareDocumentSnapshot(env, created.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, actor);
+    assert.equal(prepared.ok, false);
+    assert.equal(prepared.stale, true);
+    assert.equal(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(created.id).status, "failed");
+  } finally {
+    database.close();
+  }
+});
+
+test("identity 중복 오류는 문서번호·개정·충돌 행을 포함한다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  const actor = actorFixture();
+  try {
+    const rows = [row(2, "DOC-MSG", "Rev.1"), row(5, "DOC-MSG", "Rev.1")];
+    const created = await createDocumentSnapshot(env, {
+      sourceName: "msg.xlsx", sourceHash: "b".repeat(64), totalCount: 2, schemaVersion: 1, mode: "bootstrap"
+    }, actor);
+    await stageDocumentSnapshotRows(env, created.id, rows);
+    const prepared = await prepareDocumentSnapshot(env, created.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, actor);
+    assert.equal(prepared.ok, false);
+    assert.match(prepared.message || "", /DOC-MSG/);
+    assert.match(prepared.message || JSON.stringify(prepared.errors || []), /Rev\.1|2행|5행|충돌/);
+  } finally {
+    database.close();
+  }
+});
+
+async function bootstrapReadySnapshot(env, actor, rows, sourceHash) {
+  const created = await createDocumentSnapshot(env, {
+    sourceName: "race.xlsx",
+    sourceHash,
+    totalCount: rows.length,
+    schemaVersion: 1,
+    mode: "bootstrap"
+  }, actor);
+  assert.equal(created.ok, true, created.message);
+  assert.equal((await stageDocumentSnapshotRows(env, created.id, rows)).ok, true);
+  const prepared = await prepareDocumentSnapshot(env, created.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, actor);
+  assert.equal(prepared.ok, true, prepared.message);
+  return prepared;
+}
 
 function row(rowNumber, documentNumber, revisionNumber, overrides = {}) {
   return {

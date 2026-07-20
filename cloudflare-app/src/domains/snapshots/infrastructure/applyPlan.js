@@ -10,7 +10,6 @@ export function buildApplyStatements(env, {
   applyDetails
 }) {
   const id = Number(snapshotId);
-  const guard = `EXISTS (SELECT 1 FROM document_snapshots WHERE id = ${id} AND status = 'applying')`;
   const reason = applyReason;
   const approval = approvalReference || "";
 
@@ -102,6 +101,7 @@ export function buildApplyStatements(env, {
       JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
       JOIN documents d ON d.id = row.matched_document_id
         AND d.row_version = row.expected_row_version
+        AND d.sync_state IN ('current', 'excluded')
       LEFT JOIN rack_slots fs ON fs.id = d.rack_slot_id
       LEFT JOIN racks fr ON fr.id = fs.rack_id
       LEFT JOIN rack_slots ts ON ts.id = CAST(json_extract(row.after_json, '$.values.rackSlotId') AS INTEGER)
@@ -129,28 +129,38 @@ export function buildApplyStatements(env, {
       JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
       JOIN documents d ON d.id = row.matched_document_id
         AND d.row_version = row.expected_row_version
+        AND d.sync_state IN ('current', 'excluded')
       WHERE row.snapshot_id = ?
         AND row.action = 'update'
         AND d.status <> json_extract(row.after_json, '$.values.status')
     `).bind(actorSnapshot.displayName, reason, id),
 
-    // 06. update 대상 tags DELETE
+    // 06. update 대상 tags DELETE — document pre-state guard와 동일 조건
     env.DB.prepare(`
       DELETE FROM document_tags
       WHERE document_id IN (
-        SELECT matched_document_id FROM document_snapshot_rows
-        WHERE snapshot_id = ? AND action = 'update'
-      ) AND ${guard}
+        SELECT row.matched_document_id
+        FROM document_snapshot_rows row
+        JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
+        JOIN documents d ON d.id = row.matched_document_id
+          AND d.row_version = row.expected_row_version
+          AND d.sync_state IN ('current', 'excluded')
+        WHERE row.snapshot_id = ? AND row.action = 'update'
+      )
     `).bind(id),
 
-    // 07. update 대상 tags INSERT
+    // 07. update 대상 tags INSERT — document pre-state guard와 동일 조건
     env.DB.prepare(`
       INSERT OR IGNORE INTO document_tags (document_id, tag_id)
       SELECT row.matched_document_id, CAST(tag.value AS INTEGER)
       FROM document_snapshot_rows row
+      JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
+      JOIN documents d ON d.id = row.matched_document_id
+        AND d.row_version = row.expected_row_version
+        AND d.sync_state IN ('current', 'excluded')
       CROSS JOIN json_each(json_extract(row.after_json, '$.values.tagIds')) tag
       JOIN tags t ON t.id = CAST(tag.value AS INTEGER) AND t.is_active = 1
-      WHERE row.snapshot_id = ? AND row.action = 'update' AND ${guard}
+      WHERE row.snapshot_id = ? AND row.action = 'update'
     `).bind(id),
 
     // 08. existing document UPDATE
@@ -172,11 +182,12 @@ export function buildApplyStatements(env, {
           row_version = row_version + 1,
           updated_at = CURRENT_TIMESTAMP
       FROM document_snapshot_rows row
+      JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
       WHERE d.id = row.matched_document_id
         AND d.row_version = row.expected_row_version
+        AND d.sync_state IN ('current', 'excluded')
         AND row.snapshot_id = ?
         AND row.action = 'update'
-        AND ${guard}
     `).bind(id, id),
 
     // 09. new document INSERT
@@ -201,15 +212,17 @@ export function buildApplyStatements(env, {
         json_extract(row.after_json, '$.values.status'),
         'current', row.snapshot_id, CURRENT_TIMESTAMP
       FROM document_snapshot_rows row
-      WHERE row.snapshot_id = ? AND row.action = 'create' AND ${guard}
+      JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
+      WHERE row.snapshot_id = ? AND row.action = 'create'
     `).bind(id),
 
     // 10. 신규 storage code 확정
     env.DB.prepare(`
       UPDATE documents
       SET storage_code = 'ARC-' || printf('%06d', id)
-      WHERE last_snapshot_id = ? AND storage_code LIKE 'SNP-%' AND ${guard}
-    `).bind(id),
+      WHERE last_snapshot_id = ? AND storage_code LIKE 'SNP-%'
+        AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'applying')
+    `).bind(id, id),
 
     // 11. 신규 문서 audit INSERT
     env.DB.prepare(`
@@ -238,18 +251,20 @@ export function buildApplyStatements(env, {
       INSERT INTO disposal_logs (document_id, action, performed_by, reason)
       SELECT d.id, 'disposed', ?, ?
       FROM documents d
-      WHERE d.last_snapshot_id = ? AND d.status = 'disposed' AND ${guard}
+      WHERE d.last_snapshot_id = ? AND d.status = 'disposed'
+        AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'applying')
         AND NOT EXISTS (SELECT 1 FROM disposal_logs log WHERE log.document_id = d.id)
-    `).bind(actorSnapshot.displayName, reason, id),
+    `).bind(actorSnapshot.displayName, reason, id, id),
 
     env.DB.prepare(`
       INSERT OR IGNORE INTO document_tags (document_id, tag_id)
       SELECT d.id, CAST(tag.value AS INTEGER)
       FROM document_snapshot_rows row
+      JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
       JOIN documents d ON d.excel_row_key = row.row_key
       CROSS JOIN json_each(json_extract(row.after_json, '$.values.tagIds')) tag
       JOIN tags t ON t.id = CAST(tag.value AS INTEGER) AND t.is_active = 1
-      WHERE row.snapshot_id = ? AND row.action = 'create' AND ${guard}
+      WHERE row.snapshot_id = ? AND row.action = 'create'
     `).bind(id),
 
     // 13. exclusion document UPDATE
@@ -259,7 +274,8 @@ export function buildApplyStatements(env, {
           row_version = row_version + 1,
           last_snapshot_id = ?,
           updated_at = CURRENT_TIMESTAMP
-      WHERE sync_state = 'current' AND ${guard}
+      WHERE sync_state = 'current'
+        AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'applying')
         AND EXISTS (
           SELECT 1 FROM document_snapshot_exclusions ex
           WHERE ex.snapshot_id = ?
@@ -267,9 +283,9 @@ export function buildApplyStatements(env, {
             AND ex.expected_row_version = documents.row_version
             AND ex.excel_row_key = documents.excel_row_key
         )
-    `).bind(id, id),
+    `).bind(id, id, id),
 
-    // 13. system snapshot apply audit INSERT
+    // 14. system snapshot apply audit INSERT
     env.DB.prepare(`
       INSERT INTO system_audit_logs (
         entity_type, entity_id, entity_reference, action, actor_user_id,
@@ -289,16 +305,17 @@ export function buildApplyStatements(env, {
       id
     ),
 
-    // 14. version 단조 증가 (base_version+1 덮어쓰기 금지)
+    // 15. version 단조 증가 (base_version+1 덮어쓰기 금지)
     env.DB.prepare(`
       UPDATE document_sync_state
       SET current_version = current_version + 1,
           current_snapshot_id = ?,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = 1 AND ${guard}
-    `).bind(id),
+      WHERE id = 1
+        AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'applying')
+    `).bind(id, id),
 
-    // 15. snapshot completed
+    // 16. snapshot completed
     env.DB.prepare(`
       UPDATE document_snapshots
       SET status = 'completed', applied_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP

@@ -94,7 +94,10 @@ export function documentSnapshotDetailPage({
   canApply = false,
   applyBlockReason = "",
   requiredPermissions = [],
-  applyMode = "admin-only"
+  missingPermissions = [],
+  warnings = [],
+  applyMode = "admin-only",
+  status = 200
 }) {
   const parsedRows = rows.map((row) => ({
     ...row,
@@ -140,7 +143,17 @@ export function documentSnapshotDetailPage({
   const permissionText = (requiredPermissions || [])
     .map((permission) => PERMISSION_LABELS[permission] || permission)
     .join(", ");
+  const missingText = (missingPermissions || [])
+    .map((permission) => PERMISSION_LABELS[permission] || permission)
+    .join(", ");
   const excludeCount = Number(snapshot.exclude_count || 0);
+  const warningBlock = (warnings || []).length
+    ? `<div class="snapshot-warnings" role="status">${(warnings || []).map((warning) => `
+        <div class="alert ${warning.level === "danger" ? "danger" : warning.level === "info" ? "success" : "warning"}">
+          <strong>${escapeHtml(warning.code || "WARNING")}</strong>
+          ${escapeHtml(warning.message || "")}
+        </div>`).join("")}</div>`
+    : "";
   return page(`${snapshot.snapshot_code} 엑셀 동기화`, `
     <script src="/assets/jszip.min.js"></script>
     <script src="/assets/exceljs.min.js"></script>
@@ -151,6 +164,7 @@ export function documentSnapshotDetailPage({
     ${notice}
     ${error || snapshot.error_summary ? alertDanger(error || snapshot.error_summary) : ""}
     ${applyBlockReason && snapshot.status === "ready" ? alertDanger(applyBlockReason) : ""}
+    ${warningBlock}
     <section class="panel" data-excel-snapshot data-apply-mode="${escapeHtml(applyMode)}">
       <div class="metric-grid snapshot-metrics">
         ${metric("전체", snapshot.total_count)}
@@ -169,6 +183,7 @@ export function documentSnapshotDetailPage({
           <strong>${snapshotStatus(snapshot.status)}</strong>
           <p class="muted">기준 버전 ${number(snapshot.base_version)}${snapshot.canonical_rows_hash ? ` · canonical hash ${escapeHtml(String(snapshot.canonical_rows_hash).slice(0, 12))}…` : ""} · ${escapeHtml(snapshot.created_by_name)} · ${escapeHtml(snapshot.created_at)}</p>
           <p class="muted">필요 권한: ${escapeHtml(permissionText || "문서 관리 + 엑셀 반영")}</p>
+          ${missingText ? `<p class="muted">부족 권한: ${escapeHtml(missingText)}</p>` : ""}
           <p class="muted">client source hash(브라우저 보고값): <span class="mono">${escapeHtml(snapshot.source_hash || "-")}</span></p>
         </div>
       </div>
@@ -220,7 +235,7 @@ export function documentSnapshotDetailPage({
         });
       })();
     </script>
-  `, session);
+  `, session, status);
 }
 
 function applyForm(snapshot, excludeCount) {

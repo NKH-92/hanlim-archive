@@ -247,7 +247,7 @@ export function listUrl(basePath, { query, filters = {}, page = 1 }, paramOrder)
   for (const [param, key] of paramOrder) {
     if (filters[key]) params.set(param, filters[key]);
   }
-  if (page > 1) params.set("page", page);
+  if (page > 1) params.set("page", String(page));
   const text = params.toString();
   return text ? `${basePath}?${text}` : basePath;
 }
