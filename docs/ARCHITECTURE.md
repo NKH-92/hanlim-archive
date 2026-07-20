@@ -63,8 +63,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
    소유하고 `secureHtmlDocument`가 실제 opening tag를 판독해 모든 POST form에 token 하나,
    모든 inline executable script/style에 nonce 하나를 적용한다. 정규식 보안 후처리를 추가하지 않는다.
 4. **정적 UI asset**: 전역 CSS/JS는 `src/views/styles.js`, `clientScript.js`에서 build 시 생성한
-   `public/assets/app.css`, `app.js`다. ExcelJS도 build 시 `public/assets/exceljs.min.js`로 고정하며
-   `check:browser`가 네 asset의 drift를 차단한다.
+   `public/assets/app.css`, `app.js`다. ExcelJS와 OOXML 호환 처리용 JSZip도 build 시
+   `public/assets/exceljs.min.js`, `jszip.min.js`로 고정하며 `check:browser`가 다섯 asset의 drift를 차단한다.
 5. **D1 원자성**: 다중 변경은 `env.DB.batch()` 한 경계에 둔다. 감사·이력 INSERT가 상태
    UPDATE/DELETE보다 먼저 오고, 마지막 mutation guard가 no-op과 경합을 검출해야 한다.
 6. **낙관적 잠금**: 문서 수정·이동은 `updated_at`과 단조 증가 `row_version`을 함께 검사한다.
@@ -80,6 +80,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     한 행도 바꾸지 않고, 빠진 문서는 hard delete 대신 `sync_state = 'excluded'`로 이력만 보존한다.
 12. **엑셀 행 식별자**: 보이는 13개 한글 열의 순서와 이름은 고정한다. `excel_row_key`는 숨김 14열에만
     기록하며 `storage_code`를 대체 공개하지 않는다. 파일의 `baseVersion`이 현재 버전과 다르면 반영을 막는다.
+13. **OOXML 호환성**: 일반 XLSX는 ExcelJS로 바로 읽고, 표준 namespace 접두사와 절대 relationship을 쓰는
+    XLSX만 브라우저에서 상대 경로·기본 namespace 형태로 정규화한 뒤 다시 읽는다. 원본 파일 hash는 바꾸지 않는다.
 
 ## 데이터 무결성 계약
 

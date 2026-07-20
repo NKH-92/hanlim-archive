@@ -1,3 +1,5 @@
+import { excelOpenXmlCompatibilityScript } from "./excelOpenXmlCompatibility.js";
+
 // 엑셀 파싱·생성은 브라우저에서 수행해 Worker 무료티어 CPU를 사용하지 않는다.
 export function excelSnapshotScript() {
   return `
@@ -50,12 +52,13 @@ export function excelSnapshotScript() {
         return 'HLM-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14);
       }
 
+      ${excelOpenXmlCompatibilityScript()}
+
       async function readExcelSnapshot(file) {
         if (!window.ExcelJS) throw new Error('엑셀 처리 모듈을 불러오지 못했습니다. 화면을 새로고침하세요.');
         if (!file || !/\\.xlsx$/i.test(file.name || '')) throw new Error('xlsx 형식의 엑셀 파일을 선택하세요.');
         var buffer = await file.arrayBuffer();
-        var workbook = new window.ExcelJS.Workbook();
-        await workbook.xlsx.load(buffer);
+        var workbook = await excelLoadWorkbook(buffer);
         var sheet = excelDataSheet(workbook);
         if (!sheet) throw new Error('한글 13개 열이 순서대로 있는 문서데이터 시트를 찾을 수 없습니다.');
         var meta = excelMeta(workbook);

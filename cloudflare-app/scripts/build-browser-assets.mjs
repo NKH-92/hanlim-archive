@@ -14,18 +14,23 @@ const appStylesUrl = new URL("../public/assets/app.css", import.meta.url);
 const excelSourceUrl = new URL("../node_modules/exceljs/dist/exceljs.min.js", import.meta.url);
 const excelAssetUrl = new URL("../public/assets/exceljs.min.js", import.meta.url);
 const excelAsset = await readFile(excelSourceUrl, "utf8");
+const zipSourceUrl = new URL("../node_modules/jszip/dist/jszip.min.js", import.meta.url);
+const zipAssetUrl = new URL("../public/assets/jszip.min.js", import.meta.url);
+const zipAsset = await readFile(zipSourceUrl, "utf8");
 
 if (process.argv.includes("--check")) {
-  const [current, currentScript, currentStyles, currentExcel] = await Promise.all([
+  const [current, currentScript, currentStyles, currentExcel, currentZip] = await Promise.all([
     readFile(outputUrl, "utf8").catch(() => ""),
     readFile(appScriptUrl, "utf8").catch(() => ""),
     readFile(appStylesUrl, "utf8").catch(() => ""),
-    readFile(excelAssetUrl, "utf8").catch(() => "")
+    readFile(excelAssetUrl, "utf8").catch(() => ""),
+    readFile(zipAssetUrl, "utf8").catch(() => "")
   ]);
   if (current.replaceAll("\r\n", "\n") !== generated ||
       currentScript.replaceAll("\r\n", "\n") !== appScript ||
       currentStyles.replaceAll("\r\n", "\n") !== appStyles ||
-      currentExcel !== excelAsset) {
+      currentExcel !== excelAsset ||
+      currentZip !== zipAsset) {
     console.error("browser 정적 asset이 source와 다릅니다. npm run build:browser를 실행하세요.");
     process.exitCode = 1;
   } else {
@@ -37,5 +42,6 @@ if (process.argv.includes("--check")) {
   await writeFile(appScriptUrl, appScript, "utf8");
   await writeFile(appStylesUrl, appStyles, "utf8");
   await writeFile(excelAssetUrl, excelAsset, "utf8");
+  await writeFile(zipAssetUrl, zipAsset, "utf8");
   console.log("✓ browser search/CSS/JS asset 생성");
 }

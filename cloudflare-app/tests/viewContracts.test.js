@@ -216,6 +216,7 @@ test("엑셀 대장 화면은 한 파일 업로드·추출·변경 미리보기 
     snapshots: []
   }), "엑셀 문서대장 관리");
   assert.match(manager, /data-excel-snapshot-upload/);
+  assert.ok(manager.indexOf('/assets/jszip.min.js') < manager.indexOf('/assets/exceljs.min.js'));
   assert.match(manager, /accept="\.xlsx/);
   assert.match(manager, /data-excel-export/);
   assert.match(manager, /현재 대장 버전/);
