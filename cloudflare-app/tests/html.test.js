@@ -384,8 +384,8 @@ test("floor plan page keeps the map separate from search and opens rack results 
   assert.match(main, /<h1>문서고 도면<\/h1>/);
   assert.match(main, /src="\/images\/Archive\.png"/);
   assert.match(main, /data-rack-code="1-03"/);
-  assert.match(main, /href="\/app\?q=1-03&amp;sort=location"/);
-  assert.doesNotMatch(main, /href="\/documents\?q=/);
+  assert.match(main, /href="\/documents\?rack=3&amp;status=active&amp;sort=location"/);
+  assert.doesNotMatch(main, /href="\/app\?q=1-03/);
 });
 
 test("admin navigation exposes permission-scoped work routes", async () => {
@@ -544,6 +544,8 @@ test("set details page lists documents in location order with admin tools", asyn
   assert.match(adminHtml, /action="\/sets\/5\/add"/);
   assert.match(adminHtml, /action="\/sets\/5\/remove"/);
   assert.match(adminHtml, /data-print/);
+  assert.match(adminHtml, /href="\/documents\?rack=1&amp;status=active&amp;sort=location"/);
+  assert.match(adminHtml, /href="\/documents\?rack=2&amp;status=active&amp;sort=location"/);
   assert.doesNotMatch(adminHtml, /보관코드|ARC-00000[12]/);
   assert.ok(adminHtml.indexOf("MR-2026-001") < adminHtml.indexOf("PV-2026-014"));
 
