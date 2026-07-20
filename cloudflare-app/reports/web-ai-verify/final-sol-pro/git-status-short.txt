@@ -1,0 +1,13 @@
+﻿ M cloudflare-app/reports/excel-snapshot-audit/local-sample-audit.json
+ M cloudflare-app/scripts/audit-excel-snapshot-data.mjs
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/FIXES_AFTER_VERIFY.md
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/IMPROVEMENT_PLAN.md
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/PROMPT.md
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/WEB_AI_SESSION.md
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/code-run.json
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/extracted/
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/feature-branch-code.patch
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/feature-branch.patch
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/git-status-short.txt
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/local-sample-audit.json
+?? cloudflare-app/reports/web-ai-verify/final-sol-pro/verification-report.zip

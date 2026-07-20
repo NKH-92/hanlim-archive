@@ -1,0 +1,77 @@
+﻿ .../migrations/0031_excel_snapshot_integrity.sql   |  205 +
+ cloudflare-app/migrations/manifest.json            |   20 +-
+ cloudflare-app/package.json                        |    1 +
+ cloudflare-app/public/assets/app.js                |  103 +-
+ .../excel-snapshot-audit/local-sample-audit.json   |   18 +
+ .../reports/web-ai-verify/IMPROVEMENT_PLAN.md      | 2470 +++++++++++
+ cloudflare-app/reports/web-ai-verify/PROMPT.md     |   30 +
+ cloudflare-app/reports/web-ai-verify/code-run.json |  Bin 0 -> 7508 bytes
+ cloudflare-app/reports/web-ai-verify/diff-stat.txt |  Bin 0 -> 4252 bytes
+ .../reports/web-ai-verify/extracted/PLAN.md        |   61 +
+ .../web-ai-verify/extracted/VERIFICATION_REPORT.md |  281 ++
+ .../web-ai-verify/final-sol-pro/GATE_EVIDENCE.md   |   29 +
+ .../final-sol-pro/LOCAL_VERIFICATION.md            |   35 +
+ .../web-ai-verify/final-sol-pro/gate-run.log       |  484 +++
+ .../web-ai-verify/final-sol-pro/verify-run.log     |  Bin 0 -> 44714 bytes
+ .../rerun-sol-pro/FIXES_AFTER_VERIFY.md            |   38 +
+ .../rerun-sol-pro/IMPROVEMENT_PLAN.md              | 2470 +++++++++++
+ .../rerun-sol-pro/LOCAL_VERIFICATION.md            |   16 +
+ .../web-ai-verify/rerun-sol-pro/extracted/PLAN.md  |   60 +
+ .../rerun-sol-pro/extracted/VERIFICATION_REPORT.md |  225 +
+ .../rerun-sol-pro/feature-branch.patch             | 4575 ++++++++++++++++++++
+ .../rerun-sol-pro/verification-report.zip          |  Bin 0 -> 14779 bytes
+ .../reports/web-ai-verify/test-results.txt         |   15 +
+ cloudflare-app/reports/web-ai-verify/untracked.txt |  Bin 0 -> 1804 bytes
+ .../reports/web-ai-verify/verification-report.zip  |  Bin 0 -> 10855 bytes
+ .../scripts/audit-excel-snapshot-data.mjs          |  118 +
+ .../scripts/create-local-audit-sample-db.mjs       |   37 +
+ cloudflare-app/src/app/routeRegistry.js            |    2 +-
+ cloudflare-app/src/auth/session.js                 |    3 +-
+ cloudflare-app/src/data/documentsData.js           |    3 +
+ cloudflare-app/src/data/sqlShared.js               |    4 +-
+ cloudflare-app/src/documentCsv.js                  |    2 +
+ cloudflare-app/src/domains/audit/web/views.js      |    5 +-
+ .../domains/documents/infrastructure/mutations.js  |    1 +
+ .../src/domains/identity/domain/capabilities.js    |    2 +
+ .../src/domains/sets/infrastructure/repository.js  |    2 +
+ cloudflare-app/src/domains/sets/web/presenters.js  |    2 +
+ .../src/domains/snapshots/domain/auditPayload.js   |   45 +
+ .../src/domains/snapshots/domain/authorization.js  |  140 +
+ .../src/domains/snapshots/domain/canonicalRow.js   |  194 +
+ .../src/domains/snapshots/domain/dateOnly.js       |   43 +
+ .../src/domains/snapshots/domain/diff.js           |  197 +
+ .../src/domains/snapshots/domain/errorCodes.js     |   29 +
+ .../src/domains/snapshots/domain/hash.js           |   31 +
+ .../src/domains/snapshots/domain/identity.js       |   22 +
+ .../src/domains/snapshots/domain/matchRows.js      |  282 ++
+ cloudflare-app/src/domains/snapshots/index.js      |   34 +-
+ .../domains/snapshots/infrastructure/applyPlan.js  |  326 ++
+ .../domains/snapshots/infrastructure/repository.js |  678 +--
+ cloudflare-app/src/handlers/permissionGuards.js    |    1 +
+ cloudflare-app/src/handlers/snapshotHandlers.js    |  163 +-
+ cloudflare-app/src/permissions.js                  |    6 +-
+ cloudflare-app/src/views/authViews.js              |    6 +-
+ .../src/views/clientScript/excelSnapshots.js       |  103 +-
+ cloudflare-app/src/views/documents/detailView.js   |   16 +-
+ cloudflare-app/src/views/layout.js                 |    2 +-
+ cloudflare-app/src/views/setViews.js               |   18 +-
+ cloudflare-app/src/views/snapshotViews.js          |  232 +-
+ cloudflare-app/tests/auth.test.js                  |    6 +-
+ .../tests/excelSnapshotDateRoundTrip.test.js       |   87 +
+ .../tests/excelSnapshotIntegrity.test.js           |  604 +++
+ cloudflare-app/tests/excelSnapshotSync.test.js     |  119 +-
+ cloudflare-app/tests/helpers/sqliteD1.js           |   53 +
+ .../tests/migrationChainContracts.test.js          |   21 +-
+ cloudflare-app/tests/permissions.test.js           |    2 +-
+ cloudflare-app/tests/releaseEvidence.test.js       |    4 +-
+ cloudflare-app/tests/routingContracts.test.js      |    3 +-
+ cloudflare-app/tests/setsDomain.test.js            |    4 +-
+ cloudflare-app/tests/userPermissionsData.test.js   |    7 +-
+ cloudflare-app/tests/viewContracts.test.js         |   24 +-
+ cloudflare-app/wrangler.jsonc                      |    6 +-
+ docs/ARCHITECTURE.md                               |    6 +-
+ docs/DESIGN.md                                     |    2 +-
+ docs/OPERATIONS.md                                 |   44 +-
+ docs/PERMISSIONS.md                                |    5 +-
+ docs/generated/ROUTE_PERMISSION_CATALOG.md         |    5 +-
+ 76 files changed, 14411 insertions(+), 476 deletions(-)

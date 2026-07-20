@@ -103,6 +103,95 @@ const report = {
       FROM document_snapshots
       WHERE status IN ('staging', 'ready')
       ORDER BY created_at
+    `),
+    // 아래 항목은 후보(heuristic)이며 확정 결함이 아니다.
+    moveAuditWithoutMovementLog: all(`
+      SELECT
+        a.id AS audit_id,
+        a.document_id,
+        a.document_number,
+        json_extract(a.details, '$.snapshotCode') AS snapshot_code,
+        a.created_at
+      FROM document_audit_logs a
+      WHERE a.action = 'excel_sync_update'
+        AND (
+          instr(IFNULL(a.details, ''), '"MOVE"') > 0
+          OR json_extract(a.details, '$.before.values.rackSlotId')
+             <> json_extract(a.details, '$.after.values.rackSlotId')
+          OR json_extract(a.details, '$.before.values.rackFace')
+             <> json_extract(a.details, '$.after.values.rackFace')
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM document_movements m
+          WHERE m.document_id = a.document_id
+            AND m.reason = json_extract(a.details, '$.applyReason')
+        )
+      ORDER BY a.id
+    `),
+    excelRestoreCandidates: all(`
+      SELECT
+        a.id AS audit_id,
+        a.document_id,
+        a.document_number,
+        json_extract(a.details, '$.snapshotCode') AS snapshot_code,
+        json_extract(a.details, '$.before.values.status') AS before_status,
+        COALESCE(
+          json_extract(a.details, '$.after.values.status'),
+          json_extract(a.details, '$.after.status')
+        ) AS after_status,
+        a.created_at
+      FROM document_audit_logs a
+      WHERE a.action = 'excel_sync_update'
+        AND json_extract(a.details, '$.before.values.status') = 'disposed'
+        AND COALESCE(
+          json_extract(a.details, '$.after.values.status'),
+          json_extract(a.details, '$.after.status')
+        ) = 'active'
+      ORDER BY a.id
+    `),
+    snapshotCountMismatchCandidates: all(`
+      SELECT
+        s.id AS snapshot_id,
+        s.snapshot_code,
+        s.status,
+        s.create_count,
+        s.update_count,
+        s.exclude_count,
+        (
+          SELECT COUNT(*) FROM document_audit_logs a
+          WHERE a.action = 'excel_sync_create'
+            AND json_extract(a.details, '$.snapshotCode') = s.snapshot_code
+        ) AS actual_create_audits,
+        (
+          SELECT COUNT(*) FROM document_audit_logs a
+          WHERE a.action = 'excel_sync_update'
+            AND json_extract(a.details, '$.snapshotCode') = s.snapshot_code
+        ) AS actual_update_audits,
+        (
+          SELECT COUNT(*) FROM document_audit_logs a
+          WHERE a.action = 'excel_sync_exclude'
+            AND json_extract(a.details, '$.snapshotCode') = s.snapshot_code
+        ) AS actual_exclude_audits
+      FROM document_snapshots s
+      WHERE s.status = 'completed'
+        AND (
+          s.create_count <> (
+            SELECT COUNT(*) FROM document_audit_logs a
+            WHERE a.action = 'excel_sync_create'
+              AND json_extract(a.details, '$.snapshotCode') = s.snapshot_code
+          )
+          OR s.update_count <> (
+            SELECT COUNT(*) FROM document_audit_logs a
+            WHERE a.action = 'excel_sync_update'
+              AND json_extract(a.details, '$.snapshotCode') = s.snapshot_code
+          )
+          OR s.exclude_count <> (
+            SELECT COUNT(*) FROM document_audit_logs a
+            WHERE a.action = 'excel_sync_exclude'
+              AND json_extract(a.details, '$.snapshotCode') = s.snapshot_code
+          )
+        )
+      ORDER BY s.id
     `)
   }
 };
