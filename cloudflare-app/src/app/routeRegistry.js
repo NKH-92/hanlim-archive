@@ -50,8 +50,8 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("documents.disposal.process", "documents", "POST", "/documents/disposal/process", { permission: PERMISSIONS.MANAGE_DISPOSALS }),
   route("documents.dispose-filtered", "documents", "POST", "/documents/dispose-filtered", { permission: PERMISSIONS.MANAGE_DISPOSALS }),
   route("documents.export", "documents", "GET", "/documents/export.csv", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("documents.snapshot.export", "snapshots", "GET", "/api/document-snapshot/export", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.import.form", "imports", "GET", "/documents/import", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
-  route("documents.import", "imports", "POST", "/documents/import", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.new", "documents", "GET", "/documents/new", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.details", "documents", "GET", "/documents/:id"),
   route("documents.edit.form", "documents", "GET", "/documents/:id/edit", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
@@ -89,7 +89,13 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("imports.details", "imports", "GET", "/document-import-jobs/:id", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("imports.failures", "imports", "GET", "/document-import-jobs/:id/failures.csv", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("imports.process", "imports", "POST", "/document-import-jobs/:id/process", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
-  route("imports.cancel", "imports", "POST", "/document-import-jobs/:id/cancel", { permission: PERMISSIONS.MANAGE_DOCUMENTS })
+  route("imports.cancel", "imports", "POST", "/document-import-jobs/:id/cancel", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("snapshots.list", "snapshots", "GET", "/document-snapshots", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("snapshots.create", "snapshots", "POST", "/document-snapshots", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("snapshots.details", "snapshots", "GET", "/document-snapshots/:id", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("snapshots.rows", "snapshots", "POST", "/document-snapshots/:id/rows", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("snapshots.prepare", "snapshots", "POST", "/document-snapshots/:id/prepare", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("snapshots.apply", "snapshots", "POST", "/document-snapshots/:id/apply", { permission: PERMISSIONS.MANAGE_DOCUMENTS })
 ]);
 
 export const ROUTES = Object.freeze([...PUBLIC_ROUTES, ...AUTHENTICATED_ROUTES]);

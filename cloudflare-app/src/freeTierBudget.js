@@ -7,6 +7,8 @@ export const FREE_TIER_BUDGET = Object.freeze({
   disposalProcessChunkSize: 25,
   csvImportMaxItems: 50,
   csvImportProcessChunkSize: 1,
+  excelSnapshotMaxItems: 1000,
+  excelSnapshotStageChunkSize: 50,
   documentPageSize: 30,
   searchIndexWarningCount: 4000,
   searchIndexReviewCount: 5000

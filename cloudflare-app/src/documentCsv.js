@@ -116,10 +116,10 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
   const items = [];
 
   for (let index = 0; index < rows.length; index += 1) {
-    const rowNumber = index + 2;
+    const rowNumber = Number(rows[index]?.rowNumber) || index + 2;
     const row = rows[index];
     const categoryName = clean(row.category);
-    const rackCode = clean(row.rackCode);
+    const rackCode = normalizeImportRackCode(row.rackCode || row.rackNumber);
     const rackColumn = Number(clean(row.rackColumn || row.columnNumber || row.column || "1"));
     const shelfNumber = Number(clean(row.shelfNumber || row.shelf || row.slotCode || "1"));
     const legacySlotCode = clean(row.slotCode);
@@ -128,7 +128,7 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
       (legacySlotCode ? slotByLegacyCode.get(`${rackCode}|${legacySlotCode}`) : null) ??
       (legacySlotCode ? slotByLegacyShelf.get(`${rackCode}|${legacySlotCode}`) : null);
     const tagNames = clean(row.tags)
-      ? clean(row.tags).split(/[;|]/).map((name) => clean(name)).filter(Boolean)
+      ? clean(row.tags).split(/[;,|]/).map((name) => clean(name)).filter(Boolean)
       : [];
     const tagIds = [];
 
@@ -181,10 +181,20 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
 
     const status = clean(row.status).toLowerCase();
     items.push({
+      rowNumber,
+      rowKey: clean(row.rowKey),
       values,
       status: status === "disposed" || status === "폐기" ? "disposed" : "active"
     });
   }
 
   return { items, errors };
+}
+
+function normalizeImportRackCode(value) {
+  const raw = clean(value);
+  if (/^\d+$/.test(raw)) return `1-${String(Number(raw)).padStart(2, "0")}`;
+  const match = raw.match(/^(\d+)\s*[-/]\s*(\d+)$/);
+  if (match) return `${Number(match[1])}-${String(Number(match[2])).padStart(2, "0")}`;
+  return raw;
 }

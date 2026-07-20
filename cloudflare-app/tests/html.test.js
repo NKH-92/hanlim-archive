@@ -396,14 +396,14 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   const commands = html.match(/<dialog class="command-palette"[\s\S]*?<\/dialog>/)?.[0] || "";
   assert.match(nav, /href="\/app"[^>]*>[\s\S]*?문서검색/);
   assert.match(nav, /href="\/floor-plan"[^>]*>[\s\S]*?문서고 도면/);
-  assert.match(nav, /href="\/documents\/new"[^>]*>[\s\S]*?문서등록/);
+  assert.match(nav, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀대장/);
   assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?문서폐기/);
   assert.match(nav, /class="nav-settings"/);
   assert.match(nav, />관리자 설정<\/summary>/);
   assert.match(APP_STYLES, /\.topbar ~ \.app-shell/);
-  assert.match(commands, /href="\/documents\/new"[^>]*>[\s\S]*?문서등록/);
+  assert.match(commands, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀대장/);
   assert.match(commands, /href="\/floor-plan"[^>]*>[\s\S]*?문서고 도면/);
-  assert.match(commands, /href="\/documents\/import"[^>]*>[\s\S]*?CSV 가져오기/);
+  assert.match(commands, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀 문서대장/);
   assert.match(commands, /href="\/racks"[^>]*>[\s\S]*?랙/);
   assert.match(commands, /href="\/categories"[^>]*>[\s\S]*?대분류/);
   assert.match(commands, /href="\/tags"[^>]*>[\s\S]*?태그/);
@@ -436,7 +436,7 @@ test("desktop navigation and mobile tabs hide every unauthorized work route", as
   for (const navigation of [archiveManagerNav, archiveManagerTabs]) {
     assert.match(navigation, /href="\/app"/);
     assert.match(navigation, /href="\/floor-plan"/);
-    assert.match(navigation, /href="\/documents\/new"/);
+    assert.match(navigation, /href="\/documents\/import"/);
     assert.doesNotMatch(navigation, /href="\/documents\/disposal"|관리자 설정/);
   }
 
@@ -452,7 +452,7 @@ test("desktop navigation and mobile tabs hide every unauthorized work route", as
   assert.match(disposalManagerTabs, /href="\/app"/);
   assert.match(disposalManagerTabs, /href="\/floor-plan"/);
   assert.match(disposalManagerTabs, /href="\/documents\/disposal"/);
-  assert.doesNotMatch(disposalManagerTabs, /href="\/documents\/new"|관리자 설정/);
+  assert.doesNotMatch(disposalManagerTabs, /href="\/documents\/import"|관리자 설정/);
 });
 
 test("ordinary document management list has no disposal selection and keeps mobile data labels", async () => {

@@ -73,3 +73,9 @@ export function matchDocumentImportJobRoute(path) {
   if (!match) return null;
   return { id: Number(match[1]), action: match[2] || "details" };
 }
+
+export function matchDocumentSnapshotRoute(path) {
+  const match = path.match(/^\/document-snapshots\/(\d+)(?:\/(rows|prepare|apply))?$/);
+  if (!match) return null;
+  return { id: Number(match[1]), action: match[2] || "details" };
+}

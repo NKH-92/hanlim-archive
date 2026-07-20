@@ -170,7 +170,7 @@ export async function createSelectedDisposalBatch(env, rawValues, actor) {
   const selected = await env.DB.prepare(`
     SELECT id
     FROM documents
-    WHERE id IN (${placeholders}) AND status = 'active'
+    WHERE id IN (${placeholders}) AND status = 'active' AND sync_state = 'current'
   `).bind(...ids).all();
   if ((selected.results ?? []).length !== ids.length) {
     return { ok: false, message: "선택한 문서 중 상태가 변경된 항목이 있습니다. 목록을 새로고침한 뒤 다시 선택해 주세요." };
@@ -225,7 +225,7 @@ export async function createSelectedDisposalBatch(env, rawValues, actor) {
       JOIN categories c ON c.id = d.category_id
       JOIN rack_slots rs ON rs.id = d.rack_slot_id
       JOIN racks r ON r.id = rs.rack_id
-      WHERE b.batch_code = ? AND d.id IN (${placeholders}) AND d.status = 'active'
+      WHERE b.batch_code = ? AND d.id IN (${placeholders}) AND d.status = 'active' AND d.sync_state = 'current'
     `).bind(temporaryCode, ...ids),
     env.DB.prepare(`
       UPDATE disposal_batches

@@ -12,7 +12,7 @@ import {
   handleSelectedDisposal,
   renderCreateDocument
 } from "./documentHandlers.js";
-import { handleCreateDocumentImportJob, renderDocumentImportJobCreate } from "./importJobHandlers.js";
+import { handleDocumentSnapshotExport, renderDocumentSnapshotManager } from "./snapshotHandlers.js";
 import { handleDocumentMove, renderDocumentMove } from "./movementHandlers.js";
 import { requireManageDisposals, requireManageDocuments } from "./permissionGuards.js";
 
@@ -50,12 +50,12 @@ export async function routeDocumentRequest(request, env, session, url, path) {
     return requireManageDocuments(session) ?? handleDocumentExport(env);
   }
 
-  if (path === "/documents/import" && request.method === "GET") {
-    return requireManageDocuments(session) ?? renderDocumentImportJobCreate(session);
+  if (path === "/api/document-snapshot/export" && request.method === "GET") {
+    return handleDocumentSnapshotExport(env, session);
   }
 
-  if (path === "/documents/import" && request.method === "POST") {
-    return requireManageDocuments(session) ?? handleCreateDocumentImportJob(request, env, session);
+  if (path === "/documents/import" && request.method === "GET") {
+    return requireManageDocuments(session) ?? renderDocumentSnapshotManager(env, session);
   }
 
   if (path === "/documents/new" && request.method === "GET") {

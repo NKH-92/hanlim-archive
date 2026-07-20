@@ -5,6 +5,7 @@ import {
   matchAdminUserRoute,
   matchDisposalBatchRoute,
   matchDocumentImportJobRoute,
+  matchDocumentSnapshotRoute,
   matchDocumentRoute,
   matchMasterRoute,
   matchRackRoute,
@@ -47,4 +48,12 @@ test("campaign and import job matchers resolve nested workflow routes", () => {
   assert.deepEqual(matchDisposalBatchRoute("/disposal-batches/4/items/9/exclude"), { id: 4, itemId: 9, action: "exclude" });
   assert.deepEqual(matchDocumentImportJobRoute("/document-import-jobs/8"), { id: 8, action: "details" });
   assert.deepEqual(matchDocumentImportJobRoute("/document-import-jobs/8/failures.csv"), { id: 8, action: "failures.csv" });
+});
+
+test("엑셀 snapshot matcher는 행 staging·검증·반영 경로를 구분한다", () => {
+  assert.deepEqual(matchDocumentSnapshotRoute("/document-snapshots/8"), { id: 8, action: "details" });
+  assert.deepEqual(matchDocumentSnapshotRoute("/document-snapshots/8/rows"), { id: 8, action: "rows" });
+  assert.deepEqual(matchDocumentSnapshotRoute("/document-snapshots/8/prepare"), { id: 8, action: "prepare" });
+  assert.deepEqual(matchDocumentSnapshotRoute("/document-snapshots/8/apply"), { id: 8, action: "apply" });
+  assert.equal(matchDocumentSnapshotRoute("/document-snapshots/new"), null);
 });

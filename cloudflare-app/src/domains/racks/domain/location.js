@@ -3,7 +3,7 @@ import { clean } from "../../../shared/text/normalize.js";
 
 export function normalizeRackFace(value) {
   const raw = clean(value).toUpperCase();
-  if (raw === "1" || raw === "1면") return "A";
+  if (raw === "1" || raw === "1면" || raw === "단면") return "A";
   if (raw === "2" || raw === "2면") return "B";
   return raw;
 }

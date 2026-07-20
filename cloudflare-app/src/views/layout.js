@@ -53,7 +53,7 @@ function header(session) {
     ["/floor-plan", "fa-location-dot", "문서고 도면"]
   ];
   if (capabilities.canManageDocuments) {
-    primaryLinks.push(["/documents/new", "fa-file-lines", "문서등록"]);
+    primaryLinks.push(["/documents/import", "fa-file-excel", "엑셀대장"]);
   }
   if (capabilities.canManageDisposals) {
     primaryLinks.push(["/documents/disposal", "fa-box-archive", "문서폐기"]);
@@ -61,7 +61,7 @@ function header(session) {
 
   const settingsLinks = [];
   if (capabilities.canShowAdminSettings && capabilities.canManageDocuments) {
-    settingsLinks.push(["/documents/import", "fa-file-csv", "CSV 가져오기"]);
+    settingsLinks.push(["/documents/import", "fa-file-excel", "엑셀 문서대장"]);
   }
   if (capabilities.canShowAdminSettings && capabilities.canManageMasters) {
     settingsLinks.push(["/racks", "fa-table-cells-large", "랙·보관 위치"]);

@@ -165,7 +165,7 @@ export async function getDidYouMeanSuggestions(env, query, limit = 3) {
       ${DOCUMENT_TAG_CONCAT}
     ${DOCUMENT_BASE_JOINS}
     ${DOCUMENT_TAG_JOINS}
-    WHERE d.status = 'active'
+    WHERE d.status = 'active' AND d.sync_state = 'current'
     GROUP BY d.id
     ORDER BY d.updated_at DESC, d.id DESC
     LIMIT 750
@@ -189,10 +189,10 @@ export async function getDidYouMeanSuggestions(env, query, limit = 3) {
 export async function getSearchIndexMeta(env) {
   const row = await env.DB.prepare(`
     SELECT
-      (SELECT COUNT(*) FROM documents) AS count,
-      (SELECT MAX(id) FROM documents) AS max_id,
-      (SELECT COALESCE(SUM(row_version), 0) FROM documents) AS documents_version,
-      (SELECT MAX(updated_at) FROM documents) AS documents_updated,
+      (SELECT COUNT(*) FROM documents WHERE sync_state = 'current') AS count,
+      (SELECT MAX(id) FROM documents WHERE sync_state = 'current') AS max_id,
+      (SELECT COALESCE(SUM(row_version), 0) FROM documents WHERE sync_state = 'current') AS documents_version,
+      (SELECT MAX(updated_at) FROM documents WHERE sync_state = 'current') AS documents_updated,
       (SELECT MAX(updated_at) FROM categories) AS categories_updated,
       (SELECT MAX(updated_at) FROM tags) AS tags_updated,
       (SELECT MAX(updated_at) FROM racks) AS racks_updated,
@@ -237,6 +237,7 @@ export async function getSearchIndexDocuments(env) {
         ${DOCUMENT_TAG_CONCAT}
       ${DOCUMENT_BASE_JOINS}
       ${DOCUMENT_TAG_JOINS}
+      WHERE d.sync_state = 'current'
       GROUP BY d.id
     `).all(),
     getDocumentClickPopularity(env)
@@ -263,6 +264,7 @@ export async function getSearchIndexStats(env) {
         LENGTH(IFNULL(r.code, '')) + 220
       ), 0) AS estimated_json_bytes
     ${DOCUMENT_BASE_JOINS}
+    WHERE d.sync_state = 'current'
   `).first();
   const documentCount = Number(row?.document_count || 0);
   const estimatedJsonBytes = Number(row?.estimated_json_bytes || 0);

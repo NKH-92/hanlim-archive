@@ -61,7 +61,7 @@ export function parseDocumentFilters(params = {}, { emptySort = false, query = "
 
 // searchDocuments가 쓰는 WHERE 절. SQL 조각·바인드 순서를 바꾸면 안 된다.
 export function buildDocumentFilterWhere(filters = {}) {
-  const filterClauses = [];
+  const filterClauses = ["d.sync_state = 'current'"];
   const filterBinds = [];
 
   if (filters.categoryId && Number.isInteger(filters.categoryId) && filters.categoryId > 0) {

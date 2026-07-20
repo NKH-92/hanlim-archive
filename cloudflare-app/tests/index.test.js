@@ -218,7 +218,7 @@ test("bulk disposal redirect preserves filters and reports disposed and skipped 
   assert.equal(env.state.batches[0].filter((statement) => statement.sql.includes("UPDATE documents")).length, 1);
 });
 
-test("document CSV import loads only active categories and tags", async () => {
+test("기존 CSV 추가 등록 경로는 닫고 엑셀 전체 동기화 경로만 사용한다", async () => {
   const env = adminImportEnv();
   const user = { username: "admin", displayName: "관리자", role: "Admin" };
   const cookie = await createSessionCookie(user, env, false);
@@ -239,9 +239,7 @@ test("document CSV import loads only active categories and tags", async () => {
     })
   }), env);
 
-  assert.equal(response.status, 200);
-  assert.ok(env.state.sql.some((sql) => sql.includes("FROM categories") && sql.includes("WHERE is_active = 1")));
-  assert.ok(env.state.sql.some((sql) => sql.includes("FROM tags") && sql.includes("WHERE is_active = 1")));
+  assert.equal(response.status, 404);
   assert.ok(!env.state.sql.some((sql) => sql.includes("INSERT INTO documents")));
 });
 

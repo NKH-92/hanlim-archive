@@ -55,9 +55,7 @@ export function bulkActionBar(action = "/documents/disposal/process", filters = 
 export function documentToolbar(session) {
   const actions = [];
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
-    actions.push(`<a class="button" href="/documents/new">문서 등록</a>`);
-    actions.push(`<a class="button secondary" href="/documents/import">CSV 가져오기</a>`);
-    actions.push(`<a class="button secondary" href="/documents/export.csv">CSV 내보내기</a>`);
+    actions.push(`<a class="button" href="/documents/import">엑셀 대장 관리</a>`);
   }
   return actions.length ? `<div class="button-group document-toolbar">${actions.join("")}</div>` : "";
 }
