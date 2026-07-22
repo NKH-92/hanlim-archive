@@ -55,6 +55,22 @@ export function runWranglerDeploy({
   });
 }
 
+export function runWranglerCaptured({
+  appRoot,
+  args,
+  environment = process.env,
+  execPath = process.execPath,
+  spawn = spawnSync
+}) {
+  const wranglerEntrypoint = resolveWranglerEntrypoint(appRoot);
+  return spawn(execPath, [wranglerEntrypoint, ...args], {
+    encoding: "utf8",
+    shell: false,
+    env: environment,
+    cwd: appRoot
+  });
+}
+
 export function preflightDeploy({
   envName = process.env.CLOUDFLARE_ENV || process.env.DEPLOY_ENV,
   expectedDatabaseId = process.env.D1_TARGET_DATABASE_ID || "",

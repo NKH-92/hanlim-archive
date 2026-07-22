@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { preflightRemoteMigrate } from "../scripts/migrate-remote-guarded.mjs";
-import { preflightDeploy, runWranglerDeploy } from "../scripts/deploy-guarded.mjs";
+import { preflightDeploy, runWranglerCaptured, runWranglerDeploy } from "../scripts/deploy-guarded.mjs";
 import { verifyReleasedBaselineAgainstBase } from "../scripts/check-released-baseline-history.mjs";
 import { applyExactTransforms, COMPATIBILITY_FILES } from "../scripts/apply-session-epoch-compat.mjs";
 
@@ -150,6 +150,29 @@ test("deploy wrapper는 Windows cmd shim 없이 설치된 Wrangler를 Node로 �
   assert.match(calls[0].args[0], /node_modules[\\/]wrangler[\\/].*wrangler/i);
   assert.deepEqual(calls[0].args.slice(1), ["deploy", "--env", "production", "--dry-run"]);
   assert.equal(calls[0].options.shell, false);
+  assert.equal(calls[0].options.cwd, appRoot);
+});
+
+test("captured Wrangler wrapper uses the Node runtime without a Windows cmd shim", () => {
+  const appRoot = fileURLToPath(new URL("../", import.meta.url)).replace(/[\\/]$/, "");
+  const calls = [];
+  const executed = runWranglerCaptured({
+    appRoot,
+    args: ["d1", "execute", "hanlim-archive", "--remote", "--json"],
+    environment: { TEST_D1_ENV: "1" },
+    execPath: "node-runtime",
+    spawn(command, args, options) {
+      calls.push({ command, args, options });
+      return { status: 0, stdout: "[]" };
+    }
+  });
+
+  assert.equal(executed.status, 0);
+  assert.equal(calls[0].command, "node-runtime");
+  assert.match(calls[0].args[0], /node_modules[\\/]wrangler[\\/].*wrangler/i);
+  assert.deepEqual(calls[0].args.slice(1), ["d1", "execute", "hanlim-archive", "--remote", "--json"]);
+  assert.equal(calls[0].options.shell, false);
+  assert.equal(calls[0].options.encoding, "utf8");
   assert.equal(calls[0].options.cwd, appRoot);
 });
 

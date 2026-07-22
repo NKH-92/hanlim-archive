@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 
 import { createPasswordRecord } from "../src/auth/passwords.js";
 import { validateNewPassword } from "../src/domains/identity/index.js";
-import { preflightDeploy } from "./deploy-guarded.mjs";
+import { preflightDeploy, runWranglerCaptured } from "./deploy-guarded.mjs";
 
 const DENIED_USERNAMES = new Set(["nkh92@hanlim.com", "release-smoke@hanlim.internal"]);
 
@@ -55,7 +55,7 @@ function provisionedCount(payload) {
   return Number(rows.at(-1)?.provisioned || 0);
 }
 
-export async function runAdminProvision({ spawn = spawnSync } = {}) {
+export async function runAdminProvision({ execPath = process.execPath, spawn = spawnSync } = {}) {
   const values = {
     envName: process.env.D1_PROVISION_ENV || process.env.CLOUDFLARE_ENV,
     expectedDatabaseId: process.env.D1_TARGET_DATABASE_ID,
@@ -71,11 +71,16 @@ export async function runAdminProvision({ spawn = spawnSync } = {}) {
   const sqlPath = path.join(directory, "provision.sql");
   try {
     writeFileSync(sqlPath, buildAdminProvisionSql({ ...checked, passwordRecord }), { encoding: "utf8", mode: 0o600 });
-    const executable = process.platform === "win32" ? "npx.cmd" : "npx";
-    const executed = spawn(executable, [
-      "wrangler", "d1", "execute", "hanlim-archive",
-      "--remote", "--env", checked.envName, "--file", sqlPath, "--json"
-    ], { cwd: path.resolve(import.meta.dirname, ".."), encoding: "utf8", env: process.env, shell: false });
+    const appRoot = path.resolve(import.meta.dirname, "..");
+    const executed = runWranglerCaptured({
+      appRoot,
+      execPath,
+      spawn,
+      args: [
+        "d1", "execute", "hanlim-archive",
+        "--remote", "--env", checked.envName, "--file", sqlPath, "--json"
+      ]
+    });
     if (executed.status !== 0) return { ok: false, errors: ["원격 D1 Admin provisioning 실행에 실패했습니다."] };
     const count = provisionedCount(JSON.parse(executed.stdout || "[]"));
     if (count !== 1) return { ok: false, errors: ["동일 사용자명이 이미 있어 권한이나 비밀번호를 변경하지 않았습니다. 다른 독립 사용자명을 사용하세요."] };

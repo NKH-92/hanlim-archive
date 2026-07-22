@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 
-import { preflightDeploy } from "./deploy-guarded.mjs";
+import { preflightDeploy, runWranglerCaptured } from "./deploy-guarded.mjs";
 
 const KNOWN_BOOTSTRAP_USERNAME = "nkh92@hanlim.com";
 
@@ -34,6 +34,7 @@ export function runAdminReadinessCheck({
   envName = process.env.D1_ADMIN_CHECK_ENV || process.env.CLOUDFLARE_ENV,
   expectedDatabaseId = process.env.D1_TARGET_DATABASE_ID,
   phase = process.env.D1_ADMIN_CHECK_PHASE || "post-migration",
+  execPath = process.execPath,
   spawn = spawnSync
 } = {}) {
   const target = preflightDeploy({ envName, expectedDatabaseId, dryRun: true });
@@ -45,11 +46,16 @@ export function runAdminReadinessCheck({
   } catch (error) {
     return { ok: false, errors: [error.message] };
   }
-  const executable = process.platform === "win32" ? "npx.cmd" : "npx";
-  const executed = spawn(executable, [
-    "wrangler", "d1", "execute", "hanlim-archive",
-    "--remote", "--env", envName, "--command", sql, "--json"
-  ], { cwd: path.resolve(import.meta.dirname, ".."), encoding: "utf8", env: process.env, shell: false });
+  const appRoot = path.resolve(import.meta.dirname, "..");
+  const executed = runWranglerCaptured({
+    appRoot,
+    execPath,
+    spawn,
+    args: [
+      "d1", "execute", "hanlim-archive",
+      "--remote", "--env", envName, "--command", sql, "--json"
+    ]
+  });
   if (executed.status !== 0) {
     return { ok: false, errors: ["원격 D1 관리자 readiness 조회에 실패했습니다."] };
   }
