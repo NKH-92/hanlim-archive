@@ -31,6 +31,7 @@ jobs:
       ADMIN_PROVISION_DISPLAY_NAME: ${{ secrets.ADMIN_PROVISION_DISPLAY_NAME }}
       ADMIN_PROVISION_PASSWORD: ${{ secrets.ADMIN_PROVISION_PASSWORD }}
       ADMIN_PROVISION_CONFIRM: PROVISION:production:1262ca00-b431-490c-aad2-539d77d4f73f
+      ADMIN_PROVISION_OPERATION_ID: github-run-${{ github.run_id }}
       D1_ADMIN_CHECK_PHASE: pre-migration
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

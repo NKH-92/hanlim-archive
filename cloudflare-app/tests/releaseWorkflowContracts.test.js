@@ -143,6 +143,7 @@ test("독립 Admin provisioning은 수동 production Environment 승인과 guard
   assert.match(provisionAdmin, /npm run admin:provision:remote/);
   assert.match(provisionAdmin, /npm run admin:check:remote/);
   assert.match(provisionAdmin, /ADMIN_PROVISION_PASSWORD: \$\{\{ secrets\.ADMIN_PROVISION_PASSWORD \}\}/);
+  assert.match(provisionAdmin, /ADMIN_PROVISION_OPERATION_ID: github-run-\$\{\{ github\.run_id \}\}/);
   assert.doesNotMatch(provisionAdmin, /123456|nkh92@hanlim\.com/);
 });
 
