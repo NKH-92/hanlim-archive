@@ -12,6 +12,7 @@ export function floorPlanStyles() {
     .legend-box.hit { background: var(--primary); border-color: var(--primary); }
 
     .floor-plan-shell { display: grid; gap: var(--sp-2); }
+    .floor-plan-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); color: var(--gray-500); font-size: 12.5px; }
     .floor-plan-page-head p { max-width: 720px; margin: var(--sp-1) 0 0; color: var(--gray-500); font-size: 13px; }
     .archive-floor-plan-page { overflow: hidden; }
     .floor-plan-scroll { width: 100%; overflow-x: auto; padding-bottom: var(--sp-1); scrollbar-gutter: stable; }
@@ -39,13 +40,27 @@ export function floorPlanStyles() {
     .floor-rack.is-hit, .floor-rack.is-single.is-hit { background: var(--primary); color: var(--surface); box-shadow: 0 0 0 2px var(--ring); z-index: 1; }
     .floor-rack.is-hit .rack-face-a { border-right-color: rgba(255, 255, 255, .6); }
     .floor-rack.is-hit:hover { background: var(--primary-strong); }
+    .rack-hit-pin { position: absolute; left: 50%; bottom: calc(100% + var(--sp-2)); z-index: 6; transform: translateX(-50%); padding: var(--sp-1) var(--sp-2); border-radius: 999px; background: var(--action); color: var(--action-ink); font-size: 10px; font-weight: 800; line-height: 1; white-space: nowrap; box-shadow: var(--shadow-1); }
 
     /* 구역 확대 도면(문서 상세): 전체 도면을 스케일·이동해 한 구역만 채운다. */
     .floor-zoom { position: relative; width: 100%; overflow: hidden; border-radius: var(--r-md); border: 1px solid var(--gray-100); background: var(--surface); aspect-ratio: var(--z-aw) / var(--z-ah); }
     .floor-zoom-canvas { position: absolute; width: calc(10000% / var(--zw)); height: calc(10000% / var(--zh)); left: calc(var(--zl) * -100% / var(--zw)); top: calc(var(--zt) * -100% / var(--zh)); }
     .floor-zoom-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; display: block; }
+    .floor-zoom.is-spotlight .floor-rack:not(.is-hit):not([data-face-hit]) { opacity: .28; }
+    .floor-zoom.is-spotlight .floor-rack.is-hit,
+    .floor-zoom.is-spotlight .floor-rack[data-face-hit] { z-index: 5; box-shadow: 0 0 0 3px var(--action-soft), inset 0 0 0 2px var(--action-ink); }
+    .floor-zoom.is-spotlight .floor-rack.is-hit { background: var(--action); color: var(--action-ink); }
+    .floor-zoom.is-spotlight .floor-rack[data-face-hit="A"] .rack-face-a,
+    .floor-zoom.is-spotlight .floor-rack[data-face-hit="B"] .rack-face-b { background: var(--action); }
+    .floor-zoom.is-spotlight .floor-rack[data-face-hit] .rack-num,
+    .floor-zoom.is-spotlight .floor-rack.is-hit .rack-num { border-color: var(--action); background: var(--action); color: var(--action-ink); box-shadow: 0 0 0 3px var(--action-soft); }
     .floor-plan-summary, .zone-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; color: var(--gray-500); font-size: 12.5px; }
     .floor-plan-summary span, .zone-list a { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-3); border-radius: 999px; background: var(--gray-100); text-decoration: none; font-weight: 600; }
     .zone-list a:hover { background: var(--primary-soft); color: var(--primary); }
+    .zone-overview details { border-bottom: 1px solid var(--gray-100); }
+    .zone-overview details:last-child { border-bottom: 0; }
+    .zone-overview summary { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) 0; cursor: pointer; }
+    .zone-rack-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); padding: 0 0 var(--sp-3); }
+    .zone-rack-links a { padding: var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-md); }
 `;
 }

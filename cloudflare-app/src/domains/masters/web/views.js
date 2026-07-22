@@ -39,6 +39,7 @@ function masterRow(row, type) {
   return `
     <article class="master-row">
       <form method="post" action="${base}/edit" class="master-form">
+        <input type="hidden" name="expectedRowVersion" value="${escapeHtml(row.row_version ?? 0)}">
         <input name="name" value="${escapeHtml(row.name)}" required>
         <input name="description" value="${escapeHtml(row.description || "")}" placeholder="설명">
         ${isCategory ? `<input name="sortOrder" type="number" value="${escapeHtml(row.sort_order ?? 0)}">` : ""}
@@ -46,6 +47,7 @@ function masterRow(row, type) {
         <button type="submit">수정</button>
       </form>
       <form method="post" action="${base}/delete" data-confirm="사용을 중지하시겠습니까? 신규 등록 화면에는 더 이상 표시되지 않습니다.">
+        <input type="hidden" name="expectedRowVersion" value="${escapeHtml(row.row_version ?? 0)}">
         <button type="submit" class="danger-button">사용중지</button>
       </form>
     </article>

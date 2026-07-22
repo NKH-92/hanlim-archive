@@ -1,10 +1,32 @@
 import { FREE_TIER_BUDGET } from "../../../freeTierBudget.js";
 import { createBatchPlan } from "../../../platform/d1/batchPlan.js";
+import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
+import { hasPermission, PERMISSIONS, permissionSnapshot } from "../../../permissions.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { auditActorSnapshot } from "../../identity/index.js";
+import {
+  approvalReferenceRequired,
+  APPROVAL_POLICY_VERSION,
+  evaluateSnapshotApplyAuthorization,
+  missingPermissionsForSession,
+  normalizeApplyReason,
+  requiredPermissionsForDiff,
+  resolveSnapshotApplyMode
+} from "../domain/authorization.js";
+import { formatCanonicalErrors, prepareCanonicalSnapshotRows } from "../domain/canonicalRow.js";
+import { computeRiskWarnings, summarizeChangeFlags } from "../domain/diff.js";
+import { SNAPSHOT_ERROR_CODES, snapshotError } from "../domain/errorCodes.js";
+import { computeCanonicalRowsHash, computeExportManifestHash, SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS } from "../domain/hash.js";
+import { isStableRowKey, temporaryStagingRowKey } from "../domain/identity.js";
+import { matchCanonicalSnapshotRows } from "../domain/matchRows.js";
+import { validateRevisionHistorySnapshotChanges } from "../domain/revisionPolicy.js";
+import { buildDocumentAuditDetails, buildSystemApplyAuditDetails } from "../domain/auditPayload.js";
+import { buildApplyStatements } from "./applyPlan.js";
 
 const SNAPSHOT_STATUSES = new Set(["staging", "ready", "applying", "completed", "cancelled", "failed"]);
 const ROW_ACTIONS = new Set(["staged", "create", "update", "unchanged"]);
+const BOOTSTRAP_CONFIRMATION = "BOOTSTRAP";
 
 export async function getDocumentSyncState(env) {
   const row = await env.DB.prepare(`
@@ -42,7 +64,10 @@ export async function getDocumentSnapshotRows(env, snapshotId, { action = "", li
   const safeAction = ROW_ACTIONS.has(action) ? action : "";
   const safeLimit = Math.max(1, Math.min(Number(limit) || 1000, FREE_TIER_BUDGET.excelSnapshotMaxItems));
   const result = await env.DB.prepare(`
-    SELECT id, snapshot_id, row_number, row_key, normalized_json, action, matched_document_id
+    SELECT
+      id, snapshot_id, row_number, row_key, source_row_key, source_json, normalized_json,
+      before_json, after_json, changed_fields_json, change_flags_json,
+      action, matched_document_id, expected_row_version
     FROM document_snapshot_rows
     WHERE snapshot_id = ? AND (? = '' OR action = ?)
     ORDER BY row_number
@@ -51,19 +76,99 @@ export async function getDocumentSnapshotRows(env, snapshotId, { action = "", li
   return result.results ?? [];
 }
 
+export async function getDocumentSnapshotExclusions(env, snapshotId) {
+  const result = await env.DB.prepare(`
+    SELECT
+      ex.id, ex.snapshot_id, ex.document_id, ex.excel_row_key, ex.expected_row_version,
+      ex.before_json, ex.created_at,
+      (SELECT COUNT(*) FROM document_set_items item WHERE item.document_id = ex.document_id) AS set_count,
+      (SELECT MAX(movement.created_at) FROM document_movements movement WHERE movement.document_id = ex.document_id) AS recent_movement_at
+    FROM document_snapshot_exclusions ex
+    WHERE ex.snapshot_id = ?
+    ORDER BY ex.document_id
+  `).bind(snapshotId).all();
+  return result.results ?? [];
+}
+
 export async function createDocumentSnapshot(env, input, actor) {
   const sourceName = clean(input?.sourceName).slice(0, 200) || "문서고 관리대장.xlsx";
-  const sourceHash = clean(input?.sourceHash).toLowerCase();
+  const sourceHash = clean(input?.sourceHash || input?.clientSourceHash).toLowerCase();
   const totalCount = Number(input?.totalCount);
+  const sourceSize = Number(input?.sourceSize);
+  const schemaVersion = Number(input?.schemaVersion);
+  const mode = clean(input?.mode) === "bootstrap" ? "bootstrap" : "managed";
+  const exportManifestId = clean(input?.exportManifestId) || null;
+  const canonicalExportHash = clean(input?.canonicalExportHash).toLowerCase();
   const requestedBaseVersion = optionalPositiveInteger(input?.baseVersion);
-  if (!/^[a-f0-9]{64}$/.test(sourceHash)) return { ok: false, message: "엑셀 파일 해시를 확인할 수 없습니다." };
+  const requestedSnapshotId = optionalPositiveInteger(input?.currentSnapshotId);
+
+  if (!/^[a-f0-9]{64}$/.test(sourceHash)) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "브라우저가 보고한 원본 파일 해시를 확인할 수 없습니다.");
+  }
+  if (!Number.isInteger(sourceSize) || sourceSize < 1) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "원본 엑셀 파일 크기를 확인할 수 없습니다.");
+  }
+  if (sourceSize > FREE_TIER_BUDGET.excelSnapshotMaxFileBytes) {
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_FILE_TOO_LARGE,
+      `엑셀 파일은 ${Math.floor(FREE_TIER_BUDGET.excelSnapshotMaxFileBytes / 1024 / 1024)}MB 이하여야 합니다.`
+    );
+  }
   if (!Number.isInteger(totalCount) || totalCount < 1 || totalCount > FREE_TIER_BUDGET.excelSnapshotMaxItems) {
-    return { ok: false, message: `엑셀 문서는 1~${FREE_TIER_BUDGET.excelSnapshotMaxItems}건까지 동기화할 수 있습니다.` };
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, `엑셀 문서는 1~${FREE_TIER_BUDGET.excelSnapshotMaxItems}건까지 동기화할 수 있습니다.`);
+  }
+  if (!SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS.has(schemaVersion)) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED, "지원하지 않는 엑셀 스키마 버전입니다.");
   }
 
   const state = await getDocumentSyncState(env);
-  if (requestedBaseVersion && requestedBaseVersion !== state.currentVersion) {
-    return { ok: false, stale: true, message: "이 엑셀을 추출한 뒤 문서고가 변경되었습니다. 최신 엑셀을 다시 추출해 작업하세요." };
+
+  if (mode === "bootstrap") {
+    if (actor?.role !== "Admin" || !hasPermission(actor, PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS)) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_BOOTSTRAP_FORBIDDEN, "bootstrap은 Admin만 사용할 수 있습니다.");
+    }
+    if (state.currentSnapshotId) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_BOOTSTRAP_FORBIDDEN, "이미 관리 스냅샷이 있어 bootstrap을 다시 실행할 수 없습니다.");
+    }
+    if (clean(input?.bootstrapConfirmation) !== BOOTSTRAP_CONFIRMATION || !readBoolean(input?.backupConfirmed)) {
+      return snapshotError(
+        SNAPSHOT_ERROR_CODES.SNAPSHOT_BOOTSTRAP_CONFIRMATION_REQUIRED,
+        `bootstrap은 운영 backup 확인 후 ${BOOTSTRAP_CONFIRMATION} 확인문구를 정확히 입력해야 합니다.`
+      );
+    }
+  } else {
+    if (!requestedBaseVersion) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_METADATA_REQUIRED, "관리 파일에는 baseVersion 메타데이터가 필요합니다.");
+    }
+    if (!requestedSnapshotId && !exportManifestId) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_METADATA_REQUIRED, "관리 파일에는 currentSnapshotId 또는 exportManifestId가 필요합니다.");
+    }
+    if (requestedBaseVersion !== state.currentVersion) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "이 엑셀을 추출한 뒤 문서고가 변경되었습니다. 최신 엑셀을 다시 추출해 작업하세요.", { stale: true });
+    }
+    if (requestedSnapshotId && requestedSnapshotId !== state.currentSnapshotId) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_EXPORT_PROVENANCE_INVALID, "관리 파일의 기준 snapshot이 현재 문서고 상태와 일치하지 않습니다.");
+    }
+    if (exportManifestId) {
+      const manifest = await env.DB.prepare(`
+        SELECT manifest_id, schema_version, base_version, current_snapshot_id,
+               canonical_export_hash, created_by_user_id
+        FROM document_snapshot_export_manifests
+        WHERE manifest_id = ?
+      `).bind(exportManifestId).first();
+      const sameActor = !manifest?.created_by_user_id || Number(manifest.created_by_user_id) === Number(actor?.userId);
+      if (
+        !manifest ||
+        Number(manifest.schema_version) !== schemaVersion ||
+        Number(manifest.base_version) !== state.currentVersion ||
+        Number(manifest.current_snapshot_id || 0) !== state.currentSnapshotId ||
+        !/^[a-f0-9]{64}$/.test(canonicalExportHash) ||
+        canonicalExportHash !== clean(manifest.canonical_export_hash).toLowerCase() ||
+        (!sameActor && actor?.role !== "Admin")
+      ) {
+        return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_EXPORT_PROVENANCE_INVALID, "서버가 발급한 엑셀 export 출처를 확인할 수 없습니다.");
+      }
+    }
   }
 
   const temporaryCode = `SNP-TEMP-${crypto.randomUUID()}`;
@@ -71,21 +176,33 @@ export async function createDocumentSnapshot(env, input, actor) {
   const statements = [
     env.DB.prepare(`
       INSERT INTO document_snapshots (
-        snapshot_code, source_name, source_hash, base_version, previous_snapshot_id, status, has_row_keys,
-        total_count, created_by_user_id, created_by_name
+        snapshot_code, source_name, source_hash, schema_version, base_version, previous_snapshot_id, status,
+        mode, export_manifest_id, has_row_keys, total_count, source_size,
+        bootstrap_backup_confirmed, bootstrap_confirmed_at, created_by_user_id, created_by_name
       )
-      VALUES (?, ?, ?, ?, ?, 'staging', ?, ?, ?, ?)
+      SELECT ?, ?, ?, ?, state.current_version, NULLIF(state.current_snapshot_id, 0), 'staging', ?, ?, ?, ?, ?, ?,
+             CASE WHEN ? = 'bootstrap' THEN CURRENT_TIMESTAMP ELSE NULL END, ?, ?
+      FROM document_sync_state state
+      WHERE state.id = 1
+        AND state.current_version = ?
+        AND COALESCE(state.current_snapshot_id, 0) = ?
       RETURNING id
     `).bind(
       temporaryCode,
       sourceName,
       sourceHash,
-      state.currentVersion,
-      state.currentSnapshotId || null,
+      schemaVersion,
+      mode,
+      exportManifestId,
       input?.hasRowKeys ? 1 : 0,
       totalCount,
+      sourceSize,
+      mode === "bootstrap" ? 1 : 0,
+      mode,
       actorSnapshot.userId,
-      actorSnapshot.displayName
+      actorSnapshot.displayName,
+      state.currentVersion,
+      state.currentSnapshotId
     ),
     env.DB.prepare(`
       INSERT INTO system_audit_logs (
@@ -97,7 +214,17 @@ export async function createDocumentSnapshot(env, input, actor) {
         'document_snapshot', CAST(id AS TEXT),
         'SNP-' || strftime('%Y', 'now') || '-' || printf('%04d', id),
         'create', ?, ?, ?, ?, '엑셀 문서대장 동기화 시작',
-        json_object('sourceName', source_name, 'sourceHash', source_hash, 'totalCount', total_count, 'baseVersion', base_version)
+        json_object(
+          'sourceName', source_name,
+          'clientSourceHash', source_hash,
+          'sourceSize', source_size,
+          'totalCount', total_count,
+          'baseVersion', base_version,
+          'schemaVersion', schema_version,
+          'mode', mode,
+          'exportManifestId', export_manifest_id,
+          'bootstrapBackupConfirmed', bootstrap_backup_confirmed
+        )
       FROM document_snapshots
       WHERE snapshot_code = ?
     `).bind(
@@ -114,40 +241,72 @@ export async function createDocumentSnapshot(env, input, actor) {
       WHERE snapshot_code = ?
     `).bind(temporaryCode)
   ];
-  const results = await env.DB.batch(snapshotStatements("create", statements));
+  if (exportManifestId) {
+    statements.push(env.DB.prepare(`
+      UPDATE document_snapshot_export_manifests
+      SET last_used_at = CURRENT_TIMESTAMP,
+          last_snapshot_id = (
+            SELECT id FROM document_snapshots
+            WHERE export_manifest_id = ?
+            ORDER BY id DESC LIMIT 1
+          )
+      WHERE manifest_id = ?
+        AND EXISTS (
+          SELECT 1 FROM document_snapshots
+          WHERE export_manifest_id = ?
+        )
+    `).bind(exportManifestId, exportManifestId, exportManifestId));
+  }
+  const results = await executeMutationBatch(env, createSnapshotPlan("create", statements));
   const id = Number(results[0]?.results?.[0]?.id || 0);
-  if (!id) throw new Error("엑셀 동기화 작업 생성 결과를 확인할 수 없습니다.");
-  return { ok: true, id, baseVersion: state.currentVersion };
+  if (!id) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "동기화 작업 생성 중 문서고가 변경되었습니다. 최신 엑셀을 다시 추출하세요.", { stale: true });
+  }
+  return { ok: true, id, baseVersion: state.currentVersion, mode };
 }
 
 export async function stageDocumentSnapshotRows(env, snapshotId, rows) {
   if (!Array.isArray(rows) || !rows.length || rows.length > FREE_TIER_BUDGET.excelSnapshotStageChunkSize) {
-    return { ok: false, message: `한 번에 ${FREE_TIER_BUDGET.excelSnapshotStageChunkSize}행씩 전송해야 합니다.` };
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, `한 번에 ${FREE_TIER_BUDGET.excelSnapshotStageChunkSize}행씩 전송해야 합니다.`);
   }
   const normalized = [];
   const seenRows = new Set();
   const seenKeys = new Set();
   for (const entry of rows) {
     const rowNumber = Number(entry?.rowNumber);
-    const rowKey = clean(entry?.rowKey);
+    const sourceRowKey = clean(entry?.sourceRowKey ?? entry?.rowKey);
     if (!Number.isInteger(rowNumber) || rowNumber < 2 || rowNumber > FREE_TIER_BUDGET.excelSnapshotMaxItems + 1) {
-      return { ok: false, message: "엑셀 행 번호가 올바르지 않습니다." };
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "엑셀 행 번호가 올바르지 않습니다.");
     }
-    if (!isRowKey(rowKey)) return { ok: false, message: `${rowNumber}행의 숨김 관리 ID가 올바르지 않습니다.` };
-    if (seenRows.has(rowNumber) || seenKeys.has(rowKey)) return { ok: false, message: "같은 행 번호 또는 관리 ID가 중복되었습니다." };
+    if (sourceRowKey && !isStableRowKey(sourceRowKey)) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `${rowNumber}행의 숨김 관리 ID가 올바르지 않습니다.`);
+    }
+    if (seenRows.has(rowNumber)) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_DUPLICATE, "같은 행 번호가 중복되었습니다.");
+    }
+    if (sourceRowKey && seenKeys.has(sourceRowKey)) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_DUPLICATE, "같은 관리 ID가 중복되었습니다.");
+    }
     seenRows.add(rowNumber);
-    seenKeys.add(rowKey);
-    normalized.push({ rowNumber, rowKey, source: normalizeSourceRow(entry?.source) });
+    if (sourceRowKey) seenKeys.add(sourceRowKey);
+    const stagingKey = sourceRowKey || temporaryStagingRowKey(snapshotId, rowNumber);
+    normalized.push({
+      rowNumber,
+      rowKey: stagingKey,
+      sourceRowKey: sourceRowKey || null,
+      source: normalizeSourceRow(entry?.source)
+    });
   }
 
   const payload = JSON.stringify(normalized);
   const statements = [
     env.DB.prepare(`
-      INSERT INTO document_snapshot_rows (snapshot_id, row_number, row_key, source_json)
+      INSERT INTO document_snapshot_rows (snapshot_id, row_number, row_key, source_row_key, source_json)
       SELECT
         ?,
         CAST(json_extract(staged.value, '$.rowNumber') AS INTEGER),
         json_extract(staged.value, '$.rowKey'),
+        NULLIF(json_extract(staged.value, '$.sourceRowKey'), ''),
         json(json_extract(staged.value, '$.source'))
       FROM json_each(?) staged
       WHERE EXISTS (
@@ -156,8 +315,14 @@ export async function stageDocumentSnapshotRows(env, snapshotId, rows) {
       )
       ON CONFLICT(snapshot_id, row_number) DO UPDATE SET
         row_key = excluded.row_key,
+        source_row_key = excluded.source_row_key,
         source_json = excluded.source_json,
         normalized_json = NULL,
+        before_json = NULL,
+        after_json = NULL,
+        changed_fields_json = NULL,
+        change_flags_json = NULL,
+        expected_row_version = NULL,
         action = 'staged',
         matched_document_id = NULL
     `).bind(snapshotId, payload, snapshotId),
@@ -169,21 +334,23 @@ export async function stageDocumentSnapshotRows(env, snapshotId, rows) {
       RETURNING staged_count, total_count
     `).bind(snapshotId, snapshotId)
   ];
-  const results = await env.DB.batch(snapshotStatements("stage", statements));
+  const results = await executeMutationBatch(env, createSnapshotPlan("stage", statements));
   const progress = results[1]?.results?.[0];
-  if (!progress) return { ok: false, message: "행을 추가할 수 없는 동기화 작업입니다." };
+  if (!progress) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "행을 추가할 수 없는 동기화 작업입니다.");
   return { ok: true, stagedCount: Number(progress.staged_count || 0), totalCount: Number(progress.total_count || 0) };
 }
 
-export async function prepareDocumentSnapshot(env, snapshotId, options, prepareRows, actor) {
+export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyPrepareRows, actor) {
   const snapshot = await getDocumentSnapshot(env, snapshotId);
-  if (!snapshot) return { ok: false, message: "엑셀 동기화 작업을 찾을 수 없습니다." };
+  if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾을 수 없습니다.");
   if (snapshot.status === "ready" || snapshot.status === "completed") return { ok: true, snapshot };
-  if (snapshot.status !== "staging") return { ok: false, message: "검증할 수 없는 동기화 작업 상태입니다." };
+  if (snapshot.status !== "staging") {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "검증할 수 없는 동기화 작업 상태입니다.");
+  }
 
-  const [rowResult, documentResult, state] = await Promise.all([
+  const [rowResult, documentResult, revisionLinkResult, state] = await Promise.all([
     env.DB.prepare(`
-      SELECT row_number, row_key, source_json
+      SELECT row_number, row_key, source_row_key, source_json
       FROM document_snapshot_rows
       WHERE snapshot_id = ?
       ORDER BY row_number
@@ -192,21 +359,39 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, prepareR
       SELECT
         d.id, d.excel_row_key, d.sync_state, d.category_id, d.document_number,
         d.revision_number, d.revision_date, d.disposal_due_year, d.document_name,
-        d.note, d.rack_slot_id, d.rack_face, d.status,
+        d.note, d.rack_slot_id, d.rack_face, d.status, d.row_version,
         GROUP_CONCAT(dt.tag_id, ',') AS tag_ids
       FROM documents d
       LEFT JOIN document_tags dt ON dt.document_id = d.id
       GROUP BY d.id
       ORDER BY d.id
     `).all(),
+    env.DB.prepare(`
+      SELECT previous_document_id, new_document_id
+      FROM document_revision_links
+    `).all(),
     getDocumentSyncState(env)
   ]);
   const stagedRows = rowResult.results ?? [];
   if (stagedRows.length !== Number(snapshot.total_count) || stagedRows.length !== Number(snapshot.staged_count)) {
-    return { ok: false, message: `전체 ${snapshot.total_count}행 중 ${stagedRows.length}행만 전송되었습니다.` };
+    return failSnapshotValidation(
+      env,
+      snapshotId,
+      `전체 ${snapshot.total_count}행 중 ${stagedRows.length}행만 전송되었습니다.`,
+      actor,
+      false,
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH
+    );
   }
   if (state.currentVersion !== Number(snapshot.base_version)) {
-    return failSnapshotValidation(env, snapshotId, "검증 중 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요.", actor, true);
+    return failSnapshotValidation(
+      env,
+      snapshotId,
+      "검증 중 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요.",
+      actor,
+      true,
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE
+    );
   }
 
   let sourceRows;
@@ -214,265 +399,346 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, prepareR
     sourceRows = stagedRows.map((row) => ({
       ...JSON.parse(row.source_json),
       rowNumber: Number(row.row_number),
-      rowKey: clean(row.row_key)
+      sourceRowKey: clean(row.source_row_key),
+      rowKey: clean(row.source_row_key || row.row_key)
     }));
   } catch {
     return failSnapshotValidation(env, snapshotId, "저장된 엑셀 행을 읽을 수 없습니다.", actor);
   }
 
-  const prepared = prepareRows(sourceRows, options);
-  const keyErrors = validatePreparedRowKeys(prepared.items);
-  const errors = [...prepared.errors, ...keyErrors];
-  if (errors.length) {
-    const message = `${errors.slice(0, 20).join(" / ")}${errors.length > 20 ? ` / 외 ${errors.length - 20}건` : ""}`;
-    return failSnapshotValidation(env, snapshotId, message, actor);
+  const prepared = prepareCanonicalSnapshotRows(sourceRows, options);
+  if (!prepared.ok) {
+    return failSnapshotValidation(
+      env,
+      snapshotId,
+      formatCanonicalErrors(prepared.errors),
+      actor,
+      false,
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD,
+      { errors: prepared.errors }
+    );
   }
 
-  const documents = documentResult.results ?? [];
-  const match = matchPreparedRows(prepared.items, documents, Boolean(snapshot.has_row_keys));
+  const lookup = {
+    categoryNames: new Map((options.categories || []).map((category) => [Number(category.id), category.name])),
+    tagNames: new Map((options.tags || []).map((tag) => [Number(tag.id), tag.name])),
+    slotsById: new Map((options.slots || []).map((slot) => [Number(slot.id), slot]))
+  };
+  const match = matchCanonicalSnapshotRows(prepared.items, documentResult.results ?? [], {
+    managedMode: snapshot.mode !== "bootstrap",
+    lookup
+  });
+  if (!match.ok) {
+    return failSnapshotValidation(
+      env,
+      snapshotId,
+      formatCanonicalErrors(match.errors),
+      actor,
+      false,
+      match.errors[0]?.code || SNAPSHOT_ERROR_CODES.SNAPSHOT_IDENTITY_CONFLICT,
+      { errors: match.errors }
+    );
+  }
+
+  const revisionPolicy = validateRevisionHistorySnapshotChanges(
+    match.items,
+    revisionLinkResult.results ?? []
+  );
+  if (!revisionPolicy.ok) {
+    return failSnapshotValidation(
+      env,
+      snapshotId,
+      formatCanonicalErrors(revisionPolicy.errors),
+      actor,
+      false,
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_REVISION_HISTORY_CONFLICT,
+      { errors: revisionPolicy.errors }
+    );
+  }
+
+  const summary = summarizeChangeFlags(match.items, match.exclusions.length);
+  const requiredPermissions = requiredPermissionsForDiff(summary);
+  const missing = missingPermissionsForSession(actor, requiredPermissions);
+  if (Number(summary.restoreCount) > 0 && actor?.role !== "Admin" && !missing.includes("Admin")) {
+    missing.push("Admin(폐기 해제)");
+  }
+  const baselineCurrentDocumentCount = (documentResult.results ?? []).filter((document) => document.sync_state === "current").length;
+  const warnings = computeRiskWarnings({
+    summary,
+    currentDocumentCount: baselineCurrentDocumentCount,
+    missingPermissions: missing,
+    identityChangeCount: match.identityChangeCount,
+    blankKeyCreateCount: match.blankKeyCreateCount
+  });
+  const approvalRequired = approvalReferenceRequired(summary, {
+    identityChangeCount: match.identityChangeCount,
+    warnings
+  }) ? 1 : 0;
+  const canonicalRowsHash = await computeCanonicalRowsHash(match.items);
+  const actorSnapshot = auditActorSnapshot(actor);
   const changes = {};
-  let createCount = 0;
-  let updateCount = 0;
-  let unchangedCount = 0;
   for (const item of match.items) {
-    if (item.action === "create") createCount += 1;
-    else if (item.action === "update") updateCount += 1;
-    else unchangedCount += 1;
     changes[String(item.rowNumber)] = {
       action: item.action,
       matchedDocumentId: item.matchedDocumentId || null,
-      normalizedJson: JSON.stringify({ rowKey: item.rowKey, values: item.values, status: item.status })
+      rowKey: item.rowKey,
+      expectedRowVersion: item.expectedRowVersion,
+      beforeJson: item.before ? JSON.stringify(item.before) : null,
+      afterJson: item.after ? JSON.stringify(item.after) : null,
+      changedFieldsJson: JSON.stringify(item.changedFields || []),
+      changeFlagsJson: JSON.stringify(item.changeFlags || []),
+      normalizedJson: JSON.stringify({
+        schemaVersion: 1,
+        rowKey: item.rowKey,
+        values: item.values,
+        status: item.status,
+        changeFlags: item.changeFlags,
+        changedFields: item.changedFields
+      })
     };
   }
+  const exclusionPayload = JSON.stringify(match.exclusions.map((item) => ({
+    documentId: item.documentId,
+    excelRowKey: item.excelRowKey,
+    expectedRowVersion: item.expectedRowVersion,
+    beforeJson: JSON.stringify(item.before)
+  })));
 
-  const excludeCount = documents.filter((document) => document.sync_state === "current" && !match.matchedIds.has(Number(document.id))).length;
-  const actorSnapshot = auditActorSnapshot(actor);
-  const changePayload = JSON.stringify(changes);
   const statements = [
     env.DB.prepare(`
+      DELETE FROM document_snapshot_exclusions
+      WHERE snapshot_id = ?
+        AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'staging')
+    `).bind(snapshotId, snapshotId),
+    env.DB.prepare(`
       UPDATE document_snapshot_rows AS row
-      SET normalized_json = json_extract(change.value, '$.normalizedJson'),
+      SET row_key = json_extract(change.value, '$.rowKey'),
+          normalized_json = json_extract(change.value, '$.normalizedJson'),
+          before_json = json_extract(change.value, '$.beforeJson'),
+          after_json = json_extract(change.value, '$.afterJson'),
+          changed_fields_json = json_extract(change.value, '$.changedFieldsJson'),
+          change_flags_json = json_extract(change.value, '$.changeFlagsJson'),
+          expected_row_version = CAST(json_extract(change.value, '$.expectedRowVersion') AS INTEGER),
           action = json_extract(change.value, '$.action'),
           matched_document_id = CAST(json_extract(change.value, '$.matchedDocumentId') AS INTEGER)
       FROM json_each(?) change
       WHERE row.snapshot_id = ?
         AND row.row_number = CAST(change.key AS INTEGER)
         AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'staging')
-    `).bind(changePayload, snapshotId, snapshotId),
+    `).bind(JSON.stringify(changes), snapshotId, snapshotId),
+    env.DB.prepare(`
+      INSERT INTO document_snapshot_exclusions (
+        snapshot_id, document_id, excel_row_key, expected_row_version, before_json
+      )
+      SELECT
+        ?,
+        CAST(json_extract(item.value, '$.documentId') AS INTEGER),
+        json_extract(item.value, '$.excelRowKey'),
+        CAST(json_extract(item.value, '$.expectedRowVersion') AS INTEGER),
+        json_extract(item.value, '$.beforeJson')
+      FROM json_each(?) item
+      WHERE EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'staging')
+    `).bind(snapshotId, exclusionPayload, snapshotId),
     env.DB.prepare(`
       UPDATE document_snapshots
-      SET status = 'ready', create_count = ?, update_count = ?, unchanged_count = ?, exclude_count = ?,
-          error_summary = NULL, prepared_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      SET status = 'ready',
+          create_count = ?, update_count = ?, unchanged_count = ?, exclude_count = ?,
+          metadata_count = ?, move_count = ?, dispose_count = ?, restore_count = ?,
+          tag_change_count = ?, reinclude_count = ?, identity_change_count = ?,
+          required_permissions_json = ?, warnings_json = ?, canonical_rows_hash = ?,
+          baseline_current_document_count = ?, approval_required = ?,
+          approval_policy_version = ?,
+          error_summary = NULL, validation_errors_json = NULL,
+          prepared_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND status = 'staging' AND base_version = (
         SELECT current_version FROM document_sync_state WHERE id = 1
       )
       RETURNING *
-    `).bind(createCount, updateCount, unchangedCount, excludeCount, snapshotId),
+    `).bind(
+      summary.createCount,
+      summary.updateCount,
+      summary.unchangedCount,
+      summary.excludeCount,
+      summary.metadataCount,
+      summary.moveCount,
+      summary.disposeCount,
+      summary.restoreCount,
+      summary.tagChangeCount,
+      summary.reincludeCount,
+      match.identityChangeCount,
+      JSON.stringify(requiredPermissions),
+      JSON.stringify(warnings),
+      canonicalRowsHash,
+      baselineCurrentDocumentCount,
+      approvalRequired,
+      APPROVAL_POLICY_VERSION,
+      snapshotId
+    ),
     systemSnapshotAuditStatement(env, snapshotId, "prepare", "엑셀 문서대장 변경 검토 완료", actorSnapshot, {
-      createCount, updateCount, unchangedCount, excludeCount
+      ...summary,
+      requiredPermissions,
+      missingPermissions: missing,
+      warnings,
+      canonicalRowsHash,
+      baselineCurrentDocumentCount,
+      approvalRequired: Boolean(approvalRequired),
+      approvalPolicyVersion: APPROVAL_POLICY_VERSION,
+      applyMode: resolveSnapshotApplyMode(env)
     }, "ready")
   ];
-  const results = await env.DB.batch(snapshotStatements("prepare", statements));
-  const ready = results[1]?.results?.[0];
-  if (!ready) return { ok: false, stale: true, message: "검증 중 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요." };
-  return { ok: true, snapshot: ready };
+  const results = await executeMutationBatch(env, createSnapshotPlan("prepare", statements));
+  const ready = results[3]?.results?.[0];
+  if (!ready) {
+    return failSnapshotValidation(
+      env,
+      snapshotId,
+      "검증 중 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요.",
+      actor,
+      true,
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE,
+      { stale: true, warnings }
+    );
+  }
+  return {
+    ok: true,
+    snapshot: ready,
+    summary,
+    requiredPermissions,
+    missingPermissions: missing,
+    warnings,
+    canonicalRowsHash
+  };
 }
 
-export async function applyDocumentSnapshot(env, snapshotId, actor) {
+export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) {
   const snapshot = await getDocumentSnapshot(env, snapshotId);
-  if (!snapshot) return { ok: false, message: "엑셀 동기화 작업을 찾을 수 없습니다." };
+  if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾을 수 없습니다.");
   if (snapshot.status === "completed") return { ok: true, snapshot, alreadyApplied: true };
-  if (snapshot.status !== "ready") return { ok: false, message: "검증이 완료된 동기화 작업만 반영할 수 있습니다." };
+  if (snapshot.status !== "ready") {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "검증이 완료된 동기화 작업만 반영할 수 있습니다.");
+  }
+
+  const summary = {
+    createCount: Number(snapshot.create_count || 0),
+    updateCount: Number(snapshot.update_count || 0),
+    unchangedCount: Number(snapshot.unchanged_count || 0),
+    excludeCount: Number(snapshot.exclude_count || 0),
+    metadataCount: Number(snapshot.metadata_count || 0),
+    moveCount: Number(snapshot.move_count || 0),
+    disposeCount: Number(snapshot.dispose_count || 0),
+    restoreCount: Number(snapshot.restore_count || 0),
+    tagChangeCount: Number(snapshot.tag_change_count || 0),
+    reincludeCount: Number(snapshot.reinclude_count || 0)
+  };
+
+  const auth = evaluateSnapshotApplyAuthorization(actor, summary, env, {
+    bootstrap: snapshot.mode === "bootstrap"
+  });
+  if (!auth.ok) return auth;
+
+  const reason = normalizeApplyReason(input);
+  if (!reason.ok) return reason;
+  // prepare에 저장된 승인 baseline·정책 버전만 사용한다. 재계산으로 승인을 완화하지 않는다.
+  const storedWarnings = parseJsonArray(snapshot.warnings_json);
+  if (String(snapshot.approval_policy_version || "") !== APPROVAL_POLICY_VERSION) {
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE,
+      "승인 정책이 변경되었습니다. 미리보기를 다시 준비하세요.",
+      { stale: true }
+    );
+  }
+  const currentDocuments = await env.DB.prepare(`
+    SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'
+  `).first();
+  if (Number(snapshot.baseline_current_document_count || 0) !== Number(currentDocuments?.count || 0)) {
+    await markSnapshotStale(env, snapshotId, actor, "미리보기 이후 현재 대장 건수가 변경되었습니다.");
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE,
+      "미리보기 이후 현재 대장 건수가 변경되었습니다. 최신 엑셀로 다시 시작하세요.",
+      { stale: true }
+    );
+  }
+  const needsApproval = Number(snapshot.approval_required) === 1 || approvalReferenceRequired(summary, {
+    identityChangeCount: Number(snapshot.identity_change_count || 0),
+    warnings: storedWarnings
+  });
+  if (needsApproval && !reason.approvalReference) {
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_APPROVAL_REFERENCE_REQUIRED,
+      "제외·위치 변경·폐기·폐기 해제 또는 대량 변경이 있으면 승인 참조가 필요합니다."
+    );
+  }
+  const reviewCount = summary.createCount + summary.updateCount + summary.excludeCount;
+  const confirmedReviewCount = Number(input.confirmedReviewCount);
+  if (!readBoolean(input.confirmReview) || !Number.isInteger(confirmedReviewCount) || confirmedReviewCount !== reviewCount) {
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD,
+      `행별 변경과 제외 예정 목록을 검토하고 변경 영향 ${reviewCount}건을 정확히 확인하세요.`
+    );
+  }
+  if (summary.excludeCount > 0) {
+    const confirmed = Number(input.confirmedExcludeCount);
+    if (!readBoolean(input.confirmExclude) || !Number.isInteger(confirmed) || confirmed !== summary.excludeCount) {
+      return snapshotError(
+        SNAPSHOT_ERROR_CODES.SNAPSHOT_EXCLUSION_CONFIRMATION_MISMATCH,
+        `제외 ${summary.excludeCount}건을 검토하고 예상 건수를 정확히 확인하세요.`
+      );
+    }
+  }
+
+  const state = await getDocumentSyncState(env);
+  if (state.currentVersion !== Number(snapshot.base_version)) {
+    await markSnapshotStale(env, snapshotId, actor, "미리보기 이후 문서고가 변경되었습니다.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "미리보기 이후 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요.", { stale: true });
+  }
 
   const actorSnapshot = auditActorSnapshot(actor);
-  const role = clean(actor?.role) || "User";
-  const guard = `EXISTS (SELECT 1 FROM document_snapshots WHERE id = ${Number(snapshotId)} AND status = 'applying')`;
-  const statements = [
-    env.DB.prepare(`
-      UPDATE document_snapshots
-      SET status = 'applying', updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'ready' AND base_version = (
-        SELECT current_version FROM document_sync_state WHERE id = 1
-      )
-    `).bind(snapshotId),
-    env.DB.prepare(`
-      INSERT INTO document_audit_logs (
-        document_id, storage_code, document_number, action, actor, actor_role,
-        actor_user_id, actor_username, summary, details
-      )
-      SELECT
-        d.id, d.storage_code, d.document_number, 'excel_sync_update', ?, ?, ?, ?,
-        '엑셀 문서대장 기준 정보 변경',
-        json_object(
-          'snapshotCode', s.snapshot_code,
-          'before', json_object(
-            'documentNumber', d.document_number, 'revisionNumber', d.revision_number,
-            'revisionDate', IFNULL(d.revision_date, ''), 'disposalDueYear', d.disposal_due_year,
-            'documentName', d.document_name, 'categoryId', d.category_id,
-            'rackSlotId', d.rack_slot_id, 'rackFace', d.rack_face,
-            'status', d.status, 'note', IFNULL(d.note, ''), 'syncState', d.sync_state
-          ),
-          'after', json(row.normalized_json)
-        )
-      FROM document_snapshot_rows row
-      JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
-      JOIN documents d ON d.id = row.matched_document_id
-      WHERE row.snapshot_id = ? AND row.action = 'update'
-    `).bind(actorSnapshot.displayName, role, actorSnapshot.userId, actorSnapshot.username, snapshotId),
-    env.DB.prepare(`
-      INSERT INTO document_audit_logs (
-        document_id, storage_code, document_number, action, actor, actor_role,
-        actor_user_id, actor_username, summary, details
-      )
-      SELECT
-        d.id, d.storage_code, d.document_number, 'excel_sync_exclude', ?, ?, ?, ?,
-        '새 엑셀 문서대장에서 제외',
-        json_object('snapshotCode', s.snapshot_code, 'before', json_object('syncState', d.sync_state), 'after', json_object('syncState', 'excluded'))
-      FROM documents d
-      JOIN document_snapshots s ON s.id = ? AND s.status = 'applying'
-      WHERE d.sync_state = 'current'
-        AND NOT EXISTS (
-          SELECT 1 FROM document_snapshot_rows row
-          WHERE row.snapshot_id = s.id AND json_extract(row.normalized_json, '$.rowKey') = d.excel_row_key
-        )
-    `).bind(actorSnapshot.displayName, role, actorSnapshot.userId, actorSnapshot.username, snapshotId),
-    env.DB.prepare(`
-      INSERT INTO disposal_logs (document_id, action, performed_by, reason)
-      SELECT
-        d.id,
-        CASE WHEN json_extract(row.normalized_json, '$.status') = 'disposed' THEN 'disposed' ELSE 'restored' END,
-        ?, '엑셀 문서대장 상태 동기화'
-      FROM document_snapshot_rows row
-      JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
-      JOIN documents d ON d.id = row.matched_document_id
-      WHERE row.snapshot_id = ? AND row.action = 'update'
-        AND d.status <> json_extract(row.normalized_json, '$.status')
-    `).bind(actorSnapshot.displayName, snapshotId),
-    env.DB.prepare(`
-      UPDATE documents AS d
-      SET excel_row_key = json_extract(row.normalized_json, '$.rowKey'),
-          category_id = CAST(json_extract(row.normalized_json, '$.values.categoryId') AS INTEGER),
-          document_number = json_extract(row.normalized_json, '$.values.documentNumber'),
-          revision_number = json_extract(row.normalized_json, '$.values.revisionNumber'),
-          revision_date = NULLIF(json_extract(row.normalized_json, '$.values.revisionDate'), ''),
-          disposal_due_year = CAST(NULLIF(json_extract(row.normalized_json, '$.values.disposalDueYear'), '') AS INTEGER),
-          document_name = json_extract(row.normalized_json, '$.values.documentName'),
-          note = NULLIF(json_extract(row.normalized_json, '$.values.note'), ''),
-          rack_slot_id = CAST(json_extract(row.normalized_json, '$.values.rackSlotId') AS INTEGER),
-          rack_face = json_extract(row.normalized_json, '$.values.rackFace'),
-          status = json_extract(row.normalized_json, '$.status'),
-          sync_state = 'current', last_snapshot_id = ?, row_version = row_version + 1,
-          updated_at = CURRENT_TIMESTAMP
-      FROM document_snapshot_rows row
-      WHERE d.id = row.matched_document_id
-        AND row.snapshot_id = ? AND row.action = 'update' AND ${guard}
-    `).bind(snapshotId, snapshotId),
-    env.DB.prepare(`
-      INSERT INTO documents (
-        storage_code, excel_row_key, category_id, document_number, revision_number,
-        revision_date, disposal_due_year, document_name, note, rack_slot_id, rack_face,
-        status, sync_state, last_snapshot_id, updated_at
-      )
-      SELECT
-        'SNP-' || row.snapshot_id || '-' || row.row_number,
-        json_extract(row.normalized_json, '$.rowKey'),
-        CAST(json_extract(row.normalized_json, '$.values.categoryId') AS INTEGER),
-        json_extract(row.normalized_json, '$.values.documentNumber'),
-        json_extract(row.normalized_json, '$.values.revisionNumber'),
-        NULLIF(json_extract(row.normalized_json, '$.values.revisionDate'), ''),
-        CAST(NULLIF(json_extract(row.normalized_json, '$.values.disposalDueYear'), '') AS INTEGER),
-        json_extract(row.normalized_json, '$.values.documentName'),
-        NULLIF(json_extract(row.normalized_json, '$.values.note'), ''),
-        CAST(json_extract(row.normalized_json, '$.values.rackSlotId') AS INTEGER),
-        json_extract(row.normalized_json, '$.values.rackFace'),
-        json_extract(row.normalized_json, '$.status'),
-        'current', row.snapshot_id, CURRENT_TIMESTAMP
-      FROM document_snapshot_rows row
-      WHERE row.snapshot_id = ? AND row.action = 'create' AND ${guard}
-    `).bind(snapshotId),
-    env.DB.prepare(`
-      UPDATE documents
-      SET storage_code = 'ARC-' || printf('%06d', id)
-      WHERE last_snapshot_id = ? AND storage_code LIKE 'SNP-%' AND ${guard}
-    `).bind(snapshotId),
-    env.DB.prepare(`
-      INSERT INTO disposal_logs (document_id, action, performed_by, reason)
-      SELECT d.id, 'disposed', ?, '엑셀 문서대장 최초 동기화'
-      FROM documents d
-      WHERE d.last_snapshot_id = ? AND d.status = 'disposed' AND ${guard}
-        AND NOT EXISTS (SELECT 1 FROM disposal_logs log WHERE log.document_id = d.id)
-    `).bind(actorSnapshot.displayName, snapshotId),
-    env.DB.prepare(`
-      DELETE FROM document_tags
-      WHERE document_id IN (
-        SELECT matched_document_id FROM document_snapshot_rows
-        WHERE snapshot_id = ? AND action = 'update'
-      ) AND ${guard}
-    `).bind(snapshotId),
-    env.DB.prepare(`
-      INSERT OR IGNORE INTO document_tags (document_id, tag_id)
-      SELECT d.id, CAST(tag.value AS INTEGER)
-      FROM document_snapshot_rows row
-      JOIN documents d ON d.excel_row_key = json_extract(row.normalized_json, '$.rowKey')
-      CROSS JOIN json_each(json_extract(row.normalized_json, '$.values.tagIds')) tag
-      JOIN tags t ON t.id = CAST(tag.value AS INTEGER) AND t.is_active = 1
-      WHERE row.snapshot_id = ? AND row.action IN ('create', 'update') AND ${guard}
-    `).bind(snapshotId),
-    env.DB.prepare(`
-      INSERT INTO document_audit_logs (
-        document_id, storage_code, document_number, action, actor, actor_role,
-        actor_user_id, actor_username, summary, details
-      )
-      SELECT
-        d.id, d.storage_code, d.document_number, 'excel_sync_create', ?, ?, ?, ?,
-        '엑셀 문서대장 기준 문서 등록',
-        json_object('snapshotCode', s.snapshot_code, 'after', json(row.normalized_json))
-      FROM document_snapshot_rows row
-      JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
-      JOIN documents d ON d.excel_row_key = json_extract(row.normalized_json, '$.rowKey')
-      WHERE row.snapshot_id = ? AND row.action = 'create'
-    `).bind(actorSnapshot.displayName, role, actorSnapshot.userId, actorSnapshot.username, snapshotId),
-    env.DB.prepare(`
-      UPDATE documents
-      SET sync_state = 'excluded', row_version = row_version + 1,
-          last_snapshot_id = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE sync_state = 'current' AND ${guard}
-        AND NOT EXISTS (
-          SELECT 1 FROM document_snapshot_rows row
-          WHERE row.snapshot_id = ? AND json_extract(row.normalized_json, '$.rowKey') = documents.excel_row_key
-        )
-    `).bind(snapshotId, snapshotId),
-    systemSnapshotAuditStatement(env, snapshotId, "apply", "엑셀 문서대장 전체 동기화 반영", actorSnapshot, {
-      createCount: Number(snapshot.create_count || 0),
-      updateCount: Number(snapshot.update_count || 0),
-      unchangedCount: Number(snapshot.unchanged_count || 0),
-      excludeCount: Number(snapshot.exclude_count || 0)
-    }, "applying"),
-    env.DB.prepare(`
-      UPDATE document_sync_state
-      SET current_version = (SELECT base_version + 1 FROM document_snapshots WHERE id = ? AND status = 'applying'),
-          current_snapshot_id = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = 1 AND ${guard}
-    `).bind(snapshotId, snapshotId),
-    env.DB.prepare(`
-      UPDATE document_snapshots
-      SET status = 'completed', applied_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'applying'
-      RETURNING *
-    `).bind(snapshotId)
-  ];
-  const results = await env.DB.batch(snapshotStatements("apply", statements));
+  const applyDetails = buildSystemApplyAuditDetails({
+    summary,
+    requiredPermissions: auth.requiredPermissions,
+    applyReason: reason.applyReason,
+    approvalReference: reason.approvalReference,
+    canonicalRowsHash: snapshot.canonical_rows_hash,
+    mode: auth.mode,
+    permissionSnapshot: permissionSnapshot(actor)
+  });
+  const statements = buildApplyStatements(env, {
+    snapshotId,
+    snapshot,
+    actorSnapshot,
+    role: clean(actor?.role) || "User",
+    applyReason: reason.applyReason,
+    approvalReference: reason.approvalReference,
+    applyDetails
+  });
+  let results;
+  try {
+    results = await executeMutationBatch(env, createSnapshotPlan("apply", statements));
+  } catch (error) {
+    if (isExpectedChangeAbort(error)) {
+      await markSnapshotStale(env, snapshotId, actor, "동시 반영 또는 버전 충돌로 반영하지 못했습니다.");
+      return snapshotError(
+        SNAPSHOT_ERROR_CODES.SNAPSHOT_CONCURRENT_APPLY,
+        "동시 반영 또는 버전 충돌로 반영하지 못했습니다.",
+        { stale: true }
+      );
+    }
+    throw error;
+  }
   if (!Number(results[0]?.meta?.changes || 0)) {
-    return { ok: false, stale: true, message: "미리보기 이후 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요." };
+    const current = await getDocumentSnapshot(env, snapshotId);
+    if (current?.status === "completed") return { ok: true, snapshot: current, alreadyApplied: true };
+    await markSnapshotStale(env, snapshotId, actor, "동시 반영 또는 버전 충돌로 반영하지 못했습니다.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_CONCURRENT_APPLY, "동시 반영 또는 버전 충돌로 반영하지 못했습니다.", { stale: true });
   }
   const completed = results.at(-1)?.results?.[0];
   if (!completed) throw new Error("엑셀 문서대장 반영 결과를 확인할 수 없습니다.");
   return { ok: true, snapshot: completed, statementCount: statements.length };
 }
 
-export async function getDocumentSnapshotExport(env) {
-  const [state, result, categoryResult, tagResult, rackResult] = await Promise.all([
-    getDocumentSyncState(env),
+export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
+  const stateBefore = await getDocumentSyncState(env);
+  const [result, categoryResult, tagResult, rackResult] = await Promise.all([
     env.DB.prepare(`
       SELECT
         d.excel_row_key, d.document_number, d.revision_number, d.revision_date,
@@ -495,12 +761,51 @@ export async function getDocumentSnapshotExport(env) {
     env.DB.prepare("SELECT name FROM tags WHERE is_active = 1 ORDER BY name").all(),
     env.DB.prepare("SELECT rack_number, code, is_single_sided FROM racks WHERE is_active = 1 ORDER BY zone_number, rack_number").all()
   ]);
+  const state = await getDocumentSyncState(env);
+  if (
+    state.currentVersion !== stateBefore.currentVersion ||
+    state.currentSnapshotId !== stateBefore.currentSnapshotId
+  ) {
+    if (attempt >= 1) throw new Error("엑셀 추출 중 문서고가 계속 변경되어 일관된 export를 만들 수 없습니다.");
+    return getDocumentSnapshotExport(env, actor, attempt + 1);
+  }
+  const documents = (result.results ?? []).map(exportDocument);
+  const exportManifestId = `EXP-${crypto.randomUUID()}`;
+  const canonicalExportHash = await computeExportManifestHash(documents);
+  const actorSnapshot = auditActorSnapshot(actor);
+  const persisted = await env.DB.prepare(`
+    INSERT INTO document_snapshot_export_manifests (
+      manifest_id, schema_version, base_version, current_snapshot_id,
+      canonical_export_hash, document_count, created_by_user_id, created_by_name
+    )
+    SELECT ?, 1, state.current_version, NULLIF(state.current_snapshot_id, 0), ?, ?, ?, ?
+    FROM document_sync_state state
+    WHERE state.id = 1
+      AND state.current_version = ?
+      AND COALESCE(state.current_snapshot_id, 0) = ?
+    RETURNING manifest_id
+  `).bind(
+    exportManifestId,
+    canonicalExportHash,
+    documents.length,
+    actorSnapshot.userId,
+    actorSnapshot.displayName,
+    state.currentVersion,
+    state.currentSnapshotId
+  ).first();
+  if (!persisted?.manifest_id) {
+    if (attempt >= 1) throw new Error("엑셀 추출 중 문서고가 계속 변경되어 일관된 export를 만들 수 없습니다.");
+    return getDocumentSnapshotExport(env, actor, attempt + 1);
+  }
   return {
     schemaVersion: 1,
     baseVersion: state.currentVersion,
     currentSnapshotId: state.currentSnapshotId || null,
+    exportManifestId,
+    canonicalExportHash,
     exportedAt: new Date().toISOString(),
-    documents: (result.results ?? []).map(exportDocument),
+    clientSourceHashNote: "업로드 시 sourceHash는 브라우저가 계산한 원본 XLSX SHA-256이며 서버 검증 해시가 아닙니다.",
+    documents,
     codes: {
       categories: (categoryResult.results ?? []).map((row) => row.name),
       tags: (tagResult.results ?? []).map((row) => row.name),
@@ -511,63 +816,32 @@ export async function getDocumentSnapshotExport(env) {
   };
 }
 
-async function failSnapshotValidation(env, snapshotId, message, actor, stale = false) {
+async function failSnapshotValidation(env, snapshotId, message, actor, stale = false, code = SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, extras = {}) {
   const summary = clean(message).slice(0, 2000) || "엑셀 검증에 실패했습니다.";
   const actorSnapshot = auditActorSnapshot(actor);
   const statements = [
     env.DB.prepare(`
       UPDATE document_snapshots
-      SET status = 'failed', error_summary = ?, updated_at = CURRENT_TIMESTAMP
+      SET status = 'failed', error_summary = ?, validation_errors_json = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND status = 'staging'
-    `).bind(summary, snapshotId),
-    systemSnapshotAuditStatement(env, snapshotId, "validation_failed", "엑셀 문서대장 검증 실패", actorSnapshot, { message: summary }, "failed")
+    `).bind(summary, Array.isArray(extras.errors) ? JSON.stringify(extras.errors) : null, snapshotId),
+    systemSnapshotAuditStatement(env, snapshotId, "validation_failed", "엑셀 문서대장 검증 실패", actorSnapshot, { message: summary, code, ...extras }, "failed")
   ];
-  await env.DB.batch(snapshotStatements("validation-failed", statements));
-  return { ok: false, stale, message: summary };
+  await executeMutationBatch(env, createSnapshotPlan("validation-failed", statements));
+  return { ok: false, stale, code, message: summary, ...extras };
 }
 
-function matchPreparedRows(items, documents, hasRowKeys) {
-  const byKey = new Map(documents.map((document) => [clean(document.excel_row_key), document]));
-  const byIdentity = new Map();
-  for (const document of documents) {
-    const key = documentIdentity(document.document_number, document.revision_number);
-    const list = byIdentity.get(key) || [];
-    list.push(document);
-    byIdentity.set(key, list);
-  }
-  const matchedIds = new Set();
-  const matchedItems = items.map((item) => {
-    let document = byKey.get(item.rowKey) || null;
-    if (!document && !hasRowKeys) {
-      const candidates = byIdentity.get(documentIdentity(item.values.documentNumber, item.values.revisionNumber)) || [];
-      if (candidates.length === 1 && !matchedIds.has(Number(candidates[0].id))) document = candidates[0];
-    }
-    if (!document) return { ...item, action: "create", matchedDocumentId: 0 };
-    matchedIds.add(Number(document.id));
-    return {
-      ...item,
-      action: documentMatches(document, item) ? "unchanged" : "update",
-      matchedDocumentId: Number(document.id)
-    };
-  });
-  return { items: matchedItems, matchedIds };
-}
-
-function documentMatches(document, item) {
-  const values = item.values;
-  return clean(document.excel_row_key) === item.rowKey &&
-    document.sync_state === "current" &&
-    Number(document.category_id) === values.categoryId &&
-    clean(document.document_number) === values.documentNumber &&
-    clean(document.revision_number) === values.revisionNumber &&
-    clean(document.revision_date) === values.revisionDate &&
-    nullableNumber(document.disposal_due_year) === nullableNumber(values.disposalDueYear) &&
-    clean(document.document_name) === values.documentName &&
-    clean(document.note) === values.note &&
-    Number(document.rack_slot_id) === values.rackSlotId &&
-    clean(document.rack_face) === values.rackFace &&
-    clean(document.status) === item.status &&
-    sameNumbers(parseIdList(document.tag_ids), values.tagIds);
+async function markSnapshotStale(env, snapshotId, actor, message) {
+  const actorSnapshot = auditActorSnapshot(actor);
+  const summary = clean(message).slice(0, 2000);
+  await executeMutationBatch(env, createSnapshotPlan("stale", [
+    env.DB.prepare(`
+      UPDATE document_snapshots
+      SET status = 'failed', error_summary = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status IN ('ready', 'applying')
+    `).bind(summary, snapshotId),
+    systemSnapshotAuditStatement(env, snapshotId, "stale", "엑셀 문서대장 stale 차단", actorSnapshot, { message: summary }, "failed")
+  ]));
 }
 
 function exportDocument(row) {
@@ -607,45 +881,61 @@ function normalizeSourceRow(source = {}) {
   };
 }
 
-function validatePreparedRowKeys(items) {
-  const seen = new Set();
-  const errors = [];
-  for (const item of items) {
-    if (!isRowKey(item.rowKey)) errors.push(`${item.rowNumber}행: 숨김 관리 ID가 올바르지 않습니다.`);
-    else if (seen.has(item.rowKey)) errors.push(`${item.rowNumber}행: 숨김 관리 ID가 중복되었습니다.`);
-    seen.add(item.rowKey);
-  }
-  return errors;
-}
-
-function isRowKey(value) {
-  return /^[A-Za-z0-9][A-Za-z0-9._:-]{7,99}$/.test(clean(value));
-}
-
-function documentIdentity(number, revision) {
-  return `${clean(number).toUpperCase()}\u0000${clean(revision).toUpperCase()}`;
-}
-
-function parseIdList(value) {
-  return clean(value).split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0);
-}
-
-function sameNumbers(left, right) {
-  const a = [...new Set(left)].sort((x, y) => x - y);
-  const b = [...new Set(right)].sort((x, y) => x - y);
-  return a.length === b.length && a.every((value, index) => value === b[index]);
-}
-
-function nullableNumber(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
 function optionalPositiveInteger(value) {
   if (value === null || value === undefined || value === "") return 0;
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : 0;
+}
+
+export async function cancelDocumentSnapshot(env, snapshotId, actor) {
+  const snapshot = await getDocumentSnapshot(env, snapshotId);
+  if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾을 수 없습니다.");
+  if (snapshot.status === "cancelled") return { ok: true, snapshot, alreadyCancelled: true };
+  if (!new Set(["staging", "ready"]).has(snapshot.status)) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "업로드 중이거나 반영 대기인 작업만 취소할 수 있습니다.");
+  }
+  const actorSnapshot = auditActorSnapshot(actor);
+  const results = await executeMutationBatch(env, createSnapshotPlan("cancel", [
+    env.DB.prepare(`
+      INSERT INTO system_audit_logs (
+        entity_type, entity_id, entity_reference, action, actor_user_id,
+        actor_username_snapshot, actor_display_name_snapshot, actor_permissions_snapshot,
+        summary, details_json
+      )
+      SELECT 'document_snapshot', CAST(id AS TEXT), snapshot_code, 'cancel', ?, ?, ?, ?,
+             '엑셀 문서대장 작업 취소', json_object('previousStatus', status, 'sourceName', source_name)
+      FROM document_snapshots
+      WHERE id = ? AND status IN ('staging', 'ready')
+    `).bind(
+      actorSnapshot.userId,
+      actorSnapshot.username,
+      actorSnapshot.displayName,
+      JSON.stringify(actorSnapshot.permissions),
+      snapshotId
+    ),
+    env.DB.prepare(`
+      UPDATE document_snapshots
+      SET status = 'cancelled', error_summary = '사용자가 반영 전 작업을 취소했습니다.', updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status IN ('staging', 'ready')
+      RETURNING *
+    `).bind(snapshotId)
+  ]));
+  const cancelled = results[1]?.results?.[0];
+  if (!cancelled) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "동시에 상태가 변경되어 작업을 취소하지 못했습니다.");
+  return { ok: true, snapshot: cancelled };
+}
+
+function readBoolean(value) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function parseJsonArray(raw) {
+  try {
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function systemSnapshotAuditStatement(env, snapshotId, action, summary, actor, details, requiredStatus) {
@@ -671,10 +961,14 @@ function systemSnapshotAuditStatement(env, snapshotId, action, summary, actor, d
   );
 }
 
-function snapshotStatements(action, statements) {
+function createSnapshotPlan(action, statements) {
   const plan = createBatchPlan(`snapshots.${action}`).withBudget(FREE_TIER_BUDGET.maxD1StatementsPerRequest);
   statements.forEach((statement, index) => plan.step(`${action}.${index + 1}`, statement, { guard: "snapshot-state" }));
-  return plan.execution().statements;
+  return plan;
 }
 
-export { SNAPSHOT_STATUSES };
+function snapshotStatements(action, statements) {
+  return createSnapshotPlan(action, statements).execution().statements;
+}
+
+export { SNAPSHOT_STATUSES, buildDocumentAuditDetails };

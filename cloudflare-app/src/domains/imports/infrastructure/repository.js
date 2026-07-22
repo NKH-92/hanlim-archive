@@ -2,7 +2,9 @@ import { FREE_TIER_BUDGET } from "../../../config.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
 import { hasChanged } from "../../../data/sqlShared.js";
-import { importStatements } from "./plans.js";
+import { hasPermission, PERMISSIONS } from "../../../permissions.js";
+import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+import { createImportPlan } from "./plans.js";
 
 const JOB_STATUSES = new Set(["ready", "processing", "completed", "cancelled"]);
 const ITEM_STATUSES = new Set(["pending", "completed", "failed"]);
@@ -57,6 +59,13 @@ export async function createDocumentImportJob(env, { sourceName = "", items = []
     rowNumber: Number(item.rowNumber) || index + 2,
     payload: normalizeStagedPayload(item)
   }));
+  const disposedCount = normalizedItems.filter((item) => item.payload.status === "disposed").length;
+  if (disposedCount > 0 && !hasPermission(actor, PERMISSIONS.MANAGE_DISPOSALS)) {
+    return {
+      ok: false,
+      message: `폐기 상태 문서 ${disposedCount}건이 포함되어 폐기 관리 권한이 필요합니다.`
+    };
+  }
   const temporaryCode = `IMP-TEMP-${crypto.randomUUID()}`;
   const actorId = requiredActorId(actor);
   const stagedSql = normalizedItems.map(() => "SELECT ? AS row_number, ? AS payload_json").join(" UNION ALL ");
@@ -102,7 +111,7 @@ export async function createDocumentImportJob(env, { sourceName = "", items = []
       WHERE job_code = ?
     `).bind(temporaryCode)
   ];
-  const results = await env.DB.batch(importStatements("create", statements, "temporary-job-code"));
+  const results = await executeMutationBatch(env, createImportPlan("create", statements, "temporary-job-code"));
   const id = Number(results[0]?.results?.[0]?.id || 0);
   if (!id) throw new Error("CSV 가져오기 작업 생성 결과를 확인할 수 없습니다.");
   return { ok: true, id };
@@ -114,10 +123,28 @@ export async function processDocumentImportJob(env, jobId, actor) {
   if (work.job_status === "completed") return { ok: true, done: true, job: importJobFromWork(work) };
   if (work.job_status === "cancelled") return { ok: false, message: "취소된 가져오기 작업입니다." };
   if (!work.item_id) {
-    const aggregate = [aggregateImportJobStatement(env, jobId, actor, true)];
-    const result = await env.DB.batch(importStatements("aggregate", aggregate, "job-not-cancelled"));
-    const job = result[0]?.results?.[0] || importJobFromWork(work);
-    return { ok: true, done: job.status === "completed", job, statementCount: 2 };
+    const aggregate = [
+      createImportLifecycleAuditStatement(env, jobId, actor, "complete", "CSV 가져오기 작업 완료"),
+      aggregateImportJobStatement(env, jobId, actor, true)
+    ];
+    const result = await executeMutationBatch(env, createImportPlan("aggregate", aggregate, "job-not-cancelled"));
+    const job = result[1]?.results?.[0] || importJobFromWork(work);
+    return { ok: true, done: job.status === "completed", job, statementCount: aggregate.length + 1 };
+  }
+
+  // 작업 전체 pending 행을 먼저 검사한다. 중간에 폐기 행이 있어도 선행 mutation이 나가면 안 된다.
+  // 대기 행만이 아니라 저장된 모든 staged 행을 재검사한다(권한 우회·중간 상태 누락 방지).
+  const disposedStaged = await env.DB.prepare(`
+    SELECT COUNT(*) AS count
+    FROM document_import_items
+    WHERE job_id = ?
+      AND json_extract(payload_json, '$.status') = 'disposed'
+  `).bind(jobId).first();
+  if (Number(disposedStaged?.count || 0) > 0 && !hasPermission(actor, PERMISSIONS.MANAGE_DISPOSALS)) {
+    return {
+      ok: false,
+      message: `저장된 가져오기 작업에 폐기 상태 행 ${Number(disposedStaged.count)}건이 있어 폐기 관리 권한이 필요합니다.`
+    };
   }
 
   let payload;
@@ -129,6 +156,12 @@ export async function processDocumentImportJob(env, jobId, actor) {
   const validationError = validateWorkPayload(work, payload);
   if (validationError) {
     return failDocumentImportItem(env, jobId, work.item_id, validationError, actor);
+  }
+  if (payload.status === "disposed" && !hasPermission(actor, PERMISSIONS.MANAGE_DISPOSALS)) {
+    return {
+      ok: false,
+      message: "저장된 가져오기 행에 폐기 상태가 있어 폐기 관리 권한이 필요합니다."
+    };
   }
 
   const token = crypto.randomUUID();
@@ -144,6 +177,11 @@ export async function processDocumentImportJob(env, jobId, actor) {
           WHERE id = ? AND status IN ('ready', 'processing')
         )
     `).bind(token, work.item_id, jobId, jobId),
+    // claim 직후·item 완료/토큰 해제 전에 start audit를 남긴다. 완료 뒤에 두면 guard가 항상 false다.
+    createImportLifecycleAuditStatement(env, jobId, actor, "start", "CSV 가져오기 처리 시작", {
+      itemId: work.item_id,
+      token
+    }),
     env.DB.prepare(`
       INSERT INTO documents (
         storage_code, category_id, document_number, revision_number, revision_date,
@@ -250,6 +288,7 @@ export async function processDocumentImportJob(env, jobId, actor) {
           processed_at = CURRENT_TIMESTAMP, processing_token = NULL
       WHERE id = ? AND job_id = ? AND status = 'pending' AND processing_token = ?
     `).bind(work.item_id, jobId, token),
+    createImportLifecycleAuditStatement(env, jobId, actor, "complete", "CSV 가져오기 작업 완료"),
     aggregateImportJobStatement(env, jobId, actor, true)
   );
 
@@ -258,7 +297,7 @@ export async function processDocumentImportJob(env, jobId, actor) {
   }
 
   try {
-    const results = await env.DB.batch(importStatements("process", statements, "claim-token+pending-item"));
+    const results = await executeMutationBatch(env, createImportPlan("process", statements, "claim-token+pending-item"));
     const claim = results[0];
     const job = results[results.length - 1]?.results?.[0] || importJobFromWork(work);
     if (!hasChanged(claim)) {
@@ -288,7 +327,7 @@ export async function failDocumentImportItem(env, jobId, itemId, message, actor)
     `).bind(cleanMessage, itemId, jobId, jobId),
     aggregateImportJobStatement(env, jobId, actor, true)
   ];
-  const results = await env.DB.batch(importStatements("fail-item", statements, "pending-item"));
+  const results = await executeMutationBatch(env, createImportPlan("fail-item", statements, "pending-item"));
   const job = results[1]?.results?.[0];
   return { ok: true, failed: true, done: job?.status === "completed", job, statementCount: statements.length + 1 };
 }
@@ -312,7 +351,7 @@ export async function cancelDocumentImportJob(env, id, actor) {
       WHERE id = ? AND status IN ('ready', 'processing')
     `).bind(id)
   ];
-  const results = await env.DB.batch(importStatements("cancel", statements, "ready-or-processing"));
+  const results = await executeMutationBatch(env, createImportPlan("cancel", statements, "ready-or-processing"));
   return hasChanged(results[1]) ? { ok: true } : { ok: false, message: "작업 상태가 변경되었습니다." };
 }
 
@@ -381,6 +420,45 @@ function aggregateImportJobStatement(env, jobId, actor, returnRow) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?${suffix}
   `).bind(jobId, jobId, jobId, jobId, jobId);
+}
+
+function createImportLifecycleAuditStatement(env, jobId, actor, action, summary, claim = null) {
+  if (action === "start") {
+    // claim 승자만 start audit를 남긴다. job status=ready만 보면 claim-loser도 INSERT될 수 있다.
+    const itemId = Number(claim?.itemId || 0);
+    const token = String(claim?.token || "");
+    return createSystemAuditStatement(env, {
+      entityType: "document_import_job",
+      entityId: jobId,
+      action: "start",
+      actor,
+      summary,
+      details: { transition: "ready->processing" }
+    }, {
+      guardSql: `FROM document_import_jobs j
+        WHERE j.id = ? AND j.status = 'ready'
+          AND EXISTS (
+            SELECT 1 FROM document_import_items i
+            WHERE i.id = ? AND i.job_id = j.id AND i.status = 'pending' AND i.processing_token = ?
+          )`,
+      guardBinds: [jobId, itemId, token]
+    });
+  }
+  return createSystemAuditStatement(env, {
+    entityType: "document_import_job",
+    entityId: jobId,
+    action: "complete",
+    actor,
+    summary,
+    details: { transition: "terminal-completed" }
+  }, {
+    guardSql: `FROM document_import_jobs j
+      WHERE j.id = ? AND j.status IN ('ready', 'processing')
+        AND NOT EXISTS (
+          SELECT 1 FROM document_import_items WHERE job_id = j.id AND status = 'pending'
+        )`,
+    guardBinds: [jobId]
+  });
 }
 
 function createDocumentImportAuditStatement(env, temporaryCode, actor) {

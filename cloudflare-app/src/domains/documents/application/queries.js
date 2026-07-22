@@ -4,6 +4,8 @@ export function createDocumentQueries(repository) {
     getDocumentCount: repository.getDocumentCount,
     getDocumentsForExport: repository.getDocumentsForExport,
     getDocument: repository.getDocument,
+    getDocumentRevisionHistory: repository.getDocumentRevisionHistory,
+    getDocumentRevisionLink: repository.getDocumentRevisionLink,
     findDuplicateDocument: repository.findDuplicateDocument,
     getDocumentTags: repository.getDocumentTags,
     getDisposalLogs: repository.getDisposalLogs,

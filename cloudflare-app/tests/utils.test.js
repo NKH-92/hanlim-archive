@@ -38,6 +38,9 @@ test("csvEscape neutralizes Excel formulas", () => {
   assert.equal(csvEscape("+1"), "'+1");
   assert.equal(csvEscape("-1"), "'-1");
   assert.equal(csvEscape("@SUM(1,2)"), '"\'@SUM(1,2)"');
+  assert.equal(csvEscape(" \t=1+1"), "' \t=1+1");
+  assert.equal(csvEscape("\u00a0+1"), "'\u00a0+1");
+  assert.equal(csvEscape("\u0000@SUM(1,2)"), '"\'\u0000@SUM(1,2)"');
 });
 
 test("csvEscape still quotes normal CSV delimiters", () => {

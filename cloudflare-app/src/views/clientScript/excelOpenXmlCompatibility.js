@@ -53,6 +53,22 @@ export function excelOpenXmlCompatibilityScript() {
         return { changed: true, buffer: await zip.generateAsync({ type: 'arraybuffer' }) };
       }
 
+      async function excelAssertZipSafety(buffer, maxUncompressedBytes, maxEntries) {
+        if (!window.JSZip) throw new Error('엑셀 ZIP 안전성 검사 모듈을 불러오지 못했습니다. 화면을 새로고침하세요.');
+        var zip = await window.JSZip.loadAsync(buffer);
+        var entries = Object.keys(zip.files);
+        if (entries.length > maxEntries) throw new Error('엑셀 ZIP 항목 수가 안전 한도를 초과했습니다.');
+        var total = 0;
+        for (var index = 0; index < entries.length; index += 1) {
+          var entry = zip.files[entries[index]];
+          if (!entry || entry.dir) continue;
+          var size = Number(entry._data && entry._data.uncompressedSize);
+          if (!Number.isFinite(size) || size < 0) throw new Error('엑셀 ZIP 항목 크기를 검증할 수 없습니다.');
+          total += size;
+          if (total > maxUncompressedBytes) throw new Error('엑셀 압축 해제 크기가 50MB 안전 한도를 초과했습니다.');
+        }
+      }
+
       async function excelLoadWorkbook(buffer) {
         var workbook = new window.ExcelJS.Workbook();
         try {

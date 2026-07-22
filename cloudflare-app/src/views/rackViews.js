@@ -21,12 +21,13 @@ export function racksPage({ session, racks }) {
   `, session);
 }
 
-export function rackConfigurePage({ session, counts, error = "" }) {
+export function rackConfigurePage({ session, counts, expectedVersion = 0, error = "" }) {
   return page("랙 설정", `
     <section class="page-head"><h1>구역별 랙 수</h1></section>
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="/racks/configure" class="stack">
+        <input type="hidden" name="expectedVersion" value="${escapeHtml(expectedVersion)}">
         ${[1, 2, 3].map((zone) => `<label>${zone}구역 랙 수<input type="number" name="zone${zone}Count" min="0" max="15" value="${escapeHtml(counts[zone] ?? 0)}"></label>`).join("")}
         <button type="submit" class="primary">저장</button>
       </form>
@@ -97,11 +98,13 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
 }
 
 export function rackFormPage({ session, values = {}, action, title, error = "" }) {
+  const expectedRowVersion = Number(values.row_version ?? values.expectedRowVersion ?? values.rowVersion ?? 0);
   return page(title, `
     <section class="page-head"><h1>${escapeHtml(title)}</h1></section>
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="${escapeHtml(action)}" class="stack">
+        ${expectedRowVersion > 0 ? `<input type="hidden" name="expectedRowVersion" value="${expectedRowVersion}">` : ""}
         <label>구역<input type="number" name="zoneNumber" min="1" max="3" value="${escapeHtml(values.zone_number ?? values.zoneNumber ?? 1)}" required></label>
         <label>랙 번호<input type="number" name="rackNumber" min="1" max="15" value="${escapeHtml(values.rack_number ?? values.rackNumber ?? 1)}" required></label>
         <p class="muted">랙 구조는 면당 7열 × 6선반(42칸)으로 고정되어 있습니다.</p>

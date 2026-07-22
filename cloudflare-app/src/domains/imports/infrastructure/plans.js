@@ -6,6 +6,8 @@ export function createImportPlan(action, statements, guard = action) {
   statements.forEach((statement, index) => plan.step(`${action}.${index + 1}`, statement, { guard }));
   return plan;
 }
+
+/** @deprecated Prefer createImportPlan + executeMutationBatch; kept for statement-SQL probes. */
 export function importStatements(action, statements, guard) {
   return createImportPlan(action, statements, guard).execution().statements;
 }

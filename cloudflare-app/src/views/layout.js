@@ -2,6 +2,7 @@
 
 import { escapeHtml } from "../ui/html/escape.js";
 import { capabilitiesFromSession } from "../domains/identity/index.js";
+import { matchingPermissionPreset, PERMISSION_PRESETS } from "../permissions.js";
 import { secureHtmlDocument } from "../platform/web/htmlSecurity.js";
 import { createRenderContext } from "../platform/web/renderContext.js";
 import { htmlContentSecurityPolicy } from "../security.js";
@@ -19,6 +20,7 @@ export function page(title, body, session, status = 200) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} - 한림문서고</title>
   <meta name="description" content="한림문서고 문서 검색 및 보관 위치 안내 시스템">
+  <link rel="icon" type="image/svg+xml" href="/images/hanlim-pharm-logo.svg">
   ${session?.csrfToken ? `<meta name="csrf-token" content="${escapeHtml(session.csrfToken)}">` : ""}
   <link rel="stylesheet" href="/assets/app.css">
   <script nonce="${nonce}" src="/assets/app.js" defer></script>
@@ -50,49 +52,63 @@ function header(session) {
   const capabilities = capabilitiesFromSession(session);
   const primaryLinks = [
     ["/app", "fa-magnifying-glass", "문서검색"],
-    ["/floor-plan", "fa-location-dot", "문서고 도면"]
+    ["/floor-plan", "fa-location-dot", "문서고 도면"],
+    ["/sets", "fa-layer-group", "문서 세트"]
   ];
   if (capabilities.canManageDocuments) {
-    primaryLinks.push(["/documents/import", "fa-file-excel", "엑셀대장"]);
+    primaryLinks.push(["/documents", "fa-file-lines", "문서 관리"]);
+    primaryLinks.push(["/documents/import", "fa-file-excel", "리스트 동기화"]);
+    primaryLinks.push(["/documents/new", "fa-file-circle-plus", "문서 추가"]);
   }
   if (capabilities.canManageDisposals) {
     primaryLinks.push(["/documents/disposal", "fa-box-archive", "문서폐기"]);
   }
 
   const settingsLinks = [];
-  if (capabilities.canShowAdminSettings && capabilities.canManageDocuments) {
-    settingsLinks.push(["/documents/import", "fa-file-excel", "엑셀 문서대장"]);
-  }
-  if (capabilities.canShowAdminSettings && capabilities.canManageMasters) {
+  if (capabilities.canManageMasters) {
     settingsLinks.push(["/racks", "fa-table-cells-large", "랙·보관 위치"]);
     settingsLinks.push(["/categories", "fa-list-check", "대분류"]);
     settingsLinks.push(["/tags", "fa-tags", "태그"]);
   }
-  if (capabilities.canShowAdminSettings && capabilities.canManageUsers) {
+  if (capabilities.canManageUsers) {
     settingsLinks.push(["/admin/settings", "fa-users-gear", "사용자·권한"]);
   }
-  if (capabilities.canShowAdminSettings && capabilities.canViewAudit) {
+  if (capabilities.canViewAudit) {
     settingsLinks.push(["/admin/audit", "fa-list-check", "감사 이력"]);
   }
-  if (capabilities.canShowAdminSettings && capabilities.canViewMovements) {
+  if (capabilities.canViewMovements) {
     settingsLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
   }
-  if (capabilities.canShowAdminSettings && capabilities.canOpenManagement) {
+  if (capabilities.canOpenManagement) {
     settingsLinks.push(["/admin", "fa-gear", "운영 관리"]);
   }
   const navigationLinks = primaryLinks
-    .map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item"><i class="fa-solid ${icon}"></i>${text}</a>`)
+    .map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item"><i class="fa-solid ${icon}" aria-hidden="true"></i>${text}</a>`)
     .join("");
   const settingsNavigation = settingsLinks.map(([href, icon, text]) => `<a href="${href}" class="nav-sub-link"><i class="fa-solid ${icon}"></i>${escapeHtml(text)}</a>`).join("");
-  const mobileTabs = primaryLinks.map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}"></i><span>${text}</span></a>`).join("");
-  const commandLinks = [...primaryLinks, ...settingsLinks].map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
+  const mobilePaths = capabilities.canManageDocuments && capabilities.canManageDisposals
+    ? ["/app", "/floor-plan", "/documents", "/documents/new", "/documents/disposal"]
+    : capabilities.canManageDocuments
+      ? ["/app", "/floor-plan", "/documents", "/documents/import", "/documents/new"]
+      : capabilities.canManageDisposals
+        ? ["/app", "/floor-plan", "/documents/disposal"]
+        : ["/app", "/floor-plan"];
+  const mobileTabs = primaryLinks
+    .filter(([href]) => mobilePaths.includes(href))
+    .map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}"></i><span>${text}</span></a>`)
+    .join("");
+  const utilityLinks = [["/qa", "fa-circle-info", "도움말·문의"]];
+  const commandLinks = [...primaryLinks, ...settingsLinks, ...utilityLinks].map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
+  const roleLabel = session.role === "Admin"
+    ? PERMISSION_PRESETS.system_admin.label
+    : PERMISSION_PRESETS[matchingPermissionPreset(session)].label;
 
   return `
     <header class="topbar">
-      <a href="/app" class="brand"><span class="brand-mark"><i class="fa-solid fa-building-columns"></i></span><span><strong>한림문서고</strong><small>통합 문서 위치 검색</small></span></a>
+      <a href="/app" class="brand"><img class="brand-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약"><span><strong>한림문서고</strong><small>통합 문서 위치 검색</small></span></a>
       <button type="button" class="command-trigger" data-command-open aria-haspopup="dialog"><i class="fa-solid fa-magnifying-glass"></i><span>메뉴 찾기</span><kbd>Ctrl+K</kbd></button>
-      <button type="button" class="hamburger" aria-label="메뉴 열기" data-hamburger><span></span><span></span><span></span></button>
-      <nav aria-label="주 메뉴" data-nav-menu>
+      <button type="button" class="hamburger" aria-label="메뉴 열기" aria-controls="primary-navigation" aria-expanded="false" data-hamburger><span></span><span></span><span></span></button>
+      <nav id="primary-navigation" aria-label="주 메뉴" data-nav-menu>
         <button type="button" class="drawer-close" data-drawer-close aria-label="메뉴 닫기">×</button>
         ${navigationLinks}
         ${settingsNavigation ? `<details class="nav-settings">
@@ -100,7 +116,8 @@ function header(session) {
           <div>${settingsNavigation}</div>
         </details>` : ""}
         <div class="nav-user">
-          <span class="session-pill">${escapeHtml(session.displayName)} · ${session.role === "Admin" ? "관리자" : "사용자"}</span>
+          <span class="session-pill">${escapeHtml(session.displayName)} · ${escapeHtml(roleLabel)}</span>
+          <a href="/qa" class="nav-sub-link"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>도움말·문의</a>
           <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key"></i>비밀번호</a>
           <form method="post" action="/logout" class="logout-form">
             <button type="submit" class="logout-link"><i class="fa-solid fa-right-from-bracket"></i>로그아웃</button>
@@ -173,16 +190,17 @@ export function timelineItem(title, meta, body) {
 
 // 문서 목록(/documents)과 뷰어 검색 폼(/app)이 같은 검색 필터를 공유한다.
 // viewer 변형은 라벨 노출·placeholder 문구·정렬 항목 순서만 다르고 구조는 동일하다.
-export function filterSelectRow({ categories, tags, filters, viewer = false }) {
+export function filterSelectRow({ categories, tags, filters, viewer = false, formId = "" }) {
   if (viewer) {
+    const formAttribute = formId ? ` form="${escapeHtml(formId)}"` : "";
     const sortOptions = [["updated", "최신순"], ["location", "위치순"], ["docnum", "문서번호순"], ["category", "대분류순"]]
       .map(([value, text]) => option(value, text, filters.sort))
       .join("");
     return `<div class="viewer-filter-row">
-          <label>문서 상태<select name="status">${option("active", "보관중 문서", filters.status || "active")}${option("disposed", "폐기 문서", filters.status || "active")}${option("all", "전체", filters.status || "active")}</select></label>
-          <label>대분류<select name="category"><option value="">전체</option>${categories.map((c) => option(c.id, c.name, filters.categoryId)).join("")}</select></label>
-          <label>보관 위치<select name="zone"><option value="">전체</option>${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}</select></label>
-          <label>정렬<select name="sort">${option("relevance", "정확도순", filters.sort || "relevance")}${sortOptions}</select></label>
+          <label>문서 상태<select name="status"${formAttribute}>${option("active", "보관중 문서", filters.status || "active")}${option("disposed", "폐기 문서", filters.status || "active")}${option("all", "전체", filters.status || "active")}</select></label>
+          <label>대분류<select name="category"${formAttribute}><option value="">전체</option>${categories.map((c) => option(c.id, c.name, filters.categoryId)).join("")}</select></label>
+          <label>보관 위치<select name="zone"${formAttribute}><option value="">전체</option>${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}</select></label>
+          <label>정렬<select name="sort"${formAttribute}>${option("relevance", "정확도순", filters.sort || "relevance")}${sortOptions}</select></label>
           <a class="button secondary sm" href="/app">초기화</a>
         </div>`;
   }
@@ -233,9 +251,9 @@ ${viewer ? `          <a class="button secondary sm" href="/app">초기화</a>
 export function paginationNav(page, totalPages, { previousUrl, nextUrl }) {
   return `
     <nav class="pagination" aria-label="검색 결과 페이지">
-      <a class="button secondary sm ${page === 1 ? "disabled" : ""}" href="${previousUrl}">이전</a>
+      ${page === 1 ? `<span class="button secondary sm disabled" aria-disabled="true">이전</span>` : `<a class="button secondary sm" href="${previousUrl}">이전</a>`}
       <span>${page} / ${totalPages}</span>
-      <a class="button secondary sm ${page === totalPages ? "disabled" : ""}" href="${nextUrl}">다음</a>
+      ${page === totalPages ? `<span class="button secondary sm disabled" aria-disabled="true">다음</span>` : `<a class="button secondary sm" href="${nextUrl}">다음</a>`}
     </nav>
   `;
 }
@@ -247,7 +265,7 @@ export function listUrl(basePath, { query, filters = {}, page = 1 }, paramOrder)
   for (const [param, key] of paramOrder) {
     if (filters[key]) params.set(param, filters[key]);
   }
-  if (page > 1) params.set("page", page);
+  if (page > 1) params.set("page", String(page));
   const text = params.toString();
   return text ? `${basePath}?${text}` : basePath;
 }

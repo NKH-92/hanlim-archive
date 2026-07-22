@@ -7,7 +7,20 @@ import {
   uniqueViolationMessage
 } from "../../../data/sqlShared.js";
 import { actorDisplayName } from "../domain/policy.js";
-import { createSetMutationPlan, executableStatements } from "./mutationPlans.js";
+import { createSetMutationPlan } from "./mutationPlans.js";
+import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
+import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+
+async function runSetMutationBatch(env, plan) {
+  try {
+    return { ok: true, results: await executeMutationBatch(env, plan) };
+  } catch (error) {
+    if (isExpectedChangeAbort(error)) {
+      return { ok: false, stale: true, error };
+    }
+    throw error;
+  }
+}
 
 export async function getDocumentSets(env) {
   const result = await env.DB.prepare(`
@@ -15,6 +28,7 @@ export async function getDocumentSets(env) {
       s.id,
       s.name,
       s.description,
+      s.row_version,
       s.is_locked,
       s.locked_at,
       s.locked_by_name,
@@ -22,6 +36,8 @@ export async function getDocumentSets(env) {
       s.created_at,
       s.updated_at,
       COUNT(i.document_id) AS document_count,
+      SUM(CASE WHEN d.sync_state = 'current' THEN 1 ELSE 0 END) AS current_count,
+      SUM(CASE WHEN d.sync_state = 'excluded' THEN 1 ELSE 0 END) AS excluded_count,
       SUM(CASE WHEN d.status = 'disposed' THEN 1 ELSE 0 END) AS disposed_count
     FROM document_sets s
     LEFT JOIN document_set_items i ON i.set_id = s.id
@@ -35,7 +51,7 @@ export async function getDocumentSets(env) {
 
 export async function getDocumentSet(env, id) {
   return env.DB.prepare(`
-    SELECT id, name, description, created_by, created_at, updated_at,
+    SELECT id, name, description, created_by, created_at, updated_at, row_version,
       is_locked, locked_at, locked_by_user_id, locked_by_name, lock_reason
     FROM document_sets
     WHERE id = ?
@@ -73,6 +89,8 @@ export async function upsertDocumentSet(env, values, actor = {}) {
 
   try {
     if (values.id) {
+      const expectedRowVersion = positiveVersion(values.expectedRowVersion ?? values.rowVersion);
+      if (!expectedRowVersion) return staleSetResult();
       // 이력 INSERT를 상태 변경보다 먼저 두고 같은 batch에서 실행해 이력 없는 수정과
       // 수정 없는 이력이 모두 생기지 않도록 한다.
       const statements = [
@@ -80,21 +98,25 @@ export async function upsertDocumentSet(env, values, actor = {}) {
           INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
           SELECT id, ?, 'update', ?, ?
           FROM document_sets
-          WHERE id = ? AND is_locked = 0
-        `).bind(name, performedBy, "세트 정보 수정", values.id),
+          WHERE id = ? AND is_locked = 0 AND row_version = ?
+        `).bind(name, performedBy, "세트 정보 수정", values.id, expectedRowVersion),
         env.DB.prepare(`
           UPDATE document_sets
           SET name = ?,
               description = ?,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = ? AND is_locked = 0
-        `).bind(name, clean(values.description) || null, values.id)
+              updated_at = CURRENT_TIMESTAMP,
+              row_version = row_version + 1
+          WHERE id = ? AND is_locked = 0 AND row_version = ?
+        `).bind(name, clean(values.description) || null, values.id, expectedRowVersion)
       ];
-      const results = await env.DB.batch(executableStatements(createSetMutationPlan("update", statements)));
-
-      if (Number(results[1]?.meta?.changes || 0) === 0) {
+      const ran = await runSetMutationBatch(env, createSetMutationPlan("update", statements));
+      if (!ran.ok) {
         const current = await getDocumentSet(env, values.id);
-        return { ok: false, message: current?.is_locked ? "잠긴 세트는 정보를 수정할 수 없습니다." : "세트를 찾을 수 없습니다." };
+        return current?.is_locked ? { ok: false, message: "잠긴 세트는 정보를 수정할 수 없습니다." } : staleSetResult();
+      }
+      if (Number(ran.results[1]?.meta?.changes || 0) === 0) {
+        const current = await getDocumentSet(env, values.id);
+        return current?.is_locked ? { ok: false, message: "잠긴 세트는 정보를 수정할 수 없습니다." } : staleSetResult();
       }
 
       return { ok: true, id: values.id };
@@ -115,7 +137,7 @@ export async function upsertDocumentSet(env, values, actor = {}) {
         WHERE name = ?
       `).bind(performedBy, "세트 생성", name)
     ];
-    const results = await env.DB.batch(executableStatements(createSetMutationPlan("create", statements, "unique:set-name")));
+    const results = await executeMutationBatch(env, createSetMutationPlan("create", statements, "unique:set-name"));
     const id = Number(results[0]?.results?.[0]?.id || results[0]?.meta?.last_row_id || 0);
     if (!id) {
       throw new Error("생성한 세트를 확인할 수 없습니다.");
@@ -129,7 +151,7 @@ export async function upsertDocumentSet(env, values, actor = {}) {
   }
 }
 
-export async function deleteDocumentSet(env, id, actor = {}) {
+export async function deleteDocumentSet(env, id, actor = {}, expectedRowVersion = 0) {
   const set = await getDocumentSet(env, id);
   if (!set) {
     return { ok: false, message: "세트를 찾을 수 없습니다." };
@@ -137,6 +159,8 @@ export async function deleteDocumentSet(env, id, actor = {}) {
   if (Number(set.is_locked) === 1) {
     return { ok: false, message: "잠긴 세트는 삭제할 수 없습니다." };
   }
+  const expectedVersion = positiveVersion(expectedRowVersion);
+  if (!expectedVersion || Number(set.row_version) !== expectedVersion) return staleSetResult();
 
   // 삭제 이력(document_set_logs)을 삭제와 하나의 batch로 원자화한다. 로그는 세트가 아직 존재할 때만
   // 기록되도록 가드하여, 세트만 사라지고 삭제 기록이 없는 이력 공백을 막는다.
@@ -145,90 +169,140 @@ export async function deleteDocumentSet(env, id, actor = {}) {
       INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
       SELECT ?, ?, 'delete', ?, ?
       FROM document_sets
-      WHERE id = ? AND is_locked = 0
-    `).bind(id, set.name || "이름 없는 세트", actorDisplayName(actor), "세트 삭제", id),
+      WHERE id = ? AND is_locked = 0 AND row_version = ?
+    `).bind(id, set.name || "이름 없는 세트", actorDisplayName(actor), "세트 삭제", id, expectedVersion),
     env.DB.prepare(`
       DELETE FROM document_set_items
       WHERE set_id = ?
-        AND EXISTS (SELECT 1 FROM document_sets WHERE id = ? AND is_locked = 0)
-    `).bind(id, id),
-    env.DB.prepare("DELETE FROM document_sets WHERE id = ? AND is_locked = 0").bind(id)
+        AND EXISTS (SELECT 1 FROM document_sets WHERE id = ? AND is_locked = 0 AND row_version = ?)
+    `).bind(id, id, expectedVersion),
+    env.DB.prepare("DELETE FROM document_sets WHERE id = ? AND is_locked = 0 AND row_version = ?").bind(id, expectedVersion)
   ];
-  const results = await env.DB.batch(executableStatements(createSetMutationPlan("delete", statements)));
-
-  if (results[results.length - 1].meta.changes === 0) {
+  const ran = await runSetMutationBatch(env, createSetMutationPlan("delete", statements));
+  if (!ran.ok) {
+    const current = await getDocumentSet(env, id);
+    return current?.is_locked ? { ok: false, message: "잠긴 세트는 삭제할 수 없습니다." } : staleSetResult();
+  }
+  if (Number(ran.results[2]?.meta?.changes || 0) === 0) {
     return { ok: false, message: "세트를 찾을 수 없습니다." };
   }
 
   return { ok: true };
 }
 
-export async function addDocumentsToSet(env, setId, documentIds, actor = {}) {
+export async function addDocumentsToSet(env, setId, documentIds, actor = {}, expectedRowVersion = 0) {
   const ids = [...new Set(documentIds)].filter((id) => Number.isInteger(id) && id > 0);
   if (!ids.length) {
     return { added: 0 };
   }
+  const expectedVersion = positiveVersion(expectedRowVersion);
+  if (!expectedVersion) return { added: 0, ...staleSetResult() };
 
-  const addable = await getAddableSetDocuments(env, setId, ids);
-  if (!addable.length) {
-    return { added: 0 };
-  }
-
-  const addableIds = addable.map((row) => Number(row.id));
-  const requestedRows = addableIds.map(() => "(?)").join(", ");
-  const details = `문서 ${addableIds.length}건 추가: ${summarizeNumbers(addable.map((row) => row.document_number))}`;
+  const requestedIds = JSON.stringify(ids);
+  const addability = await getSetAddability(env, setId, requestedIds);
+  if (!addability) return { added: 0, ok: false, message: "세트를 찾을 수 없습니다." };
+  if (Number(addability.is_locked) === 1) return { added: 0, ok: false, message: "잠긴 세트에는 문서를 추가할 수 없습니다." };
+  if (Number(addability.row_version) !== expectedVersion) return { added: 0, ...staleSetResult() };
+  if (Number(addability.addable_count || 0) === 0) return { added: 0 };
 
   // 후보 확인은 사용자에게 남길 문서번호를 만들기 위한 읽기다. 실제 batch의 각 문장은
   // 동일한 미등록 문서 가드를 다시 검사하므로, 읽기와 batch 사이에 상태가 바뀌어도
   // 로그·touch·연결이 따로 반영되지 않는다.
   const statements = [
     env.DB.prepare(`
-      WITH requested(document_id) AS (VALUES ${requestedRows})
+      WITH requested(document_id) AS (
+        SELECT CAST(value AS INTEGER)
+        FROM json_each(?)
+      ),
+      eligible AS (
+        SELECT d.id, d.document_number
+        FROM requested requested
+        JOIN documents d ON d.id = requested.document_id AND d.sync_state = 'current'
+        JOIN document_sets s ON s.id = ? AND s.is_locked = 0 AND s.row_version = ?
+        LEFT JOIN document_set_items i ON i.set_id = s.id AND i.document_id = d.id
+        WHERE i.document_id IS NULL
+        ORDER BY d.document_number, d.id
+      )
       INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
-      SELECT s.id, s.name, 'add', ?, ?
+      SELECT
+        s.id,
+        s.name,
+        'add',
+        ?,
+        '문서 ' || COUNT(*) || '건 추가: ' || GROUP_CONCAT(eligible.document_number, ', ')
       FROM document_sets s
-      WHERE s.id = ? AND s.is_locked = 0
-        AND EXISTS (
-          SELECT 1
-          FROM requested requested
-          JOIN documents d ON d.id = requested.document_id
-          LEFT JOIN document_set_items i ON i.set_id = s.id AND i.document_id = d.id
-          WHERE i.document_id IS NULL
-        )
-    `).bind(...addableIds, actorDisplayName(actor), details, setId),
+      JOIN eligible ON 1 = 1
+      WHERE s.id = ? AND s.is_locked = 0 AND s.row_version = ?
+      GROUP BY s.id, s.name
+    `).bind(requestedIds, setId, expectedVersion, actorDisplayName(actor), setId, expectedVersion),
     env.DB.prepare(`
-      WITH requested(document_id) AS (VALUES ${requestedRows})
+      WITH requested(document_id) AS (
+        SELECT CAST(value AS INTEGER)
+        FROM json_each(?)
+      )
       UPDATE document_sets
-      SET updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND is_locked = 0
+      SET updated_at = CURRENT_TIMESTAMP,
+          row_version = row_version + 1
+      WHERE id = ? AND is_locked = 0 AND row_version = ?
         AND EXISTS (
           SELECT 1
           FROM requested requested
-          JOIN documents d ON d.id = requested.document_id
+          JOIN documents d ON d.id = requested.document_id AND d.sync_state = 'current'
           LEFT JOIN document_set_items i ON i.set_id = document_sets.id AND i.document_id = d.id
           WHERE i.document_id IS NULL
         )
-    `).bind(...addableIds, setId),
+    `).bind(requestedIds, setId, expectedVersion),
     // 최대 200개 ID도 한 INSERT statement로 처리해 요청당 D1 statement 예산을 지킨다.
     env.DB.prepare(`
-      WITH requested(document_id) AS (VALUES ${requestedRows})
+      WITH requested(document_id) AS (
+        SELECT CAST(value AS INTEGER)
+        FROM json_each(?)
+      )
       INSERT OR IGNORE INTO document_set_items (set_id, document_id)
       SELECT s.id, d.id
       FROM requested requested
-      JOIN documents d ON d.id = requested.document_id
-      JOIN document_sets s ON s.id = ? AND s.is_locked = 0
+      JOIN documents d ON d.id = requested.document_id AND d.sync_state = 'current'
+      JOIN document_sets s ON s.id = ? AND s.is_locked = 0 AND s.row_version = ?
+      LEFT JOIN document_set_items i ON i.set_id = s.id AND i.document_id = d.id
+      WHERE i.document_id IS NULL
       RETURNING document_id
-    `).bind(...addableIds, setId)
+    `).bind(requestedIds, setId, expectedVersion + 1)
   ];
-  const results = await env.DB.batch(executableStatements(createSetMutationPlan("add", statements)));
-  const insertResult = results[2] || {};
+  const ran = await runSetMutationBatch(env, createSetMutationPlan("add", statements));
+  if (!ran.ok) return { added: 0, ...staleSetResult() };
+  const insertResult = ran.results[3] || {};
   const added = Number(insertResult.meta?.changes || insertResult.results?.length || 0);
   return { added };
 }
 
-export async function removeDocumentFromSet(env, setId, documentId, actor = {}) {
+async function getSetAddability(env, setId, requestedIds) {
+  return env.DB.prepare(`
+    WITH requested(document_id) AS (
+      SELECT CAST(value AS INTEGER)
+      FROM json_each(?)
+    )
+    SELECT
+      s.id,
+      s.is_locked,
+      s.row_version,
+      COALESCE(SUM(CASE
+        WHEN d.id IS NOT NULL AND d.sync_state = 'current' AND i.document_id IS NULL THEN 1
+        ELSE 0
+      END), 0) AS addable_count
+    FROM document_sets s
+    CROSS JOIN requested requested
+    LEFT JOIN documents d ON d.id = requested.document_id
+    LEFT JOIN document_set_items i ON i.set_id = s.id AND i.document_id = d.id
+    WHERE s.id = ?
+    GROUP BY s.id, s.is_locked, s.row_version
+  `).bind(requestedIds, setId).first();
+}
+
+export async function removeDocumentFromSet(env, setId, documentId, actor = {}, expectedRowVersion = 0) {
+  const expectedVersion = positiveVersion(expectedRowVersion);
+  if (!expectedVersion) return staleSetResult();
   const target = await env.DB.prepare(`
-    SELECT s.name AS set_name, d.document_number
+    SELECT s.name AS set_name, s.row_version, d.document_number
     FROM document_set_items i
     JOIN document_sets s ON s.id = i.set_id AND s.is_locked = 0
     JOIN documents d ON d.id = i.document_id
@@ -237,6 +311,7 @@ export async function removeDocumentFromSet(env, setId, documentId, actor = {}) 
   if (!target) {
     return { ok: false, message: "세트에서 해당 문서를 찾을 수 없습니다." };
   }
+  if (Number(target.row_version) !== expectedVersion) return staleSetResult();
 
   const statements = [
     env.DB.prepare(`
@@ -244,27 +319,27 @@ export async function removeDocumentFromSet(env, setId, documentId, actor = {}) 
       SELECT s.id, s.name, 'remove', ?, ?
       FROM document_sets s
       JOIN document_set_items i ON i.set_id = s.id AND i.document_id = ?
-      WHERE s.id = ? AND s.is_locked = 0
-    `).bind(actorDisplayName(actor), `문서 제외: ${target.document_number ?? `문서 ID ${documentId}`}`, documentId, setId),
+      WHERE s.id = ? AND s.is_locked = 0 AND s.row_version = ?
+    `).bind(actorDisplayName(actor), `문서 제외: ${target.document_number ?? `문서 ID ${documentId}`}`, documentId, setId, expectedVersion),
     env.DB.prepare(`
       UPDATE document_sets
-      SET updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND is_locked = 0
+      SET updated_at = CURRENT_TIMESTAMP,
+          row_version = row_version + 1
+      WHERE id = ? AND is_locked = 0 AND row_version = ?
         AND EXISTS (
           SELECT 1 FROM document_set_items
           WHERE set_id = ? AND document_id = ?
         )
-    `).bind(setId, setId, documentId),
+    `).bind(setId, expectedVersion, setId, documentId),
     env.DB.prepare(`
       DELETE FROM document_set_items
       WHERE set_id = ? AND document_id = ?
-        AND EXISTS (SELECT 1 FROM document_sets WHERE id = ? AND is_locked = 0)
-    `).bind(setId, documentId, setId)
+        AND EXISTS (SELECT 1 FROM document_sets WHERE id = ? AND is_locked = 0 AND row_version = ?)
+    `).bind(setId, documentId, setId, expectedVersion + 1)
   ];
-  const results = await env.DB.batch(executableStatements(createSetMutationPlan("remove", statements)));
-
-  if (Number(results[2]?.meta?.changes || 0) === 0) {
-    return { ok: false, message: "세트에서 해당 문서를 찾을 수 없습니다." };
+  const ran = await runSetMutationBatch(env, createSetMutationPlan("remove", statements));
+  if (!ran.ok || Number(ran.results[3]?.meta?.changes || 0) === 0) {
+    return staleSetResult();
   }
   return { ok: true };
 }
@@ -281,28 +356,7 @@ export async function getDocumentSetLogs(env, setId, limit = 50) {
   return result.results ?? [];
 }
 
-async function getAddableSetDocuments(env, setId, ids) {
-  const placeholders = ids.map(() => "?").join(", ");
-  const result = await env.DB.prepare(`
-    SELECT d.id, d.document_number
-    FROM documents d
-    JOIN document_sets s ON s.id = ? AND s.is_locked = 0
-    LEFT JOIN document_set_items i ON i.set_id = s.id AND i.document_id = d.id
-    WHERE d.id IN (${placeholders}) AND i.document_id IS NULL AND d.sync_state = 'current'
-    ORDER BY d.document_number, d.id
-  `).bind(setId, ...ids).all();
-
-  return (result.results ?? []).filter((row) => Number.isInteger(Number(row.id)) && Number(row.id) > 0);
-}
-
-function summarizeNumbers(numbers, max = 30) {
-  if (numbers.length <= max) {
-    return numbers.join(", ");
-  }
-  return `${numbers.slice(0, max).join(", ")} 외 ${numbers.length - max}건`;
-}
-
-export async function setDocumentSetLock(env, setId, locked, reason, actor = {}) {
+export async function setDocumentSetLock(env, setId, locked, reason, actor = {}, expectedRowVersion = 0) {
   const id = Number(setId);
   const cleanReason = clean(reason);
   if (!Number.isInteger(id) || id <= 0) {
@@ -317,6 +371,8 @@ export async function setDocumentSetLock(env, setId, locked, reason, actor = {})
 
   const set = await getDocumentSet(env, id);
   if (!set) return { ok: false, message: "세트를 찾을 수 없습니다." };
+  const expectedVersion = positiveVersion(expectedRowVersion);
+  if (!expectedVersion || Number(set.row_version) !== expectedVersion) return staleSetResult();
   const nextLocked = locked ? 1 : 0;
   const previousLocked = nextLocked ? 0 : 1;
   if (Number(set.is_locked) === nextLocked) {
@@ -327,8 +383,8 @@ export async function setDocumentSetLock(env, setId, locked, reason, actor = {})
   const actorName = clean(actor.displayName ?? actor.display_name) || clean(actor.username) || "알 수 없음";
   const label = nextLocked ? "잠금" : "잠금 해제";
   const details = { before: { isLocked: Boolean(previousLocked) }, after: { isLocked: Boolean(nextLocked) }, reason: cleanReason };
-  const guardSql = "FROM document_sets WHERE id = ? AND is_locked = ?";
-  const guardBinds = [id, previousLocked];
+  const guardSql = "FROM document_sets WHERE id = ? AND is_locked = ? AND row_version = ?";
+  const guardBinds = [id, previousLocked, expectedVersion];
 
   const statements = [
     // 0010의 append-only CHECK 계약을 유지하기 위해 세트 이력 action은 update를 사용하고
@@ -337,7 +393,7 @@ export async function setDocumentSetLock(env, setId, locked, reason, actor = {})
       INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
       SELECT id, name, 'update', ?, ?
       FROM document_sets
-      WHERE id = ? AND is_locked = ?
+      WHERE id = ? AND is_locked = ? AND row_version = ?
     `).bind(actorName, `${label}: ${cleanReason}`, ...guardBinds),
     createSystemAuditStatement(env, {
       entityType: "document_set",
@@ -355,8 +411,9 @@ export async function setDocumentSetLock(env, setId, locked, reason, actor = {})
           locked_by_user_id = CASE WHEN ? = 1 THEN ? ELSE NULL END,
           locked_by_name = CASE WHEN ? = 1 THEN ? ELSE NULL END,
           lock_reason = CASE WHEN ? = 1 THEN ? ELSE NULL END,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND is_locked = ?
+          updated_at = CURRENT_TIMESTAMP,
+          row_version = row_version + 1
+      WHERE id = ? AND is_locked = ? AND row_version = ?
     `).bind(
       nextLocked,
       nextLocked,
@@ -369,10 +426,18 @@ export async function setDocumentSetLock(env, setId, locked, reason, actor = {})
       ...guardBinds
     )
   ];
-  const results = await env.DB.batch(executableStatements(createSetMutationPlan(nextLocked ? "lock" : "unlock", statements, guardSql)));
-
-  if (Number(results[2]?.meta?.changes || 0) === 0) {
+  const ran = await runSetMutationBatch(env, createSetMutationPlan(nextLocked ? "lock" : "unlock", statements, guardSql));
+  if (!ran.ok || Number(ran.results[2]?.meta?.changes || 0) === 0) {
     return { ok: false, message: "세트 잠금 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
   }
   return { ok: true };
+}
+
+function positiveVersion(value) {
+  const version = Number(value);
+  return Number.isInteger(version) && version > 0 ? version : 0;
+}
+
+function staleSetResult() {
+  return { ok: false, message: "세트가 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요." };
 }

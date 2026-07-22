@@ -30,7 +30,13 @@ test("Worker 모듈은 default fetch 하나만 공개하고 healthz 응답 계�
   assert.equal(response.headers.get("Cache-Control"), "no-store");
   assert.match(response.headers.get("Content-Security-Policy"), /default-src 'none'/);
   assert.deepEqual(prepared, ["SELECT 1 AS ok"]);
-  assert.equal(await response.text(), '{"ok":true}');
+  assert.equal(await response.text(), '{"ok":true,"rollbackCompatibility":{"sessionEpoch":1}}');
+
+  const versioned = await worker.fetch(new Request("https://archive.example.com/healthz"), {
+    CF_VERSION_METADATA: { id: "worker-version-123" },
+    DB: { prepare() { return { async first() { return { ok: 1 }; } }; } }
+  });
+  assert.equal((await versioned.json()).workerVersion, "worker-version-123");
 });
 
 test("src는 Workers 표준 API만 사용하고 계층 역방향 import를 만들지 않는다", async () => {
@@ -62,6 +68,11 @@ test("src는 Workers 표준 API만 사용하고 계층 역방향 import를 만�
 
       const reason = invalidLayerImport(importer, target);
       if (reason) violations.push(`${importer} -> ${specifier}: ${reason}`);
+    }
+
+    const stripped = source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    if (/\bBuffer\./.test(stripped) || /\bprocess\./.test(stripped) || /\b__dirname\b/.test(stripped) || /\b__filename\b/.test(stripped) || /\brequire\s*\(/.test(stripped)) {
+      violations.push(`${importer}: Workers 금지 Node 전역 사용`);
     }
   }
 

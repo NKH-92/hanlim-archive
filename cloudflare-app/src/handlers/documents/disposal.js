@@ -73,7 +73,9 @@ export async function handleSelectedDisposal(request, env, session) {
     created = await createSelectedDisposalBatch(env, {
       documentIds: ids,
       disposalReason: form.get("reason"),
-      approvalReference: form.get("approvalReference")
+      approvalReference: form.get("approvalReference"),
+      confirmedTargetCount: form.get("confirmedTargetCount"),
+      confirmDisposal: form.get("confirmDisposal")
     }, session);
   } catch (error) {
     console.error("selected disposal batch failed", error);
@@ -85,7 +87,10 @@ export async function handleSelectedDisposal(request, env, session) {
   if (!created.ok) {
     return renderDisposalWorkspace(env, session, filters, { type: "error", message: created.message });
   }
-  const started = await startDisposalBatch(env, created.id, session);
+  const started = await startDisposalBatch(env, created.id, session, {
+    confirmedTargetCount: created.count,
+    confirmStart: true
+  });
   if (!started.ok) return errorPage(started.message, session, 409);
   const processed = await processDisposalBatch(env, created.id, session);
   if (!processed.ok) return errorPage(processed.message, session, 409);

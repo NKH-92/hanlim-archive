@@ -16,13 +16,13 @@ const STATUS_LABELS = Object.freeze({
 export function disposalBatchListPage({ session, batches = [] }) {
   const rows = batches.map((batch) => `
     <tr>
-      <td class="mono"><a href="/disposal-batches/${batch.id}">${escapeHtml(batch.batch_code)}</a></td>
-      <td><strong>${escapeHtml(batch.title)}</strong></td>
-      <td>${statusLabel(batch.status)}</td>
-      <td>${number(batch.target_count)}</td>
-      <td>${number(batch.completed_count)} / ${number(batch.excluded_count)} / ${number(batch.changed_count)} / ${number(batch.failed_count)}</td>
-      <td>${escapeHtml(batch.created_by_name)}</td>
-      <td>${escapeHtml(batch.created_at)}</td>
+      <td class="mono" data-label="캠페인 번호"><a href="/disposal-batches/${batch.id}">${escapeHtml(batch.batch_code)}</a></td>
+      <td data-label="제목"><strong>${escapeHtml(batch.title)}</strong></td>
+      <td data-label="상태">${statusLabel(batch.status)}</td>
+      <td data-label="대상">${number(batch.target_count)}</td>
+      <td data-label="완료 / 제외 / 변경 / 실패">${number(batch.completed_count)} / ${number(batch.excluded_count)} / ${number(batch.changed_count)} / ${number(batch.failed_count)}</td>
+      <td data-label="생성자">${escapeHtml(batch.created_by_name)}</td>
+      <td data-label="생성일">${escapeHtml(batch.created_at)}</td>
     </tr>
   `).join("");
   return page("폐기 캠페인", `
@@ -55,13 +55,13 @@ export function disposalBatchFormPage({
   const title = batch ? "폐기 캠페인 초안 수정" : "폐기 캠페인 생성";
   const previewRows = preview.map((item) => `
     <tr>
-      <td class="mono">${escapeHtml(item.document_number)}</td>
-      <td>${escapeHtml(item.revision_number)}</td>
-      <td>${escapeHtml(item.document_name)}</td>
-      <td>${escapeHtml(item.category_name)}</td>
-      <td>${escapeHtml(item.disposal_due_year ?? "-")}</td>
-      <td class="location-cell">${escapeHtml(item.location_snapshot)}</td>
-      <td>${escapeHtml(item.updated_at)}</td>
+      <td class="mono" data-label="문서번호">${escapeHtml(item.document_number)}</td>
+      <td data-label="개정">${escapeHtml(item.revision_number)}</td>
+      <td data-label="문서명">${escapeHtml(item.document_name)}</td>
+      <td data-label="대분류">${escapeHtml(item.category_name)}</td>
+      <td data-label="폐기연도">${escapeHtml(item.disposal_due_year ?? "-")}</td>
+      <td class="location-cell" data-label="보관 위치">${escapeHtml(item.location_snapshot)}</td>
+      <td data-label="최근 수정">${escapeHtml(item.updated_at)}</td>
     </tr>
   `).join("");
   return page(title, `
@@ -100,18 +100,28 @@ export function disposalBatchFormPage({
   `, session);
 }
 
-export function disposalBatchDetailPage({ session, batch, items = [], itemStatus = "", error = "" }) {
+export function disposalBatchDetailPage({ session, batch, items = [], preview = [], previewCapped = false, itemStatus = "", error = "" }) {
+  const previewRows = preview.map((item) => `
+    <tr>
+      <td class="mono" data-label="문서번호">${escapeHtml(item.document_number)}</td>
+      <td data-label="개정">${escapeHtml(item.revision_number)}</td>
+      <td data-label="문서명">${escapeHtml(item.document_name)}</td>
+      <td data-label="대분류">${escapeHtml(item.category_name)}</td>
+      <td data-label="폐기연도">${escapeHtml(item.disposal_due_year ?? "-")}</td>
+      <td class="location-cell" data-label="보관 위치">${escapeHtml(item.location_snapshot)}</td>
+      <td data-label="최근 수정">${escapeHtml(item.updated_at)}</td>
+    </tr>`).join("");
   const itemRows = items.map((item) => `
     <tr>
-      <td class="mono">${escapeHtml(item.document_number_snapshot)}</td>
-      <td>${escapeHtml(item.revision_number_snapshot)}</td>
-      <td>${escapeHtml(item.document_name_snapshot)}</td>
-      <td>${escapeHtml(item.category_snapshot || "-")}</td>
-      <td class="location-cell">${escapeHtml(item.location_snapshot || "-")}</td>
-      <td>${escapeHtml(item.disposal_due_year_snapshot ?? "-")}</td>
-      <td>${statusLabel(item.status)}</td>
-      <td>${escapeHtml(item.exclusion_reason || item.result_message || "-")}</td>
-      <td>${itemAction(batch, item)}</td>
+      <td class="mono" data-label="문서번호">${escapeHtml(item.document_number_snapshot)}</td>
+      <td data-label="개정">${escapeHtml(item.revision_number_snapshot)}</td>
+      <td data-label="문서명">${escapeHtml(item.document_name_snapshot)}</td>
+      <td data-label="대분류">${escapeHtml(item.category_snapshot || "-")}</td>
+      <td class="location-cell" data-label="동결 위치">${escapeHtml(item.location_snapshot || "-")}</td>
+      <td data-label="폐기연도">${escapeHtml(item.disposal_due_year_snapshot ?? "-")}</td>
+      <td data-label="결과">${statusLabel(item.status)}</td>
+      <td data-label="사유">${escapeHtml(item.exclusion_reason || item.result_message || "-")}</td>
+      <td data-label="동작">${itemAction(batch, item)}</td>
     </tr>
   `).join("");
   const pending = number(batch.pending_count);
@@ -134,6 +144,7 @@ export function disposalBatchDetailPage({ session, batch, items = [], itemStatus
       ${detail("동결", batch.frozen_at ? `${batch.frozen_by_name} / ${batch.frozen_at}` : "-")}
       ${detail("완료", batch.completed_at ? `${batch.completed_by_name} / ${batch.completed_at}` : "-")}
     </section>
+    ${batch.status === "draft" ? `<section class="panel results-panel" aria-labelledby="disposal-preview-title"><div class="section-title"><h2 id="disposal-preview-title">최신 대상 미리보기</h2><span class="count-badge">${preview.length}${previewCapped ? "+" : ""}건</span></div>${previewCapped ? `<div class="alert warning">대상이 200건을 초과해 동결할 수 없습니다. 조건을 더 좁혀 주세요.</div>` : ""}<div class="table-wrap"><table class="doc-table"><thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th><th>최근 수정</th></tr></thead><tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없습니다.</td></tr>`}</tbody></table></div></section>` : ""}
     <section class="panel">
       <div class="metric-grid" data-disposal-progress>
         ${metric("대상", batch.target_count, "target_count")}
@@ -143,7 +154,7 @@ export function disposalBatchDetailPage({ session, batch, items = [], itemStatus
         ${metric("실패", batch.failed_count, "failed_count")}
         ${metric("대기", pending, "pending_count")}
       </div>
-      ${batchActions(batch)}
+      ${batchActions(batch, preview.length, previewCapped)}
       <p class="muted" data-process-message aria-live="polite"></p>
     </section>
     <section class="panel results-panel">
@@ -162,18 +173,23 @@ export function disposalBatchDetailPage({ session, batch, items = [], itemStatus
   `, session);
 }
 
-function batchActions(batch) {
+function batchActions(batch, previewCount = 0, previewCapped = false) {
   if (batch.status === "draft") {
-    return `<div class="button-group">
-      <a class="button" href="/disposal-batches/${batch.id}/edit">조건 수정·미리보기</a>
-      <form method="post" action="/disposal-batches/${batch.id}/freeze"><button type="submit" class="button">대상 동결</button></form>
-      <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="이 캠페인을 취소할까요?"><button type="submit" class="danger-button">취소</button></form>
+    return `<div class="disposal-review-actions">
+      <a class="button secondary" href="/disposal-batches/${batch.id}/edit">조건 수정</a>
+      <form method="post" action="/disposal-batches/${batch.id}/freeze" class="stack">
+        <input type="hidden" name="expectedUpdatedAt" value="${escapeHtml(batch.updated_at)}">
+        <label>미리보기 대상 건수 재확인<input type="number" name="confirmedTargetCount" required min="${previewCount}" max="${previewCount}" inputmode="numeric"></label>
+        <label class="checkbox"><input type="checkbox" name="confirmPreview" value="1" required> 최신 미리보기 ${number(previewCount)}건과 조건을 확인했습니다.</label>
+        <button type="submit" class="button" ${!previewCount || previewCapped ? "disabled" : ""}>검토한 대상 동결</button>
+      </form>
+      <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="아직 폐기된 문서는 없습니다. 이 캠페인 초안을 취소할까요?"><button type="submit" class="danger-button">취소</button></form>
     </div>`;
   }
   if (batch.status === "frozen") {
     return `<div class="button-group">
-      <form method="post" action="/disposal-batches/${batch.id}/start"><button type="submit" class="danger-button">폐기 처리 시작</button></form>
-      <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="이 캠페인을 취소할까요?"><button type="submit" class="danger-button">취소</button></form>
+      <form method="post" action="/disposal-batches/${batch.id}/start" class="stack"><label>동결 대상 건수 재확인<input type="number" name="confirmedTargetCount" required min="${Number(batch.target_count || 0)}" max="${Number(batch.target_count || 0)}" inputmode="numeric"></label><label class="checkbox"><input type="checkbox" name="confirmStart" value="1" required> 동결 대상 ${number(batch.target_count)}건을 확인했으며 폐기 처리를 시작합니다.</label><button type="submit" class="danger-button">폐기 처리 시작</button></form>
+      <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="아직 처리되지 않은 항목만 취소되며 이미 완료된 폐기 결과는 유지됩니다. 캠페인을 취소할까요?"><button type="submit" class="danger-button">취소</button></form>
     </div>`;
   }
   if (batch.status === "processing") {
@@ -188,7 +204,7 @@ function batchActions(batch) {
 function itemAction(batch, item) {
   if (batch.status !== "frozen") return "";
   if (item.status === "pending") {
-    return `<form method="post" action="/disposal-batches/${batch.id}/items/${item.id}/exclude" class="button-group"><input name="reason" placeholder="제외 사유" required><button type="submit" class="button secondary sm">제외</button></form>`;
+    return `<form method="post" action="/disposal-batches/${batch.id}/items/${item.id}/exclude" class="button-group"><label class="sr-only" for="exclude-reason-${item.id}">제외 사유</label><input id="exclude-reason-${item.id}" name="reason" placeholder="제외 사유" required><button type="submit" class="button secondary sm">제외</button></form>`;
   }
   if (item.status === "excluded") {
     return `<form method="post" action="/disposal-batches/${batch.id}/items/${item.id}/include"><button type="submit" class="button secondary sm">재포함</button></form>`;

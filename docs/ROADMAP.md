@@ -2,14 +2,6 @@
 
 현재 실제로 남아 있는 후보만 기록한다. 완료·폐기된 구현 단계는 Git 이력으로 관리하며 구조와 불변식은 [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
-## 보안 후속 PR
-
-1. 기존 bootstrap salt/hash와 최초 비밀번호 변경 상태가 그대로인 legacy 계정만 비활성화하는 새 append-only migration을 추가한다. 이미 비밀번호를 변경한 관리자와 다른 계정은 건드리지 않는다.
-2. 기본 비밀번호 없이 stdin 또는 환경변수로 password를 받아 salt/hash만 생성하는 관리자 provisioning 절차를 도입한다. 원격 실행은 명시적 선택과 대상 확인 없이는 허용하지 않는다.
-3. clean DB 전체 migration replay, 기존 DB에 신규 migration 적용, legacy 계정만 비활성화되는 조건과 평문 미출력을 테스트한다.
-
-이 작업은 기존 migration 수정 없이 별도 승인된 보안 PR에서 수행한다.
-
 ## 문서고 증설 확정 시
 
 1. 고정 구역 설정을 `floor_plan_regions` 기반 동적 관리로 전환한다.

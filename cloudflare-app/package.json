@@ -16,26 +16,32 @@
     "build:browser": "node scripts/build-browser-assets.mjs",
     "check:browser": "node scripts/build-browser-assets.mjs --check",
     "docs:routes": "node scripts/generate-route-catalog.mjs",
-    "test": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage",
+    "test": "node --test tests/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage tests/*.test.js",
     "verify": "npm run check && npm run typecheck && npm run lint && npm run format:check && npm run check:migrations && npm run check:routes && npm run check:browser && npm test",
     "audit:dependencies": "npm audit --audit-level=high",
+    "audit:excel-snapshots": "node scripts/audit-excel-snapshot-data.mjs",
     "release:evidence": "node scripts/generate-release-evidence.mjs",
     "smoke:release": "node scripts/smoke-release.mjs",
+    "admin:check:remote": "node scripts/check-admin-readiness.mjs",
+    "admin:provision:remote": "node scripts/provision-admin-guarded.mjs",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "deploy:dry": "wrangler deploy --dry-run",
+    "predeploy": "npm run build:browser && npm run check:browser && npm run verify",
+    "deploy": "npm run predeploy && node scripts/deploy-guarded.mjs",
+    "deploy:dry": "npm run build:browser && npm run check:browser && node scripts/deploy-guarded.mjs --dry-run",
     "db:migrate:local": "wrangler d1 migrations apply hanlim-archive --local",
-    "db:migrate:remote": "wrangler d1 migrations apply hanlim-archive --remote"
+    "db:migrate:remote": "node scripts/migrate-remote-guarded.mjs",
+    "db:migrate:remote:unsafe-legacy": "echo \"Use db:migrate:remote with D1_* env guards\" && exit 1"
   },
   "devDependencies": {
     "eslint": "10.7.0",
     "exceljs": "^4.4.0",
     "jszip": "^3.10.1",
     "typescript": "7.0.2",
-    "wrangler": "^4.112.0"
+    "wrangler": "^4.113.0"
   },
   "overrides": {
+    "sharp": "0.35.3",
     "uuid": "11.1.1"
   }
 }

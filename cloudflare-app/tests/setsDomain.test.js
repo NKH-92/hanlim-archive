@@ -38,10 +38,10 @@ test("세트 mutation plan은 이력 선행과 잠금 guard를 고정한다", ()
 test("세트 presenter는 저장 행과 화면 모델 변환을 한 경계에 둔다", () => {
   assert.deepEqual(sets.setRowToReadModel({
     id: 4, name: "감사 세트", description: null, is_locked: 1,
-    document_count: 12, disposed_count: 2, updated_at: "2026-07-19"
+    document_count: 12, current_count: 10, excluded_count: 2, disposed_count: 2, updated_at: "2026-07-19"
   }), {
     id: 4, name: "감사 세트", description: "", isLocked: true,
-    documentCount: 12, disposedCount: 2, updatedAt: "2026-07-19"
+    documentCount: 12, currentCount: 10, excludedCount: 2, disposedCount: 2, updatedAt: "2026-07-19"
   });
 });
 

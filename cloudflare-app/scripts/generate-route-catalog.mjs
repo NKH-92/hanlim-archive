@@ -37,6 +37,9 @@ function permissionTable() {
 }
 
 function guard(item) {
+  if (item.policy && String(item.policy).startsWith("allOf:")) {
+    return `policy:${item.policy}`;
+  }
   if (item.permission) return `\`${item.permission}\``;
   if (item.policy) return `policy:${item.policy}`;
   return item.auth === "public" ? "public" : "authenticated";

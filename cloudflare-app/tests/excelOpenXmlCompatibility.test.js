@@ -11,7 +11,7 @@ const HEADERS = [
 const MAIN_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 function compatibilityApi() {
-  return new Function("window", `${excelOpenXmlCompatibilityScript()}; return { excelLoadWorkbook };`)({ ExcelJS, JSZip });
+  return new Function("window", `${excelOpenXmlCompatibilityScript()}; return { excelLoadWorkbook, excelAssertZipSafety };`)({ ExcelJS, JSZip });
 }
 
 async function prefixedAbsoluteRelationshipWorkbook() {
@@ -75,4 +75,16 @@ test("브라우저 엑셀 파서는 일반 ExcelJS 파일을 변경 없이 읽�
   const { excelLoadWorkbook } = compatibilityApi();
   const workbook = await excelLoadWorkbook(await source.xlsx.writeBuffer());
   assert.equal(workbook.getWorksheet("문서데이터").getCell("A2").value, "DOC-002");
+});
+
+test("브라우저 ZIP 검사는 항목 수와 비압축 합계 예산을 초과한 파일을 거부한다", async () => {
+  const zip = new JSZip();
+  zip.file("xl/a.xml", "a".repeat(80));
+  zip.file("xl/b.xml", "b".repeat(80));
+  const buffer = await zip.generateAsync({ type: "arraybuffer" });
+  const { excelAssertZipSafety } = compatibilityApi();
+
+  await excelAssertZipSafety(buffer, 200, 10);
+  await assert.rejects(() => excelAssertZipSafety(buffer, 100, 10), /50MB 안전 한도/);
+  await assert.rejects(() => excelAssertZipSafety(buffer, 200, 1), /항목 수/);
 });

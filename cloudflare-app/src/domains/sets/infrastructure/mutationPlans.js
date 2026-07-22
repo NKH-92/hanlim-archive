@@ -5,8 +5,8 @@ export function createSetMutationPlan(action, statements, guard = "set-unlocked"
     create: [["set.insert", false], ["set.log.create", false]],
     update: [["set.log.update", false], ["set.update", true]],
     delete: [["set.log.delete", false], ["set.items.delete", false], ["set.delete", true]],
-    add: [["set.log.add", false], ["set.touch.add", false], ["set.items.add", true]],
-    remove: [["set.log.remove", false], ["set.touch.remove", false], ["set.item.remove", true]],
+    add: [["set.log.add", false], ["set.touch.add", true], ["set.items.add", true]],
+    remove: [["set.log.remove", false], ["set.touch.remove", true], ["set.item.remove", true]],
     lock: [["set.log.lock", false], ["system.audit.set-lock", false], ["set.lock.update", true]],
     unlock: [["set.log.unlock", false], ["system.audit.set-unlock", false], ["set.lock.update", true]]
   };
@@ -23,6 +23,10 @@ export function createSetMutationPlan(action, statements, guard = "set-unlocked"
   return plan;
 }
 
-export function executableStatements(plan) {
-  return plan.execution().statements;
+export function executableStatements(plan, database = null) {
+  // prepare가 있으면 expectChanged 직후 in-transaction abort SQL을 삽입한다.
+  const prepare = database && typeof database.prepare === "function"
+    ? (sql) => database.prepare(sql)
+    : null;
+  return plan.execution(prepare).statements;
 }

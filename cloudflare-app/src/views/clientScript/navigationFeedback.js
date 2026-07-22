@@ -2,7 +2,7 @@
 
 export function navigationFeedbackScript() {
   return `      var currentPath = location.pathname;
-      var activeNavItems = Array.from(document.querySelectorAll('.archive-nav-item')).filter(function (item) {
+      var activeNavItems = Array.from(document.querySelectorAll('.archive-nav-item, .nav-sub-link, [data-command-item]')).filter(function (item) {
         var href = item.getAttribute('href') || '';
         return href === currentPath || (href.length > 1 && currentPath.indexOf(href + '/') === 0);
       }).sort(function (left, right) {
@@ -10,7 +10,7 @@ export function navigationFeedbackScript() {
       });
       var activeHref = activeNavItems[0] ? activeNavItems[0].getAttribute('href') : '';
       activeNavItems.forEach(function (item) {
-        if (item.getAttribute('href') === activeHref) item.classList.add('active');
+        if (item.getAttribute('href') === activeHref) { item.classList.add('active'); item.setAttribute('aria-current', 'page'); }
       });
 
       var toastKey = new URLSearchParams(location.search).get('toast');
@@ -26,6 +26,7 @@ export function navigationFeedbackScript() {
           'bulk-disposed': '선택한 문서를 폐기 처리했습니다.',
           approved: '가입 요청을 승인했습니다.',
           rejected: '가입 요청을 거절했습니다.',
+          'permissions-saved': '사용자 권한을 저장했습니다.',
           error: '요청을 처리하지 못했습니다. 입력값을 확인하세요.'
         };
         var toastMessage = toastMessages[toastKey];
@@ -35,14 +36,7 @@ export function navigationFeedbackScript() {
           toastMessage = '폐기 ' + disposedCount + '건 완료' + (skippedCount ? ' · 건너뜀 ' + skippedCount + '건' : '') + '.';
         }
         if (toastMessage) {
-          var toast = document.createElement('div');
-          toast.className = 'app-toast' + (toastKey === 'error' ? ' is-error' : '');
-          toast.setAttribute('role', 'status');
-          toast.textContent = toastMessage;
-          document.body.appendChild(toast);
-          setTimeout(function () { toast.classList.add('is-visible'); }, 30);
-          setTimeout(function () { toast.classList.remove('is-visible'); }, 3200);
-          setTimeout(function () { toast.remove(); }, 3700);
+          window.showAppMessage?.(toastMessage, toastKey === 'error');
         }
         try {
           var cleanUrl = new URL(location.href);

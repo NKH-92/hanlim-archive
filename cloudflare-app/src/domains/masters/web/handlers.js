@@ -25,12 +25,14 @@ export async function handleSaveTag(request, env, session, id = 0) {
 export async function handleCategoryAction(request, env, session, routeInfo) {
   if (routeInfo.action === "edit") return handleSaveCategory(request, env, session, routeInfo.id);
   if (routeInfo.action !== "delete") return notFoundPage(session);
-  const result = await deleteCategory(env, routeInfo.id, session);
+  const form = await request.formData();
+  const result = await deleteCategory(env, routeInfo.id, session, Number(form.get("expectedRowVersion")));
   return result.ok ? redirect("/categories?toast=saved") : renderCategories(env, session, result.message);
 }
 export async function handleTagAction(request, env, session, routeInfo) {
   if (routeInfo.action === "edit") return handleSaveTag(request, env, session, routeInfo.id);
   if (routeInfo.action !== "delete") return notFoundPage(session);
-  const result = await deleteTag(env, routeInfo.id, session);
+  const form = await request.formData();
+  const result = await deleteTag(env, routeInfo.id, session, Number(form.get("expectedRowVersion")));
   return result.ok ? redirect("/tags?toast=saved") : renderTags(env, session, result.message);
 }

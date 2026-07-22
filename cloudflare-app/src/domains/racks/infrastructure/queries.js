@@ -2,6 +2,7 @@
 export {
   getFloorPlanRegions,
   getRackSummaries,
+  getRackConfigurationVersion,
   getRackDetails,
   getRackDocuments,
   getRackGrid,

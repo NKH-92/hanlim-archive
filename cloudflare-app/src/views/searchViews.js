@@ -29,14 +29,21 @@ export function dashboardPage({
     tags: tags.map((item) => ({ id: Number(item.id), name: String(item.name || "") }))
   });
 
-  // 홈 모드: 장식 없이 검색 입력이 첫 작업이 되도록 한다.
+  // 홈 모드: 운영 히어로 안에서 검색 입력이 첫 포커스 작업이 되도록 한다.
   if (mode === "home") {
     return page("문서 검색", `
       <section class="search-home" data-search-home>
-        <h1 id="viewer-title" class="sr-only">문서 검색</h1>
-        ${viewerSearchForm({ query: "", suggestions: [], categories, tags, filters, home: true })}
+        <section class="search-home-hero" aria-labelledby="viewer-title">
+          <div class="search-home-copy">
+            <p class="hero-kicker">Hanlim archive search</p>
+            <h1 id="viewer-title">찾고 싶은 문서를<br>한 번에 찾아보세요.</h1>
+            <p class="search-home-sub">문서명, 문서번호, 대분류 또는 보관 위치를 입력하면 가장 가까운 결과부터 보여드립니다.</p>
+          </div>
+          ${viewerSearchForm({ query: "", suggestions: [], categories, tags, filters, home: true })}
+          <div class="quick-row viewer-recents" data-recent-searches></div>
+        </section>
         <p class="search-live-status" data-search-live aria-live="polite">검색어를 입력하면 보관중 문서를 바로 찾습니다.</p>
-        <div class="quick-row viewer-recents" data-recent-searches></div>
+        <div data-home-extras>${homeQuickLinks(categories)}</div>
 
         <section class="viewer-workspace is-home" data-viewer-app hidden>
           <article class="panel results-panel" aria-labelledby="viewer-results-title" data-viewer-results aria-live="polite">
@@ -60,10 +67,21 @@ export function dashboardPage({
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
 
   return page("문서 검색", `
-    <section class="panel search-band" aria-labelledby="viewer-title">
-      <h1 id="viewer-title" class="sr-only">문서 검색</h1>
-      ${viewerSearchForm({ query, suggestions, categories, tags, filters })}
-        <p class="search-live-status" data-search-live aria-live="polite">${totalItems ? `${totalItems}건을 찾았습니다.` : "검색 결과가 없습니다."}</p>
+    <section class="search-band operation-hero" aria-labelledby="viewer-title">
+      <div>
+        <p class="hero-kicker">Smart document search</p>
+        <h1 id="viewer-title">${query ? `“${escapeHtml(query)}” 검색 결과` : "문서 검색"}</h1>
+        <p class="page-sub">문서명과 문서번호를 함께 해석해 위치를 빠르게 비교합니다.</p>
+      </div>
+      ${viewerSearchForm({ query, suggestions, categories, tags, filters, showFilters: false, formId: "viewer-search-form" })}
+    </section>
+    <section class="panel search-results-controls" aria-label="검색 조건" data-auto-submit>
+      <div class="desktop-filter-controls"><details class="filter-details" open>
+        <summary><i class="fa-solid fa-sliders"></i>상세 필터${activeFilterBadge(filters)}</summary>
+        ${filterSelectRow({ categories, tags, filters, viewer: true, formId: "viewer-search-form" })}
+      </details></div>
+      <button type="button" class="button secondary mobile-search-filter-button" data-open-modal="viewer-filter-dialog"><i class="fa-solid fa-sliders" aria-hidden="true"></i>검색 필터${activeFilterBadge(filters)}</button>
+      <p class="search-live-status" data-search-live aria-live="polite">${totalItems ? `${totalItems}건을 찾았습니다.` : "검색 결과가 없습니다."}</p>
       ${parsedChipRow(parsedQuery, query)}
       <div class="quick-row viewer-recents" data-recent-searches></div>
     </section>
@@ -82,22 +100,47 @@ export function dashboardPage({
       </article>
 
     </section>
+    ${mobileViewerFilterDialog({ query, categories, tags, filters })}
     <script type="application/json" data-viewer-context>${viewerContext}</script>
     ${searchCoreScript()}
   `, session);
 }
 
-function viewerSearchForm({ query, suggestions, categories, tags, filters, home = false }) {
+function viewerSearchForm({ query, suggestions, categories, tags, filters, home = false, showFilters = true, formId = "" }) {
   const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status && filters.status !== "active"].filter(Boolean).length;
   return `
-    <form method="get" action="/app" class="viewer-search-form ${home ? "is-home" : ""}" data-search-form data-viewer-form data-auto-submit>
+    <form method="get" action="/app"${formId ? ` id="${escapeHtml(formId)}"` : ""} class="viewer-search-form ${home ? "is-home" : ""}" data-search-form data-viewer-form data-auto-submit>
       ${searchInputBlock(query, suggestions)}
-      <details class="filter-details" open>
+      ${showFilters ? `<details class="filter-details" open>
         <summary><i class="fa-solid fa-sliders"></i>상세 필터${activeFilterCount ? `<span class="filter-count">${activeFilterCount}</span>` : ""}</summary>
         ${filterSelectRow({ categories, tags, filters, viewer: true })}
-      </details>
+      </details>` : ""}
     </form>
   `;
+}
+
+function activeFilterBadge(filters = {}) {
+  const count = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status && filters.status !== "active"].filter(Boolean).length;
+  return count ? `<span class="filter-count">${count}</span>` : "";
+}
+
+function mobileViewerFilterDialog({ query, categories, tags, filters }) {
+  return `<dialog id="viewer-filter-dialog" class="mobile-filter-dialog" aria-labelledby="viewer-filter-dialog-title">
+    <form method="get" action="/app" class="mobile-filter-form">
+      <div class="mobile-filter-head"><div><small>문서 검색</small><h2 id="viewer-filter-dialog-title">상세 필터</h2></div><button type="button" class="icon-button" data-close-modal aria-label="필터 닫기">×</button></div>
+      <input type="hidden" name="q" value="${escapeHtml(query)}">
+      ${filterSelectRow({ categories, tags, filters, viewer: true })}
+      <div class="mobile-filter-actions"><a class="button secondary" href="/app${query ? `?q=${encodeURIComponent(query)}` : ""}">필터 초기화</a><button type="submit" class="button action-button">결과 보기</button></div>
+    </form>
+  </dialog>`;
+}
+
+function homeQuickLinks(categories = []) {
+  const categoryLinks = categories.slice(0, 6).map((category) =>
+    `<a class="chip" href="/app?category=${Number(category.id)}">${escapeHtml(category.name)}</a>`
+  ).join("");
+  if (!categoryLinks) return "";
+  return `<nav class="search-home-filter quick-filter-row" aria-label="빠른 분류"><span>빠른 분류</span>${categoryLinks}</nav>`;
 }
 
 function viewerDocumentResults(documents, query) {

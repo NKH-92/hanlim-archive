@@ -25,6 +25,11 @@ const expectedTokens = {
   "--primary-strong": "#17439f",
   "--primary-soft": "#e9effb",
   "--primary-deep": "#122c63",
+  "--action": "#ffd43b",
+  "--action-strong": "#f3c623",
+  "--action-soft": "#fff7cf",
+  "--action-ink": "#18212f",
+  "--hero-bg": "linear-gradient(135deg, var(--primary-deep), var(--primary))",
   "--success": "#0c7a43",
   "--success-soft": "#e5f4eb",
   "--warning": "#9a5b00",
@@ -57,6 +62,7 @@ const approvedRgbaValues = [
   "rgba(30, 85, 196, .45)",
   "rgba(255, 255, 255, .12)",
   "rgba(255, 255, 255, .14)",
+  "rgba(255, 255, 255, .05)",
   "rgba(255, 255, 255, .18)",
   "rgba(255, 255, 255, .4)",
   "rgba(255, 255, 255, .55)",
@@ -70,6 +76,11 @@ test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한�
 
   assert.match(css, /@media \(min-width: 1100px\)/);
   assert.match(css, /@media \(max-width: 1099px\)[\s\S]*\.mobile-tabs/);
+  assert.match(css, /\.doc-floor-plan-scroll\.is-zoomed[\s\S]*overflow-x: auto/);
+  assert.match(css, /\.mini-rack-scroll[\s\S]*overflow-x: auto/);
+  assert.match(css, /\.location-find-dialog\[open\][\s\S]*position: fixed/);
+  assert.match(css, /\.mobile-filter-dialog\[open\][\s\S]*position: fixed/);
+  assert.match(css, /env\(safe-area-inset-bottom\)/);
   assert.match(css, /@media print[\s\S]*\.print-only/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /\.viewer-result-table/);

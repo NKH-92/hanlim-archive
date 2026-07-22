@@ -5,6 +5,7 @@ import { bootstrapScript } from "./clientScript/bootstrap.js";
 import { bulkCommandScript } from "./clientScript/bulkCommands.js";
 import { excelSnapshotScript } from "./clientScript/excelSnapshots.js";
 import { instantSearchScript } from "./clientScript/instantSearch.js";
+import { locationFinderScript } from "./clientScript/locationFinder.js";
 import { navigationFeedbackScript } from "./clientScript/navigationFeedback.js";
 import { suggestionScript } from "./clientScript/suggestions.js";
 
@@ -22,6 +23,7 @@ export function clientScript() {
     suggestionScript(),
     bulkCommandScript(),
     excelSnapshotScript(),
+    locationFinderScript(),
     navigationFeedbackScript(),
     instantSearchScript(),
     "    });",

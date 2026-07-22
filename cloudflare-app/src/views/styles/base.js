@@ -20,7 +20,7 @@ export function baseStyles() {
 
     .topbar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) clamp(12px, 3vw, 24px); background: var(--surface); border-bottom: 1px solid var(--line); }
     .brand { display: inline-flex; align-items: center; gap: var(--sp-2); text-decoration: none; min-width: max-content; }
-    .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-md); background: var(--primary); color: var(--surface); font-size: 14px; }
+    .brand-logo { display: block; width: 56px; height: 40px; object-fit: contain; flex: none; }
     .brand strong, .brand small { display: block; }
     .brand strong { font-weight: 700; font-size: 14px; letter-spacing: -.01em; }
     .brand small { color: var(--gray-500); font-size: 11.5px; font-weight: 500; }
@@ -51,7 +51,7 @@ export function baseStyles() {
     .login-side { display: flex; flex-direction: column; justify-content: flex-end; gap: var(--sp-3); padding: var(--sp-8); background: var(--primary-deep); color: var(--surface); }
     .login-side h1 { color: var(--surface); font-size: 24px; }
     .login-side p { color: rgba(255, 255, 255, .82); margin: 0; font-size: 13.5px; }
-    .login-logo { width: 48px; height: 48px; display: grid; place-items: center; background: rgba(255, 255, 255, .14); border-radius: var(--r-lg); font-weight: 800; font-size: 15px; letter-spacing: .02em; }
+    .login-logo { display: block; width: min(176px, 70%); height: auto; object-fit: contain; filter: drop-shadow(0 8px 18px rgba(24, 33, 47, .18)); }
     .login-panel { padding: var(--sp-8); align-self: center; width: 100%; }
     .login-panel h2 { font-size: 19px; margin-bottom: var(--sp-4); }
     .form-foot { margin-top: var(--sp-4); text-align: center; font-size: 13px; }

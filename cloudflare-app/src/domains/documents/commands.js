@@ -3,6 +3,6 @@ import * as repository from "./infrastructure/commands.js";
 
 const commands = createDocumentCommandService(repository);
 export const {
-  createDocument, updateDocument, moveDocument, disposeDocument, disposeDocumentsBulk,
+  createDocument, updateDocument, reviseDocument, moveDocument, disposeDocument, disposeDocumentsBulk,
   restoreDocument, permanentlyDeleteDocument
 } = commands;

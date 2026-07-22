@@ -2,7 +2,9 @@ import { accessDeniedPage } from "../views/authViews.js";
 import { hasAnyPermission, hasPermission, PERMISSIONS, sessionHasManagementAccess } from "../permissions.js";
 
 export function requirePermission(session, permission) {
-  return hasPermission(session, permission) ? null : accessDeniedPage(session);
+  const required = String(permission || "").split("+").map((part) => part.trim()).filter(Boolean);
+  if (!required.length) return accessDeniedPage(session);
+  return required.every((part) => hasPermission(session, part)) ? null : accessDeniedPage(session);
 }
 
 export function requireManagementAccess(session) {
@@ -20,3 +22,4 @@ export const requireManageSets = (session) => requirePermission(session, PERMISS
 export const requireManageMasters = (session) => requirePermission(session, PERMISSIONS.MANAGE_MASTERS);
 export const requireManageUsers = (session) => requirePermission(session, PERMISSIONS.MANAGE_USERS);
 export const requireViewAudit = (session) => requirePermission(session, PERMISSIONS.VIEW_AUDIT);
+export const requireApplyDocumentSnapshots = (session) => requirePermission(session, PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS);

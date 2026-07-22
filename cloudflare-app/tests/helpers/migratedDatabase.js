@@ -11,8 +11,8 @@ export async function migrationFiles() {
   })).sort((left, right) => left.number - right.number || left.name.localeCompare(right.name));
 }
 
-export async function createMigratedDatabase() {
-  const database = new DatabaseSync(":memory:");
+export async function createMigratedDatabase(path = ":memory:") {
+  const database = new DatabaseSync(path);
   try {
     for (const migration of await migrationFiles()) {
       const sql = await readFile(new URL(migration.name, MIGRATIONS_URL), "utf8");

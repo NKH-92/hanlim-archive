@@ -1,5 +1,7 @@
 import { auditActorSnapshot } from "../../identity/index.js";
 import { clean } from "../../../shared/text/normalize.js";
+import { createBatchPlan } from "../../../platform/d1/batchPlan.js";
+import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 
 const DEFAULT_PAGE_SIZE = 30;
 const MAX_PAGE_SIZE = 100;
@@ -80,13 +82,13 @@ export async function getSystemAuditPage(env, filters = {}, page = 1, pageSize =
   const { where, binds } = buildAuditWhere(normalized);
   const offset = (currentPage - 1) * size;
 
-  const [countResult, rowsResult] = await env.DB.batch([
-    env.DB.prepare(`
+  const [countResult, rowsResult] = await executeMutationBatch(env, createBatchPlan("audit.page")
+    .step("count", env.DB.prepare(`
       SELECT COUNT(*) AS total
       FROM system_audit_logs
       ${where}
-    `).bind(...binds),
-    env.DB.prepare(`
+    `).bind(...binds))
+    .step("rows", env.DB.prepare(`
       SELECT
         id,
         entity_type,
@@ -104,9 +106,8 @@ export async function getSystemAuditPage(env, filters = {}, page = 1, pageSize =
       ${where}
       ORDER BY created_at DESC, id DESC
       LIMIT ? OFFSET ?
-    `).bind(...binds, size, offset)
-  ]);
-
+    `).bind(...binds, size, offset))
+  );
   const totalItems = Number(countResult?.results?.[0]?.total || 0);
   return {
     items: rowsResult?.results ?? [],

@@ -13,9 +13,13 @@ export function validateMasterValues(type, values = {}) {
     name: clean(values.name),
     description: clean(values.description),
     isActive: values.id ? Boolean(values.isActive) : true,
+    ...(values.id ? { expectedRowVersion: positiveId(values.expectedRowVersion ?? values.rowVersion) } : {}),
     ...(type === "category" ? { sortOrder: Number.isFinite(values.sortOrder) ? values.sortOrder : 0 } : {})
   };
   if (!normalized.name) return { ok: false, message: `${spec.noun} 이름은 필수입니다.`, values: normalized };
+  if (normalized.id && !normalized.expectedRowVersion) {
+    return { ok: false, message: `${spec.noun} 버전 정보가 없습니다. 새로고침 후 다시 시도하세요.`, values: normalized };
+  }
   return { ok: true, values: normalized };
 }
 

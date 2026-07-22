@@ -19,7 +19,7 @@ export function setsPage({ session, sets }) {
     ${sets.length ? `<section class="rack-grid">
       ${sets.map((set) => `
         <a class="panel rack-card" href="/sets/${set.id}">
-          <small>문서 ${Number(set.document_count || 0)}건${Number(set.disposed_count || 0) ? ` · 폐기 ${Number(set.disposed_count)}건 포함` : ""}${Number(set.is_locked) ? " · 잠김" : ""}</small>
+          <small>문서 ${Number(set.document_count || set.documentCount || 0)}건${Number(set.excluded_count || set.excludedCount || 0) ? ` · 대장 제외 ${Number(set.excluded_count || set.excludedCount)}건` : ""}${Number(set.disposed_count || set.disposedCount || 0) ? ` · 폐기 ${Number(set.disposed_count || set.disposedCount)}건 포함` : ""}${Number(set.is_locked) || set.isLocked ? " · 잠김" : ""}</small>
           <strong>${escapeHtml(set.name)}</strong>
           <span>${escapeHtml(set.description || "설명 없음")}</span>
         </a>
@@ -29,11 +29,13 @@ export function setsPage({ session, sets }) {
 }
 
 export function setFormPage({ session, values = {}, action, title, error = "" }) {
+  const expectedRowVersion = Number(values.row_version ?? values.expectedRowVersion ?? values.rowVersion ?? 0);
   return page(title, `
     <section class="page-head"><h1>${escapeHtml(title)}</h1></section>
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="${escapeHtml(action)}" class="stack">
+        ${expectedRowVersion > 0 ? `<input type="hidden" name="expectedRowVersion" value="${expectedRowVersion}">` : ""}
         <label>세트 이름 <em>*</em><input name="name" value="${escapeHtml(values.name || "")}" maxlength="100" required placeholder="예: 2026년 정기감사 준비문서"></label>
         <label>설명<textarea name="description" rows="3" placeholder="세트 용도나 기준을 기록해 두세요.">${escapeHtml(values.description || "")}</textarea></label>
         <button type="submit" class="primary">저장</button>
@@ -46,9 +48,11 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
   const canManage = hasPermission(session, PERMISSIONS.MANAGE_SETS);
   const isLocked = Number(set.is_locked) === 1;
   const disposedCount = documents.filter((doc) => doc.status !== "active").length;
-  const rackCount = new Set(documents.map((doc) => doc.rack_code)).size;
-  const zoneCount = new Set(documents.map((doc) => doc.zone_number)).size;
-  const hits = new Set(documents.map((doc) => `${doc.rack_code}:${doc.rack_face}`));
+  const excludedCount = documents.filter((doc) => doc.sync_state === "excluded").length;
+  const currentDocuments = documents.filter((doc) => doc.sync_state !== "excluded");
+  const rackCount = new Set(currentDocuments.map((doc) => doc.rack_code)).size;
+  const zoneCount = new Set(currentDocuments.map((doc) => doc.zone_number)).size;
+  const hits = new Set(currentDocuments.map((doc) => `${doc.rack_code}:${doc.rack_face}`));
 
   return page(`${set.name} 세트`, `
     <section class="page-head">
@@ -61,10 +65,13 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
     </section>
     ${error ? alertDanger(error) : ""}
     ${isLocked ? alertWarning(`이 세트는 편집 잠금 상태입니다.${set.lock_reason ? ` 사유: ${set.lock_reason}` : ""}`) : ""}
+    ${excludedCount ? alertWarning(`대장 제외 문서 ${excludedCount}건이 세트에 포함되어 있습니다. 연결은 감사 근거로 보존되며 랙 지도에는 현재 대장 문서만 표시합니다.`) : ""}
     ${addResult ? setAddResultView(addResult, set) : ""}
     ${setPrintHeader({ set, session, documents, printedAt })}
     <section class="metric-strip" aria-label="세트 요약">
       ${metric("문서", documents.length, "세트에 등록된 문서")}
+      ${metric("현재 대장", currentDocuments.length, "sync_state=current")}
+      ${metric("대장 제외", excludedCount, excludedCount ? "목록 확인 필요" : "없음")}
       ${metric("보관 랙", rackCount, `${zoneCount}개 구역`)}
       ${metric("폐기 포함", disposedCount, disposedCount ? "목록 확인 필요" : "없음")}
     </section>
@@ -100,9 +107,9 @@ function setDocumentTable(set, documents, canEdit) {
   return `
     <div class="table-wrap"><table class="set-doc-table">
       <caption class="sr-only">${escapeHtml(set.name)} 세트 문서 위치 목록</caption>
-      <thead><tr><th class="print-only print-check-column">확인</th><th>순번</th><th>보관 위치</th><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>상태</th>${canEdit ? "<th class=\"screen-only\">관리</th>" : ""}</tr></thead>
+      <thead><tr><th class="print-only print-check-column">확인</th><th>순번</th><th>보관 위치</th><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>상태</th><th>대장 포함</th>${canEdit ? "<th class=\"screen-only\">관리</th>" : ""}</tr></thead>
       <tbody>${documents.map((doc, index) => `
-        <tr class="${doc.status !== "active" ? "is-disposed" : ""}">
+        <tr class="${doc.status !== "active" ? "is-disposed" : ""}${doc.sync_state === "excluded" ? " is-excluded" : ""}">
           <td class="print-only print-check-cell">□</td>
           <td>${index + 1}</td>
           <td><strong>${escapeHtml(locationLabel(doc))}</strong></td>
@@ -111,7 +118,8 @@ function setDocumentTable(set, documents, canEdit) {
           <td><a href="/documents/${doc.id}">${escapeHtml(doc.document_name)}</a></td>
           <td>${escapeHtml(doc.category_name)}</td>
           <td>${statusBadge(doc.status)}</td>
-          ${canEdit ? `<td class="screen-only"><form method="post" action="/sets/${set.id}/remove" data-confirm="세트에서 이 문서를 제외할까요?"><input type="hidden" name="documentId" value="${doc.id}"><button type="submit" class="danger-button sm">제외</button></form></td>` : ""}
+          <td>${doc.sync_state === "excluded" ? `<span class="status disposed">대장 제외</span>` : `<span class="status active">포함</span>`}</td>
+          ${canEdit ? `<td class="screen-only"><form method="post" action="/sets/${set.id}/remove" data-confirm="세트에서 이 문서를 제외할까요?"><input type="hidden" name="documentId" value="${doc.id}"><input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}"><button type="submit" class="danger-button sm">제외</button></form></td>` : ""}
         </tr>
       `).join("")}</tbody>
     </table></div>
@@ -132,6 +140,7 @@ function setLockControls(set, isLocked) {
   return `<section class="panel set-lock-panel">
     ${sectionHeader(title, isLocked ? "잠김" : "편집 가능")}
     <form method="post" action="/sets/${set.id}/${action}" class="lock-form">
+      <input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}">
       <label>${isLocked ? "잠금 해제 사유" : "잠금 사유"}<input name="reason" maxlength="500" required></label>
       <button type="submit" class="button secondary">${title}</button>
     </form>
@@ -144,6 +153,7 @@ function setPrintHeader({ set, session, documents, printedAt }) {
     ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "long", timeStyle: "short" }).format(printedAt)
     : String(printedAt || "");
   return `<section class="print-only set-print-header">
+    <div class="set-print-brand"><img src="/images/hanlim-pharm-logo.svg" alt="한림제약"><span>한림문서고</span></div>
     <h1>${escapeHtml(set.name)}</h1>
     <p>${escapeHtml(set.description || "설명 없음")}</p>
     <dl><div><dt>출력일시</dt><dd>${escapeHtml(date)}</dd></div><div><dt>출력자</dt><dd>${escapeHtml(session.displayName || session.username)}</dd></div><div><dt>총 문서 수</dt><dd>${documents.length}건</dd></div></dl>
@@ -160,6 +170,7 @@ function setAdminTools(set, addQuery, addCandidates) {
       ${sectionHeader("문서 추가", "관리자")}
       <div class="set-add-grid">
         <form method="post" action="/sets/${set.id}/add" class="stack">
+          <input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}">
           <label>문서번호 일괄 추가
             <textarea name="numbers" rows="4" placeholder="문서번호를 줄바꿈이나 쉼표로 구분해 붙여넣으세요.&#10;예) MR-2026-001, PV-2026-014"></textarea>
           </label>
@@ -177,6 +188,7 @@ function setAdminTools(set, addQuery, addCandidates) {
       </div>
       <div class="set-danger-row">
         <form method="post" action="/sets/${set.id}/delete" data-confirm="세트를 삭제할까요? 세트에 담긴 문서 자체는 삭제되지 않습니다.">
+          <input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}">
           <button type="submit" class="danger-button">세트 삭제</button>
         </form>
       </div>
@@ -199,6 +211,7 @@ function setCandidateList(set, addQuery, candidates) {
         <form method="post" action="/sets/${set.id}/add">
           <input type="hidden" name="documentId" value="${doc.id}">
           <input type="hidden" name="add-q" value="${escapeHtml(addQuery)}">
+          <input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}">
           <button type="submit" class="button sm">추가</button>
         </form>
       `}

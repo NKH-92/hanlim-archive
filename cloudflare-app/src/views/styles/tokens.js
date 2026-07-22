@@ -22,6 +22,11 @@ export function tokenStyles() {
       --primary-strong: #17439f;
       --primary-soft: #e9effb;
       --primary-deep: #122c63;
+      --action: #ffd43b;
+      --action-strong: #f3c623;
+      --action-soft: #fff7cf;
+      --action-ink: #18212f;
+      --hero-bg: linear-gradient(135deg, var(--primary-deep), var(--primary));
       --success: #0c7a43;
       --success-soft: #e5f4eb;
       --warning: #9a5b00;

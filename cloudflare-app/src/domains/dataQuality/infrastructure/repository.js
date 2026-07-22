@@ -1,6 +1,8 @@
 // 관리자 데이터 품질 작업목록. 집계 숫자와 동일한 조건으로 실제 수정 대상을 페이지 처리한다.
 
 import { DATA_QUALITY_ISSUES, normalizeDataQualityIssue } from "../domain/issues.js";
+import { createBatchPlan } from "../../../platform/d1/batchPlan.js";
+import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 
 export async function getDataQualityPage(env, issueValue, page = 1, pageSize = 30) {
   const issue = normalizeDataQualityIssue(issueValue);
@@ -14,9 +16,9 @@ export async function getDataQualityPage(env, issueValue, page = 1, pageSize = 3
     LEFT JOIN categories c ON c.id = d.category_id
     LEFT JOIN rack_slots rs ON rs.id = d.rack_slot_id
     LEFT JOIN racks r ON r.id = rs.rack_id`;
-  const results = await env.DB.batch([
-    env.DB.prepare(`SELECT COUNT(*) AS count ${joins} WHERE d.sync_state = 'current' AND ${definition.condition}`),
-    env.DB.prepare(`
+  const results = await executeMutationBatch(env, createBatchPlan("data-quality.page")
+    .step("count", env.DB.prepare(`SELECT COUNT(*) AS count ${joins} WHERE d.sync_state = 'current' AND ${definition.condition}`))
+    .step("rows", env.DB.prepare(`
       SELECT
         d.id,
         d.document_number,
@@ -39,9 +41,8 @@ export async function getDataQualityPage(env, issueValue, page = 1, pageSize = 3
       WHERE d.sync_state = 'current' AND ${definition.condition}
       ORDER BY d.document_number, d.revision_number, d.id
       LIMIT ? OFFSET ?
-    `).bind(safePageSize, (safePage - 1) * safePageSize)
-  ]);
-  const totalItems = Number(results[0]?.results?.[0]?.count || 0);
+    `).bind(safePageSize, (safePage - 1) * safePageSize))
+  );  const totalItems = Number(results[0]?.results?.[0]?.count || 0);
   return {
     issue,
     label: definition.label,

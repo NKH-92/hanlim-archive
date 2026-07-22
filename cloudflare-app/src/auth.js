@@ -17,6 +17,7 @@ export {
   expiredSessionCookie,
   getMissingSetup,
   readSession,
+  revokeUserSessions,
   SESSION_COOKIE
 } from "./auth/session.js";
 

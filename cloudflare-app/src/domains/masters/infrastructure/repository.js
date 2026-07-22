@@ -1,10 +1,12 @@
 import { createBatchPlan } from "../../../platform/d1/batchPlan.js";
+import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
 import { MASTER_TYPES, masterSnapshot } from "../domain/policy.js";
 
 export async function listMasters(env, type, { activeOnly = false } = {}) {
   const table = tableFor(type);
-  const columns = activeOnly ? "id, name" : type === "category" ? "id, name, description, sort_order, is_active" : "id, name, description, is_active";
+  const columns = activeOnly ? "id, name" : type === "category" ? "id, name, description, sort_order, is_active, row_version" : "id, name, description, is_active, row_version";
   const where = activeOnly ? "\n    WHERE is_active = 1" : "";
   const order = type === "category" ? "sort_order, name" : "name";
   const result = await env.DB.prepare(`
@@ -22,8 +24,11 @@ export async function saveMaster(env, type, values, actor) {
     if (values.id) {
       const before = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(values.id).first();
       if (!before) return { ok: false, message: `${spec.noun}를 찾을 수 없습니다.` };
+      if (Number(before.row_version) !== Number(values.expectedRowVersion)) return staleMasterResult(spec.noun);
       const action = auditAction(before, values);
       const update = updateStatement(env, type, values);
+      const guardSql = `FROM ${table} WHERE id = ? AND row_version = ?`;
+      const guardBinds = [values.id, values.expectedRowVersion];
       const plan = createBatchPlan(`masters.${type}.update`)
         .step(`${type}.audit.${action}`, createSystemAuditStatement(env, {
           entityType: spec.entityType,
@@ -33,11 +38,11 @@ export async function saveMaster(env, type, values, actor) {
           actor,
           summary: `${spec.noun} ${actionLabel(action)}`,
           details: { before: masterSnapshot(type, before), after: masterSnapshot(type, values) }
-        }, { guardSql: `FROM ${table} WHERE id = ?`, guardBinds: [values.id] }), { guard: `${table}.id`, auditEventId: `${type}.${action}` })
-        .step(`${type}.update`, update, { guard: `${table}.id` })
+        }, { guardSql, guardBinds }), { guard: `${table}.row_version`, auditEventId: `${type}.${action}` })
+        .step(`${type}.update`, update, { guard: `${table}.row_version` })
         .expectChanged(`${type}.update`)
         .withBudget(2);
-      const results = await env.DB.batch(plan.execution().statements);
+      const results = await executeMutationBatch(env, plan);
       return Number(results[1]?.meta?.changes || 0) > 0 ? { ok: true } : { ok: false, message: `${spec.noun}를 찾을 수 없습니다.` };
     }
 
@@ -53,20 +58,25 @@ export async function saveMaster(env, type, values, actor) {
         details: { after: masterSnapshot(type, values) }
       }, { guardSql: `FROM ${table} WHERE name = ?`, guardBinds: [values.name] }), { guard: `${table}.name`, auditEventId: `${type}.create` })
       .withBudget(2);
-    await env.DB.batch(plan.execution().statements);
+    await executeMutationBatch(env, plan);
     return { ok: true };
   } catch (error) {
+    if (isExpectedChangeAbort(error)) return staleMasterResult(spec.noun);
     return { ok: false, message: uniqueViolationMessage(error, spec.noun) };
   }
 }
 
-export async function deactivateMaster(env, type, id, actor) {
+export async function deactivateMaster(env, type, id, actor, expectedRowVersion = 0) {
   const spec = MASTER_TYPES[type];
   const table = tableFor(type);
   const before = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first();
   if (!before) return { ok: false, message: `${spec.noun}를 찾을 수 없습니다.` };
   if (Number(before.is_active) === 0) return { ok: true };
-  const guardSql = `FROM ${table} WHERE id = ? AND is_active = 1`;
+  if (!Number.isInteger(expectedRowVersion) || expectedRowVersion < 1 || Number(before.row_version) !== expectedRowVersion) {
+    return staleMasterResult(spec.noun);
+  }
+  const guardSql = `FROM ${table} WHERE id = ? AND is_active = 1 AND row_version = ?`;
+  const guardBinds = [id, expectedRowVersion];
   const plan = createBatchPlan(`masters.${type}.deactivate`)
     .step(`${type}.audit.deactivate`, createSystemAuditStatement(env, {
       entityType: spec.entityType,
@@ -76,17 +86,23 @@ export async function deactivateMaster(env, type, id, actor) {
       actor,
       summary: `${spec.noun} 사용중지`,
       details: { before: masterSnapshot(type, before), after: { ...masterSnapshot(type, before), isActive: false } }
-    }, { guardSql, guardBinds: [id] }), { guard: `${table}.active`, auditEventId: `${type}.deactivate` })
+    }, { guardSql, guardBinds }), { guard: `${table}.row_version`, auditEventId: `${type}.deactivate` })
     .step(`${type}.deactivate`, env.DB.prepare(`
       UPDATE ${table}
       SET is_active = 0,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND is_active = 1
-    `).bind(id), { guard: `${table}.active` })
+          updated_at = CURRENT_TIMESTAMP,
+          row_version = row_version + 1
+      WHERE id = ? AND is_active = 1 AND row_version = ?
+    `).bind(id, expectedRowVersion), { guard: `${table}.row_version` })
     .expectChanged(`${type}.deactivate`)
     .withBudget(2);
-  const results = await env.DB.batch(plan.execution().statements);
-  return Number(results[1]?.meta?.changes || 0) > 0 ? { ok: true } : { ok: false, message: `${spec.noun}를 찾을 수 없습니다.` };
+  try {
+    const results = await executeMutationBatch(env, plan);
+    return Number(results[1]?.meta?.changes || 0) > 0 ? { ok: true } : staleMasterResult(spec.noun);
+  } catch (error) {
+    if (isExpectedChangeAbort(error)) return staleMasterResult(spec.noun);
+    throw error;
+  }
 }
 
 function updateStatement(env, type, values) {
@@ -96,17 +112,19 @@ function updateStatement(env, type, values) {
             description = ?,
             sort_order = ?,
             is_active = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).bind(values.name, values.description || null, values.sortOrder, values.isActive ? 1 : 0, values.id);
+            updated_at = CURRENT_TIMESTAMP,
+            row_version = row_version + 1
+        WHERE id = ? AND row_version = ?
+      `).bind(values.name, values.description || null, values.sortOrder, values.isActive ? 1 : 0, values.id, values.expectedRowVersion);
   return env.DB.prepare(`
         UPDATE tags
         SET name = ?,
             description = ?,
             is_active = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).bind(values.name, values.description || null, values.isActive ? 1 : 0, values.id);
+            updated_at = CURRENT_TIMESTAMP,
+            row_version = row_version + 1
+        WHERE id = ? AND row_version = ?
+      `).bind(values.name, values.description || null, values.isActive ? 1 : 0, values.id, values.expectedRowVersion);
 }
 
 function insertStatement(env, type, values) {
@@ -131,3 +149,4 @@ function auditAction(before, values) {
 }
 function actionLabel(action) { return action === "reactivate" ? "다시 사용" : action === "deactivate" ? "사용중지" : "수정"; }
 function uniqueViolationMessage(error, noun) { return error.message.includes("UNIQUE") ? `같은 이름의 ${noun}가 이미 있습니다.` : error.message; }
+function staleMasterResult(noun) { return { ok: false, message: `${noun}가 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요.` }; }

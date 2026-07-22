@@ -30,9 +30,10 @@ const ACTION_LABELS = Object.freeze({
   delete_permanent: "완전삭제"
 });
 
-export function auditPage({ session, items = [], filters = {}, pagination = {} }) {
+export function auditPage({ session, items = [], filters = {}, pagination = { page: 1, totalPages: 1, totalItems: 0 } }) {
   const currentPage = Number(pagination.page || 1);
   const totalPages = Math.max(1, Number(pagination.totalPages || 1));
+  const totalItems = Number(pagination.totalItems || 0);
   return page("전역 감사로그", `
     <section class="page-head">
       <div><h1>전역 감사로그</h1><p class="muted">중요한 관리 작업의 행위자와 변경 전후 값을 확인합니다.</p></div>
@@ -40,7 +41,7 @@ export function auditPage({ session, items = [], filters = {}, pagination = {} }
     </section>
     ${auditFilterForm(filters)}
     <section class="panel">
-      <div class="section-title"><h2>감사 이력</h2><span class="count-badge">${Number(pagination.totalItems || 0)}건</span></div>
+      <div class="section-title"><h2>감사 이력</h2><span class="count-badge">${totalItems}건</span></div>
       ${items.length ? auditTable(items) : `<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 감사 이력이 없습니다.</p></div>`}
       ${paginationNav(currentPage, totalPages, {
         previousUrl: auditUrl(filters, Math.max(1, currentPage - 1)),

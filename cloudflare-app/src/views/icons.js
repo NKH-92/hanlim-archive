@@ -9,6 +9,9 @@ const ICONS = Object.freeze({
   copy: `<path d="M8 3h11a2 2 0 0 1 2 2v11h-2V5H8V3ZM3 8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Zm2 0v11h10V8H5Z"/>`,
   location: `<path d="M12 2a8 8 0 0 0-8 8c0 5.5 8 12 8 12s8-6.5 8-12a8 8 0 0 0-8-8Zm0 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/>`,
   list: `<path d="M4 5h3v3H4V5Zm5 0h11v3H9V5ZM4 11h3v3H4v-3Zm5 0h11v3H9v-3ZM4 17h3v3H4v-3Zm5 0h11v3H9v-3Z"/>`,
+  download: `<path d="M11 3h2v10l3.5-3.5 1.4 1.4L12 16.8 6.1 10.9l1.4-1.4L11 13V3ZM4 19h16v2H4v-2Z"/>`,
+  spreadsheet: `<path d="M5 3h14v18H5V3Zm2 2v4h10V5H7Zm0 6v3h4v-3H7Zm6 0v3h4v-3h-4Zm-6 5v3h4v-3H7Zm6 0v3h4v-3h-4Z"/>`,
+  add: `<path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/>`,
   user: `<path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10ZM3 22a9 9 0 0 1 18 0H3Z"/>`
 });
 
@@ -21,6 +24,9 @@ export function iconStyles() {
     search: ["magnifying-glass", "sliders"],
     archive: ["box-archive", "building-columns", "folder-open"],
     document: ["file-lines", "file-csv"],
+    spreadsheet: ["file-excel"],
+    download: ["download"],
+    add: ["plus", "file-circle-plus"],
     settings: ["gear", "key", "right-from-bracket", "users-gear"],
     info: ["circle-info", "chart-simple"],
     copy: ["copy", "print"],

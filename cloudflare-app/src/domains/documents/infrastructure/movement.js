@@ -5,7 +5,9 @@ import { clean } from "../../../shared/text/normalize.js";
 import { getDocument } from "../../../data/documentsData.js";
 import { AUDIT_LOG_INSERT_WITH_ACTOR, hasChanged } from "../../../data/sqlShared.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
-import { createDocumentMovePlan, executableStatements } from "./mutationPlans.js";
+import { createDocumentMovePlan } from "./mutationPlans.js";
+import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
+import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 
 function actorSnapshot(session = {}) {
   const userId = Number(session.userId ?? session.user_id ?? session.id);
@@ -229,9 +231,18 @@ export async function moveDocument(env, documentId, values, session = {}) {
     `).bind(targetSlotId, targetFace, ...guardBinds)
   ];
   const plan = createDocumentMovePlan(statements, guardSql);
-  const results = await env.DB.batch(executableStatements(plan));
+  let results;
+  try {
+    results = await executeMutationBatch(env, plan);
+  } catch (error) {
+    if (isExpectedChangeAbort(error)) {
+      return { ok: false, message: "다른 사용자가 문서를 먼저 수정했거나 위치 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    }
+    throw error;
+  }
 
-  if (!hasChanged(results[3])) {
+  // expectChanged assertion이 마지막에 삽입되므로 실제 UPDATE는 뒤에서 두 번째다.
+  if (!hasChanged(results[results.length - 2] || results[3])) {
     return { ok: false, message: "다른 사용자가 문서를 먼저 수정했거나 위치 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
   }
   return { ok: true, fromLocation: beforeLocation, toLocation: afterLocation };

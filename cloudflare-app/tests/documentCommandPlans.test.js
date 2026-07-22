@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { D1BudgetExceededError } from "../src/platform/d1/batchPlan.js";
 
 import * as legacyMutations from "../src/data/documentMutations.js";
 import { moveDocument as legacyMoveDocument } from "../src/data/movementData.js";
 import * as documents from "../src/domains/documents/index.js";
+import { MAX_DOCUMENT_TAGS } from "../src/domains/documents/domain/limits.js";
 import {
   createDocumentBulkDisposePlan,
   createDocumentCreatePlan,
   createDocumentMovePlan,
   createDocumentPermanentDeletePlan,
+  createDocumentRevisionPlan,
   createDocumentStatusPlan,
   createDocumentUpdatePlan
 } from "../src/domains/documents/infrastructure/mutationPlans.js";
@@ -64,6 +67,34 @@ test("이동·상태 전이·영구삭제 plan은 감사 선행과 최종 변경
     "document.audit.snapshot", "system.audit.snapshot", "document.delete"
   ]);
   assert.equal(deletion.steps[2].expectChanged, true);
+});
+
+test("문서 생성·수정 plan은 태그 36개 경계에서만 D1 40문장 예산을 지킨다", () => {
+  const createAtLimit = createDocumentCreatePlan(statements(MAX_DOCUMENT_TAGS + 3), MAX_DOCUMENT_TAGS);
+  const updateAtLimit = createDocumentUpdatePlan(statements(MAX_DOCUMENT_TAGS + 3), MAX_DOCUMENT_TAGS, "row-version-guard");
+  assert.equal(createAtLimit.execution(() => Object.freeze({ assertion: true })).statements.length, 40);
+  assert.equal(updateAtLimit.execution(() => Object.freeze({ assertion: true })).statements.length, 40);
+
+  const createOverLimit = createDocumentCreatePlan(statements(MAX_DOCUMENT_TAGS + 4), MAX_DOCUMENT_TAGS + 1);
+  const updateOverLimit = createDocumentUpdatePlan(statements(MAX_DOCUMENT_TAGS + 4), MAX_DOCUMENT_TAGS + 1, "row-version-guard");
+  assert.throws(() => createOverLimit.execution(() => Object.freeze({ assertion: true })), D1BudgetExceededError);
+  assert.throws(() => updateOverLimit.execution(() => Object.freeze({ assertion: true })), D1BudgetExceededError);
+});
+
+test("문서 개정 plan은 신규본 생성부터 이전본 자동 폐기까지 원자적 순서를 고정한다", () => {
+  const plan = createDocumentRevisionPlan(statements(9), "active-version").describe();
+  assert.equal(plan.id, "documents.revise");
+  assert.deepEqual(plan.steps.map(({ name, expectChanged }) => [name, expectChanged]), [
+    ["document.revision.insert", true],
+    ["document.revision.tags.copy", false],
+    ["document.revision.link", false],
+    ["document.revision.disposal-log", false],
+    ["document.revision.audit.previous", false],
+    ["document.revision.audit.new", false],
+    ["system.audit.revision", false],
+    ["document.revision.identity.finalize", false],
+    ["document.revision.previous.dispose", true]
+  ]);
 });
 
 test("대량 폐기 plan은 조회 2문장을 제외한 38문장 예산을 강제한다", () => {

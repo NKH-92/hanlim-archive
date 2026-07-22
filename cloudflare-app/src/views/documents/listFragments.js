@@ -28,24 +28,29 @@ export function paginationView(pagination, { query, filters }) {
 export function bulkActionBar(action = "/documents/disposal/process", filters = {}) {
   return `
     <div class="bulk-bar" data-bulk-bar hidden>
-      <span data-bulk-count>0건 선택</span>
-      <button type="button" class="danger-button sm" data-open-modal="disposal-review-modal">폐기 검토</button>
+      <span data-bulk-count>원본 0부 선택</span>
+      <button type="button" class="danger-button sm" data-open-modal="disposal-review-modal">선택 수량 확인</button>
     </div>
     <dialog id="disposal-review-modal" class="modal disposal-review-modal" aria-labelledby="disposal-review-title">
       <form method="post" action="${escapeHtml(action)}" class="modal-body" data-bulk-form>
-        <h2 id="disposal-review-title">폐기 대상 검토</h2>
-        <p class="muted">선택한 문서는 삭제되지 않고 폐기 상태로 변경되며 이력은 계속 보존됩니다.</p>
+        <h2 id="disposal-review-title">실제 폐기 수량 확인</h2>
+        <p class="muted">문서 한 건을 실제 원본 한 부로 계산합니다. 아래 문서와 실제 폐기할 원본이 같은지 확인해 주세요.</p>
+        <p class="disposal-count-confirmation" aria-live="polite">
+          실제 폐기할 원본이 <strong data-bulk-confirm-count>0부</strong>가 맞습니까?
+        </p>
         <ol class="disposal-review-list" data-bulk-summary></ol>
         <input type="hidden" name="ids" data-bulk-ids>
+        <input type="hidden" name="confirmedTargetCount" value="0" data-bulk-confirm-count-input>
         <input type="hidden" name="q" value="${escapeHtml(filters.query || "")}">
         <input type="hidden" name="categoryId" value="${escapeHtml(filters.categoryId || "")}">
         <input type="hidden" name="rackId" value="${escapeHtml(filters.rackId || "")}">
         <input type="hidden" name="disposalDueYear" value="${escapeHtml(filters.disposalDueYear || "")}">
         <label>폐기 사유 <em>*</em><textarea name="reason" rows="3" required></textarea></label>
         <label>승인 문서 참조<input name="approvalReference" placeholder="결재 번호 또는 관련 문서번호"></label>
+        <p class="danger-text">예를 누르면 선택한 원본은 즉시 폐기 상태로 변경되고 감사 이력에 기록됩니다.</p>
         <div class="modal-actions">
           <button type="button" class="button secondary" data-close-modal>취소</button>
-          <button type="submit" class="danger-button">폐기 확인</button>
+          <button type="submit" class="danger-button" name="confirmDisposal" value="1" data-bulk-confirm-button disabled>예, 폐기합니다</button>
         </div>
       </form>
     </dialog>
@@ -55,7 +60,9 @@ export function bulkActionBar(action = "/documents/disposal/process", filters = 
 export function documentToolbar(session) {
   const actions = [];
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
-    actions.push(`<a class="button" href="/documents/import">엑셀 대장 관리</a>`);
+    actions.push(`<a class="button secondary" href="/documents/export.csv"><i class="fa-solid fa-download" aria-hidden="true"></i>CSV 내보내기</a>`);
+    actions.push(`<a class="button secondary" href="/documents/import"><i class="fa-solid fa-file-excel" aria-hidden="true"></i>리스트 동기화</a>`);
+    actions.push(`<a class="button action-button" href="/documents/new"><i class="fa-solid fa-plus" aria-hidden="true"></i>문서 추가</a>`);
   }
   return actions.length ? `<div class="button-group document-toolbar">${actions.join("")}</div>` : "";
 }
