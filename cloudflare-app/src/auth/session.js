@@ -28,11 +28,13 @@ export function getMissingSetup(env) {
 
 export async function createSessionCookie(user, env, secure = true) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+  const sessionEpoch = readSessionEpoch(user.sessionEpoch ?? user.session_epoch);
   const payload = bytesToBase64Url(new TextEncoder().encode(JSON.stringify({
     username: user.username,
     displayName: user.displayName,
     role: user.role,
     mustChangePassword: Boolean(user.mustChangePassword),
+    sessionEpoch,
     csrfToken: createCsrfToken(),
     exp
   })));
@@ -74,26 +76,21 @@ export async function readSession(request, env) {
     }
 
     const user = await env.DB.prepare(`
-      SELECT
-        id,
-        username,
-        display_name,
-        status,
-        role,
-        must_change_password,
-        can_manage_documents,
-        can_move_documents,
-        can_manage_disposals,
-        can_manage_sets,
-        can_manage_masters,
-        can_manage_users,
-        can_view_audit
+      SELECT *
       FROM app_users
       WHERE username = ?
       LIMIT 1
     `).bind(session.username).first();
 
-    if (!user || user.status !== "approved") {
+    // 보안 검토 대상 계정과 credential/session epoch가 바뀐 기존 cookie는 즉시 무효화한다.
+    // pre-0034 스키마에는 security_review_required가 없을 수 있다.
+    if (!user || user.status !== "approved" || Number(user.security_review_required || 0) === 1) {
+      return null;
+    }
+    const currentSessionEpoch = readSessionEpoch(user.session_epoch);
+    // compatibility Worker 이전에 발급된 cookie는 epoch 0으로 취급한다. DB epoch가
+    // 한 번이라도 회전한 계정에서는 그대로 불일치해 재사용되지 않는다.
+    if (readSessionEpoch(session.sessionEpoch) !== currentSessionEpoch) {
       return null;
     }
 
@@ -104,6 +101,7 @@ export async function readSession(request, env) {
       displayName: user.display_name,
       role: normalizeRole(user.role),
       mustChangePassword: Number(user.must_change_password) === 1,
+      sessionEpoch: currentSessionEpoch,
       ...permissionFlags(user)
     };
   } catch {
@@ -116,9 +114,25 @@ export function expiredSessionCookie(secure = true) {
   return `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly${secureAttribute}; SameSite=Lax`;
 }
 
+export async function revokeUserSessions(env, username, expectedEpoch) {
+  const epoch = readSessionEpoch(expectedEpoch);
+  const result = await env.DB.prepare(`
+    UPDATE app_users
+    SET session_epoch = session_epoch + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE username = ? AND session_epoch = ?
+  `).bind(String(username || ""), epoch).run();
+  return Number(result?.meta?.changes || 0) === 1;
+}
+
 function createCsrfToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(CSRF_TOKEN_BYTES));
   return bytesToBase64Url(bytes);
+}
+
+function readSessionEpoch(value) {
+  const epoch = Number(value ?? 0);
+  return Number.isSafeInteger(epoch) && epoch >= 0 ? epoch : 0;
 }
 
 async function sign(payload, env) {

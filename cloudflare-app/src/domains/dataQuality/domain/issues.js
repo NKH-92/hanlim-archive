@@ -7,11 +7,13 @@ export const DATA_QUALITY_ISSUES = Object.freeze({
     JOIN (
       SELECT UPPER(document_number) AS document_number_key, UPPER(revision_number) AS revision_number_key
       FROM documents
+      WHERE sync_state = 'current'
       GROUP BY UPPER(document_number), UPPER(revision_number)
       HAVING COUNT(*) > 1
     ) duplicate_keys
       ON duplicate_keys.document_number_key = UPPER(duplicate_member.document_number)
       AND duplicate_keys.revision_number_key = UPPER(duplicate_member.revision_number)
+    WHERE duplicate_member.sync_state = 'current'
   )` }),
   "missing-location": Object.freeze({ label: "누락·비활성 위치", condition: "rs.id IS NULL OR r.id IS NULL OR rs.is_active = 0 OR r.is_active = 0" }),
   "inactive-category": Object.freeze({ label: "누락·비활성 대분류", condition: "c.id IS NULL OR c.is_active = 0" }),

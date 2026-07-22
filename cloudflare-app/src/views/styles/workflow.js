@@ -14,6 +14,8 @@ export function workflowStyles() {
     .workspace-tabs a[aria-current="page"] { border-color: var(--primary); color: var(--primary); }
     .disposal-filter { grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(140px, auto)) auto auto; }
     .disposal-review-modal { width: min(560px, calc(100% - var(--sp-8))); }
+    .disposal-count-confirmation { margin: 0; padding: var(--sp-4); border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--danger-soft); text-align: center; }
+    .disposal-count-confirmation strong { display: block; margin-top: var(--sp-1); color: var(--danger); font-size: 24px; line-height: 1.2; }
     .disposal-review-list { max-height: 220px; overflow-y: auto; margin: 0; padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-7); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--gray-50); }
     .disposal-review-list li { padding: var(--sp-1) 0; font-size: 13px; }
     .disposal-history-table small { display: block; margin-top: var(--sp-1); color: var(--gray-500); white-space: nowrap; }
@@ -82,9 +84,12 @@ export function workflowStyles() {
     .command-palette > .muted { margin: var(--sp-3) 0 0; }
     .danger-text { color: var(--danger); font-size: 13px; margin: 0; }
 
-    .app-toast { position: fixed; left: 50%; bottom: var(--sp-6); transform: translate(-50%, var(--sp-3)); z-index: 200; max-width: min(90vw, 420px); padding: var(--sp-3) var(--sp-5); border-radius: var(--r-md); background: var(--gray-800); color: var(--surface); font-weight: 600; font-size: 13px; box-shadow: var(--shadow-2); opacity: 0; transition: opacity .2s ease, transform .2s ease; pointer-events: none; }
+    .app-toast { position: fixed; left: 50%; bottom: var(--sp-6); transform: translate(-50%, var(--sp-3)); z-index: 200; display: flex; align-items: center; gap: var(--sp-3); max-width: min(90vw, 520px); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--gray-800); color: var(--surface); font-weight: 600; font-size: 13px; box-shadow: var(--shadow-2); opacity: 0; transition: opacity .2s ease, transform .2s ease; pointer-events: auto; }
     .app-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
     .app-toast.is-error { background: var(--danger); }
+    .app-toast .icon-button { flex: none; color: inherit; border-color: rgba(255, 255, 255, .4); }
+    .app-confirm-dialog { width: min(92vw, 480px); padding: 0; border: 1px solid var(--line); border-radius: var(--r-lg); color: var(--gray-900); box-shadow: var(--shadow-2); }
+    .app-confirm-dialog::backdrop { background: var(--scrim); }
 
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
     .print-only { display: none; }

@@ -57,6 +57,7 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("documents.edit.form", "documents", "GET", "/documents/:id/edit", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.edit", "documents", "POST", "/documents/:id/edit", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.revise.form", "documents", "GET", "/documents/:id/revise", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("documents.revise", "documents", "POST", "/documents/:id/revise", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.move.form", "documents", "GET", "/documents/:id/move", { permission: PERMISSIONS.MOVE_DOCUMENTS }),
   route("documents.move", "documents", "POST", "/documents/:id/move", { permission: PERMISSIONS.MOVE_DOCUMENTS }),
   route("documents.dispose", "documents", "POST", "/documents/:id/dispose", { permission: PERMISSIONS.MANAGE_DISPOSALS }),
@@ -95,7 +96,12 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("snapshots.details", "snapshots", "GET", "/document-snapshots/:id", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("snapshots.rows", "snapshots", "POST", "/document-snapshots/:id/rows", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("snapshots.prepare", "snapshots", "POST", "/document-snapshots/:id/prepare", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
-  route("snapshots.apply", "snapshots", "POST", "/document-snapshots/:id/apply", { permission: PERMISSIONS.MANAGE_DOCUMENTS })
+  route("snapshots.apply", "snapshots", "POST", "/document-snapshots/:id/apply", {
+    // 실행 계약: 문서 관리 + 스냅샷 반영 권한을 모두 요구한다(카탈로그·핸들러·서비스 동일).
+    permission: `${PERMISSIONS.MANAGE_DOCUMENTS}+${PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS}`,
+    policy: "allOf:can_manage_documents+can_apply_document_snapshots"
+  }),
+  route("snapshots.cancel", "snapshots", "POST", "/document-snapshots/:id/cancel", { permission: PERMISSIONS.MANAGE_DOCUMENTS })
 ]);
 
 export const ROUTES = Object.freeze([...PUBLIC_ROUTES, ...AUTHENTICATED_ROUTES]);

@@ -6,11 +6,11 @@ const STATUS_LABELS = Object.freeze({ ready: "준비", processing: "처리 중",
 export function documentImportJobsPage({ session, jobs = [] }) {
   const rows = jobs.map((job) => `
     <tr>
-      <td class="mono"><a href="/document-import-jobs/${job.id}">${escapeHtml(job.job_code)}</a></td>
-      <td>${escapeHtml(job.source_name || "붙여넣기")}</td>
-      <td>${statusLabel(job.status)}</td>
-      <td>${number(job.total_count)}</td><td>${number(job.completed_count)}</td><td>${number(job.failed_count)}</td><td>${number(job.pending_count)}</td>
-      <td>${escapeHtml(job.created_by_name)}</td><td>${escapeHtml(job.created_at)}</td>
+      <td class="mono" data-label="작업 번호"><a href="/document-import-jobs/${job.id}">${escapeHtml(job.job_code)}</a></td>
+      <td data-label="원본">${escapeHtml(job.source_name || "붙여넣기")}</td>
+      <td data-label="상태">${statusLabel(job.status)}</td>
+      <td data-label="전체">${number(job.total_count)}</td><td data-label="완료">${number(job.completed_count)}</td><td data-label="실패">${number(job.failed_count)}</td><td data-label="대기">${number(job.pending_count)}</td>
+      <td data-label="생성자">${escapeHtml(job.created_by_name)}</td><td data-label="생성일">${escapeHtml(job.created_at)}</td>
     </tr>
   `).join("");
   return page("CSV 가져오기 작업", `
@@ -23,17 +23,41 @@ export function documentImportJobsPage({ session, jobs = [] }) {
   `, session);
 }
 
-export function documentImportJobCreatePage({ session, error = "" }) {
+export function documentImportJobCreatePage({ session, error = "", preview = [], csvText = "", sourceName = "" }) {
+  const previewRows = preview.map((item) => `<tr>
+    <td data-label="CSV 행">${number(item.rowNumber)}</td>
+    <td class="mono" data-label="문서번호">${escapeHtml(item.documentNumber)}</td>
+    <td data-label="개정">${escapeHtml(item.revisionNumber)}</td>
+    <td data-label="문서명">${escapeHtml(item.documentName)}</td>
+    <td data-label="대분류">${escapeHtml(item.categoryName)}</td>
+    <td data-label="보관 위치">${escapeHtml(item.location)}</td>
+    <td data-label="태그">${escapeHtml(item.tags)}</td>
+    <td data-label="상태">${escapeHtml(item.status)}</td>
+  </tr>`).join("");
   return page("CSV 가져오기", `
     <section class="page-head"><div><h1>문서 대량 등록</h1><p class="muted">최대 50행을 먼저 검증한 뒤 작업으로 저장합니다.</p></div><a class="button secondary" href="/document-import-jobs">작업 목록</a></section>
-    <section class="panel narrow">
+    <section class="panel${preview.length ? "" : " narrow"}">
       ${error ? alertDanger(error) : ""}
-      <form method="post" action="/document-import-jobs" class="stack" enctype="multipart/form-data">
-        <label>CSV 파일<input type="file" name="csvFile" accept=".csv,text/csv"></label>
-        <label>또는 CSV 붙여넣기<textarea name="csvText" rows="10" placeholder="documentNumber,revisionNumber,revisionDate,disposalDueYear,documentName,category,rackCode,rackColumn,shelfNumber,rackFace,tags,note,status"></textarea></label>
-        <button type="submit" class="primary">검증 후 작업 생성</button>
-      </form>
-      <p class="muted">필수 열: documentNumber, revisionNumber, documentName, category, rackCode, rackColumn, shelfNumber, rackFace.</p>
+      ${preview.length ? `
+        <div class="section-title"><h2>생성 예정 문서 검토</h2><span class="count-badge">${preview.length}건</span></div>
+        <p class="muted">정규화된 대분류·보관 위치·상태를 확인하세요. 아직 문서는 생성되지 않았습니다.</p>
+        <div class="table-wrap"><table class="doc-table"><thead><tr><th>CSV 행</th><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>보관 위치</th><th>태그</th><th>상태</th></tr></thead><tbody>${previewRows}</tbody></table></div>
+        <form method="post" action="/document-import-jobs" class="stack import-confirm-form">
+          <input type="hidden" name="sourceName" value="${escapeHtml(sourceName)}">
+          <textarea name="csvText" hidden>${escapeHtml(csvText)}</textarea>
+          <input type="hidden" name="confirmImportPreview" value="1">
+          <label class="checkbox"><input type="checkbox" name="confirmImportRows" value="1" required> 위 ${preview.length}건의 생성 예정값을 확인했습니다.</label>
+          <div class="button-group"><button type="submit" class="primary">검토한 내용으로 작업 생성</button><a class="button secondary" href="/documents/import/csv">다른 CSV 선택</a></div>
+        </form>
+      ` : `
+        <form method="post" action="/document-import-jobs" class="stack" enctype="multipart/form-data">
+          <label>CSV 파일<input type="file" name="csvFile" accept=".csv,text/csv"></label>
+          <label>또는 CSV 붙여넣기<textarea name="csvText" rows="10" placeholder="documentNumber,revisionNumber,revisionDate,disposalDueYear,documentName,category,rackCode,rackColumn,shelfNumber,rackFace,tags,note,status"></textarea></label>
+          <p class="muted">파일과 붙여넣기 내용을 모두 입력하면 CSV 파일을 우선 사용합니다.</p>
+          <button type="submit" class="primary">검증하고 생성 예정값 보기</button>
+        </form>
+        <p class="muted">필수 열: documentNumber, revisionNumber, documentName, category, rackCode, rackColumn, shelfNumber, rackFace.</p>
+      `}
     </section>
   `, session);
 }
@@ -41,9 +65,9 @@ export function documentImportJobCreatePage({ session, error = "" }) {
 export function documentImportJobDetailPage({ session, job, items = [], itemStatus = "", error = "" }) {
   const rows = items.map((item) => `
     <tr>
-      <td>${number(item.row_number)}</td><td>${statusLabel(item.status)}</td>
-      <td>${item.created_document_id ? `<a href="/documents/${item.created_document_id}">문서 #${number(item.created_document_id)}</a>` : "-"}</td>
-      <td>${escapeHtml(item.error_message || "-")}</td><td>${escapeHtml(item.processed_at || "-")}</td>
+      <td data-label="CSV 행">${number(item.row_number)}</td><td data-label="상태">${statusLabel(item.status)}</td>
+      <td data-label="생성 문서">${item.created_document_id ? `<a href="/documents/${item.created_document_id}">문서 #${number(item.created_document_id)}</a>` : "-"}</td>
+      <td data-label="오류">${escapeHtml(item.error_message || "-")}</td><td data-label="처리 시각">${escapeHtml(item.processed_at || "-")}</td>
     </tr>
   `).join("");
   return page(`${job.job_code} CSV 가져오기`, `
@@ -71,7 +95,7 @@ export function documentImportJobDetailPage({ session, job, items = [], itemStat
 
 function jobActions(job) {
   if (job.status === "ready" || job.status === "processing") {
-    return `<div class="button-group"><button type="button" class="button" data-process-import>계속 처리</button><button type="button" class="button secondary" data-stop-import disabled>처리 중단</button><form method="post" action="/document-import-jobs/${job.id}/cancel" data-confirm="이 가져오기 작업을 취소할까요?"><button type="submit" class="danger-button">작업 취소</button></form></div>`;
+    return `<div class="button-group"><button type="button" class="button" data-process-import>계속 처리</button><button type="button" class="button secondary" data-stop-import disabled>처리 중단</button><form method="post" action="/document-import-jobs/${job.id}/cancel" data-confirm="작업을 취소하면 이미 생성된 문서는 유지되고 대기 행만 취소됩니다. 이 작업을 취소할까요?"><button type="submit" class="danger-button">작업 취소</button></form></div>`;
   }
   return "";
 }

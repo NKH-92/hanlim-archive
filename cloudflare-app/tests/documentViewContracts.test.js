@@ -36,6 +36,7 @@ test("documentViews는 문서 화면의 명시적 공개 표면을 제공한다"
     "documentDetailsPage",
     "documentFormPage",
     "documentResults",
+    "documentRevisionPage",
     "documentsPage"
   ]);
 });
@@ -104,6 +105,8 @@ test("대표 문서 목록·폐기·폼·상세는 응답·보안·업무 계약
   assert.match(disposal, /1건 처리됨/);
   assert.match(disposal, /name="disposalDueYear"/);
   assert.match(disposal, /action="\/documents\/disposal\/process"[^>]*data-bulk-form/);
+  assert.match(disposal, /name="confirmedTargetCount"/);
+  assert.match(disposal, /name="confirmDisposal" value="1"/);
 
   const form = await responseHtml(pages.form);
   assert.match(form, /action="\/documents\/7\/edit"/);

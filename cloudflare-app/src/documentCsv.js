@@ -39,6 +39,7 @@ const DOCUMENT_SET_CSV_HEADER = Object.freeze([
   "문서명",
   "대분류",
   "상태",
+  "대장 포함 상태",
   "구역",
   "랙",
   "면",
@@ -55,6 +56,7 @@ export function buildDocumentSetCsv(set, documents, now = new Date()) {
     document.document_name,
     document.category_name,
     document.status === "disposed" ? "폐기" : "보관중",
+    document.sync_state === "excluded" ? "현재 대장 제외" : "현재 대장 포함",
     document.zone_number,
     document.rack_number,
     Number(document.is_single_sided) === 1 ? "단면" : (document.rack_face === "B" ? "2면" : "1면"),
@@ -103,7 +105,7 @@ export async function readDocumentImportRows(form, limits) {
     return { ok: false, error: `CSV 가져오기는 한 번에 ${limits.maxRows}건까지 처리합니다. 파일을 나누어 가져오세요.` };
   }
 
-  return { ok: true, rows };
+  return { ok: true, rows, text: csvText };
 }
 
 export function prepareDocumentImportRows(rows, { categories, tags, slots }) {

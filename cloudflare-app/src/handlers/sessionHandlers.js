@@ -5,8 +5,10 @@ import {
   getMissingSetup,
   isLoginLocked,
   recordLoginFailure,
+  revokeUserSessions,
   validateUser
 } from "../auth.js";
+import { getAppConfig } from "../config.js";
 import { loginPage } from "../views/authViews.js";
 import { redirect } from "../platform/http/responses.js";
 import { sanitizeReturnUrl } from "../platform/security/returnUrl.js";
@@ -17,7 +19,8 @@ export function renderLogin(url, env) {
     returnUrl: url.searchParams.get("returnUrl") || "/app",
     error: clean(url.searchParams.get("error")),
     signupSubmitted: url.searchParams.has("signup"),
-    setupWarning: getMissingSetup(env)
+    setupWarning: getMissingSetup(env),
+    support: getAppConfig(env).support
   });
 }
 
@@ -49,7 +52,8 @@ export async function handleLogin(request, env) {
   return redirect(destination, { "Set-Cookie": await createSessionCookie(user, env, secureCookie) });
 }
 
-export function handleLogout(url) {
+export async function handleLogout(url, env, session) {
+  await revokeUserSessions(env, session.username, session.sessionEpoch);
   return redirect("/login", { "Set-Cookie": expiredSessionCookie(url.protocol === "https:") });
 }
 

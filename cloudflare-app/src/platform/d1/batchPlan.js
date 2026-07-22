@@ -1,7 +1,13 @@
+import { FREE_TIER_BUDGET } from "../../freeTierBudget.js";
+import { expectedChangeAssertionSql } from "./expectedChange.js";
+
+const GLOBAL_STATEMENT_BUDGET = FREE_TIER_BUDGET.maxD1StatementsPerRequest;
+
 export class BatchPlan {
   #id;
   #steps = [];
-  #budget = Number.POSITIVE_INFINITY;
+  /** @type {number} */
+  #budget = GLOBAL_STATEMENT_BUDGET;
   #expectedChanged = new Set();
 
   constructor(id) {
@@ -25,6 +31,10 @@ export class BatchPlan {
   withBudget(value) {
     const budget = Number(value);
     if (!Number.isInteger(budget) || budget < 1) throw new TypeError("BatchPlan budget은 양의 정수여야 합니다.");
+    // 호출자가 전역 요청 상한을 올릴 수 없다.
+    if (budget > GLOBAL_STATEMENT_BUDGET) {
+      throw new TypeError(`BatchPlan budget은 요청 상한 ${GLOBAL_STATEMENT_BUDGET}을 초과할 수 없습니다.`);
+    }
     this.#budget = budget;
     return this;
   }
@@ -43,9 +53,29 @@ export class BatchPlan {
     });
   }
 
-  execution() {
-    if (this.#steps.length > this.#budget) throw new D1BudgetExceededError(this.#id, this.#steps.length, this.#budget);
-    return Object.freeze({ metadata: this.describe(), statements: Object.freeze(this.#steps.map((step) => step.statement)) });
+  /**
+   * @param {(sql: string) => unknown} [prepare]
+   * prepare가 있으면 expectChanged step 직후에 트랜잭션 abort assertion을 삽입한다.
+   * withBudget은 논리 step 수 기준이며, assertion 포함 실제 SQL은 전역 요청 상한만 본다.
+   */
+  execution(prepare = null) {
+    if (this.#steps.length > this.#budget) {
+      throw new D1BudgetExceededError(this.#id, this.#steps.length, this.#budget);
+    }
+    const assertionCount = prepare ? this.#expectedChanged.size : 0;
+    const totalStatements = this.#steps.length + assertionCount;
+    if (totalStatements > GLOBAL_STATEMENT_BUDGET) {
+      throw new D1BudgetExceededError(this.#id, totalStatements, GLOBAL_STATEMENT_BUDGET);
+    }
+
+    const statements = [];
+    for (const step of this.#steps) {
+      statements.push(step.statement);
+      if (prepare && this.#expectedChanged.has(step.name)) {
+        statements.push(prepare(expectedChangeAssertionSql()));
+      }
+    }
+    return Object.freeze({ metadata: this.describe(), statements: Object.freeze(statements) });
   }
 }
 

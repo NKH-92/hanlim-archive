@@ -87,7 +87,8 @@ test("document set number lookup never matches internal storage codes", async ()
   assert.deepEqual(result.documents, [{ id: 7, document_number: "PV-2026-014" }]);
   assert.deepEqual(result.missing, ["ARC-000007"]);
   assert.doesNotMatch(executedSql, /storage_code/);
-  assert.deepEqual(executedArgs, ["PV-2026-014", "ARC-000007"]);
+  assert.deepEqual(executedArgs, [JSON.stringify(["PV-2026-014", "ARC-000007"])]);
+  assert.match(executedSql, /json_each\(\?\)/);
 });
 
 test("search normalization supports partial numbers, spacing, and light typos", () => {
@@ -309,6 +310,7 @@ test("getSearchIndexMeta preserves every master and rack update stamp in the ver
   const row = {
     count: 3,
     max_id: 9,
+    sync_version: 41,
     documents_version: 3,
     documents_updated: "2026-07-10 10:00:00",
     categories_updated: "2026-07-02 11:00:00",
@@ -334,13 +336,18 @@ test("getSearchIndexMeta preserves every master and rack update stamp in the ver
   // 문서가 가장 최신이어도 더 오래된 태그 시각 변경이 버전 키를 바꿔야 한다.
   assert.equal(before.updated, "2026-07-10 10:00:00");
   assert.equal(after.updated, before.updated);
-  assert.equal(before.versionKey, "3-20260710100000-20260702110000-20260630090000-20260701120000-20260701080000");
-  assert.equal(after.versionKey, "3-20260710100000-20260702110000-20260630090100-20260701120000-20260701080000");
+  assert.equal(before.versionKey, "41-3-20260710100000-20260702110000-20260630090000-20260701120000-20260701080000");
+  assert.equal(after.versionKey, "41-3-20260710100000-20260702110000-20260630090100-20260701120000-20260701080000");
   assert.notEqual(after.versionKey, before.versionKey);
   row.tags_updated = "2026-06-30 09:00:00";
   row.documents_version = 4;
   const sameSecondDocumentChange = await getSearchIndexMeta(env);
   assert.notEqual(sameSecondDocumentChange.versionKey, before.versionKey);
+  row.documents_version = 3;
+  row.sync_version = 42;
+  const monotonicSyncChange = await getSearchIndexMeta(env);
+  assert.notEqual(monotonicSyncChange.versionKey, before.versionKey);
+  assert.match(sql, /FROM document_sync_state WHERE id = 1/);
   assert.match(sql, /SUM\(row_version\)/);
   assert.match(sql, /FROM categories/);
   assert.match(sql, /FROM tags/);
@@ -380,6 +387,16 @@ test("validateDocumentInput rejects missing or inactive tags", async () => {
   assert.match(
     await validateDocumentInput(env, { ...base, tagIds: [10, 99] }, { allowInactiveTagIds: [99] }),
     /존재/
+  );
+  const tagQueriesBeforeLimitCheck = env.state.calls.filter((call) => call.sql.includes("FROM tags")).length;
+  assert.match(
+    await validateDocumentInput(env, { ...base, tagIds: Array.from({ length: 37 }, (_, index) => index + 1) }),
+    /최대 36개/
+  );
+  assert.equal(
+    env.state.calls.filter((call) => call.sql.includes("FROM tags")).length,
+    tagQueriesBeforeLimitCheck,
+    "상한을 넘긴 태그 목록은 큰 IN 조회를 실행하지 않는다"
   );
 });
 
@@ -459,7 +476,7 @@ test("disposeDocument reports a conflict when the guarded update changes no rows
   // 원자화된 batch가 실행되더라도 pre-state 가드가 모두 걸려 아무것도 커밋되지 않는다(0행).
   assert.equal(result.ok, false);
   assert.match(result.message, /변경/);
-  for (const statement of env.state.batches[0]) {
+  for (const statement of env.state.batches[0].filter((item) => !/STALE_VERSION/.test(item.sql || ""))) {
     assert.match(statement.sql, /updated_at = \?/);
     assert.match(statement.sql, /row_version = \?/);
   }
@@ -589,6 +606,8 @@ test("getDocumentQualitySummary uses one D1 aggregate round trip", async () => {
     DB: {
       prepare(sql) {
         assert.match(sql, /duplicate_document_numbers/);
+        assert.match(sql, /FROM documents\s+WHERE sync_state = 'current'\s+GROUP BY/);
+        assert.match(sql, /WHERE duplicate_member\.sync_state = 'current'/);
         return {
           async first() {
             calls += 1;
@@ -742,12 +761,13 @@ test("restoreDocument requires a real reason and writes document plus system aud
 
   assert.equal(result.ok, true);
   const statements = env.state.batches[0];
-  assert.equal(statements.length, 4);
+  assert.equal(statements.length, 5);
   assert.match(statements[0].sql, /INSERT INTO disposal_logs/);
   assert.ok(statements[0].args.includes("폐기 대상 선정 오류"));
   assert.match(statements[1].sql, /INSERT INTO document_audit_logs/);
   assert.match(statements[2].sql, /INSERT INTO system_audit_logs/);
   assert.match(statements[3].sql, /UPDATE documents/);
+  assert.match(statements[4].sql, /STALE_VERSION/);
 });
 
 test("upsertDocumentSet writes create and update logs", async () => {
@@ -765,71 +785,84 @@ test("upsertDocumentSet writes create and update logs", async () => {
   assert.match(createEnv.state.batches[0][1].sql, /'create'/);
 
   const updateEnv = recordingEnv();
-  const updated = await upsertDocumentSet(updateEnv, { id: 9, name: "정기감사 준비문서" }, "관리자");
+  const updated = await upsertDocumentSet(updateEnv, { id: 9, name: "정기감사 준비문서", expectedRowVersion: 1 }, "관리자");
   assert.equal(updated.ok, true);
   assert.equal(updateEnv.state.batches.length, 1);
-  assert.equal(updateEnv.state.batches[0].length, 2);
+  assert.equal(updateEnv.state.batches[0].length, 3);
   assert.match(updateEnv.state.batches[0][0].sql, /INSERT INTO document_set_logs/);
   assert.match(updateEnv.state.batches[0][0].sql, /'update'/);
   assert.match(updateEnv.state.batches[0][1].sql, /UPDATE document_sets/);
+  assert.match(updateEnv.state.batches[0][2].sql, /STALE_VERSION/);
 });
 
 test("addDocumentsToSet logs which document numbers were actually added", async () => {
   const env = recordingEnv({
     batch: (statements) => statements.map(() => ({ meta: { changes: 1 } })),
-    all: (sql) => (sql.includes("FROM documents") ? [{ id: 10, document_number: "MR-2026-001" }] : [])
+    first: (sql) => sql.includes("addable_count")
+      ? { id: 3, is_locked: 0, row_version: 1, addable_count: 1 }
+      : null
   });
 
-  const { added } = await addDocumentsToSet(env, 3, [10, 11], "관리자");
+  const { added } = await addDocumentsToSet(env, 3, [10, 11], "관리자", 1);
 
   assert.equal(added, 1);
   assert.equal(env.state.batches.length, 1);
-  assert.equal(env.state.batches[0].length, 3);
+  assert.equal(env.state.batches[0].length, 5);
   const log = env.state.batches[0][0];
   assert.match(log.sql, /INSERT INTO document_set_logs/);
   assert.match(log.sql, /'add'/);
-  assert.ok(log.args.some((value) => String(value).includes("MR-2026-001")));
+  assert.match(log.sql, /GROUP_CONCAT\(eligible\.document_number/);
+  assert.deepEqual(JSON.parse(log.args[0]), [10, 11]);
+  assert.ok(log.args.length <= FREE_TIER_BUDGET.maxD1BoundParametersPerStatement);
+  assert.match(env.state.batches[0][2].sql, /STALE_VERSION/);
+  assert.match(env.state.batches[0][4].sql, /STALE_VERSION/);
 });
 
 test("addDocumentsToSet keeps 200 requested ids in one D1 insert statement", async () => {
   const env = recordingEnv({
     batch: (statements) => statements.map((_, index) => ({
-      meta: { changes: index === 2 ? 200 : 1 },
+      meta: { changes: index === 3 ? 200 : 1 },
       results: []
     })),
-    all: () => Array.from({ length: 200 }, (_, index) => ({
-      id: index + 1,
-      document_number: `DOC-${String(index + 1).padStart(3, "0")}`
-    }))
+    first: (sql) => sql.includes("addable_count")
+      ? { id: 3, is_locked: 0, row_version: 1, addable_count: 200 }
+      : null
   });
 
-  const result = await addDocumentsToSet(env, 3, Array.from({ length: 200 }, (_, index) => index + 1), "관리자");
+  const result = await addDocumentsToSet(env, 3, Array.from({ length: 200 }, (_, index) => index + 1), "관리자", 1);
 
   assert.equal(result.added, 200);
-  assert.equal(env.state.batches[0].length, 3);
-  assert.match(env.state.batches[0][2].sql, /WITH requested\(document_id\) AS \(VALUES/);
-  assert.match(env.state.batches[0][2].sql, /INSERT OR IGNORE INTO document_set_items/);
+  assert.equal(env.state.batches[0].length, 5);
+  assert.match(env.state.batches[0][3].sql, /FROM json_each\(\?\)/);
+  assert.match(env.state.batches[0][3].sql, /INSERT OR IGNORE INTO document_set_items/);
+  assert.deepEqual(JSON.parse(env.state.batches[0][3].args[0]), Array.from({ length: 200 }, (_, index) => index + 1));
+  for (const statement of env.state.batches[0]) {
+    assert.ok(statement.args.length <= FREE_TIER_BUDGET.maxD1BoundParametersPerStatement);
+  }
+  assert.match(env.state.batches[0][4].sql, /STALE_VERSION/);
 });
 
 test("removeDocumentFromSet and deleteDocumentSet write remove and delete logs", async () => {
   const removeEnv = recordingEnv({
     first: (sql) => (sql.includes("FROM document_set_items")
-      ? { set_name: "감사세트", document_number: "PV-2026-014" }
+      ? { set_name: "감사세트", row_version: 1, document_number: "PV-2026-014" }
       : null)
   });
-  const removed = await removeDocumentFromSet(removeEnv, 3, 10, "관리자");
+  const removed = await removeDocumentFromSet(removeEnv, 3, 10, "관리자", 1);
   assert.equal(removed.ok, true);
   assert.equal(removeEnv.state.batches.length, 1);
-  assert.equal(removeEnv.state.batches[0].length, 3);
+  assert.equal(removeEnv.state.batches[0].length, 5);
   const removeLog = removeEnv.state.batches[0][0];
   assert.match(removeLog.sql, /INSERT INTO document_set_logs/);
   assert.match(removeLog.sql, /'remove'/);
   assert.ok(removeLog.args.some((value) => String(value).includes("PV-2026-014")));
+  assert.match(removeEnv.state.batches[0][2].sql, /STALE_VERSION/);
+  assert.match(removeEnv.state.batches[0][4].sql, /STALE_VERSION/);
 
   const deleteEnv = recordingEnv({
-    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트" } : null)
+    first: (sql) => (sql.includes("FROM document_sets") ? { id: 3, name: "감사세트", row_version: 1 } : null)
   });
-  const deleted = await deleteDocumentSet(deleteEnv, 3, "관리자");
+  const deleted = await deleteDocumentSet(deleteEnv, 3, "관리자", 1);
   assert.equal(deleted.ok, true);
   // 삭제 이력이 삭제와 같은 batch 안에서 기록되어야 한다(세트만 사라지고 기록이 없는 공백 방지).
   assert.equal(deleteEnv.state.batches.length, 1);
@@ -866,11 +899,14 @@ test("updateDocument binds the optimistic lock and guards tags + audit in one at
   // 낙관적 잠금: 가드 UPDATE에 updated_at 조건과 기대값 바인딩이 포함되어야 한다.
   assert.ok(update.sql.includes("updated_at = ?"));
   assert.ok(update.args.includes("2026-07-01 09:00:00"));
-  // 감사 스냅샷과 실제 저장값이 어긋나지 않도록 위치 변경값도 같은 가드 UPDATE에 포함한다.
+  // 정보 수정에서는 조작된 개정/위치 값을 무시하고 기존 값을 보존한다.
   assert.ok(update.sql.includes("rack_slot_id = ?"));
   assert.ok(update.sql.includes("rack_face = ?"));
-  assert.ok(update.args.includes(9));
-  assert.ok(update.args.includes("B"));
+  assert.ok(update.args.includes(1));
+  assert.ok(update.args.includes("A"));
+  assert.ok(update.args.includes("Rev.0"));
+  assert.ok(!update.args.includes("Rev.1"));
+  assert.ok(!update.args.includes(9));
   // 태그 교체와 감사 로그가 같은 batch 안에 있고, 태그 DELETE도 pre-state 가드(EXISTS)에 묶여야 한다.
   const tagDelete = statements.find((s) => s.sql.includes("DELETE FROM document_tags"));
   assert.ok(tagDelete && tagDelete.sql.includes("EXISTS"));
@@ -988,8 +1024,13 @@ function recordingEnv({ first = () => null, all = () => [], run = () => 1, batch
     state,
     DB: {
       prepare(sql) {
-        return {
+        const statement = {
+          sql,
+          args: [],
           bind(...args) {
+            if (args.length > FREE_TIER_BUDGET.maxD1BoundParametersPerStatement) {
+              throw new RangeError(`D1 statement bind count ${args.length} exceeds ${FREE_TIER_BUDGET.maxD1BoundParametersPerStatement}`);
+            }
             return {
               sql,
               args,
@@ -1006,8 +1047,21 @@ function recordingEnv({ first = () => null, all = () => [], run = () => 1, batch
                 return { meta: { changes: run(sql, args) } };
               }
             };
+          },
+          async first() {
+            state.calls.push({ sql, args: [], type: "first" });
+            return first(sql, []);
+          },
+          async all() {
+            state.calls.push({ sql, args: [], type: "all" });
+            return { results: all(sql, []) };
+          },
+          async run() {
+            state.calls.push({ sql, args: [], type: "run" });
+            return { meta: { changes: run(sql, []) } };
           }
         };
+        return statement;
       },
       async batch(statements) {
         state.batches.push(statements.map((statement) => ({ sql: statement.sql, args: statement.args })));

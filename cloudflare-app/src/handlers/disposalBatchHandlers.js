@@ -74,10 +74,18 @@ export async function handleDisposalBatchRoute(request, env, session, routeInfo)
     const result = await updateDisposalBatch(env, id, values, session, form.get("expectedUpdatedAt"));
     if (!result.ok) return renderDisposalBatchEdit(env, session, id, values, result.message);
   } else if (action === "freeze") {
-    const result = await freezeDisposalBatch(env, id, session);
+    const form = await request.formData();
+    const result = await freezeDisposalBatch(env, id, session, form.get("expectedUpdatedAt"), {
+      confirmedTargetCount: form.get("confirmedTargetCount"),
+      confirmPreview: form.get("confirmPreview")
+    });
     if (!result.ok) return errorPage(result.message, session, 409);
   } else if (action === "start") {
-    const result = await startDisposalBatch(env, id, session);
+    const form = await request.formData();
+    const result = await startDisposalBatch(env, id, session, {
+      confirmedTargetCount: form.get("confirmedTargetCount"),
+      confirmStart: form.get("confirmStart")
+    });
     if (!result.ok) return errorPage(result.message, session, 409);
   } else if (action === "process") {
     const result = await processDisposalBatch(env, id, session);
@@ -100,8 +108,18 @@ async function renderDisposalBatchDetails(request, env, session, id) {
   const batch = await getDisposalBatch(env, id);
   if (!batch) return notFoundPage(session);
   const status = clean(new URL(request.url).searchParams.get("status"));
-  const items = await getDisposalBatchItems(env, id, { status });
-  return disposalBatchDetailPage({ session, batch, items, itemStatus: status });
+  const [items, preview] = await Promise.all([
+    getDisposalBatchItems(env, id, { status }),
+    batch.status === "draft" ? previewDisposalCandidates(env, batch.criteria) : Promise.resolve([])
+  ]);
+  return disposalBatchDetailPage({
+    session,
+    batch,
+    items,
+    preview: preview.slice(0, 200),
+    previewCapped: preview.length > 200,
+    itemStatus: status
+  });
 }
 
 async function renderDisposalBatchEdit(env, session, id, override = null, error = "") {

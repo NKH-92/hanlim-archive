@@ -38,16 +38,22 @@ test("폐기 대상 동결은 스냅샷 INSERT와 상태 변경을 한 batch에 
       return statements.map((_, index) => index === 2 ? { meta: { changes: 1 } } : { meta: { changes: 1 } });
     }
   });
-  const result = await freezeDisposalBatch(env, 11, actor);
+  const result = await freezeDisposalBatch(env, 11, actor, "2026-07-17", {
+    confirmedTargetCount: 2,
+    confirmPreview: true
+  });
   assert.equal(result.ok, true);
   assert.equal(env.state.batches.length, 1);
   const statements = env.state.batches[0];
   assert.equal(statements.length, 3);
   assert.match(statements[0].sql, /INSERT INTO system_audit_logs/);
+  assert.match(statements[0].sql, /b\.updated_at = \?/);
   assert.match(statements[1].sql, /INSERT OR IGNORE INTO disposal_batch_items/);
   assert.match(statements[1].sql, /expected_updated_at/);
   assert.match(statements[1].sql, /d\.updated_at/);
+  assert.match(statements[1].sql, /sync_state = 'current'/);
   assert.match(statements[2].sql, /status = 'frozen'/);
+  assert.match(statements[2].sql, /b\.updated_at = \?|updated_at = \?/);
 });
 
 test("통합 폐기 화면의 선택 문서는 스냅샷과 승인 참조를 원자적으로 동결한다", async () => {
@@ -65,7 +71,9 @@ test("통합 폐기 화면의 선택 문서는 스냅샷과 승인 참조를 원
   const result = await createSelectedDisposalBatch(env, {
     documentIds: [4, 7, 4],
     disposalReason: "보존기간 만료",
-    approvalReference: "QA-APP-2026-041"
+    approvalReference: "QA-APP-2026-041",
+    confirmedTargetCount: 2,
+    confirmDisposal: "1"
   }, actor);
 
   assert.deepEqual(result, { ok: true, id: 31, count: 2 });
@@ -78,6 +86,27 @@ test("통합 폐기 화면의 선택 문서는 스냅샷과 승인 참조를 원
   assert.match(statements[3].sql, /status = 'frozen'/);
   assert.match(statements[3].sql, /THEN \? ELSE NULL/);
   assert.deepEqual(statements[3].args.slice(0, 2), [2, 2]);
+});
+
+test("선택 원본 수량 확인이 없거나 다르면 폐기 캠페인을 만들지 않는다", async () => {
+  const env = recordingEnv();
+
+  const missing = await createSelectedDisposalBatch(env, {
+    documentIds: [4, 7],
+    disposalReason: "보존기간 만료"
+  }, actor);
+  const mismatch = await createSelectedDisposalBatch(env, {
+    documentIds: [4, 7],
+    disposalReason: "보존기간 만료",
+    confirmedTargetCount: 1,
+    confirmDisposal: "1"
+  }, actor);
+
+  assert.equal(missing.ok, false);
+  assert.equal(mismatch.ok, false);
+  assert.match(mismatch.message, /실제 원본 2부/);
+  assert.equal(env.state.calls.length, 0);
+  assert.equal(env.state.batches.length, 0);
 });
 
 test("폐기 이력은 문서 식별자와 사유·승인 참조를 페이지 단위로 조회한다", async () => {
@@ -121,8 +150,57 @@ test("폐기 process는 25건을 token으로 선점하고 10개 이하 집합 st
   assert.match(statements[1].sql, /disposal_batch_item_id/);
   assert.match(statements[2].sql, /document_audit_logs/);
   assert.match(statements[3].sql, /d\.updated_at = i\.expected_updated_at/);
+  assert.match(statements[1].sql, /d\.sync_state = 'current'/);
+  assert.match(statements[2].sql, /d\.sync_state = 'current'/);
+  assert.match(statements[3].sql, /d\.sync_state = 'current'/);
   assert.match(statements[5].sql, /THEN 'changed'/);
+  assert.match(statements[5].sql, /d\.sync_state <> 'current'/);
   assert.doesNotMatch(statements.map((item) => item.sql).join("\n"), /disposeDocument\s*\(/);
+});
+
+test("폐기 process SQL은 active+current+expected-version을 모두 요구한다", async () => {
+  const env = recordingEnv({
+    first() { return disposalBatch({ status: "processing", target_count: 1, pending_count: 1 }); },
+    batch(statements) {
+      return statements.map((_, index) => index === statements.length - 1
+        ? { meta: { changes: 1 }, results: [{ ...disposalBatch({ status: "completed" }) }] }
+        : { meta: { changes: 1 } });
+    }
+  });
+  await processDisposalBatch(env, 11, actor);
+  const sql = env.state.batches[0].map((item) => item.sql).join("\n");
+  assert.match(sql, /d\.status = 'active' AND d\.sync_state = 'current'/);
+  assert.match(sql, /d\.row_version = i\.expected_document_version/);
+});
+
+test("가져오기 process는 저장된 모든 staged 폐기 행을 재검사하고 무권한이면 mutation이 없다", async () => {
+  const limitedActor = {
+    userId: 9,
+    username: "importer",
+    displayName: "가져오기",
+    role: "User",
+    can_manage_documents: 1,
+    can_manage_disposals: 0
+  };
+  const env = recordingEnv({
+    first(sql) {
+      if (sql.includes("json_extract") && sql.includes("disposed")) return { count: 2 };
+      if (sql.includes("FROM document_import_jobs j")) {
+        return {
+          job_id: 4, job_code: "IMP-2026-0004", job_status: "ready", total_count: 2,
+          completed_count: 0, failed_count: 0, item_id: 9, row_number: 2,
+          payload_json: JSON.stringify(importValues({ status: "disposed" })),
+          category_active: 1, slot_active: 1, rack_active: 1, is_single_sided: 0,
+          requested_tag_count: 0, active_tag_count: 0
+        };
+      }
+      return null;
+    }
+  });
+  const result = await processDocumentImportJob(env, 4, limitedActor);
+  assert.equal(result.ok, false);
+  assert.match(result.message || "", /폐기 관리 권한/);
+  assert.equal(env.state.batches.length, 0);
 });
 
 test("CSV 작업 생성은 최대 50행을 한 multi-row staging statement에 저장한다", async () => {
@@ -165,12 +243,20 @@ test("CSV process는 pending 한 행만 token으로 선점하고 문서와 item 
   assert.equal(result.ok, true);
   assert.ok(result.statementCount <= 40);
   const statements = env.state.batches[0];
-  assert.equal(statements.length, 8);
+  assert.equal(statements.length, 10);
   assert.match(statements[0].sql, /status = 'pending'/);
   assert.match(statements[0].sql, /processing_token IS NULL/);
-  assert.match(statements[1].sql, /INSERT INTO documents/);
-  assert.match(statements[4].sql, /created_document_id/);
-  assert.match(statements[5].sql, /ARC-/);
+  // start audit는 claim 직후·item completed/token clear 이전에 와야 한다.
+  assert.match(statements[1].sql, /INSERT INTO system_audit_logs/);
+  assert.ok(statements[1].args.includes("start"));
+  assert.match(statements[1].sql, /i\.status = 'pending'/);
+  assert.match(statements[1].sql, /i\.processing_token = \?/);
+  assert.match(statements[2].sql, /INSERT INTO documents/);
+  const completeIdx = statements.findIndex((statement) => /created_document_id/.test(statement.sql));
+  assert.ok(completeIdx > 1, "item complete must follow start audit");
+  assert.match(statements[completeIdx].sql, /status = 'completed'/);
+  assert.match(statements[completeIdx].sql, /processing_token = NULL/);
+  assert.match(statements[completeIdx + 1].sql, /ARC-/);
 });
 
 test("완료된 CSV 작업의 process 재호출은 새 batch를 만들지 않는다", async () => {

@@ -14,9 +14,23 @@ import {
   createDocumentCreatePlan,
   createDocumentPermanentDeletePlan,
   createDocumentStatusPlan,
-  createDocumentUpdatePlan,
-  executableStatements
+  createDocumentUpdatePlan
 } from "./mutationPlans.js";
+import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
+import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+
+const STALE_DOCUMENT_MESSAGE = "다른 사용자가 문서를 먼저 수정했거나 상태가 변경되었습니다. 새로고침 후 다시 시도하세요.";
+
+async function runDocumentMutationBatch(env, plan) {
+  try {
+    return { ok: true, results: await executeMutationBatch(env, plan) };
+  } catch (error) {
+    if (isExpectedChangeAbort(error)) {
+      return { ok: false, message: STALE_DOCUMENT_MESSAGE, stale: true };
+    }
+    throw error;
+  }
+}
 
 async function getTagsByIds(env, tagIds) {
   const uniqueTagIds = [...new Set(tagIds || [])].filter((id) => Number.isInteger(id) && id > 0);
@@ -277,10 +291,12 @@ export async function createDocument(env, values, actor, actorRole = "User") {
   ];
 
   const plan = createDocumentCreatePlan(statements, statements.length - 3);
-  const result = await env.DB.batch(executableStatements(plan));
-  const createdId = result[0]?.results?.[0]?.id;
+  const ran = await runDocumentMutationBatch(env, plan);
+  if (!ran.ok) throw new Error(ran.message);
+  const createdId = ran.results[0]?.results?.[0]?.id;
 
   if (!createdId) {
+    /** @type {Error & { code?: string }} */
     const error = new Error("같은 문서번호와 개정번호가 이미 등록되어 있습니다.");
     error.code = "DUPLICATE_DOCUMENT";
     throw error;
@@ -304,12 +320,14 @@ export async function updateDocument(env, id, values, actor, actorRole = "Admin"
     return { ok: false, message: "문서 수정 잠금 정보가 없습니다. 새로고침 후 다시 시도하세요." };
   }
 
-  // 기존 내부 호출자가 위치 값을 생략해도 현재 위치를 보존한다. 명시된 값은 감사 스냅샷과
-  // 실제 UPDATE에 동일하게 사용해 기록과 저장 상태가 어긋나지 않게 한다.
+  // 정보 수정은 개정 및 위치 변경 경로가 아니다. 호출자가 값을 조작해 보내더라도
+  // 제·개정 정보와 바인더 위치는 현재 값을 강제로 보존한다.
   const nextValues = {
     ...values,
-    rackSlotId: Number.isInteger(values.rackSlotId) && values.rackSlotId > 0 ? values.rackSlotId : doc.rack_slot_id,
-    rackFace: values.rackFace === "A" || values.rackFace === "B" ? values.rackFace : doc.rack_face
+    revisionNumber: doc.revision_number,
+    revisionDate: doc.revision_date || "",
+    rackSlotId: doc.rack_slot_id,
+    rackFace: doc.rack_face
   };
   const [beforeTags, afterTags, updated] = await Promise.all([
     getDocumentTags(env, id),
@@ -364,9 +382,10 @@ export async function updateDocument(env, id, values, actor, actorRole = "Admin"
   ];
 
   const plan = createDocumentUpdatePlan(statements, uniqueTagIds.length, guardClause);
-  const results = await env.DB.batch(executableStatements(plan));
-  if (!hasChanged(results[results.length - 1])) {
-    return { ok: false, message: "다른 사용자가 문서를 먼저 수정했거나 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  const ran = await runDocumentMutationBatch(env, plan);
+  if (!ran.ok) return ran;
+  if (!hasChanged(ran.results[ran.results.length - 2] || ran.results.at(-1))) {
+    return { ok: false, message: STALE_DOCUMENT_MESSAGE };
   }
 
   return { ok: true };
@@ -419,8 +438,9 @@ async function transitionDocumentStatus(env, id, spec, actor, actorRole) {
     `).bind(...guardBinds));
 
   const plan = createDocumentStatusPlan(spec.auditAction, statements, guardClause);
-  const results = await env.DB.batch(executableStatements(plan));
-  if (!hasChanged(results[results.length - 1])) {
+  const ran = await runDocumentMutationBatch(env, plan);
+  if (!ran.ok) return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  if (!hasChanged(ran.results[ran.results.length - 2] || ran.results.at(-1))) {
     return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
   }
 
@@ -573,7 +593,7 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
   }
 
   const plan = createDocumentBulkDisposePlan(statements, activeIds.length);
-  const results = await env.DB.batch(executableStatements(plan));
+  const results = await executeMutationBatch(env, plan);
   let disposed = 0;
   for (let index = 0; index < activeIds.length; index += 1) {
     const updateResult = results[index * 3 + 2];
@@ -597,6 +617,17 @@ export async function restoreDocument(env, id, actor, reason, actorRole = "Admin
   if (!restoreReason) {
     return { ok: false, message: "폐기 해제 사유를 입력해 주세요." };
   }
+  const revisionReplacement = await env.DB.prepare(`
+    SELECT new_document_id
+    FROM document_revision_links
+    WHERE previous_document_id = ?
+  `).bind(id).first();
+  if (revisionReplacement) {
+    return {
+      ok: false,
+      message: "개정으로 대체된 이전본은 일반 폐기 취소를 할 수 없습니다. 개정 이력에서 현재본을 확인하세요."
+    };
+  }
   return transitionDocumentStatus(env, id, {
     fromStatus: "disposed",
     toStatus: "active",
@@ -617,6 +648,16 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
 
   if (doc.status !== "disposed") {
     return { ok: false, message: "보관중 문서는 완전삭제할 수 없습니다. 먼저 폐기 처리해야 합니다." };
+  }
+
+  const revisionLink = await env.DB.prepare(`
+    SELECT id
+    FROM document_revision_links
+    WHERE previous_document_id = ? OR new_document_id = ?
+    LIMIT 1
+  `).bind(id, id).first();
+  if (revisionLink) {
+    return { ok: false, message: "개정 이력에 연결된 문서는 완전삭제할 수 없습니다." };
   }
 
   // 하드삭제는 ON DELETE CASCADE로 폐기 이력을 함께 파괴한다. GMP 기록 보존을 위해
@@ -649,8 +690,9 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
   ];
 
   const plan = createDocumentPermanentDeletePlan(statements, guardClause);
-  const results = await env.DB.batch(executableStatements(plan));
-  if (!hasChanged(results[results.length - 1])) {
+  const ran = await runDocumentMutationBatch(env, plan);
+  if (!ran.ok) return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  if (!hasChanged(ran.results[ran.results.length - 2] || ran.results.at(-1))) {
     return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
   }
 

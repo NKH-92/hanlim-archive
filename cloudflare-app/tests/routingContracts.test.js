@@ -152,7 +152,8 @@ function sessionEnv(mustChangePassword) {
                   can_manage_sets: 0,
                   can_manage_masters: 0,
                   can_manage_users: 0,
-                  can_view_audit: 0
+                  can_view_audit: 0,
+                  can_apply_document_snapshots: 0
                 };
               }
             };

@@ -35,6 +35,35 @@ export function createDocumentMovePlan(statements, guard) {
   return plan.expectChanged("document.location.update");
 }
 
+export function createDocumentRevisionPlan(statements, guard) {
+  const names = [
+    "document.revision.insert",
+    "document.revision.tags.copy",
+    "document.revision.link",
+    "document.revision.disposal-log",
+    "document.revision.audit.previous",
+    "document.revision.audit.new",
+    "system.audit.revision",
+    "document.revision.identity.finalize",
+    "document.revision.previous.dispose"
+  ];
+  const plan = createBatchPlan("documents.revise")
+    .withBudget(FREE_TIER_BUDGET.maxD1StatementsPerRequest);
+  statements.forEach((statement, index) => plan.step(names[index], statement, {
+    guard,
+    auditEventId: index === 4
+      ? "document.revision_superseded"
+      : index === 5
+        ? "document.revision_created"
+        : index === 6
+          ? "system.document.revision"
+          : null
+  }));
+  return plan
+    .expectChanged("document.revision.insert")
+    .expectChanged("document.revision.previous.dispose");
+}
+
 export function createDocumentStatusPlan(action, statements, guard) {
   const plan = createBatchPlan(`documents.${action}`).withBudget(4)
     .step(`document.disposal-log.${action}`, statements[0], { guard })
@@ -70,6 +99,11 @@ export function createDocumentPermanentDeletePlan(statements, guard) {
     .withBudget(3);
 }
 
-export function executableStatements(plan) {
-  return plan.execution().statements;
+export function executableStatements(plan, database = null) {
+  // prepare가 있으면 expectChanged 직후 in-transaction abort SQL을 삽입한다.
+  // post-batch hasChanged만으로는 선행 INSERT rollback을 보장할 수 없다.
+  const prepare = database && typeof database.prepare === "function"
+    ? (sql) => database.prepare(sql)
+    : null;
+  return plan.execution(prepare).statements;
 }

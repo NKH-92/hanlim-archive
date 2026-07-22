@@ -1,0 +1,47 @@
+name: Provision Independent Admin
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d1-production-maintenance
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    name: guarded production admin provisioning
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+    defaults:
+      run:
+        working-directory: cloudflare-app
+    env:
+      CLOUDFLARE_ACCOUNT_ID: e2b9c1d94dc8f0f6e349bfbfb36cfa30
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ENV: production
+      D1_PROVISION_ENV: production
+      D1_ADMIN_CHECK_ENV: production
+      D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
+      ADMIN_PROVISION_USERNAME: ${{ secrets.ADMIN_PROVISION_USERNAME }}
+      ADMIN_PROVISION_DISPLAY_NAME: ${{ secrets.ADMIN_PROVISION_DISPLAY_NAME }}
+      ADMIN_PROVISION_PASSWORD: ${{ secrets.ADMIN_PROVISION_PASSWORD }}
+      ADMIN_PROVISION_CONFIRM: PROVISION:production:1262ca00-b431-490c-aad2-539d77d4f73f
+      ADMIN_PROVISION_OPERATION_ID: github-run-${{ github.run_id }}
+      D1_ADMIN_CHECK_PHASE: pre-migration
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cloudflare-app/package-lock.json
+      - run: npm ci
+      - name: Provision a new independent administrator
+        run: npm run admin:provision:remote
+      - name: Verify administrator readiness
+        run: npm run admin:check:remote

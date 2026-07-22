@@ -1,23 +1,32 @@
 import { verifyPassword } from "./passwords.js";
 import { normalizeRole } from "./shared.js";
 
-export async function validateUser(env, username, password) {
+// 존재하지 않거나 승인되지 않은 계정도 승인 계정과 같은 PBKDF2 작업을 수행한다.
+const DUMMY_PASSWORD_RECORD = Object.freeze({
+  salt: "AAAAAAAAAAAAAAAAAAAAAA",
+  hash: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+});
+
+export async function validateUser(env, username, password, { verifyPasswordFn = verifyPassword } = {}) {
   const normalizedUsername = username.trim();
 
   const user = await env.DB.prepare(`
-    SELECT username, display_name, password_salt, password_hash, status, role,
-           must_change_password
+    SELECT *
     FROM app_users
     WHERE username = ?
     LIMIT 1
   `).bind(normalizedUsername).first();
 
-  if (!user || user.status !== "approved") {
-    return null;
-  }
-
-  const validPassword = await verifyPassword(password, user.password_salt, user.password_hash);
-  if (!validPassword) {
+  // 보안 검토 대상은 승인·비밀번호가 맞아도 로그인하지 않는다(fail-closed).
+  // pre-0034 스키마에는 security_review_required가 없을 수 있다.
+  const canAuthenticate = Boolean(
+    user && user.status === "approved" && Number(user.security_review_required || 0) !== 1
+  );
+  const passwordRecord = canAuthenticate
+    ? { salt: user.password_salt, hash: user.password_hash }
+    : DUMMY_PASSWORD_RECORD;
+  const validPassword = await verifyPasswordFn(password, passwordRecord.salt, passwordRecord.hash);
+  if (!canAuthenticate || !validPassword) {
     return null;
   }
 
@@ -25,6 +34,7 @@ export async function validateUser(env, username, password) {
     username: user.username,
     displayName: user.display_name,
     role: normalizeRole(user.role),
-    mustChangePassword: Number(user.must_change_password) === 1
+    mustChangePassword: Number(user.must_change_password) === 1,
+    sessionEpoch: Number(user.session_epoch || 0)
   };
 }

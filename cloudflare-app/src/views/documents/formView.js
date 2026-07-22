@@ -15,18 +15,21 @@ export function documentFormPage({
   selectedTags = [],
   error = "",
   validation = null,
-  showLocation = true
+  showLocation = true,
+  mode = "create"
 }) {
   const normalizedValidation = normalizeValidation(validation, error);
   const cancelUrl = formCancelUrl(action, values);
-  const submitLabel = title === "문서 수정" ? "저장" : "등록";
+  const isInformationEdit = mode === "information";
+  const submitLabel = isInformationEdit ? "정보 저장" : "등록";
   const noteLabel = title === "새 개정 등록" ? "필요한 변경사항" : "비고";
   return page(title, `
     <section class="page-head"><h1>${escapeHtml(title)}</h1></section>
     <section class="document-form-layout" data-document-form-layout>
-      <form method="post" action="${escapeHtml(action)}" class="panel document-form" data-document-form>
+      <form method="post" action="${escapeHtml(action)}" class="panel document-form" data-document-form data-current-revision="${escapeHtml(formValue(values, "revisionNumber", "revision_number"))}">
         ${formErrorSummary(normalizedValidation, title)}
         ${duplicateNotice(normalizedValidation.duplicate)}
+        <p class="duplicate-check-status muted" data-duplicate-check-status role="status" aria-live="polite"></p>
         ${formValue(values, "returnTo", "return_to") ? `<input type="hidden" name="returnTo" value="${escapeHtml(formValue(values, "returnTo", "return_to"))}">` : ""}
         ${formValue(values, "updatedAt", "updated_at") ? `<input type="hidden" name="expectedUpdatedAt" value="${escapeHtml(formValue(values, "updatedAt", "updated_at"))}">` : ""}
         ${formValue(values, "rowVersion", "row_version") ? `<input type="hidden" name="expectedRowVersion" value="${escapeHtml(formValue(values, "rowVersion", "row_version"))}">` : ""}
@@ -36,7 +39,9 @@ export function documentFormPage({
           <legend>문서 정보</legend>
           <div class="form-grid two-column">
             ${textField("documentNumber", "문서번호", formValue(values, "documentNumber", "document_number"), normalizedValidation, { required: true, mono: true })}
-            ${textField("revisionNumber", "개정번호", formValue(values, "revisionNumber", "revision_number") || (title === "새 개정 등록" ? "" : "Rev.0"), normalizedValidation, { required: true })}
+            ${isInformationEdit
+              ? lockedField("개정번호", formValue(values, "revisionNumber", "revision_number"))
+              : textField("revisionNumber", "개정번호", formValue(values, "revisionNumber", "revision_number") || "Rev.0", normalizedValidation, { required: true })}
           </div>
           ${textField("documentName", "문서명", formValue(values, "documentName", "document_name"), normalizedValidation, { required: true })}
           <label for="field-categoryId">대분류 <em>*</em>
@@ -56,7 +61,9 @@ export function documentFormPage({
         <fieldset class="form-section">
           <legend>보존 정보</legend>
           <div class="form-grid two-column">
-            ${textField("revisionDate", "제/개정일", formValue(values, "revisionDate", "revision_date"), normalizedValidation, { required: true, type: "date" })}
+            ${isInformationEdit
+              ? lockedField("제/개정일", formValue(values, "revisionDate", "revision_date") || "미입력")
+              : textField("revisionDate", "제/개정일", formValue(values, "revisionDate", "revision_date"), normalizedValidation, { required: true, type: "date" })}
             ${textField("disposalDueYear", "폐기 예정 년도", formValue(values, "disposalDueYear", "disposal_due_year"), normalizedValidation, { required: true, type: "number", extra: 'min="1900" max="9999" step="1"' })}
           </div>
         </fieldset>
@@ -82,13 +89,13 @@ export function documentFormPage({
       </form>
 
       <details class="panel form-review" open data-form-review>
-        <summary>등록 내용 확인</summary>
+        <summary>${isInformationEdit ? "정보 수정 내용 확인" : "등록 내용 확인"}</summary>
         <dl>
           <div><dt>문서번호</dt><dd class="mono" data-summary="documentNumber">-</dd></div>
-          <div><dt>개정번호</dt><dd data-summary="revisionNumber">-</dd></div>
+          <div><dt>개정번호</dt><dd data-summary="revisionNumber">${isInformationEdit ? escapeHtml(formValue(values, "revisionNumber", "revision_number")) : "-"}</dd></div>
           <div><dt>문서명</dt><dd data-summary="documentName">-</dd></div>
           <div><dt>대분류</dt><dd data-summary="categoryId">-</dd></div>
-          <div><dt>제/개정일</dt><dd data-summary="revisionDate">-</dd></div>
+          <div><dt>제/개정일</dt><dd data-summary="revisionDate">${isInformationEdit ? escapeHtml(formValue(values, "revisionDate", "revision_date") || "미입력") : "-"}</dd></div>
           <div><dt>폐기 예정</dt><dd data-summary="disposalDueYear">-</dd></div>
           ${showLocation ? `<div><dt>보관 위치</dt><dd class="mono" data-summary="location">-</dd></div>` : ""}
         </dl>
@@ -110,6 +117,10 @@ function textField(name, label, value, validation, { required = false, mono = fa
   return `<div class="field-group"><label for="field-${name}">${escapeHtml(label)}${required ? " <em>*</em>" : ""}<input id="field-${name}" class="${mono ? "mono-input" : ""}" type="${type}" name="${name}" value="${escapeHtml(value)}" ${required ? "required" : ""} ${extra} ${errorAttrs(name, validation)}></label>${fieldError(name, validation)}</div>`;
 }
 
+function lockedField(label, value) {
+  return `<div class="field-group locked-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "-")}</strong><small>문서 개정에서만 변경할 수 있습니다.</small></div>`;
+}
+
 function errorAttrs(name, validation) {
   return validation.fieldErrors?.[name] ? `aria-invalid="true" aria-describedby="error-${name}"` : "";
 }
@@ -124,7 +135,7 @@ function formErrorSummary(validation, title) {
   const formErrors = validation.formErrors || [];
   const total = entries.length + formErrors.length;
   if (!total) return "";
-  return `<div class="form-error-summary" role="alert" tabindex="-1" data-error-summary><strong>${title === "문서 수정" ? "문서를 수정하지 못했습니다." : "문서를 등록하지 못했습니다."}</strong><p>아래 ${total}개 항목을 확인하세요.</p><ul>${entries.map(([name, message]) => `<li><a href="#field-${escapeHtml(name)}">${escapeHtml(message)}</a></li>`).join("")}${formErrors.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul></div>`;
+  return `<div class="form-error-summary" role="alert" tabindex="-1" data-error-summary><strong>${title === "정보 수정" ? "문서 정보를 수정하지 못했습니다." : "문서를 등록하지 못했습니다."}</strong><p>아래 ${total}개 항목을 확인하세요.</p><ul>${entries.map(([name, message]) => `<li><a href="#field-${escapeHtml(name)}">${escapeHtml(message)}</a></li>`).join("")}${formErrors.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul></div>`;
 }
 
 function duplicateNotice(duplicate) {
@@ -148,7 +159,7 @@ function documentFormScript(showLocation) {
     };
     var updateSummary = function () {
       ['documentNumber', 'revisionNumber', 'documentName', 'revisionDate'].forEach(function (name) {
-        var input = form.elements[name]; summary(name, input ? input.value.trim() : '');
+        var input = form.elements[name]; if (input) summary(name, input.value.trim());
       });
       var year = form.elements.disposalDueYear ? form.elements.disposalDueYear.value.trim() : '';
       summary('disposalDueYear', year ? year + '년' : '');
@@ -167,28 +178,36 @@ function documentFormScript(showLocation) {
     var numberInput = form.elements.documentNumber;
     var revisionInput = form.elements.revisionNumber;
     var notice = document.querySelector('[data-duplicate-notice]');
+    var duplicateStatus = document.querySelector('[data-duplicate-check-status]');
     var timer = 0;
     var requestId = 0;
     var checkDuplicate = function () {
       clearTimeout(timer);
       var current = ++requestId;
       var number = numberInput ? numberInput.value.trim() : '';
-      var revision = revisionInput ? revisionInput.value.trim() : '';
-      if (!number || !revision || !notice) { if (notice) notice.hidden = true; return; }
+      var revision = revisionInput ? revisionInput.value.trim() : (form.dataset.currentRevision || '');
+      if (!number || !revision || !notice) { if (notice) notice.hidden = true; if (duplicateStatus) duplicateStatus.textContent = ''; return; }
       timer = setTimeout(function () {
+        if (duplicateStatus) duplicateStatus.textContent = '중복 문서를 확인하는 중입니다.';
         var params = new URLSearchParams({ documentNumber: number, revisionNumber: revision });
         var editMatch = form.getAttribute('action').match(/^\\/documents\\/(\\d+)\\/edit$/);
         if (editMatch) params.set('excludeId', editMatch[1]);
         fetch('/api/documents/duplicate?' + params.toString(), { headers: { Accept: 'application/json' } })
           .then(function (response) { if (!response.ok) throw new Error('duplicate-check'); return response.json(); })
           .then(function (result) {
-            if (current !== requestId || !result.exists || !result.document) { notice.hidden = true; return; }
+            if (current !== requestId) return;
+            if (duplicateStatus) duplicateStatus.textContent = result.exists ? '동일 문서가 확인되었습니다.' : '등록 가능한 문서번호와 개정번호입니다.';
+            if (!result.exists || !result.document) { notice.hidden = true; return; }
             notice.hidden = false;
             notice.querySelector('[data-duplicate-code]').textContent = result.document.documentNumber + ' / ' + result.document.revisionNumber;
             notice.querySelector('[data-duplicate-name]').textContent = result.document.documentName;
             notice.querySelector('[data-duplicate-status]').textContent = result.document.status === 'active' ? '보관중' : '폐기';
             notice.querySelector('[data-duplicate-link]').href = '/documents/' + result.document.id;
-          }).catch(function () { if (current === requestId) notice.hidden = true; });
+          }).catch(function () {
+            if (current !== requestId) return;
+            notice.hidden = true;
+            if (duplicateStatus) duplicateStatus.textContent = '중복 확인을 완료하지 못했습니다. 제출 시 서버에서 다시 확인합니다.';
+          });
       }, 300);
     };
     if (numberInput) numberInput.addEventListener('input', checkDuplicate);

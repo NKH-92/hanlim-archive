@@ -2,6 +2,7 @@
 // 대량 작업은 이 값을 넘기지 않고 여러 요청으로 나누며, UI와 테스트도 같은 값을 쓴다.
 export const FREE_TIER_BUDGET = Object.freeze({
   maxD1StatementsPerRequest: 40,
+  maxD1BoundParametersPerStatement: 100,
   legacyBulkDisposeMaxItems: 10,
   disposalBatchMaxItems: 200,
   disposalProcessChunkSize: 25,
@@ -9,6 +10,9 @@ export const FREE_TIER_BUDGET = Object.freeze({
   csvImportProcessChunkSize: 1,
   excelSnapshotMaxItems: 1000,
   excelSnapshotStageChunkSize: 50,
+  excelSnapshotMaxFileBytes: 10 * 1024 * 1024,
+  excelSnapshotMaxZipEntries: 500,
+  excelSnapshotMaxZipUncompressedBytes: 50 * 1024 * 1024,
   documentPageSize: 30,
   searchIndexWarningCount: 4000,
   searchIndexReviewCount: 5000

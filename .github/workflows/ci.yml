@@ -23,11 +23,17 @@ jobs:
         working-directory: cloudflare-app
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: cloudflare-app/package-lock.json
+      - name: Verify released migrations against trusted base
+        env:
+          RELEASED_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/check-released-baseline-history.mjs --base-ref "$RELEASED_BASE_SHA"
       - run: npm ci
       - name: Verify source, contracts, migrations, and tests
         run: npm run verify
@@ -39,6 +45,9 @@ jobs:
       - name: Migration and schema evidence
         run: npm run release:evidence -- --out release-evidence
       - name: Worker dry-run and bundle report
+        env:
+          CLOUDFLARE_ENV: production
+          D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
         run: |
           set -o pipefail
           npm run deploy:dry 2>&1 | tee release-evidence/bundle-report.txt

@@ -13,6 +13,8 @@ import { createSystemAuditStatement } from "../domains/audit/index.js";
 import { DEFAULT_FLOOR_PLAN_REGIONS, buildFloorPlanLayout } from "../domains/racks/domain/floorPlan.js";
 import { presentSlotOption } from "../domains/racks/web/presenters.js";
 import { createRackConfigurationPlan, createRackCreatePlan, createRackResizePlan } from "../domains/racks/infrastructure/rackMutationPlans.js";
+import { executeMutationBatch } from "../platform/d1/requestGateway.js";
+import { isExpectedChangeAbort } from "../platform/d1/expectedChange.js";
 
 export { DEFAULT_FLOOR_PLAN_REGIONS, buildFloorPlanLayout };
 
@@ -58,6 +60,7 @@ export async function getRackSummaries(env) {
       r.is_active,
       r.column_count,
       r.shelf_count,
+      r.row_version,
       COUNT(d.id) AS document_count,
       SUM(CASE WHEN d.status = 'active' THEN 1 ELSE 0 END) AS active_document_count
     FROM racks r
@@ -73,10 +76,19 @@ export async function getRackSummaries(env) {
 
 export async function getRackDetails(env, id) {
   return env.DB.prepare(`
-    SELECT id, zone_number, rack_number, code, name, description, is_single_sided, is_active, column_count, shelf_count
+    SELECT id, zone_number, rack_number, code, name, description, is_single_sided, is_active, column_count, shelf_count, row_version
     FROM racks
     WHERE id = ?
   `).bind(id).first();
+}
+
+export async function getRackConfigurationVersion(env) {
+  const row = await env.DB.prepare(`
+    SELECT current_version
+    FROM document_sync_state
+    WHERE id = 1
+  `).first();
+  return Number(row?.current_version || 0);
 }
 
 export async function getRackDocuments(env, rackId) {
@@ -174,8 +186,11 @@ export async function upsertRack(env, values, actor = {}) {
   });
 
   if (values.id) {
+    const expectedRowVersion = positiveVersion(values.expectedRowVersion ?? values.rowVersion);
+    if (!expectedRowVersion) throw staleRackError();
     const before = await getRackDetails(env, values.id);
     if (!before) throw new Error("랙을 찾을 수 없습니다.");
+    if (Number(before.row_version) !== expectedRowVersion) throw staleRackError();
     const blocked = await env.DB.prepare(`
       SELECT COUNT(*) AS count
       FROM documents d
@@ -196,6 +211,7 @@ export async function upsertRack(env, values, actor = {}) {
     // 같은 축소 가능 조건으로 다시 가드한다. 이후 슬롯 문장은 수정된 구조 값을 확인한다.
     const resizeGuardSql = `FROM racks target
       WHERE target.id = ?
+        AND target.row_version = ?
         AND NOT EXISTS (
           SELECT 1
           FROM documents d
@@ -203,7 +219,7 @@ export async function upsertRack(env, values, actor = {}) {
           WHERE rs.rack_id = target.id
             AND (rs.column_number > ? OR rs.shelf_number > ?)
         )`;
-    const resizeGuardBinds = [values.id, values.columnCount, values.shelfCount];
+    const resizeGuardBinds = [values.id, expectedRowVersion, values.columnCount, values.shelfCount];
     const resizeStatements = [
       createSystemAuditStatement(env, {
         entityType: "rack",
@@ -226,8 +242,9 @@ export async function upsertRack(env, values, actor = {}) {
           is_active = ?,
           column_count = ?,
           shelf_count = ?,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+          updated_at = CURRENT_TIMESTAMP,
+          row_version = row_version + 1
+        WHERE id = ? AND row_version = ?
           AND NOT EXISTS (
             SELECT 1
             FROM documents d
@@ -246,13 +263,20 @@ export async function upsertRack(env, values, actor = {}) {
         values.columnCount,
         values.shelfCount,
         values.id,
+        expectedRowVersion,
         values.columnCount,
         values.shelfCount
       ),
       ...createRackSlotSyncStatements(env, values.id, values.columnCount, values.shelfCount)
     ];
     const resizePlan = createRackResizePlan(resizeStatements, `rack:${values.id}:${values.columnCount}x${values.shelfCount}`);
-    const results = await env.DB.batch(resizePlan.execution().statements);
+    let results;
+    try {
+      results = await executeMutationBatch(env, resizePlan);
+    } catch (error) {
+      if (isExpectedChangeAbort(error)) throw staleRackError();
+      throw error;
+    }
     if (!Number(results[1]?.meta?.changes || 0)) throw new Error("랙을 찾을 수 없습니다.");
 
     return values.id;
@@ -295,7 +319,7 @@ export async function upsertRack(env, values, actor = {}) {
     createRackSlotInsertStatementByCode(env, code, values.columnCount, values.shelfCount)
   ];
   const createPlan = createRackCreatePlan(createStatements, `rack:${code}`);
-  const results = await env.DB.batch(createPlan.execution().statements);
+  const results = await executeMutationBatch(env, createPlan);
   const id = Number(results[0]?.results?.[0]?.id || results[0]?.meta?.last_row_id || 0);
   if (!id) throw new Error("생성한 랙을 확인할 수 없습니다.");
 
@@ -406,11 +430,15 @@ function createRackSlotInsertStatementByCode(env, code, columnCount, shelfCount)
   `).bind(columnCount, shelfCount, code);
 }
 
-export async function configureRackCounts(env, counts, actor = {}) {
+export async function configureRackCounts(env, counts, actor = {}, expectedVersion = 0) {
   for (const zone of RACK_ZONES) {
     if (!Number.isInteger(counts[zone]) || counts[zone] < 0 || counts[zone] > MAX_RACKS_PER_ZONE) {
       return { ok: false, message: `구역별 랙 수는 0~${MAX_RACKS_PER_ZONE} 사이여야 합니다.` };
     }
+  }
+  const expectedConfigurationVersion = positiveVersion(expectedVersion);
+  if (!expectedConfigurationVersion) {
+    return { ok: false, message: "랙 구성이 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요." };
   }
 
   const usedRows = await env.DB.prepare(`
@@ -440,6 +468,11 @@ export async function configureRackCounts(env, counts, actor = {}) {
   for (const row of beforeCounts.results ?? []) before[row.zone_number] = Number(row.count || 0);
 
   const configurationStatements = [
+    env.DB.prepare(`
+      UPDATE document_sync_state
+      SET current_version = current_version
+      WHERE id = 1 AND current_version = ?
+    `).bind(expectedConfigurationVersion),
     createSystemAuditStatement(env, {
       entityType: "rack_configuration",
       entityReference: "zones-1-3",
@@ -498,7 +531,8 @@ export async function configureRackCounts(env, counts, actor = {}) {
             WHEN zone_number = 3 AND rack_number <= ? THEN 1
             ELSE 0
           END,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = CURRENT_TIMESTAMP,
+          row_version = row_version + 1
       WHERE zone_number IN (1, 2, 3)
         AND rack_number BETWEEN 1 AND ?
     `).bind(counts[1], counts[2], counts[3], MAX_RACKS_PER_ZONE),
@@ -545,7 +579,14 @@ export async function configureRackCounts(env, counts, actor = {}) {
     `).bind(DEFAULT_RACK_COLUMNS, DEFAULT_RACK_SHELVES, MAX_RACKS_PER_ZONE)
   ];
   const configurationPlan = createRackConfigurationPlan(configurationStatements);
-  await env.DB.batch(configurationPlan.execution().statements);
+  try {
+    await executeMutationBatch(env, configurationPlan);
+  } catch (error) {
+    if (isExpectedChangeAbort(error)) {
+      return { ok: false, message: "랙 구성이 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    }
+    throw error;
+  }
 
   return { ok: true };
 }
@@ -562,4 +603,16 @@ function rackAuditSnapshot(row = {}) {
     columnCount: Number(row.column_count || 0),
     shelfCount: Number(row.shelf_count || 0)
   };
+}
+
+function positiveVersion(value) {
+  const version = Number(value);
+  return Number.isInteger(version) && version > 0 ? version : 0;
+}
+
+function staleRackError() {
+  return Object.assign(
+    new Error("랙이 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요."),
+    { code: "STALE_VERSION" }
+  );
 }

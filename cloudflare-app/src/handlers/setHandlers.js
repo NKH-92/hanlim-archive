@@ -67,7 +67,8 @@ export async function handleSaveSet(request, env, session, id = 0) {
   const values = {
     id,
     name: clean(form.get("name")),
-    description: clean(form.get("description"))
+    description: clean(form.get("description")),
+    ...(id ? { expectedRowVersion: Number(form.get("expectedRowVersion")) } : {})
   };
   const result = await upsertDocumentSet(env, values, session);
 
@@ -124,7 +125,8 @@ export async function handleSetRoute(request, env, session, routeInfo) {
       return denied;
     }
 
-    const result = await deleteDocumentSet(env, id, session);
+    const form = await request.formData();
+    const result = await deleteDocumentSet(env, id, session, Number(form.get("expectedRowVersion")));
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
@@ -144,7 +146,7 @@ export async function handleSetRoute(request, env, session, routeInfo) {
 
     const form = await request.formData();
     const documentId = Number(form.get("documentId"));
-    const result = await removeDocumentFromSet(env, id, documentId, session);
+    const result = await removeDocumentFromSet(env, id, documentId, session, Number(form.get("expectedRowVersion")));
 
     if (!result.ok) {
       return renderSetDetails(env, session, id, { error: result.message });
@@ -157,7 +159,7 @@ export async function handleSetRoute(request, env, session, routeInfo) {
     const denied = requireManageSets(session);
     if (denied) return denied;
     const form = await request.formData();
-    const result = await setDocumentSetLock(env, id, action === "lock", form.get("reason"), session);
+    const result = await setDocumentSetLock(env, id, action === "lock", form.get("reason"), session, Number(form.get("expectedRowVersion")));
     if (!result.ok) {
       return renderSetDetails(env, session, id, { error: result.message });
     }
@@ -178,9 +180,12 @@ async function handleAddSetDocuments(request, env, session, setId) {
 
   const form = await request.formData();
   const documentId = Number(form.get("documentId"));
+  const expectedRowVersion = Number(form.get("expectedRowVersion"));
 
   if (documentId) {
-    const { added } = await addDocumentsToSet(env, setId, [documentId], session);
+    const result = await addDocumentsToSet(env, setId, [documentId], session, expectedRowVersion);
+    if (result.message) return renderSetDetails(env, session, setId, { error: result.message });
+    const { added } = result;
     return renderSetDetails(env, session, setId, {
       addQuery: clean(form.get("add-q")),
       addResult: { added, missing: [] }
@@ -198,7 +203,9 @@ async function handleAddSetDocuments(request, env, session, setId) {
   }
 
   const { documents, missing } = await findDocumentsByNumbers(env, numbers);
-  const { added } = await addDocumentsToSet(env, setId, documents.map((document) => document.id), session);
+  const result = await addDocumentsToSet(env, setId, documents.map((document) => document.id), session, expectedRowVersion);
+  if (result.message) return renderSetDetails(env, session, setId, { error: result.message });
+  const { added } = result;
 
   return renderSetDetails(env, session, setId, { addResult: { added, missing } });
 }

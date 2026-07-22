@@ -15,3 +15,4 @@ export {
   findDocumentsByNumbers,
   loadDocumentFormOptions
 } from "../../../data/documentsData.js";
+export { getDocumentRevisionHistory, getDocumentRevisionLink } from "./revision.js";

@@ -15,8 +15,8 @@ export function createRackCreatePlan(statements, guard) {
 }
 
 export function createRackConfigurationPlan(statements) {
-  const names = ["rack-config.audit", "rack-config.ensure-racks", "rack-config.activate-range", "rack-config.ensure-slots"];
-  const plan = createBatchPlan("racks.configure").withBudget(4);
-  statements.forEach((statement, index) => plan.step(names[index], statement, { guard: "zones:1-3", auditEventId: index === 0 ? "rack_configuration.update" : null }));
-  return plan;
+  const names = ["rack-config.version-claim", "rack-config.audit", "rack-config.ensure-racks", "rack-config.activate-range", "rack-config.ensure-slots"];
+  const plan = createBatchPlan("racks.configure").withBudget(5);
+  statements.forEach((statement, index) => plan.step(names[index], statement, { guard: "zones:1-3", auditEventId: index === 1 ? "rack_configuration.update" : null }));
+  return plan.expectChanged("rack-config.version-claim");
 }

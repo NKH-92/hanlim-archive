@@ -1,3 +1,4 @@
+import { PERMISSION_LABELS } from "../permissions.js";
 import { escapeHtml } from "../ui/html/escape.js";
 import { alertDanger, page } from "./layout.js";
 
@@ -11,45 +12,75 @@ const STATUS_LABELS = Object.freeze({
 });
 
 const ACTION_LABELS = Object.freeze({
-  create: "추가",
+  create: "신규",
   update: "변경",
   unchanged: "유지",
   staged: "검증 전"
 });
 
-export function documentSnapshotPage({ session, state, snapshots = [], error = "" }) {
+const FLAG_LABELS = Object.freeze({
+  CREATE: "신규",
+  METADATA: "일반정보",
+  MOVE: "위치",
+  DISPOSE: "폐기",
+  RESTORE: "폐기 해제",
+  TAG_CHANGE: "태그",
+  REINCLUDE: "재포함",
+  UNCHANGED: "유지"
+});
+
+export function documentSnapshotPage({ session, state, snapshots = [], error = "", applyMode = "admin-only" }) {
   const rows = snapshots.map((snapshot) => `
     <tr>
-      <td class="mono"><a href="/document-snapshots/${Number(snapshot.id)}">${escapeHtml(snapshot.snapshot_code)}</a></td>
-      <td>${escapeHtml(snapshot.source_name)}</td>
-      <td>${snapshotStatus(snapshot.status)}</td>
-      <td>${number(snapshot.total_count)}</td>
-      <td>${number(snapshot.create_count)} / ${number(snapshot.update_count)} / ${number(snapshot.exclude_count)}</td>
-      <td>${escapeHtml(snapshot.created_by_name)}</td>
-      <td>${escapeHtml(snapshot.created_at)}</td>
+      <td class="mono" data-label="작업 번호"><a href="/document-snapshots/${Number(snapshot.id)}">${escapeHtml(snapshot.snapshot_code)}</a></td>
+      <td data-label="파일">${escapeHtml(snapshot.source_name)}</td>
+      <td data-label="상태">${snapshotStatus(snapshot.status)}</td>
+      <td data-label="문서 수">${number(snapshot.total_count)}</td>
+      <td data-label="추가 / 변경 / 제외">${number(snapshot.create_count)} / ${number(snapshot.update_count)} / ${number(snapshot.exclude_count)}</td>
+      <td data-label="작업자">${escapeHtml(snapshot.created_by_name)}</td>
+      <td data-label="생성일">${escapeHtml(snapshot.created_at)}</td>
     </tr>
   `).join("");
-  return page("엑셀 문서대장 관리", `
+  return page("리스트 동기화", `
     <script src="/assets/jszip.min.js"></script>
     <script src="/assets/exceljs.min.js"></script>
     <section class="page-head">
-      <div><h1>엑셀 문서대장 관리</h1><p class="muted">엑셀 파일 한 건을 검증한 뒤 현재 문서대장 전체와 동기화합니다.</p></div>
+      <div><h1>리스트 동기화</h1><p class="muted">엑셀 파일을 기준으로 전체 문서 리스트를 검증하고 안전하게 동기화합니다.</p></div>
       <button type="button" class="button secondary" data-excel-export><i class="fa-solid fa-file-excel"></i> 현재 대장 엑셀 추출</button>
     </section>
     ${error ? alertDanger(error) : ""}
-    <section class="panel snapshot-intro" data-excel-snapshot data-current-version="${Number(state.currentVersion)}">
-      <div class="snapshot-version"><span>현재 대장 버전</span><strong>${number(state.currentVersion)}</strong><small>${escapeHtml(state.updatedAt || "초기 상태")}</small></div>
+    <section class="operation-hero workflow-hero" aria-label="현재 문서대장 버전">
+      <div><p class="hero-kicker">Safe snapshot sync</p><h2>현재 대장 버전 ${number(state.currentVersion)}</h2><p>${escapeHtml(state.updatedAt || "초기 상태")} 기준 · 검증과 변경 검토가 끝나기 전에는 문서가 바뀌지 않습니다.</p></div>
+      <div class="hero-stat"><strong>V${number(state.currentVersion)}</strong><span>현재 버전</span></div>
+    </section>
+    ${workflowStepper(1)}
+    <section id="excel-full-sync" class="panel snapshot-intro snapshot-upload-panel" data-excel-snapshot data-current-version="${Number(state.currentVersion)}" data-current-snapshot-id="${Number(state.currentSnapshotId || 0)}" data-apply-mode="${escapeHtml(applyMode)}">
       <div>
-        <h2>새 엑셀로 전체 동기화</h2>
-        <p>기존 문서를 즉시 지우지 않습니다. 파일 전체를 검증하고 추가·변경·제외 내역을 먼저 보여준 뒤 확인할 때만 반영합니다.</p>
+        <h2>엑셀 전체 동기화</h2>
+        <p>최신 대장을 추출해 수정한 파일을 올리세요. 파일 전체를 검증하고 추가·변경·제외 내역을 먼저 보여준 뒤 확인할 때만 반영합니다.</p>
         <form class="stack" data-excel-snapshot-upload>
           <label>문서고 관리대장 엑셀
             <input type="file" name="excelFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
           </label>
           <div class="snapshot-file-summary" data-excel-file-summary hidden></div>
-          <div class="snapshot-progress" data-excel-progress hidden><span data-excel-progress-bar></span></div>
-          <p class="muted" data-excel-message aria-live="polite">첫 시트 또는 ‘문서데이터’ 시트의 한글 13개 열을 읽습니다. 최대 1,000건까지 가능합니다.</p>
-          <button type="submit" class="primary" data-excel-upload-button>검증 후 변경 내역 만들기</button>
+          <div class="snapshot-progress" data-excel-progress role="progressbar" aria-label="엑셀 전송 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><span data-excel-progress-bar></span></div>
+          <p class="muted" data-excel-message aria-live="polite">시스템에서 추출한 관리 파일(_시스템정보 포함)을 권장합니다. 최대 1,000건까지 가능합니다.</p>
+          <div class="alert info" data-excel-recovery role="status" hidden></div>
+          <fieldset class="snapshot-bootstrap-confirm" data-excel-bootstrap hidden>
+            <legend>최초 연결 파일 확인</legend>
+            <p class="alert warning">시스템 정보가 없는 파일입니다. 운영 backup과 복구 가능 여부를 확인한 경우에만 최초 연결을 진행하세요.</p>
+            <label>확인 문구<input name="bootstrapConfirmation" autocomplete="off" placeholder="BOOTSTRAP" pattern="BOOTSTRAP"></label>
+            <label class="checkbox"><input type="checkbox" name="backupConfirmed" value="1"> 운영 backup 생성과 복구 가능 여부를 확인했습니다.</label>
+          </fieldset>
+          <section class="snapshot-validation-errors" data-excel-errors hidden>
+            <div class="section-title"><h3>검증 오류</h3><span class="count-badge" data-excel-error-count>0건</span></div>
+            <p class="muted" data-excel-error-summary></p>
+            <button type="button" class="button secondary" data-snapshot-errors-csv>오류 CSV 내려받기</button>
+            <div class="table-wrap"><table class="doc-table" data-snapshot-error-table>
+              <thead><tr><th>행</th><th>필드</th><th>코드</th><th>오류</th></tr></thead><tbody></tbody>
+            </table></div>
+          </section>
+          <button type="submit" class="action-button" data-excel-upload-button>검증 후 변경 내역 만들기</button>
         </form>
       </div>
     </section>
@@ -58,8 +89,10 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
       <ul class="snapshot-rules">
         <li>오류가 한 건이라도 있으면 현재 문서대장은 변경하지 않습니다.</li>
         <li>엑셀에서 사라진 문서는 삭제 대신 대장에서 제외해 감사·세트·이동 이력을 보존합니다.</li>
-        <li>추출된 파일에는 인쇄용 관리대장과 숨김 관리 ID가 함께 들어갑니다.</li>
-        <li>추출 후 시스템이 변경된 오래된 엑셀은 반영하지 않습니다.</li>
+        <li>시스템에서 개별 처리한 추가·정보 수정·개정·위치 이동·폐기는 다음 엑셀 추출과 인쇄용 관리대장에 포함됩니다.</li>
+        <li>개정 이력의 문서번호·개정번호 변경과 자동 폐기된 이전본의 복원은 엑셀로 처리할 수 없습니다.</li>
+        <li>최종 반영은 전용 권한과 위치·폐기 권한이 필요할 수 있습니다.</li>
+        <li>추출 후 시스템에서 건별 작업이 발생하면 기존 엑셀은 오래된 파일이 되므로 최신 대장을 다시 추출해야 합니다.</li>
       </ul>
     </section>
     <section class="panel results-panel">
@@ -72,50 +105,269 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
   `, session);
 }
 
-export function documentSnapshotDetailPage({ session, snapshot, rows = [], error = "", applied = false }) {
-  const bodyRows = rows.map((row) => {
-    const payload = parseJson(row.normalized_json);
+export function documentSnapshotDetailPage({
+  session,
+  snapshot,
+  rows = [],
+  exclusions = [],
+  error = "",
+  applied = false,
+  canApply = false,
+  applyBlockReason = "",
+  requiredPermissions = [],
+  missingPermissions = [],
+  warnings = [],
+  validationErrors = [],
+  applyMode = "admin-only",
+  status = 200
+}) {
+  const parsedRows = rows.map((row) => ({
+    ...row,
+    after: parseJson(row.after_json || row.normalized_json),
+    before: parseJson(row.before_json),
+    changedFields: parseJson(row.changed_fields_json) || [],
+    changeFlags: parseJson(row.change_flags_json) || []
+  }));
+  const bodyRows = parsedRows.map((row) => {
+    const values = row.after?.values || {};
+    const beforeValues = row.before?.values || {};
     return `
-      <tr>
-        <td>${number(row.row_number)}</td>
-        <td>${actionBadge(row.action)}</td>
-        <td class="mono">${escapeHtml(payload?.values?.documentNumber || "-")}</td>
-        <td>${escapeHtml(payload?.values?.revisionNumber || "-")}</td>
-        <td>${escapeHtml(payload?.values?.documentName || "-")}</td>
+      <tr data-row-filter="${escapeHtml(filterKey(row))}">
+        <td data-label="엑셀 행">${number(row.row_number)}</td>
+        <td data-label="처리">${flagBadges(row.changeFlags, row.action)}</td>
+        <td class="mono" data-label="문서번호">${escapeHtml(values.documentNumber || "-")}</td>
+        <td data-label="개정">${escapeHtml(values.revisionNumber || "-")}</td>
+        <td data-label="문서명">${escapeHtml(values.documentName || "-")}</td>
+        <td data-label="변경 필드">${escapeHtml((row.changedFields || []).join(", ") || "-")}</td>
+        <td data-label="변경 전">${diffCell(beforeValues, row.changedFields)}</td>
+        <td data-label="변경 후">${diffCell(values, row.changedFields)}</td>
+        <td data-label="현재 위치">${escapeHtml(locationText(beforeValues))}</td>
+        <td data-label="변경 위치">${escapeHtml(locationText(values))}</td>
+        <td data-label="상태 변화">${escapeHtml(statusText(beforeValues.status))} → ${escapeHtml(statusText(values.status))}</td>
       </tr>`;
   }).join("");
-  const canApply = snapshot.status === "ready";
+  const exclusionRows = exclusions.map((item) => {
+    const before = parseJson(item.before_json);
+    const values = before?.values || {};
+    const risks = [
+      Number(item.set_count || 0) > 0 ? `세트 ${number(item.set_count)}개 연결` : "",
+      item.recent_movement_at ? "최근 이동 이력 있음" : ""
+    ].filter(Boolean).join(" · ");
+    return `
+      <tr>
+        <td class="mono" data-label="문서번호">${escapeHtml(values.documentNumber || "-")}</td>
+        <td data-label="개정">${escapeHtml(values.revisionNumber || "-")}</td>
+        <td data-label="문서명">${escapeHtml(values.documentName || "-")}</td>
+        <td data-label="현재 상태">${escapeHtml(statusText(values.status))}</td>
+        <td data-label="현재 위치">${escapeHtml(locationText(values))}</td>
+        <td data-label="세트">${number(item.set_count)}</td>
+        <td data-label="최근 이동">${escapeHtml(item.recent_movement_at || "-")}</td>
+        <td data-label="제외 사유">업로드 파일에 행 없음</td>
+        <td data-label="위험 정보">${escapeHtml(risks || "-")}</td>
+      </tr>`;
+  }).join("");
   const notice = applied || snapshot.status === "completed"
     ? `<div class="alert success" role="status">이 엑셀 파일이 현재 문서대장으로 반영되었습니다.</div>`
+    : "";
+  const permissionText = (requiredPermissions || [])
+    .map((permission) => PERMISSION_LABELS[permission] || permission)
+    .join(", ");
+  const missingText = (missingPermissions || [])
+    .map((permission) => PERMISSION_LABELS[permission] || permission)
+    .join(", ");
+  const excludeCount = Number(snapshot.exclude_count || 0);
+  const reviewCount = Number(snapshot.create_count || 0) + Number(snapshot.update_count || 0) + excludeCount;
+  const warningBlock = (warnings || []).length
+    ? `<div class="snapshot-warnings" role="status">${(warnings || []).map((warning) => `
+        <div class="alert ${warning.level === "danger" ? "danger" : warning.level === "info" ? "info" : "warning"}">
+          <strong>${escapeHtml(warning.code || "WARNING")}</strong>
+          ${escapeHtml(warning.message || "")}
+        </div>`).join("")}</div>`
     : "";
   return page(`${snapshot.snapshot_code} 엑셀 동기화`, `
     <script src="/assets/jszip.min.js"></script>
     <script src="/assets/exceljs.min.js"></script>
     <section class="page-head">
       <div><h1>${escapeHtml(snapshot.snapshot_code)}</h1><p class="muted">${escapeHtml(snapshot.source_name)}</p></div>
-      <div class="button-group"><button type="button" class="button secondary" data-excel-export>현재 대장 엑셀 추출</button><a class="button secondary" href="/documents/import">목록</a></div>
+      <div class="button-group"><button type="button" class="button secondary" data-excel-export>현재 대장 엑셀 추출</button><a class="button secondary" href="/documents/import">리스트 동기화</a></div>
     </section>
     ${notice}
     ${error || snapshot.error_summary ? alertDanger(error || snapshot.error_summary) : ""}
-    <section class="panel" data-excel-snapshot>
+    ${applyBlockReason && snapshot.status === "ready" ? alertDanger(applyBlockReason) : ""}
+    ${warningBlock}
+    ${validationErrorPanel(validationErrors)}
+    ${workflowStepper(snapshotStep(snapshot.status))}
+    <section class="panel" data-excel-snapshot data-apply-mode="${escapeHtml(applyMode)}">
       <div class="metric-grid snapshot-metrics">
         ${metric("전체", snapshot.total_count)}
-        ${metric("추가", snapshot.create_count)}
-        ${metric("변경", snapshot.update_count)}
+        ${metric("신규", snapshot.create_count)}
+        ${metric("일반정보", snapshot.metadata_count)}
+        ${metric("위치", snapshot.move_count)}
+        ${metric("태그", snapshot.tag_change_count)}
+        ${metric("폐기", snapshot.dispose_count)}
+        ${metric("폐기 해제", snapshot.restore_count)}
         ${metric("유지", snapshot.unchanged_count)}
         ${metric("제외", snapshot.exclude_count)}
+        ${metric("재포함", snapshot.reinclude_count)}
+        ${metric("Identity 변경", snapshot.identity_change_count)}
       </div>
       <div class="snapshot-apply-row">
-        <div><strong>${snapshotStatus(snapshot.status)}</strong><p class="muted">기준 버전 ${number(snapshot.base_version)}${snapshot.previous_snapshot_id ? ` · 이전 스냅샷 #${number(snapshot.previous_snapshot_id)}` : ""} · ${escapeHtml(snapshot.created_by_name)} · ${escapeHtml(snapshot.created_at)}</p></div>
-        ${canApply ? `<form method="post" action="/document-snapshots/${Number(snapshot.id)}/apply" data-confirm="이 엑셀을 현재 문서대장으로 반영할까요? 기존 대장에 없는 문서는 제외 상태가 됩니다."><button type="submit" class="primary">현재 대장으로 반영</button></form>` : ""}
+        <div>
+          <strong>${snapshotStatus(snapshot.status)}</strong>
+          <p class="muted">기준 버전 ${number(snapshot.base_version)}${snapshot.canonical_rows_hash ? ` · canonical hash ${escapeHtml(String(snapshot.canonical_rows_hash).slice(0, 12))}…` : ""} · ${escapeHtml(snapshot.created_by_name)} · ${escapeHtml(snapshot.created_at)}</p>
+          <p class="muted">필요 권한: ${escapeHtml(permissionText || "문서 관리 + 엑셀 반영")}</p>
+          ${missingText ? `<p class="muted">부족 권한: ${escapeHtml(missingText)}</p>` : ""}
+          <p class="muted">client source hash(브라우저 보고값): <span class="mono">${escapeHtml(snapshot.source_hash || "-")}</span></p>
+        </div>
       </div>
+      ${["staging", "ready"].includes(snapshot.status) ? `
+        <form method="post" action="/document-snapshots/${Number(snapshot.id)}/cancel" class="snapshot-cancel-form">
+          <button type="submit" class="button danger">반영 전 작업 취소</button>
+        </form>` : ""}
     </section>
     <section class="panel results-panel">
-      <div class="section-title"><h2>행별 변경 내역</h2><span class="count-badge">${rows.length}건</span></div>
-      <div class="table-wrap"><table class="doc-table"><thead><tr><th>엑셀 행</th><th>처리</th><th>문서번호</th><th>개정</th><th>문서명</th></tr></thead>
-      <tbody>${bodyRows || `<tr><td colspan="5" class="empty">표시할 행이 없습니다.</td></tr>`}</tbody></table></div>
+      <div class="section-title">
+        <h2>행별 변경 내역</h2>
+        <span class="count-badge">${rows.length}건</span>
+      </div>
+      <div class="button-group snapshot-filters" role="group" aria-label="변경 유형 필터">
+        ${filterButton("전체", "all", true)}
+        ${filterButton("신규", "create")}
+        ${filterButton("변경", "update")}
+        ${filterButton("위치", "move")}
+        ${filterButton("폐기", "dispose")}
+        ${filterButton("폐기 해제", "restore")}
+        ${filterButton("유지", "unchanged")}
+        ${filterButton("오류", "error")}
+      </div>
+      <div class="table-wrap"><table class="doc-table" data-snapshot-rows>
+        <thead><tr>
+          <th>엑셀 행</th><th>처리</th><th>문서번호</th><th>개정</th><th>문서명</th>
+          <th>변경 필드</th><th>변경 전</th><th>변경 후</th><th>현재 위치</th><th>변경 위치</th><th>상태 변화</th>
+        </tr></thead>
+        <tbody>${bodyRows || `<tr><td colspan="11" class="empty">표시할 행이 없습니다.</td></tr>`}</tbody>
+      </table></div>
     </section>
-  `, session);
+    <section class="panel results-panel">
+      <div class="section-title"><h2>대장 제외 예정</h2><span class="count-badge">${exclusions.length}건</span></div>
+      <p class="muted">업로드 파일에 없어 현재 대장에서 제외될 문서입니다. 세트 연결과 감사 이력은 보존됩니다.</p>
+      <div class="table-wrap"><table class="doc-table">
+        <thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>현재 상태</th><th>현재 위치</th><th>세트</th><th>최근 이동</th><th>제외 사유</th><th>위험 정보</th></tr></thead>
+        <tbody>${exclusionRows || `<tr><td colspan="9" class="empty">제외 예정 문서가 없습니다.</td></tr>`}</tbody>
+      </table></div>
+    </section>
+    ${canApply ? `<section class="panel snapshot-final-apply" aria-labelledby="snapshot-final-apply-title"><div class="section-title"><h2 id="snapshot-final-apply-title">최종 반영</h2><span class="count-badge">변경 영향 ${number(reviewCount)}건</span></div><p class="muted">위 행별 변경 내역과 대장 제외 예정 목록을 모두 확인한 뒤 반영하세요.</p>${applyForm(snapshot, excludeCount, reviewCount)}</section>` : ""}
+    <script>
+      (function () {
+        var buttons = document.querySelectorAll('[data-snapshot-filter]');
+        var rows = document.querySelectorAll('[data-row-filter]');
+        buttons.forEach(function (button) {
+          button.addEventListener('click', function () {
+            var key = button.getAttribute('data-snapshot-filter');
+            buttons.forEach(function (item) { var active = item === button; item.classList.toggle('primary', active); item.classList.toggle('secondary', !active); item.setAttribute('aria-pressed', active ? 'true' : 'false'); });
+            rows.forEach(function (row) {
+              var value = row.getAttribute('data-row-filter') || '';
+              row.hidden = key !== 'all' && value.indexOf(key) === -1;
+            });
+            if (key === 'error') document.querySelector('[data-excel-errors]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        });
+      })();
+    </script>
+  `, session, status);
+}
+
+function validationErrorPanel(errors = []) {
+  if (!errors.length) return "";
+  const rows = errors.map((error, index) => `
+    <tr${index >= 20 ? " hidden" : ""}>
+      <td data-label="행">${number(error.rowNumber)}</td>
+      <td data-label="필드">${escapeHtml(error.field || "-")}</td>
+      <td class="mono" data-label="코드">${escapeHtml(error.code || "SNAPSHOT_INVALID_FIELD")}</td>
+      <td data-label="오류">${escapeHtml(error.message || "검증 오류")}</td>
+    </tr>
+  `).join("");
+  const remaining = Math.max(0, errors.length - 20);
+  return `
+    <section class="panel snapshot-validation-errors" data-excel-errors>
+      <div class="section-title"><h2>검증 오류</h2><span class="count-badge">${number(errors.length)}건</span></div>
+      <p class="muted">앞의 20건을 표시합니다.${remaining ? ` 외 ${number(remaining)}건은 CSV에서 확인하세요.` : ""}</p>
+      <button type="button" class="button secondary" data-snapshot-errors-csv>오류 CSV 내려받기</button>
+      <div class="table-wrap"><table class="doc-table" data-snapshot-error-table>
+        <thead><tr><th>행</th><th>필드</th><th>코드</th><th>오류</th></tr></thead><tbody>${rows}</tbody>
+      </table></div>
+    </section>`;
+}
+
+function applyForm(snapshot, excludeCount, reviewCount) {
+  return `
+    <form method="post" action="/document-snapshots/${Number(snapshot.id)}/apply" class="stack snapshot-apply-form">
+      <label>반영 사유 (10~500자)
+        <textarea name="applyReason" required minlength="10" maxlength="500" rows="3" placeholder="예: 2026년 문서고 정기 대장 현행화"></textarea>
+      </label>
+      <label>승인 참조 (조건부 필수)
+        <input type="text" name="approvalReference" maxlength="200" placeholder="예: CC-2026-0142">
+      </label>
+      <p class="muted">적용 건수가 많거나 조직의 변경관리 절차상 사전 승인이 필요한 경우 결재 번호 또는 관련 문서번호를 입력하세요.</p>
+      <label>변경 영향 건수 재확인
+        <input type="number" name="confirmedReviewCount" required min="${reviewCount}" max="${reviewCount}" value="" inputmode="numeric">
+      </label>
+      <label class="checkbox"><input type="checkbox" name="confirmReview" value="1" required> 행별 변경과 제외 예정 목록 전체를 검토했습니다.</label>
+      ${excludeCount > 0 ? `
+        <label>제외 예정 건수 재확인
+          <input type="number" name="confirmedExcludeCount" required min="${excludeCount}" max="${excludeCount}" value="">
+        </label>
+        <label class="checkbox"><input type="checkbox" name="confirmExclude" value="1" required> 제외 ${number(excludeCount)}건을 검토했고 반영에 동의합니다.</label>
+      ` : `<input type="hidden" name="confirmedExcludeCount" value="0">`}
+      <button type="submit" class="action-button">현재 대장으로 반영</button>
+    </form>
+  `;
+}
+
+function filterButton(label, key, active = false) {
+  return `<button type="button" class="button ${active ? "primary" : "secondary"}" data-snapshot-filter="${escapeHtml(key)}" aria-pressed="${active ? "true" : "false"}">${escapeHtml(label)}</button>`;
+}
+
+function filterKey(row) {
+  const flags = row.changeFlags || [];
+  const parts = [row.action];
+  if (flags.includes("MOVE")) parts.push("move");
+  if (flags.includes("DISPOSE")) parts.push("dispose");
+  if (flags.includes("RESTORE")) parts.push("restore");
+  if (flags.includes("CREATE")) parts.push("create");
+  if (row.action === "update") parts.push("update");
+  if (row.action === "unchanged") parts.push("unchanged");
+  return parts.join(" ");
+}
+
+function flagBadges(flags = [], action) {
+  if (!flags.length) return actionBadge(action);
+  return flags.map((flag) => `<span class="status pending">${escapeHtml(FLAG_LABELS[flag] || flag)}</span>`).join(" ");
+}
+
+function diffCell(values, changedFields = []) {
+  if (!changedFields.length) return "-";
+  return escapeHtml(changedFields.map((field) => `${field}: ${formatValue(values?.[field])}`).join(" / "));
+}
+
+function formatValue(value) {
+  if (Array.isArray(value)) return value.join(";");
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
+
+function locationText(values = {}) {
+  if (!values.rackSlotId && !values.rackCode) return "-";
+  const face = values.rackFace === "B" ? "2면" : values.rackFace === "A" ? "1면" : values.rackFace || "";
+  return [values.rackCode || values.rackSlotId, values.rackColumn ? `${values.rackColumn}열` : "", values.shelfNumber ? `${values.shelfNumber}선반` : "", face]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function statusText(status) {
+  if (status === "disposed") return "폐기";
+  if (status === "active") return "보관중";
+  return status || "-";
 }
 
 function metric(label, value) {
@@ -125,6 +377,26 @@ function metric(label, value) {
 function snapshotStatus(status) {
   const type = status === "failed" || status === "cancelled" ? "disposed" : status === "completed" ? "active" : "pending";
   return `<span class="status ${type}">${escapeHtml(STATUS_LABELS[status] || status)}</span>`;
+}
+
+function snapshotStep(status) {
+  if (status === "completed" || status === "applying") return 4;
+  if (status === "ready") return 3;
+  return 2;
+}
+
+function workflowStepper(currentStep = 1) {
+  const steps = [
+    ["파일 선택", "엑셀 원본 확인"],
+    ["구조 검증", "열·버전·행 검사"],
+    ["변경 검토", "추가·변경·제외"],
+    ["리스트 반영", "승인 후 원자 반영"]
+  ];
+  return `<ol class="workflow-stepper" aria-label="엑셀 대장 동기화 단계">${steps.map(([label, caption], index) => {
+    const step = index + 1;
+    const state = step < currentStep ? "is-complete" : step === currentStep ? "is-current" : "";
+    return `<li class="workflow-step ${state}"${step === currentStep ? ` aria-current="step"` : ""}><span class="workflow-step-index">${step < currentStep ? "✓" : step}</span><span><strong>${label}</strong><small>${caption}</small></span></li>`;
+  }).join("")}</ol>`;
 }
 
 function actionBadge(action) {

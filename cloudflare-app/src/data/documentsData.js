@@ -1,4 +1,5 @@
 import { collectDocumentFieldErrors, validateDocumentRecordFields, validateDocumentTextFields } from "../domains/documents/domain/validation.js";
+import { MAX_DOCUMENT_TAGS } from "../domains/documents/domain/limits.js";
 import { clean } from "../shared/text/normalize.js";
 import {
   DOCUMENT_BASE_JOINS,
@@ -160,6 +161,9 @@ export async function getDocument(env, id) {
       d.rack_slot_id,
       d.rack_face,
       d.status,
+      d.sync_state,
+      d.last_snapshot_id,
+      d.excel_row_key,
       d.updated_at,
       d.row_version,
       ${DOCUMENT_LOCATION_COLUMNS}
@@ -291,6 +295,10 @@ async function validateDocumentReferences(env, values, options = {}) {
   const uniqueTagIds = [...new Set(values.tagIds || [])]
     .map(Number)
     .filter((id) => Number.isInteger(id) && id > 0);
+  const tagCountWithinLimit = uniqueTagIds.length <= MAX_DOCUMENT_TAGS;
+  if (!tagCountWithinLimit) {
+    errors.tagIds = `태그는 최대 ${MAX_DOCUMENT_TAGS}개까지 선택할 수 있습니다.`;
+  }
   const allowInactiveTagIds = new Set(
     (options.allowInactiveTagIds || [])
       .map(Number)
@@ -309,7 +317,7 @@ async function validateDocumentReferences(env, values, options = {}) {
       JOIN racks r ON r.id = rs.rack_id
       WHERE rs.id = ? AND rs.is_active = 1 AND r.is_active = 1
     `).bind(values.rackSlotId).first(),
-    uniqueTagIds.length
+    uniqueTagIds.length && tagCountWithinLimit
       ? env.DB.prepare(`
           SELECT id, is_active
           FROM tags
@@ -322,7 +330,7 @@ async function validateDocumentReferences(env, values, options = {}) {
   if (!slot) errors.rackSlotId = "사용 가능한 보관 위치가 아닙니다.";
   else if (slot.is_single_sided && values.rackFace === "B") errors.rackFace = "단면 랙은 면 구분 없이 사용합니다. 2면을 선택할 수 없습니다.";
 
-  if (uniqueTagIds.length) {
+  if (uniqueTagIds.length && tagCountWithinLimit) {
     const found = new Map((tagRows.results ?? []).map((tag) => [Number(tag.id), tag]));
     for (const tagId of uniqueTagIds) {
       const tag = found.get(tagId);
@@ -368,12 +376,14 @@ export async function findDocumentsByNumbers(env, numbers) {
   }
 
   const upperNumbers = numbers.map((number) => number.toUpperCase());
-  const placeholders = upperNumbers.map(() => "?").join(", ");
   const result = await env.DB.prepare(`
     SELECT id, document_number
     FROM documents
-    WHERE UPPER(document_number) IN (${placeholders}) AND sync_state = 'current'
-  `).bind(...upperNumbers).all();
+    WHERE UPPER(document_number) IN (
+      SELECT UPPER(CAST(value AS TEXT))
+      FROM json_each(?)
+    ) AND sync_state = 'current'
+  `).bind(JSON.stringify(upperNumbers)).all();
   const documents = result.results ?? [];
   const matched = new Set();
 

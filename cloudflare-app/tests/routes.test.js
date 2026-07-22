@@ -50,10 +50,11 @@ test("campaign and import job matchers resolve nested workflow routes", () => {
   assert.deepEqual(matchDocumentImportJobRoute("/document-import-jobs/8/failures.csv"), { id: 8, action: "failures.csv" });
 });
 
-test("엑셀 snapshot matcher는 행 staging·검증·반영 경로를 구분한다", () => {
+test("엑셀 snapshot matcher는 행 staging·검증·반영·취소 경로를 구분한다", () => {
   assert.deepEqual(matchDocumentSnapshotRoute("/document-snapshots/8"), { id: 8, action: "details" });
   assert.deepEqual(matchDocumentSnapshotRoute("/document-snapshots/8/rows"), { id: 8, action: "rows" });
   assert.deepEqual(matchDocumentSnapshotRoute("/document-snapshots/8/prepare"), { id: 8, action: "prepare" });
   assert.deepEqual(matchDocumentSnapshotRoute("/document-snapshots/8/apply"), { id: 8, action: "apply" });
+  assert.deepEqual(matchDocumentSnapshotRoute("/document-snapshots/8/cancel"), { id: 8, action: "cancel" });
   assert.equal(matchDocumentSnapshotRoute("/document-snapshots/new"), null);
 });

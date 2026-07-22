@@ -6,6 +6,7 @@ import {
 } from "../config.js";
 import {
   configureRackCounts,
+  getRackConfigurationVersion,
   getRackDetails,
   getRackDocuments,
   getRackGrid,
@@ -18,6 +19,7 @@ import { redirect } from "../platform/http/responses.js";
 import { logError } from "../platform/observability/logger.js";
 import { clean } from "../shared/text/normalize.js";
 import { requireManageMasters } from "./permissionGuards.js";
+import { isExpectedChangeAbort } from "../platform/d1/expectedChange.js";
 
 export async function handleRacks(env, session) {
   const racks = await getRackSummaries(env);
@@ -87,14 +89,17 @@ export async function handleRackRoute(request, env, session, routeInfo) {
 }
 
 export async function renderRackConfigure(env, session, error = "") {
-  const racks = await getRackSummaries(env);
+  const [racks, expectedVersion] = await Promise.all([
+    getRackSummaries(env),
+    getRackConfigurationVersion(env)
+  ]);
   const counts = Object.fromEntries(RACK_ZONES.map((zone) => [zone, 0]));
 
   for (const rack of racks) {
     counts[rack.zone_number] = Math.max(counts[rack.zone_number], rack.rack_number);
   }
 
-  return rackConfigurePage({ session, counts, error });
+  return rackConfigurePage({ session, counts, expectedVersion, error });
 }
 
 export async function handleRackConfigure(request, env, session) {
@@ -102,7 +107,7 @@ export async function handleRackConfigure(request, env, session) {
   const counts = Object.fromEntries(
     RACK_ZONES.map((zone) => [zone, Number(form.get(`zone${zone}Count`))])
   );
-  const result = await configureRackCounts(env, counts, session);
+  const result = await configureRackCounts(env, counts, session, Number(form.get("expectedVersion")));
 
   if (!result.ok) {
     return renderRackConfigure(env, session, result.message);
@@ -124,7 +129,8 @@ export async function handleSaveRack(request, env, session, id = 0) {
     name: clean(form.get("name")),
     description: clean(form.get("description")),
     isSingleSided: form.get("isSingleSided") === "1",
-    isActive: form.get("isActive") === "1"
+    isActive: form.get("isActive") === "1",
+    ...(id ? { expectedRowVersion: Number(form.get("expectedRowVersion")) } : {})
   };
 
   if (!RACK_ZONES.includes(values.zoneNumber) || values.rackNumber < 1 || values.rackNumber > MAX_RACKS_PER_ZONE) {
@@ -167,6 +173,15 @@ export async function handleSaveRack(request, env, session, id = 0) {
     const rackId = await upsertRack(env, values, session);
     return redirect(`/racks/${rackId}?toast=saved`);
   } catch (error) {
+    if (isExpectedChangeAbort(error)) {
+      return rackFormPage({
+        session,
+        values,
+        action: id ? `/racks/${id}/edit` : "/racks",
+        title: id ? "랙 수정" : "랙 추가",
+        error: error.message
+      });
+    }
     const duplicate = error instanceof Error && error.message.includes("UNIQUE");
     if (!duplicate) {
       logError("rack.save", error, { rackId: id || null });

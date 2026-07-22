@@ -37,7 +37,11 @@ test("registry는 404와 method mismatch 405를 구분하되 compatibility route
 test("모든 인증 POST descriptor는 Origin·CSRF를 요구하고 permission key는 catalog에 존재한다", () => {
   const posts = AUTHENTICATED_ROUTES.filter((item) => item.method === "POST");
   assert.equal(posts.every((item) => item.security.origin && item.security.csrf && item.security.forcedPassword), true);
-  assert.deepEqual(ROUTES.filter((item) => item.permission && !PERMISSION_KEYS.includes(item.permission)), []);
+  const invalid = ROUTES.filter((item) => {
+    if (!item.permission) return false;
+    return String(item.permission).split("+").some((part) => !PERMISSION_KEYS.includes(part.trim()));
+  });
+  assert.deepEqual(invalid, []);
   assert.equal(ROUTES.find((item) => item.id === "documents.restore").policy, "admin-only");
   assert.equal(ROUTES.find((item) => item.id === "session.signup.blocked").policy, "always-404");
 });

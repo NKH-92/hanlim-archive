@@ -7,7 +7,12 @@ export const USER_STATUS_TRANSITIONS = Object.freeze({
 
 export function canTransitionUser(user, action) {
   const transition = USER_STATUS_TRANSITIONS[action];
-  return Boolean(transition && user?.role === "User" && transition.from.includes(user.status));
+  return Boolean(
+    transition
+    && user?.role === "User"
+    && Number(user.security_review_required || 0) !== 1
+    && transition.from.includes(user.status)
+  );
 }
 
 export function transitionFor(action) {

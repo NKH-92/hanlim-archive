@@ -14,8 +14,8 @@ test("release evidence는 migration checksum과 schema manifest를 보존한다"
   const manifest = JSON.parse(await readFile(path.join(target, "migration-manifest.json"), "utf8"));
 
   assert.equal(evidence.sourceRevision, "abc123");
-  assert.equal(evidence.migrationCount, 30);
-  assert.equal(Object.keys(manifest.checksums).length, 30);
+  assert.equal(evidence.migrationCount, 38);
+  assert.equal(Object.keys(manifest.checksums).length, 38);
   assert.ok(manifest.schema.tables.includes("documents"));
   assert.match(evidence.migrationManifestSha256, /^[a-f0-9]{64}$/);
 });
@@ -33,10 +33,11 @@ test("release smoke는 health, login, signup, 인증 검색 계약을 확인한�
     baseUrl: "https://archive.example.com/",
     username: "smoke@example.com",
     password: "secret-value",
+    allowedHosts: ["archive.example.com"],
     fetchImpl: async (url, options = {}) => { calls.push({ url, options }); return responses.shift(); }
   });
 
-  assert.deepEqual(result, { health: 200, login: 200, signup: 404, search: 200 });
+  assert.deepEqual(result, { health: 200, login: 200, signup: 404, search: 200, origin: "https://archive.example.com" });
   assert.equal(calls.at(-2).options.headers.Origin, "https://archive.example.com");
   assert.equal(calls.at(-1).options.headers.Cookie, "hanlim_session=token");
 });
@@ -54,6 +55,7 @@ test("release smoke 로그인 실패는 상태 코드와 Cloudflare Ray를 남�
       baseUrl: "https://archive.example.com",
       username: "smoke@example.com",
       password: "secret-value",
+      allowedHosts: ["archive.example.com"],
       fetchImpl: async () => responses.shift()
     }),
     /smoke 계정 로그인 실패\(status=500, cf-ray=test-ray\)/
@@ -76,6 +78,7 @@ test("release smoke는 Worker 배포 전파 중 health 실패를 재시도한다
     baseUrl: "https://archive.example.com",
     username: "smoke@example.com",
     password: "secret-value",
+    allowedHosts: ["archive.example.com"],
     fetchImpl: async (url) => { calls.push(url); return responses.shift(); },
     waitImpl: async (milliseconds) => { waits.push(milliseconds); }
   });

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createMigratedDatabase, migrationFiles } from "./helpers/migratedDatabase.js";
 
-const BASELINE_LAST_MIGRATION = 26;
+const BASELINE_LAST_MIGRATION = 38;
 
 const CORE_TABLES = [
   "app_users",
@@ -15,9 +15,12 @@ const CORE_TABLES = [
   "document_import_items",
   "document_import_jobs",
   "document_movements",
+  "document_revision_links",
   "document_set_items",
   "document_set_logs",
   "document_sets",
+  "document_snapshot_exclusions",
+  "document_snapshot_export_manifests",
   "document_snapshot_rows",
   "document_snapshots",
   "document_sync_state",
@@ -34,22 +37,48 @@ const CORE_TABLES = [
 ].sort();
 
 const IMMUTABILITY_TRIGGERS = [
+  "trg_category_row_version_compat",
+  "trg_category_sync_version_delete",
+  "trg_category_sync_version_insert",
+  "trg_category_sync_version_update",
   "trg_disposal_logs_no_update",
   "trg_document_audit_logs_no_delete",
   "trg_document_audit_logs_no_update",
   "trg_document_excel_row_key",
   "trg_document_movements_no_delete",
   "trg_document_movements_no_update",
+  "trg_document_revision_links_no_delete",
+  "trg_document_revision_links_no_update",
   "trg_document_set_logs_no_delete",
   "trg_document_set_logs_no_update",
+  "trg_document_set_row_version_compat",
   "trg_document_sync_version_delete",
   "trg_document_sync_version_insert",
   "trg_document_sync_version_update",
+  "trg_document_tag_sync_version_delete",
+  "trg_document_tag_sync_version_insert",
+  "trg_rack_row_version_compat",
+  "trg_rack_slot_sync_version_delete",
+  "trg_rack_slot_sync_version_insert",
+  "trg_rack_slot_sync_version_update",
+  "trg_rack_sync_version_delete",
+  "trg_rack_sync_version_insert",
+  "trg_rack_sync_version_update",
+  "trg_revision_linked_document_no_delete",
+  "trg_revision_linked_identity_no_update",
+  "trg_revision_previous_no_restore",
+  "trg_security_review_no_approval",
   "trg_system_audit_logs_no_delete",
-  "trg_system_audit_logs_no_update"
+  "trg_system_audit_logs_no_update",
+  "trg_tag_row_version_compat",
+  "trg_tag_sync_version_delete",
+  "trg_tag_sync_version_insert",
+  "trg_tag_sync_version_update",
+  "trg_user_enable_requires_epoch_rotation",
+  "trg_user_status_session_epoch_compat"
 ].sort();
 
-test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0001~0026 이력을 보존한다", async () => {
+test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0001~0038 이력을 보존한다", async () => {
   const migrations = await validatedMigrationFiles();
   assert.ok(migrations.length >= BASELINE_LAST_MIGRATION);
 
@@ -59,7 +88,7 @@ test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0
   assert.deepEqual(
     numbers.slice(0, BASELINE_LAST_MIGRATION),
     Array.from({ length: BASELINE_LAST_MIGRATION }, (_, index) => index + 1),
-    "기존 0001~0026 이력은 삭제하거나 번호를 바꿀 수 없다"
+    "기존 0001~0038 이력은 삭제하거나 번호를 바꿀 수 없다"
   );
 });
 
@@ -81,9 +110,9 @@ test("전체 migration을 순차 적용하면 핵심 schema와 FK 무결성이 �
       ORDER BY name
     `).all().map(({ name }) => name);
 
-    assert.equal(tables.length, 25, "핵심 업무 테이블 수");
+    assert.equal(tables.length, CORE_TABLES.length, "핵심 업무 테이블 수");
     assert.deepEqual(tables, CORE_TABLES);
-    assert.equal(triggers.length, 13, "감사·이력·동기화 trigger 수");
+    assert.equal(triggers.length, IMMUTABILITY_TRIGGERS.length, "감사·이력·동기화 trigger 수");
     assert.deepEqual(triggers, IMMUTABILITY_TRIGGERS);
   } finally {
     database.close();

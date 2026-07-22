@@ -12,6 +12,7 @@ export function instantSearchScript() {
         try { searchContext = JSON.parse(contextEl ? contextEl.textContent : '{}') || searchContext; } catch {}
         var searchIndex = null;
         var indexLoading = false;
+        var indexError = '';
         var resultsBody = document.querySelector('[data-results-body]');
         var resultsTitle = document.querySelector('[data-results-title]');
         var resultsCount = document.querySelector('[data-results-count]');
@@ -59,12 +60,13 @@ export function instantSearchScript() {
         };
 
         var currentSelectFilters = function () {
+          var control = function (name) { return viewerForm.elements ? viewerForm.elements.namedItem(name) : viewerForm.querySelector('select[name="' + name + '"]'); };
           var num = function (name) {
-            var el = viewerForm.querySelector('select[name="' + name + '"]');
+            var el = control(name);
             return el ? Number(el.value) || 0 : 0;
           };
-          var statusEl = viewerForm.querySelector('select[name="status"]');
-          var sortEl = viewerForm.querySelector('select[name="sort"]');
+          var statusEl = control('status');
+          var sortEl = control('sort');
           var status = statusEl && ['active', 'all', 'disposed'].indexOf(statusEl.value) !== -1 ? statusEl.value : 'active';
           return {
             categoryId: num('category'),
@@ -107,7 +109,20 @@ export function instantSearchScript() {
         var renderInstant = function () {
           var q = viewerInput.value.trim();
           if (!q) { restoreInitial(); return; }
-          if (!searchIndex) { loadSearchIndex(); return; }
+          if (!searchIndex) {
+            if (indexError) {
+              var params = new URLSearchParams({ q: q });
+              if (resultsBody) resultsBody.innerHTML = '<div class="alert danger" role="alert">즉시검색 자료를 불러오지 못했습니다.</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">서버 검색으로 계속</a></div>';
+              if (resultsTitle) resultsTitle.textContent = '검색을 계속할 수 없습니다';
+              if (resultsCount) resultsCount.textContent = '-';
+              if (searchLive) searchLive.textContent = '즉시검색을 불러오지 못했습니다. 다시 시도하거나 서버 검색을 이용하세요.';
+              viewerApp.hidden = false;
+              return;
+            }
+            if (searchLive) searchLive.textContent = '검색 자료를 불러오는 중입니다.';
+            loadSearchIndex();
+            return;
+          }
           var f = currentSelectFilters();
           var parsed = core.parseSearchQuery(q, {
             categories: searchContext.categories,
@@ -142,13 +157,13 @@ export function instantSearchScript() {
           if (chips.length) {
             var chipLabels = { zone: '구역', category: '대분류', tag: '태그', status: '상태' };
             html += '<div class="parsed-chip-row"><span>자동 적용</span>' + chips.map(function (chip) {
-              return '<span class="chip active">' + escapeHtmlClient((chipLabels[chip.type] || chip.type) + ': ' + chip.label) + '</span>';
+              return '<button type="button" class="chip active" data-remove-search-chip="' + escapeHtmlClient(chip.token || '') + '" aria-label="' + escapeHtmlClient(chip.label + ' 자동 필터 제거') + '">' + escapeHtmlClient((chipLabels[chip.type] || chip.type) + ': ' + chip.label) + ' ×</button>';
             }).join('') + '</div>';
           }
           if (top.length) {
             html += '<div class="viewer-result-table" role="table" aria-label="문서 검색 결과"><div class="viewer-result-header" role="row"><span>문서명</span><span>문서번호</span><span>개정</span><span>제·개정일</span><span>대분류</span><span>보관 위치</span><span>상태</span></div><div class="viewer-result-list" role="rowgroup">' + top.map(function (item) { return instantRow(item, text); }).join('') + '</div></div>';
           } else {
-            html += '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p></div>';
+            html += '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/documents">전체 문서 보기</a><a class="button secondary sm" href="/app">검색 초기화</a></div></div>';
             var loose = [];
             for (var j = 0; j < searchIndex.length; j++) {
               var candidate = searchIndex[j];
@@ -185,15 +200,17 @@ export function instantSearchScript() {
         var loadSearchIndex = function () {
           if (searchIndex || indexLoading) return;
           indexLoading = true;
+          indexError = '';
           fetch('/api/search-index', { headers: { Accept: 'application/json' } })
-            .then(function (response) { return response.ok ? response.json() : null; })
+            .then(function (response) { if (!response.ok) throw new Error('검색 자료 요청 실패'); return response.json(); })
             .then(function (data) {
-              searchIndex = data && data.documents ? data.documents : [];
+              if (!data || !Array.isArray(data.documents)) throw new Error('검색 자료 형식 오류');
+              searchIndex = data.documents;
               window.__hanlimSearchIndexReady = true;
               indexLoading = false;
               renderInstant();
             })
-            .catch(function () { indexLoading = false; });
+            .catch(function () { indexLoading = false; indexError = 'load-failed'; renderInstant(); });
         };
 
         viewerInput.addEventListener('input', function () {
@@ -202,7 +219,19 @@ export function instantSearchScript() {
           renderTimer = setTimeout(renderInstant, 100);
         });
         viewerInput.addEventListener('focus', loadSearchIndex);
-        setTimeout(loadSearchIndex, 400);
+        resultsBody?.addEventListener?.('click', function (event) {
+          var target = event.target instanceof Element ? event.target : null;
+          var retry = target?.closest('[data-search-retry]');
+          if (retry) { indexError = ''; loadSearchIndex(); return; }
+          var chip = target?.closest('[data-remove-search-chip]');
+          if (chip) {
+            var token = chip.getAttribute('data-remove-search-chip') || '';
+            viewerInput.value = viewerInput.value.split(/\\s+/).filter(function (part) { return part !== token; }).join(' ');
+            renderInstant();
+            viewerInput.focus();
+          }
+        });
+        if (viewerInput.value.trim()) loadSearchIndex();
       }
 `;
 }

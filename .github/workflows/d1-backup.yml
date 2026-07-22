@@ -60,7 +60,7 @@ jobs:
             command -v shred >/dev/null 2>&1 && shred -u "$RAW_SQL" "$GZIP_SQL" 2>/dev/null || rm -f "$RAW_SQL" "$GZIP_SQL"
           }
           trap cleanup EXIT
-          if ! npx wrangler d1 export hanlim-archive --remote --output "$RAW_SQL" >"$RUNNER_TEMP/d1-export.log" 2>&1; then
+          if ! npx wrangler d1 export hanlim-archive --remote --env production --output "$RAW_SQL" >"$RUNNER_TEMP/d1-export.log" 2>&1; then
             echo "D1 export failed. Raw SQL and its path will not be printed."
             exit 1
           fi

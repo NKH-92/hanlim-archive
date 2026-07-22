@@ -4,3 +4,4 @@ export { documentResults } from "./documentTableViews.js";
 export { disposalWorkspacePage, documentsPage } from "./documents/listViews.js";
 export { documentFormPage } from "./documents/formView.js";
 export { documentDetailsPage } from "./documents/detailView.js";
+export { documentRevisionPage } from "./documents/revisionView.js";

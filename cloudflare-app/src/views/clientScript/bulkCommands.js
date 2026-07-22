@@ -6,13 +6,24 @@ export function bulkCommandScript() {
       var bulkCount = document.querySelector('[data-bulk-count]');
       var bulkSummary = document.querySelector('[data-bulk-summary]');
       var bulkSelectAll = document.querySelector('[data-bulk-select-all]');
+      var bulkConfirmCount = document.querySelector('[data-bulk-confirm-count]');
+      var bulkConfirmCountInput = document.querySelector('[data-bulk-confirm-count-input]');
+      var bulkConfirmButton = document.querySelector('[data-bulk-confirm-button]');
       function syncBulk() {
         var items = Array.from(document.querySelectorAll('[data-bulk-item]'));
         var checkedItems = items.filter(function (item) { return item.checked; });
         var checked = checkedItems.map(function (item) { return item.value; });
         if (bulkBar) bulkBar.hidden = checked.length === 0;
         if (bulkIds) bulkIds.value = checked.join(',');
-        if (bulkCount) bulkCount.textContent = checked.length + '건 선택';
+        if (bulkCount) bulkCount.textContent = '원본 ' + checked.length + '부 선택';
+        if (bulkConfirmCount) bulkConfirmCount.textContent = checked.length + '부';
+        if (bulkConfirmCountInput) bulkConfirmCountInput.value = String(checked.length);
+        if (bulkConfirmButton) {
+          bulkConfirmButton.disabled = checked.length === 0;
+          bulkConfirmButton.textContent = checked.length
+            ? '예, 원본 ' + checked.length + '부를 폐기합니다'
+            : '예, 폐기합니다';
+        }
         if (bulkSummary) {
           bulkSummary.innerHTML = '';
           checkedItems.forEach(function (item) {
@@ -79,7 +90,8 @@ export function bulkCommandScript() {
       if (bulkForm) {
         bulkForm.addEventListener('submit', function (event) {
           var count = document.querySelectorAll('[data-bulk-item]:checked').length;
-          if (!count || !window.confirm('선택한 ' + count + '건을 폐기 상태로 변경할까요?')) event.preventDefault();
+          var confirmedCount = Number(bulkConfirmCountInput ? bulkConfirmCountInput.value : 0);
+          if (!count || confirmedCount !== count) event.preventDefault();
         });
       }
 `;

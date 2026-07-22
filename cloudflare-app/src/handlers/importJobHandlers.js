@@ -46,10 +46,47 @@ export async function handleCreateDocumentImportJob(request, env, session) {
     return documentImportJobCreatePage({ session, error: `가져오기 전 검증 오류가 있습니다: ${prepared.errors.slice(0, 12).join(" / ")}${prepared.errors.length > 12 ? " ..." : ""}` });
   }
   const file = form.get("csvFile");
-  const sourceName = typeof file?.name === "string" && file.name ? file.name : "붙여넣기";
+  const sourceName = clean(form.get("sourceName")) || (typeof file?.name === "string" && file.name ? file.name : "붙여넣기");
+  const preview = buildImportPreview(prepared.items, options);
+  if (form.get("confirmImportPreview") !== "1") {
+    return documentImportJobCreatePage({
+      session,
+      preview,
+      csvText: imported.text,
+      sourceName
+    });
+  }
+  if (form.get("confirmImportRows") !== "1") {
+    return documentImportJobCreatePage({
+      session,
+      preview,
+      csvText: imported.text,
+      sourceName,
+      error: "생성 예정 문서의 정규화 결과를 확인하세요."
+    });
+  }
   const result = await createDocumentImportJob(env, { sourceName, items: prepared.items }, session);
   if (!result.ok) return documentImportJobCreatePage({ session, error: result.message });
   return redirect(`/document-import-jobs/${result.id}`);
+}
+
+function buildImportPreview(items, options) {
+  const categories = new Map(options.categories.map((item) => [Number(item.id), item.name]));
+  const tags = new Map(options.tags.map((item) => [Number(item.id), item.name]));
+  const slots = new Map(options.slots.map((item) => [Number(item.id), item]));
+  return items.map((item) => {
+    const slot = slots.get(Number(item.values.rackSlotId));
+    return {
+      rowNumber: item.rowNumber,
+      documentNumber: item.values.documentNumber,
+      revisionNumber: item.values.revisionNumber,
+      documentName: item.values.documentName,
+      categoryName: categories.get(Number(item.values.categoryId)) || "-",
+      location: slot ? `${slot.code} · ${slot.column_number}열 · ${slot.shelf_number}선반 · ${item.values.rackFace === "B" ? "2면" : "1면"}` : "-",
+      tags: item.values.tagIds.map((id) => tags.get(Number(id))).filter(Boolean).join(", ") || "-",
+      status: item.status === "disposed" ? "폐기" : "보관중"
+    };
+  });
 }
 
 // routes matcher가 { id, action }을 넘긴다. action 기본값은 details다.

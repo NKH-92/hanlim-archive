@@ -6,6 +6,7 @@ import { actorUsername } from "../domains/identity/domain/actor.js";
 import { validateNewPassword } from "../domains/identity/domain/passwordPolicy.js";
 import { canTransitionUser, transitionFor } from "../domains/identity/domain/userState.js";
 import { createUserPermissionMutationPlan, createUserStatusMutationPlan } from "../domains/identity/infrastructure/userMutationPlans.js";
+import { executeMutationBatch } from "../platform/d1/requestGateway.js";
 
 const USER_PERMISSION_COLUMNS = PERMISSION_KEYS.join(", ");
 
@@ -22,6 +23,9 @@ export async function getAppUsers(env) {
       approved_by,
       rejected_at,
       rejected_by,
+      must_change_password,
+      security_review_required,
+      session_epoch,
       updated_at,
       ${USER_PERMISSION_COLUMNS}
     FROM app_users
@@ -48,6 +52,9 @@ export async function getAppUser(env, id) {
       approved_by,
       rejected_at,
       rejected_by,
+      must_change_password,
+      security_review_required,
+      session_epoch,
       updated_at,
       ${USER_PERMISSION_COLUMNS}
     FROM app_users
@@ -151,7 +158,7 @@ export async function disableUser(env, id, actor) {
   return transitionUserStatus(env, id, actor, {
     action: "disable",
     summary: "사용자 사용중지",
-    updateSql: "status = 'disabled', updated_at = CURRENT_TIMESTAMP"
+    updateSql: "status = 'disabled', session_epoch = session_epoch + 1, updated_at = CURRENT_TIMESTAMP"
   });
 }
 
@@ -159,13 +166,13 @@ export async function enableUser(env, id, actor) {
   return transitionUserStatus(env, id, actor, {
     action: "enable",
     summary: "사용자 다시 사용",
-    updateSql: "status = 'approved', updated_at = CURRENT_TIMESTAMP"
+    updateSql: "status = 'approved', session_epoch = session_epoch + 1, updated_at = CURRENT_TIMESTAMP"
   });
 }
 
 export async function updateUserPermissions(env, id, permissions, actor) {
   const user = await getAppUser(env, id);
-  if (!user || user.role !== "User") {
+  if (!user || user.role !== "User" || Number(user.security_review_required || 0) === 1) {
     return { ok: false, message: "권한을 변경할 사용자를 찾을 수 없습니다." };
   }
 
@@ -176,7 +183,7 @@ export async function updateUserPermissions(env, id, permissions, actor) {
   }
 
   const expectedUpdatedAt = user.updated_at;
-  const guardSql = "FROM app_users WHERE id = ? AND role = 'User' AND updated_at = ?";
+  const guardSql = "FROM app_users WHERE id = ? AND role = 'User' AND security_review_required = 0 AND updated_at = ?";
   const audit = createSystemAuditStatement(env, {
     entityType: "user",
     entityId: user.id,
@@ -194,10 +201,10 @@ export async function updateUserPermissions(env, id, permissions, actor) {
     UPDATE app_users
     SET ${PERMISSION_KEYS.map((permission) => `${permission} = ?`).join(",\n        ")},
         updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND role = 'User' AND updated_at = ?
+    WHERE id = ? AND role = 'User' AND security_review_required = 0 AND updated_at = ?
   `).bind(...values, user.id, expectedUpdatedAt);
   const plan = createUserPermissionMutationPlan(audit, update, `app_users:${user.id}:${expectedUpdatedAt}`);
-  const results = await env.DB.batch(plan.execution().statements);
+  const results = await executeMutationBatch(env, plan);
 
   return changed(results[1])
     ? { ok: true }
@@ -212,7 +219,7 @@ async function transitionUserStatus(env, id, actor, spec) {
   }
 
   const placeholders = transition.from.map(() => "?").join(", ");
-  const guardSql = `FROM app_users WHERE id = ? AND role = 'User' AND status IN (${placeholders})`;
+  const guardSql = `FROM app_users WHERE id = ? AND role = 'User' AND security_review_required = 0 AND status IN (${placeholders})`;
   const guardBinds = [user.id, ...transition.from];
   const audit = createSystemAuditStatement(env, {
     entityType: "user",
@@ -229,10 +236,10 @@ async function transitionUserStatus(env, id, actor, spec) {
   const update = env.DB.prepare(`
     UPDATE app_users
     SET ${spec.updateSql}
-    WHERE id = ? AND role = 'User' AND status IN (${placeholders})
+    WHERE id = ? AND role = 'User' AND security_review_required = 0 AND status IN (${placeholders})
   `).bind(...(spec.updateBinds || []), user.id, ...transition.from);
   const plan = createUserStatusMutationPlan(spec.action, audit, update, `app_users:${user.id}:${transition.from.join("|")}`);
-  const results = await env.DB.batch(plan.execution().statements);
+  const results = await executeMutationBatch(env, plan);
 
   return changed(results[1])
     ? { ok: true }

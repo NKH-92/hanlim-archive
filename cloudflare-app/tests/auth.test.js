@@ -30,6 +30,31 @@ test("readSession rejects revoked users before cookie expiry", async () => {
   assert.equal(await readSession(request, envWithUser({ status: "disabled" })), null);
 });
 
+test("readSession rejects a copied cookie after the user's session epoch changes", async () => {
+  const cookie = await createSessionCookie({
+    username: "user@example.com",
+    displayName: "사용자",
+    role: "User",
+    sessionEpoch: 4
+  }, envWithUser({ sessionEpoch: 4 }), true);
+  const request = requestWithCookie(cookie);
+
+  assert.equal((await readSession(request, envWithUser({ sessionEpoch: 4 }))).sessionEpoch, 4);
+  assert.equal(await readSession(request, envWithUser({ sessionEpoch: 5 })), null);
+});
+
+test("epoch 필드가 없는 legacy cookie는 DB epoch 0에서만 전환 호환된다", async () => {
+  const cookie = await legacySessionCookie({
+    username: "user@example.com",
+    displayName: "사용자",
+    role: "User"
+  });
+  const request = requestWithCookie(cookie);
+
+  assert.equal((await readSession(request, envWithUser({ sessionEpoch: 0 }))).sessionEpoch, 0);
+  assert.equal(await readSession(request, envWithUser({ sessionEpoch: 1 })), null);
+});
+
 test("readSession refreshes granular permissions from app_users on every request", async () => {
   const cookie = await createSessionCookie({
     username: "user@example.com",
@@ -83,12 +108,55 @@ test("validateUser authenticates admins from app_users", async () => {
   assert.equal(await validateUser(env, "nkh92", "wrong-password"), null);
 });
 
+test("validateUser는 미등록·비승인 계정에도 동일한 password verifier를 한 번 실행한다", async () => {
+  const calls = [];
+  const verifyPasswordFn = async (...args) => {
+    calls.push(args);
+    return false;
+  };
+  const missingEnv = {
+    DB: {
+      prepare() {
+        return { bind() { return { async first() { return null; } }; } };
+      }
+    }
+  };
+
+  assert.equal(await validateUser(missingEnv, "missing@example.com", "guess", { verifyPasswordFn }), null);
+  assert.equal(await validateUser(envWithUser({ status: "rejected" }), "user@example.com", "guess", { verifyPasswordFn }), null);
+  assert.equal(calls.length, 2);
+  for (const [, salt, hash] of calls) {
+    assert.ok(salt);
+    assert.ok(hash);
+  }
+});
+
 function requestWithCookie(cookie) {
   return new Request("https://example.com/app", {
     headers: {
       Cookie: cookie.split(";")[0]
     }
   });
+}
+
+async function legacySessionCookie(user) {
+  const payloadObject = {
+    ...user,
+    mustChangePassword: false,
+    csrfToken: "legacy-csrf-token".repeat(2),
+    exp: Math.floor(Date.now() / 1000) + 3600
+  };
+  const payload = Buffer.from(JSON.stringify(payloadObject)).toString("base64url");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(SESSION_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signatureBytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  const signature = Buffer.from(signatureBytes).toString("base64url");
+  return `hanlim_session=${payload}.${signature}; Path=/`;
 }
 
 function envWithUser({
@@ -104,7 +172,10 @@ function envWithUser({
   canManageSets = 0,
   canManageMasters = 0,
   canManageUsers = 0,
-  canViewAudit = 0
+  canViewAudit = 0,
+  canApplyDocumentSnapshots = 0,
+  sessionEpoch = 0,
+  securityReviewRequired = 0
 } = {}) {
   return {
     SESSION_SECRET,
@@ -122,13 +193,16 @@ function envWithUser({
                   password_hash: passwordRecord.hash,
                   role,
                   status,
+                  session_epoch: sessionEpoch,
+                  security_review_required: securityReviewRequired,
                   can_manage_documents: canManageDocuments,
                   can_move_documents: canMoveDocuments,
                   can_manage_disposals: canManageDisposals,
                   can_manage_sets: canManageSets,
                   can_manage_masters: canManageMasters,
                   can_manage_users: canManageUsers,
-                  can_view_audit: canViewAudit
+                  can_view_audit: canViewAudit,
+                  can_apply_document_snapshots: canApplyDocumentSnapshots
                 };
               }
             };

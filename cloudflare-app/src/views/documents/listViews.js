@@ -20,13 +20,15 @@ export function documentsPage({
   pagination = { page: 1, pageSize: 30, totalDocuments: documents.length, totalPages: 1 }
 }) {
   const chipRow = parsedChipRow(parsedQuery, query, "/documents");
+  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status && filters.status !== "active", filters.sort && filters.sort !== "updated"].filter(Boolean).length;
   return page("문서 관리", `
     <section class="page-head">
-      <div><h1>문서 관리</h1><p class="muted">문서 정보와 보관 위치를 확인하고 수정합니다.</p></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 관리</span></nav><h1>문서 관리</h1><p class="muted">문서 정보와 보관 위치를 확인하고 수정합니다.</p></div>
       ${documentToolbar(session)}
     </section>
 
-    <section class="panel search-panel">
+    <button type="button" class="button secondary mobile-filter-toggle" data-filter-toggle aria-controls="document-advanced-filters" aria-expanded="${activeFilterCount ? "true" : "false"}">상세 필터${activeFilterCount ? ` ${activeFilterCount}개 적용` : ""}</button>
+    <section id="document-advanced-filters" class="panel search-panel" data-collapsible-filters data-active="${activeFilterCount ? "true" : "false"}">
       <form method="get" action="/documents" class="filter-bar" id="documentFilterForm" data-search-form data-auto-submit>
         ${searchInputBlock(query, suggestions)}
         ${filterSelectRow({ categories, tags, filters })}
@@ -61,9 +63,15 @@ export function disposalWorkspacePage({
   tab = "targets",
   feedback = null
 }) {
+  const targetCount = Number(pagination.totalItems || documents.length || 0);
   return page("문서 폐기", `
     <section class="page-head">
-      <div><h1>문서 폐기</h1><p class="muted">문서를 검색해 대상을 고르고, 폐기 사유와 승인 참조를 검토한 뒤 상태를 변경합니다.</p></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 폐기</span></nav><h1>문서 폐기</h1><p class="muted">실제 폐기할 원본을 선택하고 수량을 확인하면 즉시 폐기 상태로 변경됩니다.</p></div>
+      <div class="button-group"><a class="button secondary" href="/documents/disposal?tab=history">폐기 이력</a></div>
+    </section>
+    <section class="operation-hero disposal-hero" aria-label="폐기 작업 요약">
+      <div><p class="hero-kicker">Controlled disposal</p><h2>폐기 가능한 원본 ${targetCount.toLocaleString("ko-KR")}부</h2><p>문서 한 건은 원본 한 부입니다. 실제 원본을 고르고 수량이 맞는지 마지막으로 확인하세요.</p></div>
+      <div class="hero-stat"><strong>${targetCount.toLocaleString("ko-KR")}</strong><span>선택 가능 원본</span></div>
     </section>
     ${disposalFeedback(feedback)}
     <nav class="workspace-tabs" aria-label="폐기 작업 화면">
@@ -78,6 +86,7 @@ export function disposalWorkspacePage({
 
 function disposalTargetsView({ documents, categories, racks, years, filters, capped, limit }) {
   return `
+    <div class="disposal-shell">
     <section class="panel">
       <form method="get" action="/documents/disposal" class="filter-bar disposal-filter">
         <label><span>폐기 예정 연도</span><select name="disposalDueYear"><option value="">전체</option>${years.map((year) => option(year, `${year}년`, filters.disposalDueYear)).join("")}</select></label>
@@ -93,7 +102,8 @@ function disposalTargetsView({ documents, categories, racks, years, filters, cap
       ${capped ? `<div class="alert warning">한 번에 최대 ${limit}건까지 검토할 수 있습니다. 검색 조건을 더 좁혀 주세요.</div>` : ""}
       ${documentResults(documents, { bulk: true, selectAll: true, emptyMessage: "조건에 맞는 보관중 문서가 없습니다." })}
       ${bulkActionBar("/documents/disposal/process", filters)}
-    </section>`;
+    </section>
+    </div>`;
 }
 
 function disposalHistoryView(history, pagination, filters) {
@@ -137,8 +147,8 @@ function historyPagination(pagination, query) {
     return `/documents/disposal?${params}`;
   };
   return `<nav class="pagination" aria-label="폐기 이력 페이지">
-    <a class="button secondary sm" href="${escapeHtml(url(Math.max(1, pagination.page - 1)))}">이전</a>
+    ${pagination.page <= 1 ? `<span class="button secondary sm disabled" aria-disabled="true">이전</span>` : `<a class="button secondary sm" href="${escapeHtml(url(pagination.page - 1))}">이전</a>`}
     <span>${pagination.page} / ${pagination.totalPages}</span>
-    <a class="button secondary sm" href="${escapeHtml(url(Math.min(pagination.totalPages, pagination.page + 1)))}">다음</a>
+    ${pagination.page >= pagination.totalPages ? `<span class="button secondary sm disabled" aria-disabled="true">다음</span>` : `<a class="button secondary sm" href="${escapeHtml(url(pagination.page + 1))}">다음</a>`}
   </nav>`;
 }

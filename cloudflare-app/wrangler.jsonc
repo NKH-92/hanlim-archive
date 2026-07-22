@@ -13,6 +13,9 @@
     "binding": "ASSETS",
     "run_worker_first": true
   },
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -20,5 +23,46 @@
       "database_id": "1262ca00-b431-490c-aad2-539d77d4f73f",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  // 엑셀 전체 대장 반영 개방 단계: disabled → admin-only → permissioned
+  "vars": {
+    "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only"
+  },
+  // 원격 migration/deploy는 명시적 env 이름을 요구한다. top-level은 로컬·개발 기본값이다.
+  "env": {
+    "staging": {
+      "name": "hanlim-archive-staging",
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      },
+      "vars": {
+        "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hanlim-archive-staging",
+          "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
+          "migrations_dir": "migrations"
+        }
+      ]
+    },
+    "production": {
+      "name": "hanlim-archive",
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      },
+      "vars": {
+        "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hanlim-archive",
+          "database_id": "1262ca00-b431-490c-aad2-539d77d4f73f",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
 }

@@ -1,4 +1,4 @@
-import { changeUserPassword } from "../auth.js";
+import { changeUserPassword, createSessionCookie } from "../auth.js";
 import {
   approveUser,
   getAppUsers,
@@ -65,6 +65,11 @@ export async function handleChangePassword(request, env, session) {
     return renderPasswordResult(session, { error: "모든 필드를 입력하세요." });
   }
 
+  // forced-change 우회 방지: 길이와 무관하게 현재와 동일한 새 비밀번호를 거부한다.
+  if (currentPassword === newPassword) {
+    return renderPasswordResult(session, { error: "새 비밀번호는 현재 비밀번호와 달라야 합니다." });
+  }
+
   const passwordValidation = validateNewPassword(newPassword);
   if (!passwordValidation.ok) return renderPasswordResult(session, { error: passwordValidation.message });
 
@@ -77,13 +82,34 @@ export async function handleChangePassword(request, env, session) {
     return renderPasswordResult(session, { error: result.message });
   }
 
+  const refreshedSession = {
+    ...session,
+    mustChangePassword: false,
+    sessionEpoch: result.sessionEpoch
+  };
+  const sessionCookie = await createSessionCookie(
+    refreshedSession,
+    env,
+    new URL(request.url).protocol === "https:"
+  );
+
   if (session.mustChangePassword) {
-    return redirect("/app?toast=password-changed");
+    return redirect("/app?toast=password-changed", { "Set-Cookie": sessionCookie });
   }
 
-  return renderPasswordResult(session, { success: true });
+  return withSessionCookie(renderPasswordResult(refreshedSession, { success: true }), sessionCookie);
 }
 
 function renderPasswordResult(session, options = {}) {
   return passwordPage({ session, required: Boolean(session.mustChangePassword), ...options });
+}
+
+function withSessionCookie(response, cookie) {
+  const headers = new Headers(response.headers);
+  headers.append("Set-Cookie", cookie);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
 }

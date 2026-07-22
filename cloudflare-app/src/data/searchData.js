@@ -191,6 +191,7 @@ export async function getSearchIndexMeta(env) {
     SELECT
       (SELECT COUNT(*) FROM documents WHERE sync_state = 'current') AS count,
       (SELECT MAX(id) FROM documents WHERE sync_state = 'current') AS max_id,
+      (SELECT current_version FROM document_sync_state WHERE id = 1) AS sync_version,
       (SELECT COALESCE(SUM(row_version), 0) FROM documents WHERE sync_state = 'current') AS documents_version,
       (SELECT MAX(updated_at) FROM documents WHERE sync_state = 'current') AS documents_updated,
       (SELECT MAX(updated_at) FROM categories) AS categories_updated,
@@ -211,6 +212,7 @@ export async function getSearchIndexMeta(env) {
   // 문서가 더 최신이어도 태그만 바뀌면 해당 구간이 달라져 ETag가 반드시 갱신된다.
   const updated = stamps.reduce((latest, stamp) => (stamp > latest ? stamp : latest), "");
   const versionKey = [
+    String(Number(row?.sync_version || 0)),
     String(Number(row?.documents_version || 0)),
     ...stamps.map((stamp) => stamp.replace(/[^0-9]/g, "") || "0")
   ].join("-");

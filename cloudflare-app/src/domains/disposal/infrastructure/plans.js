@@ -6,6 +6,8 @@ export function createDisposalPlan(action, statements, guard = action) {
   statements.forEach((statement, index) => plan.step(`${action}.${index + 1}`, statement, { guard }));
   return plan;
 }
+
+/** @deprecated Prefer createDisposalPlan + executeMutationBatch; kept for statement-SQL probes. */
 export function disposalStatements(action, statements, guard) {
   return createDisposalPlan(action, statements, guard).execution().statements;
 }

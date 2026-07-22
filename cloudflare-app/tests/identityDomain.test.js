@@ -27,6 +27,7 @@ test("비밀번호 policy와 사용자 상태 machine은 기존 규칙을 단일
   assert.deepEqual(validateNewPassword("short"), { ok: false, message: "새 비밀번호는 8자 이상이어야 합니다." });
   assert.equal(canTransitionUser({ role: "User", status: "pending" }, "approve"), true);
   assert.equal(canTransitionUser({ role: "User", status: "approved" }, "reject"), false);
+  assert.equal(canTransitionUser({ role: "User", status: "rejected", security_review_required: 1 }, "approve"), false);
   assert.deepEqual(transitionFor("enable"), { from: ["disabled"], to: "approved" });
 });
 

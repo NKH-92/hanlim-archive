@@ -8,8 +8,8 @@ export function createMasterService(repository) {
     getActiveTags: (env) => repository.listMasters(env, "tag", { activeOnly: true }),
     upsertCategory: (env, values, actor = {}) => saveValidated(repository, env, "category", values, actor),
     upsertTag: (env, values, actor = {}) => saveValidated(repository, env, "tag", values, actor),
-    deleteCategory: (env, id, actor = {}) => repository.deactivateMaster(env, "category", Number(id), actor),
-    deleteTag: (env, id, actor = {}) => repository.deactivateMaster(env, "tag", Number(id), actor)
+    deleteCategory: (env, id, actor = {}, expectedRowVersion = 0) => repository.deactivateMaster(env, "category", Number(id), actor, Number(expectedRowVersion)),
+    deleteTag: (env, id, actor = {}, expectedRowVersion = 0) => repository.deactivateMaster(env, "tag", Number(id), actor, Number(expectedRowVersion))
   });
 }
 

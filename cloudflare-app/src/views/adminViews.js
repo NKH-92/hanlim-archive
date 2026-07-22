@@ -2,15 +2,20 @@
 
 import { escapeHtml } from "../ui/html/escape.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
+import { PASSWORD_POLICY } from "../domains/identity/index.js";
 import { alertDanger, alertWarning, emptyState, page, sectionHeader } from "./layout.js";
 
 export { categoriesPage, tagsPage } from "../domains/masters/index.js";
 
 export function adminDashboardPage({ session, pendingCount, quality = null, searchIndex = null }) {
+  const pending = Number(pendingCount || 0);
+  const qualityIssues = qualityIssueCount(quality);
+  const searchAttention = searchIndex && ["warning", "review"].includes(searchIndex.level) ? 1 : 0;
+  const attentionCount = pending + qualityIssues + searchAttention;
   const groups = [];
   if (hasPermission(session, PERMISSIONS.MANAGE_USERS)) {
     groups.push(managementGroup("사용자 및 접근", "계정 승인과 사용 권한을 관리합니다.", [
-      ["/admin/settings", "fa-users-gear", "사용자 관리", `${pendingCount}건 승인 대기`]
+      ["/admin/settings", "fa-users-gear", "사용자 관리", `${pending}건 승인 대기`]
     ]));
   }
   if (hasPermission(session, PERMISSIONS.MANAGE_MASTERS)) {
@@ -23,7 +28,8 @@ export function adminDashboardPage({ session, pendingCount, quality = null, sear
   }
   const dataLinks = [];
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
-    dataLinks.push(["/documents/import", "fa-file-excel", "엑셀 문서대장", "전체 동기화·인쇄용 추출"]);
+    dataLinks.push(["/documents/import", "fa-file-excel", "리스트 동기화", "엑셀 전체 동기화·검증·인쇄용 추출"]);
+    dataLinks.push(["/documents/new", "fa-file-circle-plus", "문서 추가", "신규 문서를 현재 리스트에 즉시 등록"]);
     dataLinks.push(["/admin/data-quality", "fa-list-check", "데이터 품질", "문제 문서 작업 목록"]);
   }
   if (hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
@@ -36,9 +42,18 @@ export function adminDashboardPage({ session, pendingCount, quality = null, sear
   if (dataLinks.length) {
     groups.push(managementGroup("데이터 및 감사", "데이터 품질과 변경 증적을 확인합니다.", dataLinks));
   }
-  return page("관리 설정", `
+  const heroAction = pending && hasPermission(session, PERMISSIONS.MANAGE_USERS)
+    ? `<a class="button action-button" href="/admin/settings">승인 요청 확인</a>`
+    : qualityIssues && hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)
+      ? `<a class="button action-button" href="/admin/data-quality">품질 작업 보기</a>`
+      : "";
+  return page("운영 관리", `
     <section class="page-head">
-      <div><h1>관리 설정</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 설정합니다.</p></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>운영 관리</span></nav><h1>운영 관리</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 확인합니다.</p></div>
+    </section>
+    <section class="operation-hero admin-hero" aria-label="운영 상태 요약">
+      <div class="admin-hero-copy"><p class="hero-kicker">Archive operations</p><h2>${attentionCount ? `오늘 확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있습니다.` : "문서고 운영 상태가 안정적입니다."}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 인덱스 ${Number(searchIndex.documentCount || 0).toLocaleString("ko-KR")}건` : ""}</p>${heroAction}</div>
+      <div class="hero-stat"><strong>${attentionCount.toLocaleString("ko-KR")}</strong><span>확인 필요</span></div>
     </section>
     ${quality ? dataQualityPanel(quality) : ""}
     ${searchIndex ? searchIndexPanel(searchIndex) : ""}
@@ -46,6 +61,18 @@ export function adminDashboardPage({ session, pendingCount, quality = null, sear
       ${groups.join("")}
     </div>
   `, session);
+}
+
+function qualityIssueCount(quality) {
+  if (!quality) return 0;
+  return [
+    quality.duplicateDocumentNumbers,
+    quality.missingLocation,
+    quality.missingCategory,
+    quality.invalidRackFace,
+    quality.suspiciousText,
+    quality.missingDisposalYear
+  ].reduce((sum, value) => sum + Number(value || 0), 0);
 }
 
 function managementGroup(title, description, links, advanced = false) {
@@ -113,27 +140,32 @@ export function adminSettingsPage({ session, users }) {
 
 function userRequestTable(users) {
   return `
-    <div class="table-wrap"><table>
+    <div class="table-wrap"><table class="doc-table">
       <caption class="sr-only">사용자 목록</caption>
       <thead><tr><th>아이디</th><th>이름</th><th>상태</th><th>요청일</th><th>처리</th></tr></thead>
-      <tbody>${users.map((user) => `<tr><td>${escapeHtml(user.username)}</td><td>${escapeHtml(user.display_name)}</td><td>${userStatus(user.status)}</td><td>${escapeHtml(user.requested_at || "-")}</td><td>${userActions(user)}</td></tr>`).join("")}</tbody>
+      <tbody>${users.map((user) => `<tr><td data-label="아이디">${escapeHtml(user.username)}</td><td data-label="이름">${escapeHtml(user.display_name)}</td><td data-label="상태">${userStatus(user)}</td><td data-label="요청일">${escapeHtml(user.requested_at || "-")}</td><td data-label="처리">${userActions(user)}</td></tr>`).join("")}</tbody>
     </table></div>
   `;
 }
 
 function userActions(user) {
+  if (Number(user.security_review_required || 0) === 1) {
+    return `<span class="muted">보안 검토 대상 · 일반 재승인 불가</span>`;
+  }
   if (user.role === "Admin") return `<span class="muted">관리자 계정</span>`;
   const permissions = `<a class="button secondary sm" href="/admin/users/${user.id}/permissions">권한</a>`;
-  if (user.status === "approved") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/disable" data-confirm="사용을 중지하시겠습니까?"><button type="submit" class="danger-button sm">사용중지</button></form></div>`;
-  if (user.status === "disabled") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/enable"><button type="submit" class="primary sm">다시 사용</button></form></div>`;
-  if (user.status === "rejected") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve"><button type="submit" class="primary sm">재승인</button></form></div>`;
-  return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve"><button type="submit" class="primary sm">승인</button></form><form method="post" action="/admin/users/${user.id}/reject"><button type="submit" class="danger-button sm">반려</button></form></div>`;
+  const target = `${user.display_name} (${user.username})`;
+  if (user.status === "approved") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/disable" data-confirm="${escapeHtml(target)} 계정의 로그인을 중지합니다. 계속할까요?"><button type="submit" class="danger-button sm">사용중지</button></form></div>`;
+  if (user.status === "disabled") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/enable" data-confirm="${escapeHtml(target)} 계정을 다시 사용할 수 있게 합니다. 계속할까요?"><button type="submit" class="primary sm">다시 사용</button></form></div>`;
+  if (user.status === "rejected") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 계정을 재승인합니다. 저장된 권한도 함께 확인하세요."><button type="submit" class="primary sm">재승인</button></form></div>`;
+  return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 가입 요청을 승인합니다. 승인 후 권한을 설정하세요."><button type="submit" class="primary sm">승인</button></form><form method="post" action="/admin/users/${user.id}/reject" data-confirm="${escapeHtml(target)} 가입 요청을 반려합니다. 계속할까요?"><button type="submit" class="danger-button sm">반려</button></form></div>`;
 }
 
-function userStatus(status) {
-  if (status === "approved") return `<span class="status active">승인</span>`;
-  if (status === "disabled") return `<span class="status pending">사용중지</span>`;
-  if (status === "rejected") return `<span class="status disposed">반려</span>`;
+function userStatus(user) {
+  if (Number(user.security_review_required || 0) === 1) return `<span class="status disposed">보안 검토 필요</span>`;
+  if (user.status === "approved") return `<span class="status active">승인</span>`;
+  if (user.status === "disabled") return `<span class="status pending">사용중지</span>`;
+  if (user.status === "rejected") return `<span class="status disposed">반려</span>`;
   return `<span class="status pending">대기</span>`;
 }
 
@@ -148,6 +180,7 @@ export function passwordPage({ session, error = "", success = false, required = 
         <label>현재 비밀번호<input type="password" name="currentPassword" autocomplete="current-password" required></label>
         <label>새 비밀번호<input type="password" name="newPassword" autocomplete="new-password" required></label>
         <label>새 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" required></label>
+        <p class="muted">새 비밀번호는 ${PASSWORD_POLICY.minLength}자 이상이어야 합니다. 변경 후 현재 계정을 제외한 기존 로그인 세션은 종료됩니다.</p>
         <button type="submit" class="primary">변경</button>
       </form>
     </section>

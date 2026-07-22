@@ -2,7 +2,9 @@ import {
   createDocument,
   disposeDocument,
   getDocumentMovements,
+  getDocumentRevisionHistory,
   permanentlyDeleteDocument,
+  reviseDocument,
   restoreDocument,
   updateDocument
 } from "../../domains/documents/index.js";
@@ -20,7 +22,8 @@ import {
 } from "../../domains/documents/index.js";
 import {
   documentDetailsPage,
-  documentFormPage
+  documentFormPage,
+  documentRevisionPage
 } from "../../views/documentViews.js";
 import { accessDeniedPage, errorPage, notFoundPage } from "../../views/authViews.js";
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
@@ -28,7 +31,7 @@ import { jsonResponse, redirect } from "../../platform/http/responses.js";
 import { clean } from "../../shared/text/normalize.js";
 import { requireManageDisposals, requireManageDocuments } from "../permissionGuards.js";
 
-export async function renderCreateDocument(env, session, values = {}, validation = null, title = "문서 등록") {
+export async function renderCreateDocument(env, session, values = {}, validation = null, title = "문서 추가") {
   const { categories, tags, slots } = await loadDocumentFormOptions(env, { activeOnly: true });
   const safeValues = { ...values, returnTo: safeDocumentReturn(values.returnTo) };
 
@@ -77,7 +80,7 @@ async function renderEditDocumentForm(env, session, id, values, selectedTags, va
   const { categories, tags, slots } = await loadDocumentFormOptions(env, { includeSlots: false });
   return documentFormPage({
     session,
-    title: "문서 수정",
+    title: "정보 수정",
     action: `/documents/${id}/edit`,
     values,
     categories,
@@ -86,7 +89,8 @@ async function renderEditDocumentForm(env, session, id, values, selectedTags, va
     selectedTags,
     error: typeof validation === "string" ? validation : "",
     validation: typeof validation === "object" ? validation : null,
-    showLocation: false
+    showLocation: false,
+    mode: "information"
   });
 }
 
@@ -102,11 +106,12 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
 
     const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
     const canViewMovements = canViewAudit || hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS);
-    const [tags, disposalLogs, auditLogs, movements, racks, regions] = await Promise.all([
+    const [tags, disposalLogs, auditLogs, movements, revisionHistory, racks, regions] = await Promise.all([
       getDocumentTags(env, id),
       getDisposalLogs(env, id),
       canViewAudit ? getDocumentAuditLogs(env, id) : Promise.resolve([]),
       canViewMovements ? getDocumentMovements(env, id) : Promise.resolve([]),
+      getDocumentRevisionHistory(env, id),
       getRackSummaries(env),
       getFloorPlanRegions(env)
     ]);
@@ -118,6 +123,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       disposalLogs,
       auditLogs,
       movements,
+      revisionHistory,
       floorPlan: buildFloorPlanLayout(racks, regions)
     });
   }
@@ -153,19 +159,42 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
   if (request.method === "GET" && action === "revise") {
     const denied = requireManageDocuments(session);
     if (denied) return denied;
-    const [document, tags] = await Promise.all([getDocument(env, id), getDocumentTags(env, id)]);
+    const document = await getDocument(env, id);
     if (!document) return notFoundPage(session);
     if (document.status !== "active") return errorPage("폐기 문서는 새 개정을 등록할 수 없습니다.", session, 400);
 
-    return renderCreateDocument(env, session, {
-      ...documentToFormValues(document),
+    return documentRevisionPage({
+      session,
+      document,
+      values: {
       revisionNumber: "",
-      revisionDate: "",
-      disposalDueYear: "",
-      note: "",
-      tagIds: tags.map((tag) => tag.id),
-      revisionSourceId: id
-    }, null, "새 개정 등록");
+        revisionDate: "",
+        confirmReplacement: ""
+      }
+    });
+  }
+
+  if (request.method === "POST" && action === "revise") {
+    const denied = requireManageDocuments(session);
+    if (denied) return denied;
+    const document = await getDocument(env, id);
+    if (!document) return notFoundPage(session);
+
+    const form = await request.formData();
+    const values = {
+      revisionNumber: clean(form.get("revisionNumber")),
+      revisionDate: clean(form.get("revisionDate")),
+      confirmReplacement: clean(form.get("confirmReplacement")),
+      expectedUpdatedAt: clean(form.get("expectedUpdatedAt")),
+      expectedRowVersion: Number(form.get("expectedRowVersion"))
+    };
+    const result = await reviseDocument(env, id, values, session);
+    if (result.ok) return redirect(`/documents/${result.newDocumentId}?toast=revised`);
+    if (result.replacementId) return redirect(`/documents/${result.replacementId}`);
+    if (result.validation) {
+      return documentRevisionPage({ session, document, values, validation: result.validation });
+    }
+    return errorPage(result.message, session, 400);
   }
 
   if (request.method === "POST" && action === "edit") {
@@ -187,17 +216,22 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
     // 결합해 위치 변경이 반드시 전용 이동 흐름을 거치도록 한다.
     values.rackSlotId = Number(document.rack_slot_id);
     values.rackFace = document.rack_face;
+    values.revisionNumber = document.revision_number;
+    values.revisionDate = document.revision_date || "";
     const validation = await validateDocumentInputDetails(env, values, {
       allowInactiveCategoryId: document.category_id,
       allowInactiveTagIds: currentTags.map((tag) => tag.id)
     });
+    if (!document.revision_date) {
+      delete validation.fieldErrors.revisionDate;
+      validation.ok = !Object.keys(validation.fieldErrors).length && !validation.formErrors.length;
+    }
 
     if (!validation.ok) {
       return renderEditDocumentForm(env, session, id, values, values.tagIds, validation);
     }
 
-    const pairChanged = values.documentNumber.toUpperCase() !== String(document.document_number).toUpperCase() ||
-      values.revisionNumber.toUpperCase() !== String(document.revision_number).toUpperCase();
+    const pairChanged = values.documentNumber.toUpperCase() !== String(document.document_number).toUpperCase();
     if (pairChanged) {
       const duplicate = await findDuplicateDocument(env, values.documentNumber, values.revisionNumber, id);
       if (duplicate.exists) return renderEditDocumentForm(env, session, id, values, values.tagIds, duplicateValidation(duplicate));

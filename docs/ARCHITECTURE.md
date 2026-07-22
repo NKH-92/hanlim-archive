@@ -67,28 +67,50 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
    `public/assets/exceljs.min.js`, `jszip.min.js`로 고정하며 `check:browser`가 다섯 asset의 drift를 차단한다.
 5. **D1 원자성**: 다중 변경은 `env.DB.batch()` 한 경계에 둔다. 감사·이력 INSERT가 상태
    UPDATE/DELETE보다 먼저 오고, 마지막 mutation guard가 no-op과 경합을 검출해야 한다.
-6. **낙관적 잠금**: 문서 수정·이동은 `updated_at`과 단조 증가 `row_version`을 함께 검사한다.
+6. **낙관적 잠금**: 문서 수정·이동은 `updated_at`과 단조 증가 `row_version`을 함께 검사한다. 대분류·태그·랙·문서 세트의 수정·상태 변경·구성 변경도 화면에서 받은 `expectedRowVersion`과 DB `row_version`이 일치할 때만 수행한다.
 7. **랙 규칙**: 한 면은 7열 × 6선반, 저장 face는 A/B, 표시는 단면 `13`, 양면 `13-1`/`13-2`다.
    열 mirror는 화면 순서만 바꾸며 DB `column_number`는 바꾸지 않는다.
 8. **내부 식별자 비노출**: `storage_code`와 `ARC-*`는 검색, CSV, 공개 read model에 노출하지 않는다.
 9. **장기 작업 재개성**: disposal/import는 claim token과 terminal 상태를 보존하고 재호출이 중복
    mutation을 만들지 않아야 한다.
 10. **migration append-only**: 과거 migration과 checksum은 수정하지 않는다. 스키마 변경은 항상
-    다음 번호의 새 migration이며 수동 SQL을 운영 절차로 만들지 않는다.
+    다음 번호의 새 migration이며 수동 SQL을 운영 절차로 만들지 않는다. CI는 PR base의 released baseline과
+    비교해 과거 SQL·checksum·schema 계약을 함께 바꾸는 우회도 거부한다.
 11. **엑셀 대장 전체 동기화**: 사용자가 올리는 한 파일은 현재 대장의 완전한 snapshot이다. 브라우저는
-    XLSX를 읽고 만들며 Worker는 정규화된 50행 이하 chunk만 받는다. 검증 실패·버전 경합은 현재 문서를
-    한 행도 바꾸지 않고, 빠진 문서는 hard delete 대신 `sync_state = 'excluded'`로 이력만 보존한다.
+    XLSX를 읽고 만들며 Worker는 정규화된 50행 이하 chunk만 받는다. 검증 실패·권한 부족·버전 경합은
+    현재 문서를 한 행도 바꾸지 않고, 빠진 문서는 hard delete 대신 `document_snapshot_exclusions`와
+    `sync_state = 'excluded'`로 이력만 보존한다. 최종 반영은 전용 권한과 위치·폐기 권한을 우회하지 않으며,
+    날짜는 UTC calendar date로만 왕복한다.
 12. **엑셀 행 식별자**: 보이는 13개 한글 열의 순서와 이름은 고정한다. `excel_row_key`는 숨김 14열에만
     기록하며 `storage_code`를 대체 공개하지 않는다. 파일의 `baseVersion`이 현재 버전과 다르면 반영을 막는다.
 13. **OOXML 호환성**: 일반 XLSX는 ExcelJS로 바로 읽고, 표준 namespace 접두사와 절대 relationship을 쓰는
     XLSX만 브라우저에서 상대 경로·기본 namespace 형태로 정규화한 뒤 다시 읽는다. 원본 파일 hash는 바꾸지 않는다.
+14. **엑셀 출처와 압축 예산**: export API는 DB에 manifest ID·base version·현재 snapshot·canonical export hash를
+    먼저 기록하고 XLSX 숨김 metadata에 manifest ID를 넣는다. managed 업로드는 현재 상태와 manifest를 다시 대조한다.
+    브라우저는 원본 10MB, ZIP 500항목, 비압축 합계 50MB를 넘는 파일을 workbook 해석 전에 거부하고 서버도 보고된
+    원본 크기 상한을 재검사한다.
+15. **개별 관리와 개정 경계**: 웹의 문서 추가·정보 수정·개정·위치 이동·폐기는 모두 `sync_state = 'current'`
+    대장과 단조 증가 version에 반영되어 다음 Excel export와 인쇄용 시트의 입력이 된다. Excel snapshot은
+    `document_revision_links`에 연결된 문서의 문서번호·개정번호를 바꾸거나 자동 폐기된 이전본을 복원할 수 없다.
+    prepare 검증과 최종 apply SQL guard가 이 규칙을 각각 검사한다.
+16. **세션 즉시 폐기**: signed cookie에는 `sessionEpoch`를 포함하고 매 요청 DB의 `session_epoch`와 비교한다.
+    로그아웃·비밀번호 변경·사용중지·재활성화는 epoch를 단조 증가시켜 복사된 cookie도 즉시 무효화한다.
+    `security_review_required` 계정은 status·비밀번호와 무관하게 로그인과 기존 session을 모두 거부한다.
+17. **검색 cache 단조성**: 즉시 검색 ETag는 초 단위 timestamp만 사용하지 않는다. 문서 변경마다 증가하는
+    `document_sync_state.current_version`, current 문서의 `row_version`, 기준정보 변경 신호를 조합해 같은 초의
+    수정도 다른 ETag를 만든다.
+18. **CSV 수식 비활성화**: 모든 CSV writer는 선행 공백·제어문자 뒤의 `=`, `+`, `-`, `@`까지 검사해
+    스프레드시트 수식으로 실행되지 않도록 apostrophe를 붙인 뒤 RFC 4180 quoting을 적용한다.
+19. **rollback 호환성**: 신규 migration을 적용하기 전에 현재 rollback 대상 Worker가 신규 schema에서 인증과
+    핵심 쓰기 불변식을 지키는지 검증한다. `session_epoch` 최초 도입은 exact pre-release source로 만든
+    epoch-aware compatibility Worker를 migration 없이 먼저 배포한 경우에만 진행한다.
 
 ## 데이터 무결성 계약
 
 - audit/history INSERT는 상태 UPDATE/DELETE보다 먼저 같은 `env.DB.batch()`에서 실행한다.
 - 선행 INSERT도 application 사전조회가 아니라 같은 pre-state SQL guard를 사용한다.
 - batch 마지막 mutation의 변경 행 수로 no-op과 낙관적 잠금 경합을 감지한다.
-- 모든 SQL 값은 bind parameter로 전달하고 요청당 D1 statement 예산 40을 넘지 않는다.
+- 모든 SQL 값은 bind parameter로 전달하고 요청당 D1 statement 예산 40, statement당 bind parameter 100개를 넘지 않는다. 최대 200개 ID를 다루는 세트 작업은 JSON 한 bind와 `json_each()`를 사용한다.
 - 폐기·CSV 작업은 claim token과 terminal 상태를 보존해 재호출 시 중복 기록을 만들지 않는다.
 - 감사·이동·세트 이력은 append-only trigger를 유지하고, 내부 `storage_code`는 DB·감사 내부에서만 사용한다.
 - 엑셀 snapshot apply는 claim → 문서별 감사 → set-based diff → 전역 감사 → version 확정을 40문장 이하
@@ -107,6 +129,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 | 인증·권한·CSP·CSRF | `auth.test.js`, `permissions.test.js`, `security.test.js` |
 | 폐기·CSV 재개와 예산 | `batchJobs.test.js`, `freeTierBudget.test.js` |
 | 엑셀 300건 교체·diff·구버전 차단 | `excelSnapshotSync.test.js` |
+| 실제 XLSX export→parse 무수정 0-diff | `excelSnapshotWorkbookE2E.test.js` |
+| manifest·bootstrap·ZIP·감사 보강 | `excelSnapshotCompletion.test.js`, `excelOpenXmlCompatibility.test.js` |
+| 웹 개별 변경 export 포함·개정 이력 경계 | `documentLedgerIntegration.test.js` |
 | 검색 server/browser 일치 | `searchParity.test.js`, `searchBehavior.test.js` |
 
 ## 변경 절차

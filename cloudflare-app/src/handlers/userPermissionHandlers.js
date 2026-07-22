@@ -16,6 +16,9 @@ import { redirect } from "../platform/http/responses.js";
 export async function renderUserPermissions(env, session, userId, error = "") {
   const user = await getAppUser(env, userId);
   if (!user) return notFoundPage(session);
+  if (Number(user.security_review_required || 0) === 1) {
+    return errorPage("보안 검토 대상 계정은 일반 사용자 승인·권한 변경 절차로 복구할 수 없습니다.", session, 400);
+  }
   if (user.role === "Admin") {
     return errorPage("기존 Admin 계정은 항상 모든 권한을 가지므로 개별 권한을 변경하지 않습니다.", session, 400);
   }
@@ -24,6 +27,9 @@ export async function renderUserPermissions(env, session, userId, error = "") {
 
 export async function handleUserPermissions(request, env, session, userId) {
   const form = await request.formData();
+  if (form.get("confirmPermissions") !== "1") {
+    return renderUserPermissions(env, session, userId, "저장 후 적용될 권한 변경 결과를 확인하세요.");
+  }
   const preset = String(form.get("preset") || "custom");
   const selectedPreset = Object.hasOwn(PERMISSION_PRESETS, preset) ? preset : "custom";
   const custom = Object.fromEntries(PERMISSION_KEYS.map((permission) => [permission, form.get(permission) === "1"]));
