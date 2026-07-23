@@ -38,7 +38,8 @@
     "0035_document_revision_links.sql": "82c694fac74fee29866b1eb56dce11e00ceb70c2e64337ec17ef38a8b47b6c37",
     "0036_identity_session_epoch.sql": "451eada46505707eea115d5fbfdf14ff1a76c3d6315740891cfd3e41123fa1d0",
     "0037_document_revision_rollback_guards.sql": "733dbfbc741924eb67429c38d11902ed8d3f75e679e651e622fc9d69860954c6",
-    "0038_metadata_occ.sql": "02cf1ec5679c89ce9c687415cfd86750c53c58f25300c4b59a4c5960e6fd291f"
+    "0038_metadata_occ.sql": "02cf1ec5679c89ce9c687415cfd86750c53c58f25300c4b59a4c5960e6fd291f",
+    "0039_identity_security_remediation.sql": "563cfcbd8838a711000c399175e75f5a01f44b34c916b526aff1aeb5a77ddfc5"
   },
   "schema": {
     "tables": [
@@ -63,6 +64,7 @@
       "document_tags",
       "documents",
       "floor_plan_regions",
+      "identity_security_remediations",
       "login_throttle",
       "rack_slots",
       "racks",
@@ -92,6 +94,8 @@
       "trg_document_sync_version_update",
       "trg_document_tag_sync_version_delete",
       "trg_document_tag_sync_version_insert",
+      "trg_identity_security_remediations_no_delete",
+      "trg_identity_security_remediations_no_update",
       "trg_rack_row_version_compat",
       "trg_rack_slot_sync_version_delete",
       "trg_rack_slot_sync_version_insert",

@@ -27,6 +27,7 @@ export function navigationFeedbackScript() {
           approved: '가입 요청을 승인했습니다.',
           rejected: '가입 요청을 거절했습니다.',
           'permissions-saved': '사용자 권한을 저장했습니다.',
+          'password-reset': '임시 비밀번호를 설정했습니다. 다음 로그인에서 비밀번호 변경이 강제됩니다.',
           error: '요청을 처리하지 못했습니다. 입력값을 확인하세요.'
         };
         var toastMessage = toastMessages[toastKey];

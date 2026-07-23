@@ -30,6 +30,7 @@ Admin은 세부 flag와 관계없이 모든 권한을 가진다. 일반 User는 
 | 세트 변경·잠금 | `can_manage_sets` |
 | 랙·대분류·태그 | `can_manage_masters` |
 | 사용자 상태·권한 | `can_manage_users` |
+| 사용자 비밀번호 초기화 | `Admin`만 가능(자기 계정·보안 검토 계정 제외) |
 | 전역 감사·검색 리포트 | `can_view_audit` |
 | `/admin` | 관리 권한 중 하나 이상, 내부 데이터는 개별 권한으로 제한 |
 

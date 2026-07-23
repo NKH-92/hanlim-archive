@@ -33,6 +33,8 @@
 | `admin.data-quality` | `GET` | `/admin/data-quality` | required | `can_manage_documents` |
 | `admin.user.permissions.form` | `GET` | `/admin/users/:id/permissions` | required | `can_manage_users` |
 | `admin.user.permissions` | `POST` | `/admin/users/:id/permissions` | required | `can_manage_users` |
+| `admin.user.password-reset.form` | `GET` | `/admin/users/:id/reset-password` | required | `can_manage_users` |
+| `admin.user.password-reset` | `POST` | `/admin/users/:id/reset-password` | required | `can_manage_users` |
 | `admin.user.approve` | `POST` | `/admin/users/:id/approve` | required | `can_manage_users` |
 | `admin.user.reject` | `POST` | `/admin/users/:id/reject` | required | `can_manage_users` |
 | `admin.user.disable` | `POST` | `/admin/users/:id/disable` | required | `can_manage_users` |
@@ -122,7 +124,7 @@
 | `can_manage_documents` | `admin.data-quality`, `documents.duplicate`, `documents.create`, `documents.export`, `documents.snapshot.export`, `documents.import.form`, `documents.new`, `documents.edit.form`, `documents.edit`, `documents.revise.form`, `documents.revise`, `imports.list`, `imports.create`, `imports.details`, `imports.failures`, `imports.process`, `imports.cancel`, `snapshots.list`, `snapshots.create`, `snapshots.details`, `snapshots.rows`, `snapshots.prepare`, `snapshots.cancel` |
 | `can_manage_masters` | `racks.list`, `racks.create`, `racks.new`, `racks.configure.form`, `racks.configure`, `racks.details`, `racks.edit.form`, `racks.edit`, `categories.list`, `categories.save`, `categories.edit`, `categories.delete`, `tags.list`, `tags.save`, `tags.edit`, `tags.delete` |
 | `can_manage_sets` | `sets.create.form`, `sets.create`, `sets.edit.form`, `sets.edit`, `sets.delete`, `sets.add`, `sets.remove`, `sets.lock`, `sets.unlock` |
-| `can_manage_users` | `admin.settings`, `admin.user.permissions.form`, `admin.user.permissions`, `admin.user.approve`, `admin.user.reject`, `admin.user.disable`, `admin.user.enable` |
+| `can_manage_users` | `admin.settings`, `admin.user.permissions.form`, `admin.user.permissions`, `admin.user.password-reset.form`, `admin.user.password-reset`, `admin.user.approve`, `admin.user.reject`, `admin.user.disable`, `admin.user.enable` |
 | `can_move_documents` | `documents.move.form`, `documents.move` |
 | `can_view_audit` | `admin.search-report`, `admin.audit` |
 | authenticated | `home.redirect`, `search.home`, `floor-plan.read`, `qa.read`, `search.suggestions`, `search.viewer`, `search.index`, `search.click`, `session.password.form`, `session.password.change`, `session.logout`, `session.logout.fallback`, `documents.list`, `documents.details`, `sets.list`, `sets.details`, `sets.export`, `sets.export.csv` |

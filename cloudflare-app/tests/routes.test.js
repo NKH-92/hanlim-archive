@@ -39,6 +39,7 @@ test("matchMasterRoute and matchAdminUserRoute resolve admin POST routes", () =>
   assert.deepEqual(matchMasterRoute("/tags/4/edit", "tags"), { id: 4, action: "edit" });
   assert.deepEqual(matchAdminUserRoute("/admin/users/5/approve"), { id: 5, action: "approve" });
   assert.deepEqual(matchAdminUserRoute("/admin/users/5/permissions"), { id: 5, action: "permissions" });
+  assert.deepEqual(matchAdminUserRoute("/admin/users/5/reset-password"), { id: 5, action: "reset-password" });
   assert.equal(matchAdminUserRoute("/admin/users/5/delete"), null);
 });
 

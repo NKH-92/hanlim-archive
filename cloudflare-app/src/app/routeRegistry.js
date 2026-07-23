@@ -41,6 +41,14 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("admin.data-quality", "dataQuality", "GET", "/admin/data-quality", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("admin.user.permissions.form", "identity", "GET", "/admin/users/:id/permissions", { permission: PERMISSIONS.MANAGE_USERS }),
   route("admin.user.permissions", "identity", "POST", "/admin/users/:id/permissions", { permission: PERMISSIONS.MANAGE_USERS }),
+  route("admin.user.password-reset.form", "identity", "GET", "/admin/users/:id/reset-password", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
+  route("admin.user.password-reset", "identity", "POST", "/admin/users/:id/reset-password", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
   ...["approve", "reject", "disable", "enable"].map((action) => route(`admin.user.${action}`, "identity", "POST", `/admin/users/:id/${action}`, { permission: PERMISSIONS.MANAGE_USERS })),
   route("documents.duplicate", "documents", "GET", "/api/documents/duplicate", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.list", "documents", "GET", "/documents"),

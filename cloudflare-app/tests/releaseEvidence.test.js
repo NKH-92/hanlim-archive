@@ -14,8 +14,8 @@ test("release evidence는 migration checksum과 schema manifest를 보존한다"
   const manifest = JSON.parse(await readFile(path.join(target, "migration-manifest.json"), "utf8"));
 
   assert.equal(evidence.sourceRevision, "abc123");
-  assert.equal(evidence.migrationCount, 38);
-  assert.equal(Object.keys(manifest.checksums).length, 38);
+  assert.equal(evidence.migrationCount, 39);
+  assert.equal(Object.keys(manifest.checksums).length, 39);
   assert.ok(manifest.schema.tables.includes("documents"));
   assert.match(evidence.migrationManifestSha256, /^[a-f0-9]{64}$/);
 });

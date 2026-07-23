@@ -47,7 +47,7 @@ export function matchMasterRoute(path, base) {
 }
 
 export function matchAdminUserRoute(path) {
-  const match = path.match(/^\/admin\/users\/(\d+)\/(approve|reject|disable|enable|permissions)$/);
+  const match = path.match(/^\/admin\/users\/(\d+)\/(approve|reject|disable|enable|permissions|reset-password)$/);
   if (!match) {
     return null;
   }

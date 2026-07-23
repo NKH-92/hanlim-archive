@@ -9,5 +9,6 @@ export {
   getAppUser,
   getAppUsers,
   rejectUser,
+  resetUserPassword,
   updateUserPermissions
 } from "../../data/usersData.js";

@@ -5,6 +5,7 @@ import {
   disableUser,
   enableUser,
   rejectUser,
+  resetUserPassword,
   updateUserPermissions
 } from "../src/data/usersData.js";
 
@@ -70,6 +71,58 @@ test("updateUserPermissions는 권한 플래그와 전후 snapshot을 원자적�
   assert.equal(details.after.permissions.can_manage_documents, true);
 });
 
+test("resetUserPassword는 감사·잠금 해제·credential 교체를 한 batch로 실행한다", async () => {
+  const env = userMutationEnv(userRow({
+    session_epoch: 4,
+    must_change_password: 0,
+    security_review_required: 0
+  }));
+  const temporaryPassword = "temporary-password-2026";
+  const result = await resetUserPassword(env, 7, temporaryPassword, actor);
+
+  assert.equal(result.ok, true);
+  assert.equal(env.state.batches.length, 1);
+  const [audit, clearThrottle, update] = env.state.batches[0];
+  assert.match(audit.sql, /INSERT INTO system_audit_logs/);
+  assert.equal(audit.args[3], "password_reset");
+  assert.match(audit.sql, /security_review_required = 0[\s\S]*session_epoch = \?/);
+  const details = JSON.parse(audit.args[9]);
+  assert.deepEqual(details.before, {
+    status: "approved",
+    role: "User",
+    mustChangePassword: false,
+    sessionEpoch: 4
+  });
+  assert.deepEqual(details.after, {
+    status: "approved",
+    role: "User",
+    mustChangePassword: true,
+    sessionEpoch: 5
+  });
+  assert.doesNotMatch(audit.args[9], /temporary-password-2026/);
+  assert.match(clearThrottle.sql, /DELETE FROM login_throttle/);
+  assert.match(clearThrottle.sql, /substr\(username/);
+  assert.match(update.sql, /must_change_password = 1/);
+  assert.match(update.sql, /session_epoch = \?/);
+  assert.equal(update.args[2], 5);
+  assert.doesNotMatch(JSON.stringify(update.args), /temporary-password-2026/);
+});
+
+test("resetUserPassword는 비 Admin·자기 계정·보안 검토 계정을 거부한다", async () => {
+  const regularActor = { ...actor, role: "User" };
+  const regularEnv = userMutationEnv(userRow());
+  assert.equal((await resetUserPassword(regularEnv, 7, "temporary-password-2026", regularActor)).ok, false);
+  assert.equal(regularEnv.state.batches.length, 0);
+
+  const selfEnv = userMutationEnv(userRow({ id: 1, username: actor.username }));
+  assert.equal((await resetUserPassword(selfEnv, 1, "temporary-password-2026", actor)).ok, false);
+  assert.equal(selfEnv.state.batches.length, 0);
+
+  const reviewEnv = userMutationEnv(userRow({ security_review_required: 1 }));
+  assert.equal((await resetUserPassword(reviewEnv, 7, "temporary-password-2026", actor)).ok, false);
+  assert.equal(reviewEnv.state.batches.length, 0);
+});
+
 function userRow(overrides = {}) {
   return {
     id: 7,
@@ -78,6 +131,9 @@ function userRow(overrides = {}) {
     role: "User",
     status: "approved",
     updated_at: "2026-07-17 10:00:00",
+    session_epoch: 0,
+    must_change_password: 0,
+    security_review_required: 0,
     can_manage_documents: 0,
     can_move_documents: 0,
     can_manage_disposals: 0,
@@ -108,7 +164,7 @@ function userMutationEnv(user, changes = 1) {
       prepare: (sql) => statement(sql),
       async batch(statements) {
         state.batches.push(statements);
-        return [{ meta: { changes } }, { meta: { changes } }];
+        return statements.map(() => ({ meta: { changes } }));
       }
     }
   };

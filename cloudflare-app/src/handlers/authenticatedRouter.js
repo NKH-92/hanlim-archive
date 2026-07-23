@@ -4,6 +4,7 @@ import { sessionHasManagementAccess } from "../permissions.js";
 import { matchAdminUserRoute } from "../routes.js";
 import { redirect } from "../platform/http/responses.js";
 import { resolveAuthenticatedRoute } from "../app/routeRegistry.js";
+import { requireAdmin } from "./guards.js";
 import {
   handleAdminDashboard,
   handleAdminSettings,
@@ -19,7 +20,9 @@ import { handleMovementHistory } from "./movementHandlers.js";
 import { requireManageUsers, requireViewAudit } from "./permissionGuards.js";
 import {
   handleUserPermissions,
+  handleUserPasswordReset,
   handleUserStatusAction,
+  renderUserPasswordReset,
   renderUserPermissions
 } from "./userPermissionHandlers.js";
 import {
@@ -108,9 +111,16 @@ export async function routeAuthenticatedRequest(request, env, session, url, path
     return requireManageUsers(session) ?? renderUserPermissions(env, session, adminUserRoute.id);
   }
 
+  if (adminUserRoute && request.method === "GET" && adminUserRoute.action === "reset-password") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? renderUserPasswordReset(env, session, adminUserRoute.id);
+  }
+
   if (adminUserRoute && request.method === "POST") {
     const denied = requireManageUsers(session);
     if (denied) return denied;
+    if (adminUserRoute.action === "reset-password") {
+      return requireAdmin(session) ?? handleUserPasswordReset(request, env, session, adminUserRoute.id);
+    }
     if (adminUserRoute.action === "permissions") {
       return handleUserPermissions(request, env, session, adminUserRoute.id);
     }

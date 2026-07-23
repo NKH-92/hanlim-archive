@@ -25,6 +25,7 @@
     "smoke:release": "node scripts/smoke-release.mjs",
     "admin:check:remote": "node scripts/check-admin-readiness.mjs",
     "admin:provision:remote": "node scripts/provision-admin-guarded.mjs",
+    "admin:remediate-main:remote": "node scripts/remediate-main-admin-guarded.mjs",
     "dev": "wrangler dev",
     "predeploy": "npm run build:browser && npm run check:browser && npm run verify",
     "deploy": "npm run predeploy && node scripts/deploy-guarded.mjs",

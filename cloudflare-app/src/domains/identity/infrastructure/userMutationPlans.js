@@ -15,3 +15,12 @@ export function createUserPermissionMutationPlan(auditStatement, updateStatement
     .expectChanged("user.permissions.update")
     .withBudget(2);
 }
+
+export function createUserPasswordResetMutationPlan(auditStatement, clearThrottleStatement, updateStatement, guard) {
+  return createBatchPlan("identity.user.password_reset")
+    .step("user.audit.password_reset", auditStatement, { guard, auditEventId: "user.password_reset" })
+    .step("user.login_throttle.clear", clearThrottleStatement, { guard })
+    .step("user.password.reset", updateStatement, { guard })
+    .expectChanged("user.password.reset")
+    .withBudget(3);
+}
