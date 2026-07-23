@@ -5,6 +5,8 @@ import { urlFor } from "../src/app/routeRegistry.js";
 
 const HEALTH_ATTEMPTS = 15;
 const HEALTH_RETRY_MS = 1_000;
+const MAX_HEALTH_ATTEMPTS = 120;
+const MAX_HEALTH_RETRY_MS = 5_000;
 export const ADMIN_SMOKE_PATH = urlFor("admin.settings");
 const ADMIN_SETTINGS_MARKERS = Object.freeze([
   "<h1>사용자 관리</h1>",
@@ -79,6 +81,8 @@ export async function runReleaseSmoke({
   requireAdmin = false,
   requireSessionEpochCompatibility = false,
   expectedWorkerVersion = "",
+  healthAttempts = HEALTH_ATTEMPTS,
+  healthRetryMs = HEALTH_RETRY_MS,
   allowedHosts,
   fetchImpl = fetch,
   waitImpl = wait
@@ -91,10 +95,11 @@ export async function runReleaseSmoke({
   }
 
   const origin = target.origin;
+  const retryPolicy = resolveRetryPolicy({ healthAttempts, healthRetryMs });
   let health;
   let healthBody = null;
   let healthOk = false;
-  for (let attempt = 1; attempt <= HEALTH_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= retryPolicy.healthAttempts; attempt += 1) {
     health = await fetchImpl(`${origin}/healthz`, { redirect: "manual" });
     if (health.status === 200) {
       healthBody = await health.clone().json().catch(() => null);
@@ -106,7 +111,7 @@ export async function runReleaseSmoke({
         break;
       }
     }
-    if (attempt < HEALTH_ATTEMPTS) await waitImpl(HEALTH_RETRY_MS);
+    if (attempt < retryPolicy.healthAttempts) await waitImpl(retryPolicy.healthRetryMs);
   }
   if (
     !healthOk
@@ -117,7 +122,10 @@ export async function runReleaseSmoke({
     throw new Error("현재 Worker는 session-epoch rollback 호환성을 선언하지 않습니다. 호환 Worker를 먼저 배포하세요.");
   }
   if (!healthOk && expectedWorkerVersion && healthBody?.ok) {
-    throw new Error(`Worker version smoke 실패(expected=${expectedWorkerVersion})`);
+    const observedWorkerVersion = String(healthBody?.workerVersion || "none");
+    throw new Error(
+      `Worker version smoke 실패(expected=${expectedWorkerVersion}, observed=${observedWorkerVersion}, attempts=${retryPolicy.healthAttempts})`
+    );
   }
   if (!healthOk) throw new Error(`/healthz smoke 실패(status=${health?.status ?? "none"})`);
   if (requireSessionEpochCompatibility && healthBody?.rollbackCompatibility?.sessionEpoch !== 1) {
@@ -191,6 +199,29 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function resolveRetryPolicy({ healthAttempts, healthRetryMs }) {
+  return Object.freeze({
+    healthAttempts: boundedPositiveInteger(
+      healthAttempts,
+      "SMOKE_HEALTH_ATTEMPTS",
+      MAX_HEALTH_ATTEMPTS
+    ),
+    healthRetryMs: boundedPositiveInteger(
+      healthRetryMs,
+      "SMOKE_HEALTH_RETRY_MS",
+      MAX_HEALTH_RETRY_MS
+    )
+  });
+}
+
+function boundedPositiveInteger(value, label, maximum) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new Error(`${label}은 1 이상 ${maximum} 이하의 정수여야 합니다.`);
+  }
+  return parsed;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const result = await runReleaseSmoke({
     baseUrl: process.env.SMOKE_BASE_URL,
@@ -200,7 +231,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     adminPassword: process.env.SMOKE_ADMIN_PASSWORD,
     requireAdmin: process.env.SMOKE_REQUIRE_ADMIN === "1",
     requireSessionEpochCompatibility: process.env.SMOKE_REQUIRE_SESSION_EPOCH_COMPAT === "1",
-    expectedWorkerVersion: process.env.SMOKE_EXPECTED_WORKER_VERSION || ""
+    expectedWorkerVersion: process.env.SMOKE_EXPECTED_WORKER_VERSION || "",
+    healthAttempts: process.env.SMOKE_HEALTH_ATTEMPTS || HEALTH_ATTEMPTS,
+    healthRetryMs: process.env.SMOKE_HEALTH_RETRY_MS || HEALTH_RETRY_MS
   });
   console.log(`✓ release smoke 통과: ${JSON.stringify(result)}`);
 }
