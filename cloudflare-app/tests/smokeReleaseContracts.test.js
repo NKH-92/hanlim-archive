@@ -159,6 +159,65 @@ test("compatibility smoke는 edge의 old 200 뒤 marker가 있는 새 Worker까�
   assert.deepEqual(waits, [1_000]);
 });
 
+test("post-deploy smoke는 확장된 재시도 정책으로 늦게 전파된 Worker 버전을 확인한다", async () => {
+  const waits = [];
+  const responses = [
+    new Response(JSON.stringify({ ok: true, rollbackCompatibility: { sessionEpoch: 1 }, workerVersion: "old-v1" }), { status: 200 }),
+    new Response(JSON.stringify({ ok: true, rollbackCompatibility: { sessionEpoch: 1 }, workerVersion: "old-v1" }), { status: 200 }),
+    new Response(JSON.stringify({ ok: true, rollbackCompatibility: { sessionEpoch: 1 }, workerVersion: "release-v2" }), { status: 200 }),
+    new Response('<input name="username">', { status: 200 }),
+    new Response("not found", { status: 404 }),
+    new Response("", { status: 302, headers: { location: "/app", "set-cookie": "hanlim_session=token; Path=/" } }),
+    new Response('<main data-viewer-app></main>', { status: 200 })
+  ];
+
+  const result = await runReleaseSmoke({
+    baseUrl: "https://archive.example",
+    username: "reader@example.com",
+    password: "reader-password",
+    requireSessionEpochCompatibility: true,
+    expectedWorkerVersion: "release-v2",
+    healthAttempts: 3,
+    healthRetryMs: 25,
+    allowedHosts: ["archive.example"],
+    fetchImpl: async () => responses.shift(),
+    waitImpl: async (milliseconds) => waits.push(milliseconds)
+  });
+
+  assert.equal(result.workerVersion, "release-v2");
+  assert.deepEqual(waits, [25, 25]);
+});
+
+test("Worker 버전 전파 제한시간 오류는 기대·관측 버전과 시도 횟수를 남긴다", async () => {
+  await assert.rejects(runReleaseSmoke({
+    baseUrl: "https://archive.example",
+    username: "reader@example.com",
+    password: "reader-password",
+    expectedWorkerVersion: "release-v2",
+    healthAttempts: 2,
+    healthRetryMs: 1,
+    allowedHosts: ["archive.example"],
+    fetchImpl: async () => new Response(JSON.stringify({ ok: true, workerVersion: "old-v1" }), { status: 200 }),
+    waitImpl: async () => {}
+  }), /expected=release-v2, observed=old-v1, attempts=2/);
+});
+
+test("smoke 재시도 설정은 제한 범위를 벗어나면 네트워크 요청 전에 거부한다", async () => {
+  let fetchCount = 0;
+  await assert.rejects(runReleaseSmoke({
+    baseUrl: "https://archive.example",
+    username: "reader@example.com",
+    password: "reader-password",
+    healthAttempts: 121,
+    allowedHosts: ["archive.example"],
+    fetchImpl: async () => {
+      fetchCount += 1;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+  }), /SMOKE_HEALTH_ATTEMPTS은 1 이상 120 이하/);
+  assert.equal(fetchCount, 0);
+});
+
 test("관리자 smoke는 제목만 있는 임의 200 응답을 관리 화면으로 인정하지 않는다", async () => {
   const responses = [
     new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } }),
