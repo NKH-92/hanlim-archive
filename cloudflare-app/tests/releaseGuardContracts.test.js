@@ -9,7 +9,8 @@ import { preflightDeploy, runWranglerCaptured, runWranglerDeploy } from "../scri
 import { verifyReleasedBaselineAgainstBase } from "../scripts/check-released-baseline-history.mjs";
 import { applyExactTransforms, COMPATIBILITY_FILES } from "../scripts/apply-session-epoch-compat.mjs";
 
-const PRODUCTION_ID = "1262ca00-b431-490c-aad2-539d77d4f73f";
+// Synthetic UUID: contract tests must not duplicate a real production D1 identifier.
+const TEST_PRODUCTION_ID = "00000000-0000-4000-8000-000000000001";
 const RELEASE_SHA = "a".repeat(40);
 const BACKUP_DIGEST = "b".repeat(64);
 
@@ -31,7 +32,7 @@ function baseConfig() {
         d1_databases: [{ binding: "DB", database_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }]
       },
       production: {
-        d1_databases: [{ binding: "DB", database_id: PRODUCTION_ID }]
+        d1_databases: [{ binding: "DB", database_id: TEST_PRODUCTION_ID }]
       }
     }
   };
@@ -61,24 +62,24 @@ test("remote migrate는 env database_id 불일치·placeholder·누락 승인을
 
   assert.equal(preflightRemoteMigrate({
     envName: "production",
-    expectedDatabaseId: PRODUCTION_ID,
+    expectedDatabaseId: TEST_PRODUCTION_ID,
     ...migrationEvidence({ backupEvidenceId: "invented-evidence", backupEvidenceDigest: "not-a-digest" }),
     config
   }).ok, false);
 
   const ok = preflightRemoteMigrate({
     envName: "production",
-    expectedDatabaseId: PRODUCTION_ID,
+    expectedDatabaseId: TEST_PRODUCTION_ID,
     ...migrationEvidence(),
     dryRun: true,
     config
   });
   assert.equal(ok.ok, true);
-  assert.equal(ok.configuredId, PRODUCTION_ID);
+  assert.equal(ok.configuredId, TEST_PRODUCTION_ID);
   assert.equal(ok.backupEvidenceDigest, BACKUP_DIGEST);
   assert.equal(preflightRemoteMigrate({
     envName: "production",
-    expectedDatabaseId: PRODUCTION_ID,
+    expectedDatabaseId: TEST_PRODUCTION_ID,
     ...migrationEvidence({ approvalContext: "approval-token-16+" }),
     config
   }).ok, false);
@@ -106,20 +107,20 @@ test("deploy preflight는 unscoped env와 staging placeholder를 거부한다", 
 
   const ok = preflightDeploy({
     envName: "production",
-    expectedDatabaseId: PRODUCTION_ID,
+    expectedDatabaseId: TEST_PRODUCTION_ID,
     config: baseConfig()
   });
   assert.equal(ok.ok, true);
 
   assert.equal(preflightDeploy({
     envName: "production",
-    expectedDatabaseId: PRODUCTION_ID,
+    expectedDatabaseId: TEST_PRODUCTION_ID,
     versionTag: "bad tag with spaces",
     config: baseConfig()
   }).ok, false);
   assert.equal(preflightDeploy({
     envName: "production",
-    expectedDatabaseId: PRODUCTION_ID,
+    expectedDatabaseId: TEST_PRODUCTION_ID,
     versionMessage: "line one\nline two",
     config: baseConfig()
   }).ok, false);
@@ -194,7 +195,7 @@ test("migration released-baseline은 과거 SQL 변조·checksum 동시변조·�
     await cp(new URL("released-baseline.json", source), join(dir, "released-baseline.json"));
 
     const baseline = JSON.parse(await readFile(join(dir, "released-baseline.json"), "utf8"));
-    assert.equal(Object.keys(baseline.checksums).at(-1), "0038_metadata_occ.sql");
+    assert.equal(Object.keys(baseline.checksums).at(-1), "0039_identity_security_remediation.sql");
     const first = Object.keys(baseline.checksums)[0];
 
     assert.equal((await verifyMigrationChain({ migrationsDir: dir, applySchema: false })).ok, true);

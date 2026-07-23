@@ -1,24 +1,28 @@
 import {
   cancelDisposalBatch,
+  countDisposalCandidates,
   createDisposalBatch,
   freezeDisposalBatch,
   getDisposalBatch,
   getDisposalBatchExportRows,
   getDisposalBatchItems,
   listDisposalBatches,
+  normalizeDisposalCriteria,
   previewDisposalCandidates,
   processDisposalBatch,
   setDisposalBatchItemExcluded,
   startDisposalBatch,
   updateDisposalBatch
 } from "../domains/disposal/index.js";
-import { loadDocumentFormOptions } from "../domains/documents/index.js";
+import { getDisposalDueYears, loadDocumentFormOptions } from "../domains/documents/index.js";
 import { getRackSummaries } from "../domains/racks/index.js";
 import {
   disposalBatchDetailPage,
   disposalBatchFormPage,
-  disposalBatchListPage
+  disposalBatchListPage,
+  periodicDisposalPage
 } from "../views/disposalBatchViews.js";
+import { FREE_TIER_BUDGET } from "../config.js";
 import { errorPage, notFoundPage } from "../views/authViews.js";
 import { jsonResponse, redirect } from "../platform/http/responses.js";
 import { csvEscape } from "../shared/csv/writer.js";
@@ -32,14 +36,34 @@ export async function handleDisposalBatches(env, session) {
   return disposalBatchListPage({ session, batches: await listDisposalBatches(env) });
 }
 
-export async function renderNewDisposalBatch(env, session, values = {}, error = "") {
+export async function renderNewDisposalBatch(request, env, session, values = {}, error = "") {
   const denied = requireManageDisposals(session);
   if (denied) return denied;
-  const [{ categories }, racks] = await Promise.all([
+  const params = new URL(request.url).searchParams;
+  const criteria = normalizeDisposalCriteria(values.criteria || {
+    disposalDueYear: params.get("disposalDueYear"),
+    categoryId: params.get("categoryId"),
+    yearMode: "exact"
+  });
+  const hasCriteria = Boolean(criteria.disposalDueYear || criteria.categoryId);
+  const [{ categories }, years, preview, targetCount] = await Promise.all([
     loadDocumentFormOptions(env, { activeOnly: true, includeSlots: false }),
-    getRackSummaries(env)
+    getDisposalDueYears(env),
+    hasCriteria
+      ? previewDisposalCandidates(env, criteria, FREE_TIER_BUDGET.disposalBatchPreviewItems)
+      : Promise.resolve([]),
+    hasCriteria ? countDisposalCandidates(env, criteria) : Promise.resolve(0)
   ]);
-  return disposalBatchFormPage({ session, values, categories, racks, error });
+  return periodicDisposalPage({
+    session,
+    values: { ...values, criteria },
+    categories,
+    years,
+    preview,
+    targetCount,
+    maxTargetCount: FREE_TIER_BUDGET.disposalBatchMaxItems,
+    error
+  });
 }
 
 export async function handleCreateDisposalBatch(request, env, session) {
@@ -47,7 +71,7 @@ export async function handleCreateDisposalBatch(request, env, session) {
   if (denied) return denied;
   const values = disposalValues(await request.formData());
   const result = await createDisposalBatch(env, values, session);
-  if (!result.ok) return renderNewDisposalBatch(env, session, values, result.message);
+  if (!result.ok) return renderNewDisposalBatch(request, env, session, values, result.message);
   return redirect(`/disposal-batches/${result.id}`);
 }
 
@@ -107,18 +131,22 @@ export async function handleDisposalBatchRoute(request, env, session, routeInfo)
 async function renderDisposalBatchDetails(request, env, session, id) {
   const batch = await getDisposalBatch(env, id);
   if (!batch) return notFoundPage(session);
-  const status = clean(new URL(request.url).searchParams.get("status"));
-  const [items, preview] = await Promise.all([
+  const params = new URL(request.url).searchParams;
+  const status = clean(params.get("status"));
+  const [items, preview, previewCount] = await Promise.all([
     getDisposalBatchItems(env, id, { status }),
-    batch.status === "draft" ? previewDisposalCandidates(env, batch.criteria) : Promise.resolve([])
+    batch.status === "draft" ? previewDisposalCandidates(env, batch.criteria) : Promise.resolve([]),
+    batch.status === "draft" ? countDisposalCandidates(env, batch.criteria) : Promise.resolve(0)
   ]);
   return disposalBatchDetailPage({
     session,
     batch,
     items,
-    preview: preview.slice(0, 200),
-    previewCapped: preview.length > 200,
-    itemStatus: status
+    preview,
+    previewCount,
+    previewCapped: previewCount > preview.length,
+    itemStatus: status,
+    autoStart: params.get("autostart") === "1"
   });
 }
 
@@ -132,14 +160,15 @@ async function renderDisposalBatchEdit(env, session, id, override = null, error 
     approvalReference: batch.approval_reference,
     criteria: batch.criteria
   };
-  const [{ categories }, racks, preview] = await Promise.all([
+  const [{ categories }, racks, preview, previewCount] = await Promise.all([
     loadDocumentFormOptions(env, { activeOnly: true, includeSlots: false }),
     getRackSummaries(env),
-    previewDisposalCandidates(env, values.criteria || values)
+    previewDisposalCandidates(env, values.criteria || values),
+    countDisposalCandidates(env, values.criteria || values)
   ]);
   return disposalBatchFormPage({
     session, batch, values, categories, racks,
-    preview: preview.slice(0, 200), capped: preview.length > 200, error
+    preview, previewCount, capped: previewCount > preview.length, error
   });
 }
 

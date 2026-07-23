@@ -47,8 +47,11 @@ export async function listDisposalBatches(env, { status = "", limit = 100 } = {}
   const result = await env.DB.prepare(`
     SELECT
       b.*,
+      c.name AS category_name,
       MAX(0, b.target_count - b.completed_count - b.excluded_count - b.changed_count - b.failed_count) AS pending_count
     FROM disposal_batches b
+    LEFT JOIN categories c
+      ON c.id = CAST(json_extract(b.criteria_json, '$.categoryId') AS INTEGER)
     WHERE (? = '' OR b.status = ?)
     ORDER BY b.created_at DESC, b.id DESC
     LIMIT ?
@@ -60,8 +63,11 @@ export async function getDisposalBatch(env, id) {
   const row = await env.DB.prepare(`
     SELECT
       b.*,
+      c.name AS category_name,
       MAX(0, b.target_count - b.completed_count - b.excluded_count - b.changed_count - b.failed_count) AS pending_count
     FROM disposal_batches b
+    LEFT JOIN categories c
+      ON c.id = CAST(json_extract(b.criteria_json, '$.categoryId') AS INTEGER)
     WHERE b.id = ?
   `).bind(id).first();
   return hydrateBatch(row);
@@ -81,11 +87,14 @@ export async function getDisposalBatchItems(env, batchId, { status = "", limit =
   return result.results ?? [];
 }
 
-export async function previewDisposalCandidates(env, rawCriteria, limit = FREE_TIER_BUDGET.disposalBatchMaxItems + 1) {
+export async function previewDisposalCandidates(env, rawCriteria, limit = FREE_TIER_BUDGET.disposalBatchPreviewItems) {
   const criteria = normalizeDisposalCriteria(rawCriteria);
   if (!hasAnyCriteria(criteria)) return [];
   const where = buildCandidateWhere(criteria);
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 201, FREE_TIER_BUDGET.disposalBatchMaxItems + 1));
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || FREE_TIER_BUDGET.disposalBatchPreviewItems, FREE_TIER_BUDGET.disposalBatchPreviewItems)
+  );
   const result = await env.DB.prepare(`
     SELECT
       d.id,
@@ -272,7 +281,7 @@ export async function getDisposalHistoryPage(env, { query = "", page = 1, pageSi
   `).bind(cleanQuery, like, like, like).first();
   const result = await env.DB.prepare(`
     SELECT
-      dl.id, dl.document_id, dl.reason, dl.performed_by, dl.created_at,
+      dl.id, dl.document_id, dl.disposal_batch_id, dl.reason, dl.performed_by, dl.created_at,
       d.document_number, d.revision_number, d.document_name, d.status,
       c.name AS category_name,
       ${locationSnapshotSql("d", "r", "rs")} AS location_snapshot,
@@ -673,7 +682,9 @@ export async function getDisposalBatchExportRows(env, id) {
   return result.results ?? [];
 }
 
-async function countDisposalCandidates(env, criteria) {
+export async function countDisposalCandidates(env, rawCriteria) {
+  const criteria = normalizeDisposalCriteria(rawCriteria);
+  if (!hasAnyCriteria(criteria)) return 0;
   const where = buildCandidateWhere(criteria);
   const row = await env.DB.prepare(`
     SELECT COUNT(*) AS count

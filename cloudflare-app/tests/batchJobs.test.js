@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  countDisposalCandidates,
   createSelectedDisposalBatch,
   freezeDisposalBatch,
   getDisposalHistoryPage,
@@ -25,6 +26,12 @@ test("폐기 조건은 안전한 값만 정규화하고 최소 한 조건을 요
   assert.equal(validateDisposalBatchDraft({ title: "", disposalReason: "사유", criteria: { rackId: 3 } }).ok, false);
   assert.equal(validateDisposalBatchDraft({ title: "정기 폐기", disposalReason: "보존기간 만료", criteria: {} }).ok, false);
   assert.equal(validateDisposalBatchDraft({ title: "정기 폐기", disposalReason: "보존기간 만료", criteria: { rackId: 3 } }).ok, true);
+});
+
+test("폐기 대상 전체 건수 조회는 조건 없는 전체 문서 조회를 금지한다", async () => {
+  const env = recordingEnv();
+  assert.equal(await countDisposalCandidates(env, {}), 0);
+  assert.equal(env.state.calls.length, 0);
 });
 
 test("폐기 대상 동결은 스냅샷 INSERT와 상태 변경을 한 batch에 둔다", async () => {

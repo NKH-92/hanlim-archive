@@ -4,7 +4,7 @@ import test from "node:test";
 import { dataQualityPage } from "../src/domains/dataQuality/index.js";
 import { loginPage } from "../src/views/authViews.js";
 import { passwordPage, userPasswordResetPage } from "../src/views/adminViews.js";
-import { disposalBatchFormPage, disposalBatchListPage } from "../src/views/disposalBatchViews.js";
+import { disposalBatchFormPage, disposalBatchListPage, periodicDisposalPage } from "../src/views/disposalBatchViews.js";
 import { documentImportJobCreatePage, documentImportJobsPage } from "../src/views/importJobViews.js";
 import { canMoveDocuments, movementFormPage, movementsPage } from "../src/views/movementViews.js";
 import { rackConfigurePage, rackDetailsPage, rackFormPage, racksPage } from "../src/views/rackViews.js";
@@ -313,6 +313,10 @@ test("폐기 캠페인 목록과 초안 폼은 조건 필드·민감 값 escape 
       batch_code: "DSP-9",
       title: `<img src=x>폐기`,
       status: "draft",
+      criteria: { disposalDueYear: 2030, yearMode: "exact", categoryId: 2, zoneNumber: 0, rackId: 0 },
+      category_name: "품질",
+      disposal_reason: "보존기간 만료",
+      approval_reference: "QA-2030-01",
       target_count: 2,
       completed_count: 0,
       excluded_count: 0,
@@ -321,9 +325,12 @@ test("폐기 캠페인 목록과 초안 폼은 조건 필드·민감 값 escape 
       created_by_name: "관리자",
       created_at: "2026-07-17"
     }]
-  }), "폐기 캠페인");
+  }), "정기폐기 캠페인 이력");
   assert.match(list, /href="\/disposal-batches\/9"/);
   assert.match(list, /&lt;img src=x&gt;폐기/);
+  assert.match(list, /보존기간 만료/);
+  assert.match(list, /QA-2030-01/);
+  assert.match(list, /대분류 품질/);
   assert.doesNotMatch(list, /<img src=x>폐기/);
 
   const form = await htmlPage(disposalBatchFormPage({
@@ -337,6 +344,37 @@ test("폐기 캠페인 목록과 초안 폼은 조건 필드·민감 값 escape 
   assert.match(form, /기한 &amp; 만료/);
   assert.match(form, /&lt;b&gt;분류&lt;\/b&gt;/);
   assert.doesNotMatch(form, /<script>초안<\/script>|<b>분류<\/b>/);
+
+  const periodic = await htmlPage(periodicDisposalPage({
+    session: admin,
+    values: {
+      criteria: { disposalDueYear: 2030, yearMode: "exact", categoryId: 2, zoneNumber: 0, rackId: 0 }
+    },
+    categories: [{ id: 2, name: "품질" }],
+    years: [2030],
+    targetCount: 275,
+    maxTargetCount: 5000,
+    preview: [{
+      document_number: "SOP-QA-001",
+      revision_number: "Rev.1",
+      document_name: "품질 절차서",
+      category_name: "품질",
+      disposal_due_year: 2030,
+      location_snapshot: "1구역 / 1번 랙"
+    }]
+  }), "정기폐기 캠페인");
+  assertPostForm(periodic, "/documents/dispose-filtered", [
+    "title",
+    "reason",
+    "approvalReference",
+    "disposalDueYear",
+    "categoryId",
+    "confirmedTargetCount",
+    "confirmDisposal"
+  ]);
+  assert.match(periodic, /전체 275건 선택됨/);
+  assert.match(periodic, /총 폐기 문서 수가 <strong>275건<\/strong>이 맞습니까/);
+  assert.match(periodic, /예, 275건 전체 폐기합니다/);
 });
 
 async function htmlPage(response, title) {

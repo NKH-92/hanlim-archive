@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createMigratedDatabase, migrationFiles } from "./helpers/migratedDatabase.js";
 
-const BASELINE_LAST_MIGRATION = 38;
+const BASELINE_LAST_MIGRATION = 39;
 
 const CORE_TABLES = [
   "app_users",
@@ -81,7 +81,7 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_user_status_session_epoch_compat"
 ].sort();
 
-test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0001~0038 이력을 보존한다", async () => {
+test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0001~0039 이력을 보존한다", async () => {
   const migrations = await validatedMigrationFiles();
   assert.ok(migrations.length >= BASELINE_LAST_MIGRATION);
 
@@ -91,7 +91,7 @@ test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0
   assert.deepEqual(
     numbers.slice(0, BASELINE_LAST_MIGRATION),
     Array.from({ length: BASELINE_LAST_MIGRATION }, (_, index) => index + 1),
-    "기존 0001~0038 이력은 삭제하거나 번호를 바꿀 수 없다"
+    "기존 0001~0039 이력은 삭제하거나 번호를 바꿀 수 없다"
   );
 });
 

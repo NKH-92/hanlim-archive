@@ -1,7 +1,10 @@
 import { FREE_TIER_BUDGET } from "../../config.js";
 import {
+  countDisposalCandidates,
   createSelectedDisposalBatch,
   createDisposalBatch,
+  freezeDisposalBatch,
+  getDisposalBatch,
   getDisposalHistoryPage,
   processDisposalBatch,
   startDisposalBatch
@@ -18,6 +21,7 @@ import { disposalWorkspacePage } from "../../views/documentViews.js";
 import { errorPage } from "../../views/authViews.js";
 import { redirect } from "../../platform/http/responses.js";
 import { clean } from "../../shared/text/normalize.js";
+import { readBoolean } from "../../shared/coercion.js";
 
 export async function handleDisposalWorkspace(request, env, session) {
   const params = new URL(request.url).searchParams;
@@ -158,20 +162,58 @@ export async function handleFilteredDispose(request, env, session) {
     disposalDueYear: form.get("disposalDueYear")
   });
   const reason = clean(form.get("reason"));
+  const approvalReference = clean(form.get("approvalReference"));
   if (!reason || (!filters.categoryId && !filters.rackId && !filters.disposalDueYear)) {
     return errorPage("폐기 사유와 하나 이상의 필터가 필요합니다.", session, 400);
   }
-  // 필터 전체 즉시 폐기는 금지한다. 같은 조건을 가진 캠페인 초안만 만들고,
-  // 사용자가 후보 검토·동결을 마친 뒤 분할 처리하도록 넘긴다.
+  const criteria = { ...filters, yearMode: "exact" };
+  const targetCount = await countDisposalCandidates(env, criteria);
+  const confirmedTargetCount = Number(form.get("confirmedTargetCount"));
+  if (
+    !readBoolean(form.get("confirmDisposal"))
+    || !Number.isInteger(confirmedTargetCount)
+    || confirmedTargetCount !== targetCount
+  ) {
+    return errorPage(`현재 필터 전체 대상은 ${targetCount}건입니다. 총 폐기 문서 수를 다시 확인해 주세요.`, session, 409);
+  }
+  if (!targetCount) {
+    return errorPage("현재 조건에 맞는 보관중 문서가 없습니다.", session, 409);
+  }
+  if (targetCount > FREE_TIER_BUDGET.disposalBatchMaxItems) {
+    return errorPage(
+      `정기폐기 한 캠페인의 안전 상한은 ${FREE_TIER_BUDGET.disposalBatchMaxItems}건입니다. 연도 또는 대분류 조건을 더 좁혀 주세요.`,
+      session,
+      409
+    );
+  }
+
   const result = await createDisposalBatch(env, {
-    title: "필터 기반 폐기 캠페인",
+    title: clean(form.get("title")) || (filters.disposalDueYear ? `${filters.disposalDueYear}년 정기폐기` : "정기폐기"),
     disposalReason: reason,
-    criteria: { ...filters, yearMode: "exact" }
+    approvalReference,
+    criteria
   }, session);
   if (!result.ok) {
     return errorPage(result.message, session, 400);
   }
-  return redirect(`/disposal-batches/${result.id}/edit`);
+  const batch = await getDisposalBatch(env, result.id);
+  const frozen = await freezeDisposalBatch(env, result.id, session, batch?.updated_at, {
+    confirmedTargetCount: targetCount,
+    confirmPreview: true
+  });
+  if (!frozen.ok) {
+    return errorPage(
+      `${frozen.message} 생성된 캠페인 초안은 캠페인 이력에서 다시 검토할 수 있습니다.`,
+      session,
+      409
+    );
+  }
+  const started = await startDisposalBatch(env, result.id, session, {
+    confirmedTargetCount: frozen.count,
+    confirmStart: true
+  });
+  if (!started.ok) return errorPage(started.message, session, 409);
+  return redirect(`/disposal-batches/${result.id}?autostart=1`);
 }
 
 async function disposeInChunks(env, ids, session, reason) {
