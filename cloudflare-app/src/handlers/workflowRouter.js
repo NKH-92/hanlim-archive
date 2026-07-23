@@ -34,7 +34,7 @@ export async function routeWorkflowRequest(request, env, session, path) {
   }
 
   if (path === "/disposal-batches/new" && request.method === "GET") {
-    return renderNewDisposalBatch(env, session);
+    return renderNewDisposalBatch(request, env, session);
   }
 
   if (path === "/disposal-batches" && request.method === "POST") {

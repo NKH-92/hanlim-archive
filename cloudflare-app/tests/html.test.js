@@ -74,7 +74,9 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(APP_STYLES, /\.doc-table\.is-bulk-selectable thead \{ display: block; \}/);
   assert.match(html, /data-bulk-item/);
   assert.match(html, />폐기 대상<\/a>/);
-  assert.match(html, />폐기 이력<\/a>/);
+  assert.match(html, />문서별 폐기 이력<\/a>/);
+  assert.match(html, /href="\/disposal-batches\/new">정기폐기<\/a>/);
+  assert.match(html, /href="\/disposal-batches">캠페인 이력<\/a>/);
   assert.match(html, /action="\/documents\/disposal\/process"/);
   assert.match(html, /id="disposal-review-modal"/);
   assert.match(html, /data-bulk-summary/);
@@ -87,7 +89,6 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(html, /name="confirmedTargetCount" value="0"/);
   assert.match(html, /name="confirmDisposal" value="1"/);
   assert.match(html, />예, 폐기합니다</);
-  assert.doesNotMatch(html, /href="\/disposal-batches\/new"/);
   assert.match(html, /name="csrf_token" value="csrf-token-123"/);
   assert.doesNotMatch(html, /action="\/documents\/dispose-filtered"/);
   assert.equal((html.match(/name="reason"/g) || []).length, 1);
@@ -103,6 +104,8 @@ test("disposal workspace renders target/history tabs and a review-first disposal
       revision_number: "Rev.1",
       category_name: "PV",
       location_snapshot: "1구역 / 3-1번 랙 / 2열 / 3선반",
+      disposal_batch_id: 4,
+      batch_code: "DSP-2026-0004",
       reason: "보존기간 만료",
       approval_reference: "QA-APP-2026-041",
       performed_by: "관리자",
@@ -116,9 +119,10 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(historyMain, /class="status disposed">폐기<\/span>/);
   assert.match(historyMain, /보존기간 만료/);
   assert.match(historyMain, /QA-APP-2026-041/);
+  assert.match(historyMain, /href="\/disposal-batches\/4">DSP-2026-0004<\/a>/);
   assert.match(historyMain, />폐기 이력 보기<\/a>/);
   assert.match(historyMain, />문서검색으로 이동<\/a>/);
-  assert.doesNotMatch(historyMain, /data-bulk-item|data-bulk-bar|폐기 캠페인/);
+  assert.doesNotMatch(historyMain, /data-bulk-item|data-bulk-bar/);
 });
 
 test("copy controls use delegated events for dynamically rendered search results", async () => {

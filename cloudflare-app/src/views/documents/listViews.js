@@ -66,8 +66,8 @@ export function disposalWorkspacePage({
   const targetCount = Number(pagination.totalItems || documents.length || 0);
   return page("문서 폐기", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 폐기</span></nav><h1>문서 폐기</h1><p class="muted">실제 폐기할 원본을 선택하고 수량을 확인하면 즉시 폐기 상태로 변경됩니다.</p></div>
-      <div class="button-group"><a class="button secondary" href="/documents/disposal?tab=history">폐기 이력</a></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 폐기</span></nav><h1>문서 폐기</h1><p class="muted">소량 문서는 개별 선택하고, 정기폐기는 필터 결과 전체를 한 캠페인으로 처리합니다.</p></div>
+      <div class="button-group"><a class="button" href="/disposal-batches/new">정기폐기</a><a class="button secondary" href="/disposal-batches">캠페인 이력</a><a class="button secondary" href="/documents/disposal?tab=history">문서별 이력</a></div>
     </section>
     <section class="operation-hero disposal-hero" aria-label="폐기 작업 요약">
       <div><p class="hero-kicker">Controlled disposal</p><h2>폐기 가능한 원본 ${targetCount.toLocaleString("ko-KR")}부</h2><p>문서 한 건은 원본 한 부입니다. 실제 원본을 고르고 수량이 맞는지 마지막으로 확인하세요.</p></div>
@@ -76,7 +76,7 @@ export function disposalWorkspacePage({
     ${disposalFeedback(feedback)}
     <nav class="workspace-tabs" aria-label="폐기 작업 화면">
       <a href="${escapeHtml(disposalListUrl(filters))}" ${tab === "targets" ? `aria-current="page"` : ""}>폐기 대상</a>
-      <a href="/documents/disposal?tab=history" ${tab === "history" ? `aria-current="page"` : ""}>폐기 이력</a>
+      <a href="/documents/disposal?tab=history" ${tab === "history" ? `aria-current="page"` : ""}>문서별 폐기 이력</a>
     </nav>
     ${tab === "history"
       ? disposalHistoryView(history, pagination, filters)
@@ -99,7 +99,7 @@ function disposalTargetsView({ documents, categories, racks, years, filters, cap
     </section>
     <section class="panel results-panel">
       <div class="section-title"><h2>폐기 대상</h2><span class="count-badge">${documents.length}${capped ? "+" : ""}건</span></div>
-      ${capped ? `<div class="alert warning">한 번에 최대 ${limit}건까지 검토할 수 있습니다. 검색 조건을 더 좁혀 주세요.</div>` : ""}
+      ${capped ? `<div class="alert warning">소량 폐기 화면에는 앞의 ${limit}건만 표시됩니다. 조건에 맞는 문서 전체를 처리하려면 상단의 <a href="/disposal-batches/new">정기폐기</a>를 사용하세요.</div>` : ""}
       ${documentResults(documents, { bulk: true, selectAll: true, emptyMessage: "조건에 맞는 보관중 문서가 없습니다." })}
       ${bulkActionBar("/documents/disposal/process", filters)}
     </section>
@@ -115,6 +115,7 @@ function disposalHistoryView(history, pagination, filters) {
       <td data-label="대분류">${escapeHtml(item.category_name || "-")}</td>
       <td class="location-cell" data-label="보관 위치">${escapeHtml(item.location_snapshot || "-")}</td>
       <td data-label="상태"><span class="status disposed">폐기</span></td>
+      <td data-label="캠페인">${item.batch_code ? `<a class="mono" href="/disposal-batches/${item.disposal_batch_id}">${escapeHtml(item.batch_code)}</a>` : "-"}</td>
       <td data-label="폐기 사유">${escapeHtml(item.reason || "-")}</td>
       <td data-label="승인 참조">${escapeHtml(item.approval_reference || "-")}</td>
       <td data-label="처리">${escapeHtml(item.performed_by)}<small>${escapeHtml(item.created_at)}</small></td>
@@ -132,8 +133,8 @@ function disposalHistoryView(history, pagination, filters) {
     <section class="panel results-panel">
       <div class="section-title"><h2>폐기 이력</h2><span class="count-badge">${pagination.totalItems || 0}건</span></div>
       <div class="table-wrap"><table class="doc-table disposal-history-table">
-        <thead><tr><th>문서명</th><th>문서번호</th><th>개정</th><th>대분류</th><th>보관 위치</th><th>상태</th><th>폐기 사유</th><th>승인 참조</th><th>처리</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="9" class="empty">폐기 이력이 없습니다.</td></tr>`}</tbody>
+        <thead><tr><th>문서명</th><th>문서번호</th><th>개정</th><th>대분류</th><th>보관 위치</th><th>상태</th><th>캠페인</th><th>폐기 사유</th><th>승인 참조</th><th>처리</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="10" class="empty">폐기 이력이 없습니다.</td></tr>`}</tbody>
       </table></div>
       ${historyPagination(pagination, filters.query)}
     </section>`;
