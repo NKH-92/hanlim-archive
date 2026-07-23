@@ -11,6 +11,7 @@ import { isValidCsrfToken } from "./platform/security/csrf.js";
 import { isTrustedPostOrigin } from "./platform/security/origin.js";
 import { resolveAuthenticatedRoute, resolvePublicRoute } from "./app/routeRegistry.js";
 import { createRequestD1Environment } from "./platform/d1/requestGateway.js";
+import { processSearchOutbox, rebuildSearchIndexChunk } from "./domains/search/index.js";
 
 export default {
   async fetch(request, env) {
@@ -34,8 +35,23 @@ export default {
       );
     }
     return withSecurityHeaders(response, request);
+  },
+  async scheduled(_controller, env, ctx) {
+    const requestEnv = createRequestD1Environment(env, { requestId: `cron-${shortRequestId()}` });
+    ctx.waitUntil(runSearchMaintenance(requestEnv));
   }
 };
+
+async function runSearchMaintenance(env) {
+  try {
+    const rebuild = await rebuildSearchIndexChunk(env);
+    if (!rebuild.skipped && !rebuild.completed) return rebuild;
+    return processSearchOutbox(env);
+  } catch (error) {
+    logError("worker.search-maintenance", error);
+    throw error;
+  }
+}
 
 function shortRequestId() {
   try {

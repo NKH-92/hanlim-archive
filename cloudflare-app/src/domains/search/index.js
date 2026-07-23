@@ -10,6 +10,12 @@ export const {
 export { documentToViewerItem, buildViewerFacets } from "./web/presenters.js";
 export { createSearchCore, sharedSearchCore } from "../../searchCore.js";
 export { MAX_SEARCH_RESULTS, parseSearchQuery } from "../../data/searchData.js";
+export { buildSearchIndexTerms } from "../../data/searchData.js";
+export {
+  getSearchOperationalState,
+  processSearchOutbox,
+  rebuildSearchIndexChunk
+} from "./infrastructure/indexMaintenance.js";
 export const {
   compactSearchText,
   levenshteinDistance,

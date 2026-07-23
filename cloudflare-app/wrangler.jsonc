@@ -16,12 +16,21 @@
   "version_metadata": {
     "binding": "CF_VERSION_METADATA"
   },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "hanlim-archive",
       "database_id": "1262ca00-b431-490c-aad2-539d77d4f73f",
       "migrations_dir": "migrations"
+    },
+    {
+      "binding": "SEARCH_DB",
+      "database_name": "hanlim-archive-search-10k",
+      "database_id": "e9dc4469-30ca-47c7-ad01-6aa9aea0b3ac",
+      "migrations_dir": "search-migrations"
     }
   ],
   // 엑셀 전체 대장 반영 개방 단계: disabled → admin-only → permissioned
@@ -44,6 +53,12 @@
           "database_name": "hanlim-archive-staging",
           "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
           "migrations_dir": "migrations"
+        },
+        {
+          "binding": "SEARCH_DB",
+          "database_name": "hanlim-archive-search-10k-staging",
+          "database_id": "REPLACE_WITH_STAGING_SEARCH_D1_DATABASE_ID",
+          "migrations_dir": "search-migrations"
         }
       ]
     },
@@ -61,6 +76,12 @@
           "database_name": "hanlim-archive",
           "database_id": "1262ca00-b431-490c-aad2-539d77d4f73f",
           "migrations_dir": "migrations"
+        },
+        {
+          "binding": "SEARCH_DB",
+          "database_name": "hanlim-archive-search-10k",
+          "database_id": "e9dc4469-30ca-47c7-ad01-6aa9aea0b3ac",
+          "migrations_dir": "search-migrations"
         }
       ]
     }

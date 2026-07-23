@@ -28,16 +28,18 @@ function loadWranglerConfig() {
   return JSON.parse(stripped);
 }
 
-function databaseIdForEnv(config, envName) {
+function databaseIdsForEnv(config, envName) {
   const envBlock = config?.env?.[envName];
   if (!envBlock) {
     throw new Error(`wrangler env '${envName}'가 없습니다.`);
   }
   const binding = (envBlock.d1_databases || []).find((item) => item.binding === "DB")
     || (envBlock.d1_databases || [])[0];
-  const id = String(binding?.database_id || "").trim();
-  if (!id) throw new Error(`wrangler env '${envName}'에 D1 database_id가 없습니다.`);
-  return id;
+  const searchBinding = (envBlock.d1_databases || []).find((item) => item.binding === "SEARCH_DB");
+  const coreId = String(binding?.database_id || "").trim();
+  const searchId = String(searchBinding?.database_id || "").trim();
+  if (!coreId) throw new Error(`wrangler env '${envName}'에 Core D1 database_id가 없습니다.`);
+  return { coreId, searchId, hasSearchBinding: Boolean(searchBinding) };
 }
 
 function assertSafeDatabaseId(id, label) {
@@ -54,6 +56,7 @@ function assertSafeDatabaseId(id, label) {
 export function preflightRemoteMigrate({
   envName = process.env.D1_MIGRATE_ENV,
   expectedDatabaseId = process.env.D1_TARGET_DATABASE_ID,
+  expectedSearchDatabaseId = process.env.SEARCH_D1_TARGET_DATABASE_ID,
   backupEvidenceId = process.env.D1_BACKUP_EVIDENCE_ID,
   backupEvidenceDigest = process.env.D1_BACKUP_EVIDENCE_DIGEST,
   runId = process.env.GITHUB_RUN_ID,
@@ -88,8 +91,13 @@ export function preflightRemoteMigrate({
   }
 
   let configuredId;
+  let configuredSearchId = "";
+  let hasSearchBinding = false;
   try {
-    configuredId = databaseIdForEnv(config, envName);
+    const databaseIds = databaseIdsForEnv(config, envName);
+    configuredId = databaseIds.coreId;
+    configuredSearchId = databaseIds.searchId;
+    hasSearchBinding = databaseIds.hasSearchBinding;
   } catch (error) {
     return { ok: false, errors: [error.message], dryRun: true };
   }
@@ -111,12 +119,28 @@ export function preflightRemoteMigrate({
       expectedDatabaseId
     };
   }
+  if (hasSearchBinding) {
+    if (!configuredSearchId || /REPLACE_WITH_|TODO|CHANGE_ME|YOUR_/i.test(configuredSearchId)) {
+      return { ok: false, errors: [`wrangler env '${envName}' SEARCH_DB database_id가 placeholder입니다.`], dryRun: true };
+    }
+    if (!expectedSearchDatabaseId) {
+      return { ok: false, errors: ["SEARCH_D1_TARGET_DATABASE_ID가 필요합니다."], dryRun: true };
+    }
+    if (String(configuredSearchId) !== String(expectedSearchDatabaseId)) {
+      return {
+        ok: false,
+        errors: ["SEARCH_D1_TARGET_DATABASE_ID가 선택된 SEARCH_DB database_id와 일치하지 않습니다."],
+        dryRun: true
+      };
+    }
+  }
 
   return {
     ok: true,
     envName,
     expectedDatabaseId,
     configuredId,
+    configuredSearchId,
     backupEvidenceId: String(backupEvidenceId),
     backupEvidenceDigest: String(backupEvidenceDigest).toLowerCase(),
     runId: String(runId),
@@ -144,6 +168,10 @@ if (isMain) {
 
   assertSafeDatabaseId(result.expectedDatabaseId, "D1_TARGET_DATABASE_ID");
   assertSafeDatabaseId(result.configuredId, `wrangler env.${envName}.database_id`);
+  if (result.configuredSearchId) {
+    assertSafeDatabaseId(required("SEARCH_D1_TARGET_DATABASE_ID"), "SEARCH_D1_TARGET_DATABASE_ID");
+    assertSafeDatabaseId(result.configuredSearchId, `wrangler env.${envName}.SEARCH_DB.database_id`);
+  }
 
   console.log(JSON.stringify({
     action: "d1-migrate-remote-preflight",
@@ -173,5 +201,22 @@ if (isMain) {
       CLOUDFLARE_D1_DATABASE_ID: expectedDatabaseId
     }
   });
-  process.exit(spawned.status ?? 1);
+  if ((spawned.status ?? 1) !== 0 || !result.configuredSearchId) {
+    process.exit(spawned.status ?? 1);
+  }
+  const searchArgs = [
+    "d1", "migrations", "apply", "hanlim-archive-search-10k",
+    "--remote",
+    "--env", envName
+  ];
+  if (result.dryRun) searchArgs.push("--dry-run");
+  const searchSpawned = spawnSync("npx", ["wrangler", ...searchArgs], {
+    stdio: "inherit",
+    shell: true,
+    env: {
+      ...process.env,
+      CLOUDFLARE_D1_DATABASE_ID: result.configuredSearchId
+    }
+  });
+  process.exit(searchSpawned.status ?? 1);
 }

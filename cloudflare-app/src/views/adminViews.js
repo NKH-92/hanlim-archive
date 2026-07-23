@@ -7,11 +7,12 @@ import { alertDanger, alertWarning, emptyState, page, sectionHeader } from "./la
 
 export { categoriesPage, tagsPage } from "../domains/masters/index.js";
 
-export function adminDashboardPage({ session, pendingCount, quality = null, searchIndex = null }) {
+export function adminDashboardPage({ session, pendingCount, quality = null, capacity = null, searchIndex = null }) {
   const pending = Number(pendingCount || 0);
   const qualityIssues = qualityIssueCount(quality);
   const searchAttention = searchIndex && ["warning", "review"].includes(searchIndex.level) ? 1 : 0;
-  const attentionCount = pending + qualityIssues + searchAttention;
+  const capacityAttention = capacity && capacity.level !== "ok" ? 1 : 0;
+  const attentionCount = pending + qualityIssues + searchAttention + capacityAttention;
   const groups = [];
   if (hasPermission(session, PERMISSIONS.MANAGE_USERS)) {
     groups.push(managementGroup("사용자 및 접근", "계정 승인과 사용 권한을 관리합니다.", [
@@ -56,11 +57,24 @@ export function adminDashboardPage({ session, pendingCount, quality = null, sear
       <div class="hero-stat"><strong>${attentionCount.toLocaleString("ko-KR")}</strong><span>확인 필요</span></div>
     </section>
     ${quality ? dataQualityPanel(quality) : ""}
+    ${capacity ? capacityPanel(capacity) : ""}
     ${searchIndex ? searchIndexPanel(searchIndex) : ""}
     <div class="management-grid">
       ${groups.join("")}
     </div>
   `, session);
+}
+
+function capacityPanel(capacity) {
+  const level = capacity.level === "blocked" ? "review" : capacity.level;
+  const message = capacity.level === "blocked"
+    ? "기술 상한에 도달했습니다. 신규 등록과 대장 반영이 차단됩니다."
+    : capacity.level === "warning"
+      ? "운영 경고 구간입니다. 확장 또는 제외 계획을 확정하세요."
+      : "10,000건 운영과 20% 기술 여유 범위 안입니다.";
+  return `<section class="panel search-index-health ${escapeHtml(level)}">
+    <div><strong>문서 대장 용량</strong><span>${Number(capacity.currentCount).toLocaleString("ko-KR")} / ${Number(capacity.hardCount).toLocaleString("ko-KR")}건 · 잔여 ${Number(capacity.remainingCount).toLocaleString("ko-KR")}건</span></div><p>${escapeHtml(message)}</p>
+  </section>`;
 }
 
 function qualityIssueCount(quality) {
@@ -105,13 +119,14 @@ function dataQualityPanel(quality) {
 
 function searchIndexPanel(stats) {
   const estimated = formatBytes(stats.estimatedJsonBytes);
-  const message = stats.level === "review"
-    ? `검색 인덱스가 ${stats.reviewCount.toLocaleString("ko-KR")}건에 도달했습니다. 서버 페이지 검색 구조를 재검토하세요.`
-    : stats.level === "warning"
-      ? `검색 인덱스가 ${stats.warningCount.toLocaleString("ko-KR")}건을 넘었습니다. 크기와 초기 로딩 시간을 점검하세요.`
-      : "현재 무료티어 운영 기준 안입니다.";
-  return `<section class="panel search-index-health ${escapeHtml(stats.level)}">
-    <div><strong>즉시검색 인덱스</strong><span>${Number(stats.documentCount).toLocaleString("ko-KR")}건 · 예상 ${escapeHtml(estimated)}</span></div><p>${escapeHtml(message)}</p>
+  const message = !stats.searchAvailable
+    ? "Search D1 연결을 확인하세요. 정확 문서번호와 필터 목록만 Core fallback으로 제공합니다."
+    : stats.rebuildRequired || stats.rebuildStatus !== "ready"
+      ? `검색 재구축이 필요합니다. 대기 outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`
+      : `Search D1 ${Number(stats.searchIndexedDocumentCount || 0).toLocaleString("ko-KR")}건 · outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`;
+  const level = !stats.searchAvailable || stats.rebuildRequired || stats.rebuildStatus !== "ready" ? "warning" : stats.level;
+  return `<section class="panel search-index-health ${escapeHtml(level)}">
+    <div><strong>서버 검색 인덱스</strong><span>${Number(stats.documentCount).toLocaleString("ko-KR")}건 · Core 예상 ${escapeHtml(estimated)}</span></div><p class="${escapeHtml(level)}">${escapeHtml(message)}</p>
   </section>`;
 }
 

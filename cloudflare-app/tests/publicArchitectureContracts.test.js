@@ -12,7 +12,7 @@ const SOURCE_ROOT = path.join(APP_ROOT, "src");
 
 test("Worker 모듈은 default fetch 하나만 공개하고 healthz 응답 계약을 지킨다", async () => {
   assert.deepEqual(Object.keys(workerModule).sort(), ["default"]);
-  assert.deepEqual(Object.keys(worker).sort(), ["fetch"]);
+  assert.deepEqual(Object.keys(worker).sort(), ["fetch", "scheduled"]);
   assert.equal(typeof worker.fetch, "function");
 
   const prepared = [];

@@ -30,26 +30,30 @@ test("300건 엑셀 한 파일을 현재 대장으로 반영하고 다음 파일
     assert.equal(Number(first.snapshot.create_count), 300);
     assert.equal(Number(first.snapshot.update_count), 0);
     assert.equal(Number(first.snapshot.unchanged_count), 0);
-    assert.equal(Number(first.snapshot.exclude_count), 2, "초기 시드 문서는 삭제하지 않고 제외한다");
+    assert.equal(Number(first.snapshot.exclude_count), 0, "정확히 일치하는 초기 시드는 bootstrap 반영 전에 제거한다");
 
     const applied = await applyDocumentSnapshot(env, first.snapshot.id, actor, {
       applyReason: "최초 bootstrap 문서고 대장 반영",
       approvalReference: "BOOTSTRAP-001",
-      confirmedExcludeCount: 2,
+      confirmedExcludeCount: 0,
       confirmExclude: true,
       ...reviewConfirmation(first.snapshot)
     });
     assert.equal(applied.ok, true, applied.message);
     assert.equal(applied.statementCount <= FREE_TIER_BUDGET.maxD1StatementsPerRequest, true);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 300);
-    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 2);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 0);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE status = 'disposed' AND sync_state = 'current'").get().count, 30);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_tags dt JOIN documents d ON d.id = dt.document_id WHERE d.sync_state = 'current'").get().count, 600);
-    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_snapshot_exclusions WHERE snapshot_id = ?").get(first.snapshot.id).count, 2);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_snapshot_exclusions WHERE snapshot_id = ?").get(first.snapshot.id).count, 0);
     assert.equal(database.prepare(`
       SELECT COUNT(*) AS count FROM document_audit_logs
       WHERE action = 'excel_sync_exclude' AND json_extract(details, '$.snapshotCode') = ?
-    `).get(first.snapshot.snapshot_code).count, 2);
+    `).get(first.snapshot.snapshot_code).count, 0);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE note = 'Cloudflare 테스트 기본 문서'").get().count, 0);
+    assert.equal(database.prepare("SELECT suppress_derived_triggers FROM bootstrap_runtime_control WHERE id = 1").get().suppress_derived_triggers, 0);
+    assert.equal(database.prepare("SELECT rebuild_required FROM search_index_state WHERE id = 1").get().rebuild_required, 1);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM search_index_outbox").get().count, 0);
 
     const exported = await getDocumentSnapshotExport(env);
     assert.equal(exported.documents.length, 300);
@@ -113,7 +117,7 @@ test("300건 엑셀 한 파일을 현재 대장으로 반영하고 다음 파일
     });
     assert.equal(secondApplied.ok, true, secondApplied.message);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 299);
-    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 3);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 1);
     assert.match(database.prepare("SELECT document_name FROM documents WHERE sync_state = 'current' ORDER BY id LIMIT 1").get().document_name, /변경$/);
 
     const state = await getDocumentSyncState(env);
@@ -148,21 +152,52 @@ test("1,000건 엑셀 반영은 단일 batch와 statement 예산 안에서 원�
       hasRowKeys: false
     });
     assert.equal(Number(prepared.snapshot.create_count), 1000);
-    assert.equal(Number(prepared.snapshot.exclude_count), 2);
+    assert.equal(Number(prepared.snapshot.exclude_count), 0);
 
     const applied = await applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
       applyReason: "1,000건 규모 원자 반영 검증",
       approvalReference: "SCALE-1000",
-      confirmedExcludeCount: 2,
+      confirmedExcludeCount: 0,
       confirmExclude: true,
       ...reviewConfirmation(prepared.snapshot)
     });
     assert.equal(applied.ok, true, applied.message);
     assert.ok(applied.statementCount <= FREE_TIER_BUDGET.maxD1StatementsPerRequest);
-    assert.equal(applied.statementCount, 20);
+    assert.equal(applied.statementCount, 27);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 1000);
-    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 2);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 0);
     assert.equal(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(prepared.snapshot.id).status, "completed");
+  } finally {
+    database.close();
+  }
+});
+
+test("bootstrap 대상이 정확한 초기 시드 2건이 아니면 전체 반영을 rollback한다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };
+  const actor = actorFixture();
+
+  try {
+    database.prepare("UPDATE documents SET note = '사용자 보존 문서' WHERE storage_code = 'ARC-000002'").run();
+    const prepared = await createAndPrepare(env, actor, buildRows(3), {
+      sourceHash: "f".repeat(64),
+      mode: "bootstrap",
+      hasRowKeys: false
+    });
+    assert.equal(prepared.ok, true, prepared.message);
+
+    const applied = await applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+      applyReason: "초기 시드 사전조건 rollback 검증",
+      approvalReference: "BOOTSTRAP-GUARD",
+      confirmedExcludeCount: Number(prepared.snapshot.exclude_count || 0),
+      confirmExclude: true,
+      ...reviewConfirmation(prepared.snapshot)
+    });
+    assert.equal(applied.ok, false);
+    assert.equal(applied.stale, true);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents").get().count, 2);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE last_snapshot_id = ?").get(prepared.snapshot.id).count, 0);
+    assert.equal(database.prepare("SELECT suppress_derived_triggers FROM bootstrap_runtime_control WHERE id = 1").get().suppress_derived_triggers, 0);
   } finally {
     database.close();
   }
@@ -203,7 +238,7 @@ async function createAndPrepare(env, actor, rows, options) {
     sourceName: "한림_문서고_관리대장.xlsx",
     sourceHash: options.sourceHash,
     totalCount: rows.length,
-    schemaVersion: options.schemaVersion || 1,
+    schemaVersion: options.schemaVersion || (options.exportManifestId ? 2 : 1),
     mode: options.mode || "managed",
     baseVersion: options.baseVersion || "",
     currentSnapshotId: options.currentSnapshotId || "",

@@ -1,5 +1,10 @@
 // 폐기 캠페인과 CSV 가져오기 작업 라우트. 미매칭은 상위 라우터에 null로 넘긴다.
-import { matchDisposalBatchRoute, matchDocumentImportJobRoute, matchDocumentSnapshotRoute } from "../routes.js";
+import {
+  matchDisposalBatchRoute,
+  matchDocumentImportJobRoute,
+  matchDocumentSnapshotExportRoute,
+  matchDocumentSnapshotRoute
+} from "../routes.js";
 import {
   handleCreateDisposalBatch,
   handleDisposalBatchRoute,
@@ -13,11 +18,19 @@ import {
 } from "./importJobHandlers.js";
 import {
   handleCreateDocumentSnapshot,
+  handleCreateDocumentSnapshotExport,
+  handleDocumentSnapshotExportRoute,
   handleDocumentSnapshotRoute,
   renderDocumentSnapshotManager
 } from "./snapshotHandlers.js";
 
 export async function routeWorkflowRequest(request, env, session, path) {
+  if (path === "/document-snapshot-exports" && request.method === "POST") {
+    return handleCreateDocumentSnapshotExport(env, session);
+  }
+  const exportRoute = matchDocumentSnapshotExportRoute(path);
+  if (exportRoute) return handleDocumentSnapshotExportRoute(request, env, session, exportRoute);
+
   if (path === "/document-snapshots" && request.method === "GET") {
     return renderDocumentSnapshotManager(env, session);
   }

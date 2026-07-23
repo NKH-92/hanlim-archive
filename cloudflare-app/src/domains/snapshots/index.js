@@ -2,13 +2,17 @@ export {
   applyDocumentSnapshot,
   cancelDocumentSnapshot,
   createDocumentSnapshot,
+  createDocumentSnapshotExport,
+  finalizeDocumentSnapshotExport,
   getDocumentSnapshot,
   getDocumentSnapshotExclusions,
   getDocumentSnapshotExport,
+  getDocumentSnapshotExportPage,
   getDocumentSnapshotRows,
   getDocumentSyncState,
   listDocumentSnapshots,
   prepareDocumentSnapshot,
+  stageDocumentSnapshotMembership,
   stageDocumentSnapshotRows,
   SNAPSHOT_STATUSES
 } from "./infrastructure/repository.js";
@@ -30,7 +34,12 @@ export {
   requiredPermissionsForDiff,
   APPLY_MODES
 } from "./domain/authorization.js";
-export { computeCanonicalRowsHash, computeExportManifestHash, SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS } from "./domain/hash.js";
+export {
+  computeCanonicalRowsHash,
+  computeExportManifestHash,
+  computeExportPageChainHash,
+  SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS
+} from "./domain/hash.js";
 export { SNAPSHOT_ERROR_CODES } from "./domain/errorCodes.js";
 export { EXCEL_SNAPSHOT_HEADERS } from "./domain/workbookSchema.js";
 export { validateRevisionHistorySnapshotChanges } from "./domain/revisionPolicy.js";

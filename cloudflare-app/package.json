@@ -31,6 +31,7 @@
     "deploy": "npm run predeploy && node scripts/deploy-guarded.mjs",
     "deploy:dry": "npm run build:browser && npm run check:browser && node scripts/deploy-guarded.mjs --dry-run",
     "db:migrate:local": "wrangler d1 migrations apply hanlim-archive --local",
+    "db:migrate:search:local": "wrangler d1 migrations apply hanlim-archive-search-10k --local",
     "db:migrate:remote": "node scripts/migrate-remote-guarded.mjs",
     "db:migrate:remote:unsafe-legacy": "echo \"Use db:migrate:remote with D1_* env guards\" && exit 1"
   },

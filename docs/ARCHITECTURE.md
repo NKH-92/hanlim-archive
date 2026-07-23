@@ -105,6 +105,13 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 19. **rollback 호환성**: 신규 migration을 적용하기 전에 현재 rollback 대상 Worker가 신규 schema에서 인증과
     핵심 쓰기 불변식을 지키는지 검증한다. `session_epoch` 최초 도입은 exact pre-release source로 만든
     epoch-aware compatibility Worker를 migration 없이 먼저 배포한 경우에만 진행한다.
+20. **10,000건 용량 경계**: 현재 대장은 11,000건부터 운영 경고, 12,000건에서 DB trigger와 application
+    guard가 신규 등록·재포함·엑셀 반영을 함께 차단한다. 전체 membership은 1,000행, 실제 변경행은 50행씩
+    전송하며 일상 변경 영향은 1,000건을 넘길 수 없다.
+21. **Core/Search 분리**: `DB`는 문서·사용자·감사·권한의 유일한 권위 저장소이고 `SEARCH_DB`는
+    `search-migrations/`로 관리하는 재구축 가능 파생 인덱스다. Search D1에는 `storage_code`, 사용자,
+    감사정보를 저장하지 않는다. 검색 후보는 최대 200개 ID이며 Core에서 현재 상태·필터를 재검증한 뒤
+    최대 30건과 opaque cursor만 응답한다.
 
 ## 데이터 무결성 계약
 

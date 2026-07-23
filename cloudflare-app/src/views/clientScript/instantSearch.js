@@ -1,18 +1,11 @@
-// 전역 클라이언트 스크립트의 즉시 검색 조각. 실행 순서는 clientScript.js에서 고정한다.
+// 전역 클라이언트 스크립트의 즉시 검색 조각. 10,000건 전환부터 브라우저 전체 인덱스를 받지 않는다.
 
 export function instantSearchScript() {
-  return `      // 즉시 검색 (아이디어 3): /app에서 타이핑 즉시 로컬 인덱스를 스코어링해 렌더한다.
+  return `      // 서버 즉시 검색: Search D1 후보 → Core 재검증 → 최대 30건 cursor 응답.
       var viewerApp = document.querySelector('[data-viewer-app]');
       var viewerForm = document.querySelector('[data-viewer-form]');
       var viewerInput = viewerForm ? viewerForm.querySelector('input[name="q"]') : null;
       if (viewerApp && viewerInput && window.SearchCore) {
-        var core = window.SearchCore;
-        var contextEl = document.querySelector('[data-viewer-context]');
-        var searchContext = { categories: [], tags: [] };
-        try { searchContext = JSON.parse(contextEl ? contextEl.textContent : '{}') || searchContext; } catch {}
-        var searchIndex = null;
-        var indexLoading = false;
-        var indexError = '';
         var resultsBody = document.querySelector('[data-results-body]');
         var resultsTitle = document.querySelector('[data-results-title]');
         var resultsCount = document.querySelector('[data-results-count]');
@@ -24,80 +17,13 @@ export function instantSearchScript() {
           count: resultsCount ? resultsCount.textContent : ''
         };
         var renderTimer = null;
-
-        var instantLocation = function (doc) {
-          var faceLabel = core.rackFaceLabel(doc);
-          return {
-            main: (doc.zone_number ? doc.zone_number + '구역 ' : '') + (faceLabel || doc.rack_code || ''),
-            sub: (doc.column_number || '') + '열 ' + (doc.shelf_number || '') + '선반',
-            label: [
-              doc.zone_number ? doc.zone_number + '구역' : '',
-              faceLabel ? faceLabel + '번 랙' : doc.rack_code,
-              doc.column_number ? doc.column_number + '열' : '',
-              doc.shelf_number ? doc.shelf_number + '선반' : ''
-            ].filter(Boolean).join(' / ')
-          };
-        };
-
-        var instantBadges = function (doc) {
-          var html = '';
-          if (doc.status !== 'active') html += '<span class="status disposed">폐기</span>';
-          return html;
-        };
-
-        var instantRow = function (doc, q) {
-          var loc = instantLocation(doc);
-          var rail = doc.status !== 'active' ? ' is-disposed' : '';
-          return '<article class="viewer-result-row' + rail + '" role="row">' +
-            '<span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/' + doc.id + '" data-doc-click="' + doc.id + '">' + core.highlightHtml(doc.document_name || '문서명 없음', q, escapeHtmlClient) + '</a></span>' +
-            '<span class="mono" role="cell" data-label="문서번호">' + core.highlightHtml(doc.document_number || '', q, escapeHtmlClient) + '</span>' +
-            '<span role="cell" data-label="개정">' + escapeHtmlClient(doc.revision_number || '-') + '</span>' +
-            '<span role="cell" data-label="제·개정일">' + escapeHtmlClient(doc.revision_date || '-') + '</span>' +
-            '<span role="cell" data-label="대분류">' + escapeHtmlClient(doc.category_name || '-') + '</span>' +
-            '<span class="viewer-result-location" role="cell" data-label="보관 위치">' + escapeHtmlClient(loc.label || '위치 미지정') + '</span>' +
-            '<span role="cell" data-label="상태">' + (doc.status === 'active' ? '<span class="status active">보관중</span>' : instantBadges(doc)) + '</span>' +
-            '</article>';
-        };
-
-        var currentSelectFilters = function () {
-          var control = function (name) { return viewerForm.elements ? viewerForm.elements.namedItem(name) : viewerForm.querySelector('select[name="' + name + '"]'); };
-          var num = function (name) {
-            var el = control(name);
-            return el ? Number(el.value) || 0 : 0;
-          };
-          var statusEl = control('status');
-          var sortEl = control('sort');
-          var status = statusEl && ['active', 'all', 'disposed'].indexOf(statusEl.value) !== -1 ? statusEl.value : 'active';
-          return {
-            categoryId: num('category'),
-            tagId: num('tag'),
-            zoneNumber: num('zone'),
-            status: status,
-            sort: sortEl ? sortEl.value : 'relevance'
-          };
-        };
-
-        var tagNameById = function (id) {
-          var tags = searchContext.tags || [];
-          for (var i = 0; i < tags.length; i++) {
-            if (Number(tags[i].id) === Number(id)) return tags[i].name;
-          }
-          return '';
-        };
-
-        var matchesFilters = function (doc, f) {
-          if (f.categoryId && Number(doc.category_id) !== f.categoryId) return false;
-          if (f.zoneNumber && Number(doc.zone_number) !== f.zoneNumber) return false;
-          if (f.status && f.status !== 'all' && doc.status !== f.status) return false;
-          if (f.tagId) {
-            var name = core.compactSearchText(tagNameById(f.tagId));
-            if (!name) return false;
-            if (core.compactSearchText(doc.tag_names || '').indexOf(name) === -1) return false;
-          }
-          return true;
-        };
+        var activeRequest = null;
+        var currentCursor = '';
+        var currentItems = [];
 
         var restoreInitial = function () {
+          if (activeRequest) activeRequest.abort();
+          currentCursor = ''; currentItems = [];
           if (resultsBody) resultsBody.innerHTML = initialResults.body;
           if (resultsTitle) resultsTitle.textContent = initialResults.title;
           if (resultsCount) resultsCount.textContent = initialResults.count;
@@ -106,132 +32,106 @@ export function instantSearchScript() {
           if (viewerApp.classList.contains('is-home')) viewerApp.hidden = true;
         };
 
-        var renderInstant = function () {
-          var q = viewerInput.value.trim();
-          if (!q) { restoreInitial(); return; }
-          if (!searchIndex) {
-            if (indexError) {
-              var params = new URLSearchParams({ q: q });
-              if (resultsBody) resultsBody.innerHTML = '<div class="alert danger" role="alert">즉시검색 자료를 불러오지 못했습니다.</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">서버 검색으로 계속</a></div>';
-              if (resultsTitle) resultsTitle.textContent = '검색을 계속할 수 없습니다';
-              if (resultsCount) resultsCount.textContent = '-';
-              if (searchLive) searchLive.textContent = '즉시검색을 불러오지 못했습니다. 다시 시도하거나 서버 검색을 이용하세요.';
-              viewerApp.hidden = false;
-              return;
-            }
-            if (searchLive) searchLive.textContent = '검색 자료를 불러오는 중입니다.';
-            loadSearchIndex();
-            return;
-          }
-          var f = currentSelectFilters();
-          var parsed = core.parseSearchQuery(q, {
-            categories: searchContext.categories,
-            tags: searchContext.tags,
-            explicit: f
+        var formValue = function (name) {
+          var control = viewerForm.elements ? viewerForm.elements.namedItem(name) : null;
+          return control && typeof control.value === 'string' ? control.value : '';
+        };
+
+        var searchParams = function (cursor) {
+          var params = new URLSearchParams({ q: viewerInput.value.trim(), limit: '30' });
+          ['category','tag','zone','status','sort','rack','face','column','shelf'].forEach(function (name) {
+            var value = formValue(name);
+            if (value) params.set(name, value);
           });
-          var merged = {
-            categoryId: f.categoryId || parsed.filters.categoryId || 0,
-            tagId: f.tagId || parsed.filters.tagId || 0,
-            zoneNumber: f.zoneNumber || parsed.filters.zoneNumber || 0,
-            status: f.status,
-            sort: f.sort || 'relevance'
-          };
-          var text = parsed.text;
-          var hasText = Boolean(text);
-          var scored = [];
-          for (var i = 0; i < searchIndex.length; i++) {
-            var doc = searchIndex[i];
-            if (!matchesFilters(doc, merged)) continue;
-            var result = core.scoreDocumentMatch(doc, text);
-            if (hasText && result.relevance_score <= 0) continue;
-            var item = Object.assign({}, doc, result);
-            if (item.relevance_score > 0) item.relevance_score += core.popularityBoost(doc.popularity);
-            scored.push(item);
+          if (cursor) params.set('cursor', cursor);
+          return params;
+        };
+
+        var resultRow = function (item, query) {
+          var location = item.location || {};
+          var disposed = item.status === 'disposed';
+          return '<article class="viewer-result-row' + (disposed ? ' is-disposed' : '') + '" role="row">' +
+            '<span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/' + Number(item.id) + '" data-doc-click="' + Number(item.id) + '">' + window.SearchCore.highlightHtml(item.documentName || '문서명 없음', query, escapeHtmlClient) + '</a></span>' +
+            '<span class="mono" role="cell" data-label="문서번호">' + window.SearchCore.highlightHtml(item.documentNumber || '', query, escapeHtmlClient) + '</span>' +
+            '<span role="cell" data-label="개정">' + escapeHtmlClient(item.revisionNumber || '-') + '</span>' +
+            '<span role="cell" data-label="제·개정일">' + escapeHtmlClient(item.revisionDate || '-') + '</span>' +
+            '<span role="cell" data-label="대분류">' + escapeHtmlClient(item.categoryName || '-') + '</span>' +
+            '<span class="viewer-result-location" role="cell" data-label="보관 위치">' + escapeHtmlClient(location.label || '위치 미지정') + '</span>' +
+            '<span role="cell" data-label="상태"><span class="status ' + (disposed ? 'disposed' : 'active') + '">' + (disposed ? '폐기' : '보관중') + '</span></span>' +
+            '</article>';
+        };
+
+        var renderPayload = function (payload, append) {
+          var query = viewerInput.value.trim();
+          currentItems = append ? currentItems.concat(payload.items || []) : (payload.items || []);
+          currentCursor = payload.nextCursor || '';
+          var html = '<div class="viewer-result-table" role="table" aria-label="문서 검색 결과">' +
+            '<div class="viewer-result-header" role="row"><span>문서명</span><span>문서번호</span><span>개정</span><span>제·개정일</span><span>대분류</span><span>보관 위치</span><span>상태</span></div>' +
+            '<div class="viewer-result-list" role="rowgroup">' +
+            currentItems.map(function (item) { return resultRow(item, query); }).join('') +
+            '</div></div>';
+          if (!currentItems.length) {
+            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/documents">전체 문서 보기</a><a class="button secondary sm" href="/app">검색 초기화</a></div></div>';
+          } else if (payload.hasMore && currentCursor) {
+            html += '<nav class="pagination"><button type="button" class="button secondary sm" data-search-more>더보기</button></nav>';
           }
-          scored.sort(function (left, right) {
-            return core.compareSearchResults(left, right, hasText ? (merged.sort || 'relevance') : 'updated', hasText);
-          });
-          var top = scored.slice(0, 30);
-          var html = '';
-          var chips = parsed.chips || [];
-          if (chips.length) {
-            var chipLabels = { zone: '구역', category: '대분류', tag: '태그', status: '상태' };
-            html += '<div class="parsed-chip-row"><span>자동 적용</span>' + chips.map(function (chip) {
-              return '<button type="button" class="chip active" data-remove-search-chip="' + escapeHtmlClient(chip.token || '') + '" aria-label="' + escapeHtmlClient(chip.label + ' 자동 필터 제거') + '">' + escapeHtmlClient((chipLabels[chip.type] || chip.type) + ': ' + chip.label) + ' ×</button>';
-            }).join('') + '</div>';
-          }
-          if (top.length) {
-            html += '<div class="viewer-result-table" role="table" aria-label="문서 검색 결과"><div class="viewer-result-header" role="row"><span>문서명</span><span>문서번호</span><span>개정</span><span>제·개정일</span><span>대분류</span><span>보관 위치</span><span>상태</span></div><div class="viewer-result-list" role="rowgroup">' + top.map(function (item) { return instantRow(item, text); }).join('') + '</div></div>';
-          } else {
-            html += '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/documents">전체 문서 보기</a><a class="button secondary sm" href="/app">검색 초기화</a></div></div>';
-            var loose = [];
-            for (var j = 0; j < searchIndex.length; j++) {
-              var candidate = searchIndex[j];
-              if (merged.status !== 'all' && candidate.status !== merged.status) continue;
-              var looseScore = core.scoreDocumentMatch(candidate, text, { minCoverage: 0.2 });
-              if (looseScore.relevance_score > 0) loose.push(Object.assign({}, candidate, looseScore));
-            }
-            loose.sort(function (l, r) { return r.relevance_score - l.relevance_score; });
-            if (loose.length) {
-              html += '<div class="didyoumean"><p>혹시 이 문서를 찾으셨나요?</p>' + loose.slice(0, 3).map(function (item) {
-                var loc = instantLocation(item);
-                return '<a href="/documents/' + item.id + '"><strong>' + escapeHtmlClient(item.document_name || '') + '</strong><span class="mono">' + escapeHtmlClient(item.document_number || '') + '</span><small>' + escapeHtmlClient(loc.label) + '</small></a>';
-              }).join('') + '</div>';
-            }
-          }
-          if (scored.length > top.length) {
-            var allParams = new URLSearchParams();
-            allParams.set('q', q);
-            allParams.set('status', merged.status);
-            if (f.categoryId) allParams.set('category', f.categoryId);
-            if (f.tagId) allParams.set('tag', f.tagId);
-            if (f.zoneNumber) allParams.set('zone', f.zoneNumber);
-            if (f.sort) allParams.set('sort', f.sort);
-            html += '<nav class="pagination"><a class="button secondary sm" href="/app?' + escapeHtmlClient(allParams.toString()) + '">전체 ' + scored.length + '건 모두 보기</a></nav>';
+          if (payload.fallback) {
+            html = '<div class="alert warning" role="status">검색 인덱스 점검 중입니다. 결과가 제한될 수 있습니다.</div>' + html;
           }
           if (resultsBody) resultsBody.innerHTML = html;
-          if (resultsTitle) resultsTitle.textContent = '"' + q + '" 검색 결과';
-          if (resultsCount) resultsCount.textContent = scored.length + '건';
-          if (searchLive) searchLive.textContent = scored.length ? scored.length + '건을 찾았습니다.' : '검색 결과가 없습니다.';
+          if (resultsTitle) resultsTitle.textContent = '"' + query + '" 검색 결과';
+          if (resultsCount) resultsCount.textContent = Number(payload.candidateCount || currentItems.length).toLocaleString('ko-KR') + '건';
+          if (searchLive) searchLive.textContent = currentItems.length ? currentItems.length + '건을 표시했습니다.' : '검색 결과가 없습니다.';
           if (homeExtras) homeExtras.hidden = true;
           viewerApp.hidden = false;
         };
 
-        var loadSearchIndex = function () {
-          if (searchIndex || indexLoading) return;
-          indexLoading = true;
-          indexError = '';
-          fetch('/api/search-index', { headers: { Accept: 'application/json' } })
-            .then(function (response) { if (!response.ok) throw new Error('검색 자료 요청 실패'); return response.json(); })
-            .then(function (data) {
-              if (!data || !Array.isArray(data.documents)) throw new Error('검색 자료 형식 오류');
-              searchIndex = data.documents;
-              window.__hanlimSearchIndexReady = true;
-              indexLoading = false;
-              renderInstant();
-            })
-            .catch(function () { indexLoading = false; indexError = 'load-failed'; renderInstant(); });
+        var renderError = function (message) {
+          var params = searchParams('');
+          if (resultsBody) resultsBody.innerHTML = '<div class="alert danger" role="alert">' + escapeHtmlClient(message || '검색을 처리하지 못했습니다.') + '</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">검색 화면에서 계속</a></div>';
+          if (resultsTitle) resultsTitle.textContent = '검색을 계속할 수 없습니다';
+          if (resultsCount) resultsCount.textContent = '-';
+          if (searchLive) searchLive.textContent = '검색 요청을 처리하지 못했습니다.';
+          viewerApp.hidden = false;
+        };
+
+        var requestSearch = async function (cursor, append) {
+          var query = viewerInput.value.trim();
+          if (!query) { restoreInitial(); return; }
+          if (activeRequest) activeRequest.abort();
+          activeRequest = typeof AbortController === 'function' ? new AbortController() : null;
+          if (searchLive) searchLive.textContent = append ? '다음 결과를 불러오는 중…' : '검색 중…';
+          try {
+            var response = await fetch('/api/viewer/search?' + searchParams(cursor).toString(), {
+              headers: { Accept: 'application/json' },
+              ...(activeRequest ? { signal: activeRequest.signal } : {})
+            });
+            var payload = await response.json().catch(function () { return {}; });
+            if (response.status === 409 && payload.code === 'SEARCH_CURSOR_STALE') {
+              return requestSearch('', false);
+            }
+            if (!response.ok || payload.ok === false || !Array.isArray(payload.items)) {
+              throw new Error(payload.message || '검색 요청에 실패했습니다.');
+            }
+            window.__hanlimSearchIndexReady = true;
+            renderPayload(payload, append);
+          } catch (error) {
+            if (error && error.name === 'AbortError') return;
+            renderError(error && error.message);
+          }
         };
 
         viewerInput.addEventListener('input', function () {
           clearTimeout(renderTimer);
-          if (searchLive && viewerInput.value.trim()) searchLive.textContent = '검색 중…';
-          renderTimer = setTimeout(renderInstant, 100);
+          if (!viewerInput.value.trim()) { restoreInitial(); return; }
+          renderTimer = setTimeout(function () { requestSearch('', false); }, 180);
         });
-        viewerInput.addEventListener('focus', loadSearchIndex);
         resultsBody?.addEventListener?.('click', function (event) {
           var target = event.target instanceof Element ? event.target : null;
-          var retry = target?.closest('[data-search-retry]');
-          if (retry) { indexError = ''; loadSearchIndex(); return; }
-          var chip = target?.closest('[data-remove-search-chip]');
-          if (chip) {
-            var token = chip.getAttribute('data-remove-search-chip') || '';
-            viewerInput.value = viewerInput.value.split(/\\s+/).filter(function (part) { return part !== token; }).join(' ');
-            renderInstant();
-            viewerInput.focus();
-          }
+          if (target?.closest('[data-search-retry]')) { requestSearch('', false); return; }
+          if (target?.closest('[data-search-more]') && currentCursor) requestSearch(currentCursor, true);
         });
-        if (viewerInput.value.trim()) loadSearchIndex();
+        if (viewerInput.value.trim()) requestSearch('', false);
       }
 `;
 }

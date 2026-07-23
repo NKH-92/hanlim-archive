@@ -115,7 +115,7 @@ test("엑셀 준비 단계는 개정 연결 문서의 식별정보 변경과 자
     sourceSize: 4096,
     syncReason: "개정 이력 충돌 검증용 동기화",
     totalCount: rows.length,
-    schemaVersion: 1,
+    schemaVersion: exported.schemaVersion,
     mode: "managed",
     baseVersion: exported.baseVersion,
     currentSnapshotId: exported.currentSnapshotId,

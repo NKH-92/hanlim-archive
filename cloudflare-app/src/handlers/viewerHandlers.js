@@ -1,7 +1,6 @@
 import { getAppConfig } from "../config.js";
 import {
   parseDocumentFilters,
-  getSearchIndexDocuments,
   getSearchIndexMeta,
   getSearchReport,
   getSearchSuggestions,
@@ -90,23 +89,21 @@ export async function handleViewerSearch(request, env) {
   const url = new URL(request.url);
   const params = Object.fromEntries(url.searchParams);
   const payload = await getViewerSearchPayload(env, params);
+  if (payload?.ok === false) {
+    return jsonResponse(payload, { status: Number(payload.status || 400) });
+  }
   const filters = parseDocumentFilters(params, { query: params.q || params.query });
   return jsonResponse(filters.status === "disposed" ? { ...payload, suggestions: [] } : payload);
 }
 
 export async function handleSearchIndex(request, env) {
   const meta = await getSearchIndexMeta(env);
-  const etag = `"idx-${meta.count}-${meta.maxId}-${meta.versionKey}"`;
-
-  if (request.headers.get("If-None-Match") === etag) {
-    return new Response(null, { status: 304, headers: { ETag: etag } });
-  }
-
-  const documents = await getSearchIndexDocuments(env);
-  return jsonResponse(
-    { updated: meta.updated, documents },
-    { cacheControl: "private, no-cache", headers: { ETag: etag } }
-  );
+  return jsonResponse({
+    ok: false,
+    code: "SEARCH_INDEX_RETIRED",
+    message: "브라우저 전체 검색 인덱스는 종료되었습니다. /api/viewer/search를 사용하세요.",
+    updated: meta.updated
+  }, { status: 410, cacheControl: "private, no-store" });
 }
 
 export async function handleSearchClick(request, env) {

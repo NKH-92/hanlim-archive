@@ -38,30 +38,28 @@ export { getSearchReport, recordSearchClick, recordSearchLog };
 const compareSearchResults = searchCore.compareSearchResults;
 const clickBoost = searchCore.clickBoost;
 
-// 권위 브라우즈 상한. 실제 아카이브 규모(수백~수천) 위로 두어 목록 절단을 방지한다.
-export const MAX_SEARCH_RESULTS = 5000;
-// 소규모 자동완성 요청은 최근 후보를 최소 750건까지 보되, 권위 목록 요청은
-// 호출자가 요청한 상한(MAX_SEARCH_RESULTS)까지 전부 채점해 오래된 문서 누락을 막는다.
-const SEARCH_CANDIDATE_FLOOR = 750;
+// 일반 텍스트 검색은 Search D1에서 이 수만큼만 후보를 만든 뒤 Core D1에서 권한·상태를 재검증한다.
+// 무검색/필터 목록은 getDocumentPage()의 정확한 count/page 경로를 사용하므로 이 상한의 영향을 받지 않는다.
+export const MAX_SEARCH_RESULTS = FREE_TIER_BUDGET.searchCandidateMaxItems;
+const SEARCH_CANDIDATE_FLOOR = FREE_TIER_BUDGET.searchCandidateMaxItems;
 
 export async function searchDocuments(env, query, limit = 100, filters = {}) {
   const trimmed = clean(query);
   const { where, binds: filterBinds } = buildDocumentFilterWhere(filters);
-  // 권위 목록(문서 브라우즈)이 잘려 문서가 사라지지 않도록 상한을 예상 아카이브 규모 위로 둔다.
-  // LIMIT ?는 실제 문서 수만큼만 읽으므로(min(actual, cap)) 소규모에서는 무료티어 비용도 낮다.
+  // 텍스트 검색은 Search D1 후보 200건 안에서 점수화한다. 검색어 없는 권위 목록은
+  // 이 함수가 아니라 getDocumentPage()의 SQL COUNT + page 경로를 사용한다.
   const requestedLimit = Number(limit);
   const safeLimit = Number.isFinite(requestedLimit) && requestedLimit > 0
     ? Math.min(Math.floor(requestedLimit), MAX_SEARCH_RESULTS)
     : 100;
-  // 자동완성처럼 작은 요청은 후보 하한을 두고, 전체 목록 요청은 1,500건에서 잘리지 않게
-  // safeLimit까지 확장한다. LIMIT 전 정렬을 고정해 같은 데이터는 같은 후보 집합을 만든다.
+  // 자동완성처럼 작은 요청도 퍼지 점수화에 충분한 후보 200건을 확보한다.
   const candidateLimit = trimmed
     ? Math.min(Math.max(safeLimit, SEARCH_CANDIDATE_FLOOR), MAX_SEARCH_RESULTS)
     : safeLimit;
 
   const hasQuery = Boolean(trimmed);
   const sort = filters.sort || (hasQuery ? "relevance" : "updated");
-  // 문서번호처럼 보이는 완전 일치 입력은 퍼지 검색용 최대 5,000행 후보를 읽기 전에 직접
+  // 문서번호처럼 보이는 완전 일치 입력은 퍼지 검색 후보를 읽기 전에 Core에서 직접
   // 조회한다. 내부 ARC 보관코드는 이 경로에 포함하지 않아 기존 비노출 정책을 유지한다.
   if (hasQuery && looksLikeDocumentNumber(trimmed)) {
     const exactWhere = where
@@ -93,6 +91,22 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
         document.match_reason = "문서번호 정확히 일치";
       }
       return exactRows;
+    }
+  }
+  if (hasQuery && env.SEARCH_DB) {
+    try {
+      const candidateIds = await getIndexedCandidateIds(env.SEARCH_DB, trimmed, candidateLimit);
+      if (!candidateIds.length) return [];
+      return scoreCandidateDocuments(
+        await getCoreCandidateDocuments(env, candidateIds, where, filterBinds),
+        trimmed,
+        safeLimit,
+        sort,
+        await getSearchClickHits(env, trimmed)
+      );
+    } catch {
+      // Search D1 장애 시 Core의 제한된 후보 검색으로 내린다. 정확 문서번호와 필터 목록은 계속 제공된다.
+      env.__searchFallback = true;
     }
   }
   // 문서 후보 조회와 클릭 학습 조회는 서로 독립이므로 병렬로 보낸다.
@@ -128,10 +142,57 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
   }
 
   // 스프레드로 행마다 새 객체를 만들지 않고 점수 필드만 붙인다.
+  return scoreCandidateDocuments(rows, trimmed, safeLimit, sort, clickHits);
+}
+
+function looksLikeDocumentNumber(value) {
+  return value.length <= 100 && /\d/.test(value) && /[-_/]/.test(value) && !/\s/.test(value);
+}
+
+async function getIndexedCandidateIds(searchDb, query, limit) {
+  const terms = buildSearchIndexTerms(query).slice(0, 12);
+  if (!terms.length) return [];
+  // 오타 한 글자로 전체 후보가 0건이 되지 않도록 n-gram 중 하나 이상 일치하는 후보를 만든 뒤,
+  // Core의 기존 퍼지 점수기로 최종 관련성을 다시 판정한다.
+  const expression = terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR ");
+  const result = await searchDb.prepare(`
+    SELECT CAST(document_id AS INTEGER) AS document_id
+    FROM search_documents_fts
+    WHERE search_documents_fts MATCH ?
+    LIMIT ?
+  `).bind(expression, Math.min(limit, FREE_TIER_BUDGET.searchCandidateMaxItems)).all();
+  return (result.results ?? []).map((row) => Number(row.document_id)).filter(Number.isInteger);
+}
+
+async function getCoreCandidateDocuments(env, candidateIds, where, filterBinds) {
+  const candidateWhere = where
+    ? `${where} AND d.id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))`
+    : "WHERE d.id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))";
+  const result = await env.DB.prepare(`
+    SELECT
+      d.id,
+      ${DOCUMENT_CORE_COLUMNS}
+      d.updated_at,
+      ${DOCUMENT_LOCATION_COLUMNS}
+      r.column_count,
+      r.shelf_count,
+      rs.column_number,
+      rs.shelf_number,
+      rs.slot_code,
+      ${DOCUMENT_TAG_CONCAT}
+    ${DOCUMENT_BASE_JOINS}
+    ${DOCUMENT_TAG_JOINS}
+    ${candidateWhere}
+    GROUP BY d.id
+  `).bind(...filterBinds, JSON.stringify(candidateIds)).all();
+  return result.results ?? [];
+}
+
+function scoreCandidateDocuments(rows, query, limit, sort, clickHits) {
   const scored = [];
-  const queryTokens = searchTokens(trimmed);
+  const queryTokens = searchTokens(query);
   for (const document of rows) {
-    const match = scoreDocumentMatch(document, trimmed, { tokens: queryTokens });
+    const match = scoreDocumentMatch(document, query, { tokens: queryTokens });
     if (match.relevance_score <= 0) continue;
     document.relevance_score = match.relevance_score;
     document.match_reason = match.match_reason;
@@ -143,11 +204,37 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
   }
   return scored
     .sort((left, right) => compareSearchResults(left, right, sort, true))
-    .slice(0, safeLimit);
+    .slice(0, limit);
 }
 
-function looksLikeDocumentNumber(value) {
-  return value.length <= 100 && /\d/.test(value) && /[-_/]/.test(value) && !/\s/.test(value);
+export function buildSearchIndexTerms(value) {
+  const normalized = normalizeSearchText(value);
+  const terms = new Set();
+  for (const token of normalized.split(/\s+/).filter(Boolean)) {
+    if (token.length <= 2) {
+      terms.add(token);
+    } else {
+      for (let index = 0; index < token.length - 1; index += 1) {
+        terms.add(token.slice(index, index + 2));
+      }
+      for (let index = 0; index < token.length - 2; index += 1) {
+        terms.add(token.slice(index, index + 3));
+      }
+    }
+    const initials = hangulInitials(token);
+    if (initials && initials !== token) terms.add(initials);
+  }
+  return [...terms].filter((term) => term && !/["'*:()]/.test(term));
+}
+
+function hangulInitials(value) {
+  const initials = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+  let output = "";
+  for (const character of value) {
+    const code = character.charCodeAt(0) - 0xac00;
+    output += code >= 0 && code <= 11171 ? initials[Math.floor(code / 588)] : character;
+  }
+  return output;
 }
 
 // 0건 검색 시 "혹시 이 문서를 찾으셨나요?" 후보 (커버리지 완화 재검색)
@@ -441,8 +528,10 @@ export function buildViewerFacets(documents) {
 export async function getViewerSearchPayload(env, params = {}) {
   const query = clean(params.q || params.query);
   const rawPageSize = Number(params.pageSize);
-  const pageSize = Number.isFinite(rawPageSize) && rawPageSize >= 1
-    ? Math.min(Math.floor(rawPageSize), 50)
+  const requestedLimit = Number(params.limit);
+  const pageSizeInput = Number.isFinite(requestedLimit) && requestedLimit >= 1 ? requestedLimit : rawPageSize;
+  const pageSize = Number.isFinite(pageSizeInput) && pageSizeInput >= 1
+    ? Math.min(Math.floor(pageSizeInput), FREE_TIER_BUDGET.searchResponseMaxItems)
     : 12;
   const rawPage = Number(params.page);
   const requestedPage = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
@@ -460,6 +549,17 @@ export async function getViewerSearchPayload(env, params = {}) {
     };
   }
 
+  const generation = await getSearchGeneration(env);
+  const cursor = decodeSearchCursor(params.cursor);
+  const fingerprint = searchRequestFingerprint(query, filters);
+  if (cursor && (cursor.fingerprint !== fingerprint || cursor.generation !== generation)) {
+    return {
+      ok: false,
+      code: "SEARCH_CURSOR_STALE",
+      message: "검색 인덱스가 변경되었습니다. 첫 페이지부터 다시 검색하세요.",
+      status: 409
+    };
+  }
   const { documents: allDocuments, suggestions } = await searchDocumentsWithSuggestions(
     env,
     query,
@@ -467,17 +567,82 @@ export async function getViewerSearchPayload(env, params = {}) {
     filters,
     8
   );
+  const offset = cursor ? cursor.offset : Math.max(0, (requestedPage - 1) * pageSize);
+  const items = allDocuments.slice(offset, offset + pageSize);
+  const nextOffset = offset + items.length;
+  const hasMore = nextOffset < allDocuments.length;
+  const nextCursor = hasMore
+    ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset })
+    : null;
   const sliced = paginateSlice(allDocuments, requestedPage, pageSize);
 
   return {
-    items: sliced.items.map(documentToViewerItem),
+    ok: true,
+    items: items.map(documentToViewerItem),
+    nextCursor,
+    hasMore,
+    candidateCount: Math.min(allDocuments.length, FREE_TIER_BUDGET.searchCandidateMaxItems),
+    indexGeneration: generation,
+    fallback: !env.SEARCH_DB || env.__searchFallback === true,
     pagination: {
-      page: sliced.page,
-      pageSize: sliced.pageSize,
-      totalItems: sliced.totalItems,
-      totalPages: sliced.totalPages
+      page: cursor ? Math.floor(offset / pageSize) + 1 : sliced.page,
+      pageSize,
+      totalItems: allDocuments.length,
+      totalPages: Math.max(1, Math.ceil(allDocuments.length / pageSize))
     },
     facets: buildViewerFacets(allDocuments),
     suggestions
   };
+}
+
+async function getSearchGeneration(env) {
+  try {
+    const state = await env.DB.prepare("SELECT generation FROM search_index_state WHERE id = 1").first();
+    return Math.max(1, Number(state?.generation || 1));
+  } catch {
+    return 1;
+  }
+}
+
+function searchRequestFingerprint(query, filters) {
+  const source = JSON.stringify({
+    q: normalizeSearchText(query),
+    categoryId: Number(filters.categoryId || 0),
+    zoneNumber: Number(filters.zoneNumber || 0),
+    tagId: Number(filters.tagId || 0),
+    rackId: Number(filters.rackId || 0),
+    rackFace: clean(filters.rackFace),
+    columnNumber: Number(filters.columnNumber || 0),
+    shelfNumber: Number(filters.shelfNumber || 0),
+    status: clean(filters.status),
+    sort: clean(filters.sort)
+  });
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function encodeSearchCursor(value) {
+  return btoa(JSON.stringify(value)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
+}
+
+function decodeSearchCursor(value) {
+  const text = clean(value);
+  if (!text) return null;
+  try {
+    const padded = text.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(text.length / 4) * 4, "=");
+    const parsed = JSON.parse(atob(padded));
+    if (
+      typeof parsed?.fingerprint !== "string" ||
+      !Number.isInteger(parsed?.generation) ||
+      !Number.isInteger(parsed?.offset) ||
+      parsed.offset < 0
+    ) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }

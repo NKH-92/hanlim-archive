@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "checksums": {
+    "0001_search_index.sql": "83bdc52be4ae1f5b6b731bdcd5de2d55cb78ec29c863b35a67aef46d8c805d42"
+  },
+  "schema": {
+    "tables": [
+      "search_documents",
+      "search_documents_fts",
+      "search_runtime_state"
+    ]
+  }
+}

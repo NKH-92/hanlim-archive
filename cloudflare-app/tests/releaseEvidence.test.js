@@ -12,12 +12,16 @@ test("release evidence는 migration checksum과 schema manifest를 보존한다"
   context.after(() => rm(target, { recursive: true, force: true }));
   const evidence = await generateReleaseEvidence({ outDir: target, env: { SOURCE_REVISION: "abc123", SOURCE_REF: "test" } });
   const manifest = JSON.parse(await readFile(path.join(target, "migration-manifest.json"), "utf8"));
+  const searchManifest = JSON.parse(await readFile(path.join(target, "search-migration-manifest.json"), "utf8"));
 
   assert.equal(evidence.sourceRevision, "abc123");
-  assert.equal(evidence.migrationCount, 39);
-  assert.equal(Object.keys(manifest.checksums).length, 39);
+  assert.equal(evidence.migrationCount, 40);
+  assert.equal(Object.keys(manifest.checksums).length, 40);
+  assert.equal(evidence.searchMigrationCount, 1);
+  assert.equal(Object.keys(searchManifest.checksums).length, 1);
   assert.ok(manifest.schema.tables.includes("documents"));
   assert.match(evidence.migrationManifestSha256, /^[a-f0-9]{64}$/);
+  assert.match(evidence.searchMigrationManifestSha256, /^[a-f0-9]{64}$/);
 });
 
 test("release smoke는 health, login, signup, 인증 검색 계약을 확인한다", async () => {

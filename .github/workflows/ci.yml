@@ -48,6 +48,7 @@ jobs:
         env:
           CLOUDFLARE_ENV: production
           D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
+          SEARCH_D1_TARGET_DATABASE_ID: ${{ vars.SEARCH_D1_TARGET_DATABASE_ID }}
         run: |
           set -o pipefail
           npm run deploy:dry 2>&1 | tee release-evidence/bundle-report.txt

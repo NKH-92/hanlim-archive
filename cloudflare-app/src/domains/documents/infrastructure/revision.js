@@ -220,6 +220,9 @@ export async function reviseDocument(env, sourceId, values, actor) {
       ? { ok: true, newDocumentId }
       : { ok: false, message: STALE_MESSAGE };
   } catch (error) {
+    if (/DOCUMENT_CAPACITY_EXCEEDED/.test(String(error?.message || ""))) {
+      return { ok: false, message: "문서 대장이 12,000건 기술 상한에 도달해 새 개정본을 등록할 수 없습니다." };
+    }
     if (isExpectedChangeAbort(error) || /UNIQUE/i.test(String(error?.message || ""))) {
       return { ok: false, message: STALE_MESSAGE };
     }

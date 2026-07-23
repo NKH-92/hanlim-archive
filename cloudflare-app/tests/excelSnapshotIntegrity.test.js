@@ -402,7 +402,23 @@ test("exclusion 목록 API와 table 행 수가 일치한다", async () => {
   const env = { DB: sqliteD1(database) };
   const actor = actorFixture();
   try {
-    const linked = database.prepare("SELECT id, document_number, rack_slot_id, rack_face FROM documents ORDER BY id LIMIT 1").get();
+    database.prepare(`
+      INSERT INTO documents (
+        storage_code, category_id, document_number, revision_number, document_name,
+        note, rack_slot_id, rack_face, status, sync_state
+      )
+      SELECT
+        'ARC-EXCLUSION-RISK', category_id, 'DOC-RISK', 'Rev.0', '제외 위험 검토 문서',
+        '사용자 문서', rack_slot_id, rack_face, 'active', 'current'
+      FROM documents
+      ORDER BY id
+      LIMIT 1
+    `).run();
+    const linked = database.prepare(`
+      SELECT id, document_number, rack_slot_id, rack_face
+      FROM documents
+      WHERE storage_code = 'ARC-EXCLUSION-RISK'
+    `).get();
     const setResult = database.prepare("INSERT INTO document_sets (name, created_by) VALUES ('제외 위험 검토 세트', 'test')").run();
     database.prepare("INSERT INTO document_set_items (set_id, document_id) VALUES (?, ?)").run(setResult.lastInsertRowid, linked.id);
     database.prepare(`
@@ -421,7 +437,7 @@ test("exclusion 목록 API와 table 행 수가 일치한다", async () => {
     assert.equal(prepared.ok, true, prepared.message);
     const exclusions = await getDocumentSnapshotExclusions(env, created.id);
     assert.equal(exclusions.length, Number(prepared.snapshot.exclude_count));
-    assert.equal(exclusions.length, 2);
+    assert.equal(exclusions.length, 1);
     const linkedExclusion = exclusions.find((item) => Number(item.document_id) === Number(linked.id));
     assert.equal(Number(linkedExclusion.set_count), 1);
     assert.ok(linkedExclusion.recent_movement_at);
@@ -535,7 +551,7 @@ test("apply batch 중간 SQL 실패 시 문서·snapshot이 롤백된다", async
   }
 });
 
-test("prepare 이후 unique identity 경합은 apply batch를 롤백한다", async () => {
+test("bootstrap prepare 이후 신규 current 문서 경합은 apply batch를 롤백한다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "admin-only" };
   const actor = actorFixture();
@@ -571,15 +587,15 @@ test("prepare 이후 unique identity 경합은 apply batch를 롤백한다", asy
       WHERE id = ?
     `).run(state.current_version, currentCount, prepared.snapshot.id);
     const beforeCount = database.prepare("SELECT COUNT(*) AS count FROM documents WHERE document_number = 'DOC-UNIQ'").get().count;
-    await assert.rejects(
-      () => applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
-        applyReason: "unique index 경합 롤백 검증",
-        approvalReference: "UNIQ-1",
-        confirmedExcludeCount: Number(prepared.snapshot.exclude_count || 0),
-        confirmExclude: true,
-        ...reviewConfirmation(prepared.snapshot)
-      })
-    );
+    const applied = await applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+      applyReason: "bootstrap 신규 current 경합 롤백 검증",
+      approvalReference: "UNIQ-1",
+      confirmedExcludeCount: Number(prepared.snapshot.exclude_count || 0),
+      confirmExclude: true,
+      ...reviewConfirmation(prepared.snapshot)
+    });
+    assert.equal(applied.ok, false);
+    assert.equal(applied.stale, true);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE document_number = 'DOC-UNIQ'").get().count, beforeCount);
     assert.notEqual(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(prepared.snapshot.id).status, "completed");
   } finally {
@@ -784,7 +800,7 @@ test("파일 기반 이중 DatabaseSync 경합에서 패자는 문서/감사 증
     const docsAfter = writer.prepare("SELECT COUNT(*) AS n FROM documents").get().n;
     const auditsAfter = writer.prepare("SELECT COUNT(*) AS n FROM system_audit_logs").get().n;
     if (winners.length === 1) {
-      assert.ok(docsAfter >= docsBefore);
+      assert.equal(docsAfter, 1, "승자 bootstrap은 초기 시드 2건을 제거하고 입력 1건만 남긴다");
       // 패자 경로가 부분 커밋하면 audits/docs가 비정상 증가한다 — 증가폭은 승자 1회 분량이어야 한다.
       assert.ok(auditsAfter - auditsBefore <= 3);
     } else {

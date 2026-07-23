@@ -1,6 +1,6 @@
 import { buildCanonicalValues } from "./diff.js";
 
-export const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = Object.freeze(new Set([1]));
+export const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = Object.freeze(new Set([1, 2]));
 
 function stableStringify(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -34,5 +34,17 @@ export async function computeExportManifestHash(documents = []) {
   const canonical = [...documents]
     .map((document) => ({ ...document }))
     .sort((left, right) => String(left.rowKey || "").localeCompare(String(right.rowKey || "")));
+  return sha256Hex(stableStringify(canonical));
+}
+
+export async function computeExportPageChainHash(pages = []) {
+  const canonical = [...pages]
+    .map((page) => ({
+      pageNumber: Number(page.page_number ?? page.pageNumber),
+      rowOffset: Number(page.row_offset ?? page.rowOffset),
+      rowCount: Number(page.row_count ?? page.rowCount),
+      pageHash: String((page.page_hash ?? page.pageHash) || "")
+    }))
+    .sort((left, right) => left.pageNumber - right.pageNumber);
   return sha256Hex(stableStringify(canonical));
 }

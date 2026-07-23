@@ -149,6 +149,51 @@ node scripts/audit-excel-snapshot-data.mjs --db path\to\backup.sqlite --out repo
 기존 대장은 유지된다. 잘못된 내용을 확인 후 반영한 경우 이전 스냅샷 before/exclusion과 운영 백업을
 근거로 복구 파일을 만들고, 데이터 손상이 의심되면 [백업·복구 절차](./BACKUP_RESTORE.md)를 시작한다.
 
+## 최초 10,000건 운영전환
+
+### 배포 전 외부 설정
+
+1. Cloudflare 계정에 Core D1과 별도의 `hanlim-archive-search-10k` D1을 만든다.
+2. `wrangler.jsonc`의 `SEARCH_DB` placeholder를 실제 UUID로 바꾸고 GitHub repository/environment variable
+   `SEARCH_D1_TARGET_DATABASE_ID`에도 같은 값을 등록한다. placeholder 상태에서는 guarded migrate/deploy가
+   fail-closed해야 정상이다.
+3. 계정의 D1 database 슬롯과 Cron Trigger 슬롯을 확인한다. Worker는 5분마다 Search outbox 최대 25건 또는
+   재구축 100건을 처리한다.
+4. Core D1만 암호화 export backup한다. Search D1은 FTS virtual table 때문에 export 대상으로 삼지 않고
+   Core에서 재구축한다.
+
+로컬 schema 검증은 두 migration chain을 모두 적용한다.
+
+```powershell
+cd cloudflare-app
+npm run db:migrate:local
+npm run db:migrate:search:local
+npm run check:migrations
+```
+
+### 데이터·용량 계약
+
+- 최초 승인 파일은 정확히 10,000행이며 SHA-256, 승인 참조, 검색 정답 표본을 별도 증적으로 보존한다.
+- 11,000건은 운영 경고, 12,000건은 기술 상한이다. 12,001번째 등록·재포함·snapshot apply는 DB trigger가
+  전체 transaction을 차단한다.
+- schema v2 XLSX의 N~P 숨김 열은 관리 ID, 기준 행 버전, 기준 행 SHA-256이다. 전체 membership은 요청당
+  1,000행, 실제 변경행은 50행씩 전송한다. 관리 snapshot의 신규+변경+제외 영향은 1,000건 이하여야 한다.
+- 초기 적재는 Cloudflare Dashboard의 당일 계정 전체 `rows_written`을 먼저 확인한다. 내부 정지선은
+  00:00 UTC 기준 70,000이며 초과 예상 시 다음 UTC 일자로 넘긴다. 임시 Paid 전환은 사용하지 않는다.
+
+### 전환·검색 확인
+
+1. 신규 Core에 `0001~0040`, Search에 `search-migrations/0001`을 적용한다.
+2. 승인 파일을 bootstrap으로 검증하고 문서 수, identity, FK, 분류·상태·위치·태그 집계와 canonical hash를 대조한다.
+3. Search 재구축 상태가 `ready`, indexed count가 10,000, outbox가 0인지 관리 화면에서 확인한다.
+4. 새로 추출한 schema v2 XLSX를 무수정 재업로드해 update/create/exclude가 모두 0인지 확인한다.
+5. 정확 문서번호, 일반 검색, 오래된 문서, 초성·한영 자판 표본, cursor `더보기`, Search 장애 fallback을 시험한다.
+6. 병합 전 `npm run verify`, `npm run deploy:dry`, Core backup 복원과 Search 재구축 훈련을 완료한다.
+
+쓰기 개방 전 rollback은 이전 100% Worker와 이전 Core binding으로 돌아간다. 쓰기 개방 후에는 이전 Core로
+되돌리지 않고 신규 Core 호환 Worker로 rollback한다. Search 장애는 Core를 유지한 채 fallback 후 재구축한다.
+기존 Worker/Core는 최소 7일과 안정화 승인 중 더 긴 기간까지 삭제하지 않는다.
+
 ## 월별 무료티어 점검
 
 | 항목 | 확인 위치 | 경고 시 조치 |

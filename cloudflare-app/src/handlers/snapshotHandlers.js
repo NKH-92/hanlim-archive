@@ -4,16 +4,20 @@ import {
   cancelDocumentSnapshot,
   computeRiskWarnings,
   createDocumentSnapshot,
+  createDocumentSnapshotExport,
   evaluateSnapshotApplyAuthorization,
+  finalizeDocumentSnapshotExport,
   getDocumentSnapshot,
   getDocumentSnapshotExclusions,
   getDocumentSnapshotExport,
+  getDocumentSnapshotExportPage,
   getDocumentSnapshotRows,
   getDocumentSyncState,
   listDocumentSnapshots,
   prepareDocumentSnapshot,
   resolveSnapshotApplyMode,
   SNAPSHOT_ERROR_CODES,
+  stageDocumentSnapshotMembership,
   stageDocumentSnapshotRows
 } from "../domains/snapshots/index.js";
 import { errorPage, notFoundPage } from "../views/authViews.js";
@@ -154,6 +158,17 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
       throw error;
     }
   }
+  if (request.method === "POST" && action === "membership") {
+    const form = await request.formData();
+    let rows;
+    try {
+      rows = JSON.parse(String(form.get("rows") || "[]"));
+    } catch {
+      return jsonResponse({ ok: false, code: SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, message: "전송된 membership을 읽을 수 없습니다." }, { status: 400 });
+    }
+    const result = await stageDocumentSnapshotMembership(env, id, rows);
+    return jsonResponse(result, { status: result.ok ? 200 : statusForSnapshotError(result) });
+  }
   if (request.method === "POST" && action === "prepare") {
     const options = await loadDocumentFormOptions(env, { activeOnly: true });
     const result = await prepareDocumentSnapshot(env, id, options, null, session);
@@ -238,6 +253,28 @@ export async function handleDocumentSnapshotExport(env, session) {
   if (denied) return denied;
   const payload = await getDocumentSnapshotExport(env, session);
   return jsonResponse({ ok: true, ...payload });
+}
+
+export async function handleCreateDocumentSnapshotExport(env, session) {
+  const denied = requireManageDocuments(session);
+  if (denied) return denied;
+  const payload = await createDocumentSnapshotExport(env, session);
+  return jsonResponse({ ok: true, ...payload });
+}
+
+export async function handleDocumentSnapshotExportRoute(request, env, session, routeInfo) {
+  const denied = requireManageDocuments(session);
+  if (denied) return denied;
+  if (request.method === "GET" && routeInfo.action === "rows") {
+    const page = Number(new URL(request.url).searchParams.get("page") || 1);
+    const result = await getDocumentSnapshotExportPage(env, routeInfo.id, page);
+    return jsonResponse(result, { status: result.ok ? 200 : statusForSnapshotError(result) });
+  }
+  if (request.method === "POST" && routeInfo.action === "finalize") {
+    const result = await finalizeDocumentSnapshotExport(env, routeInfo.id);
+    return jsonResponse(result, { status: result.ok ? 200 : statusForSnapshotError(result) });
+  }
+  return notFoundPage(session);
 }
 
 function parseSnapshotWarnings(snapshot, summary, auth) {

@@ -16,6 +16,7 @@ import {
   getDocument,
   getDocumentAuditLogs,
   getDocumentTags,
+  isDocumentCapacityError,
   loadDocumentFormOptions,
   validateDocumentInputDetails,
   valuesFromDocumentForm
@@ -70,6 +71,9 @@ export async function handleCreateDocument(request, env, session) {
     const id = await createDocument(env, values, session, session.role);
     return redirect(values.returnTo ? withToast(values.returnTo, "document-created") : `/documents/${id}?toast=created`);
   } catch (error) {
+    if (isDocumentCapacityError(error)) {
+      return renderCreateDocument(env, session, values, "문서 대장이 12,000건 기술 상한에 도달했습니다. 기존 문서를 제외하거나 운영 책임자에게 문의하세요.");
+    }
     if (error?.code !== "DUPLICATE_DOCUMENT") throw error;
     const latestDuplicate = await findDuplicateDocument(env, values.documentNumber, values.revisionNumber);
     return renderCreateDocument(env, session, values, duplicateValidation(latestDuplicate));
