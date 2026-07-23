@@ -668,10 +668,7 @@ test("document details page keeps core information and permission-scoped actions
   assert.match(coreAdminHtml, /1구역 \/ 3-1번 랙 \/ 2열 \/ 3선반/);
   assert.match(coreAdminMain, /data-back-to-results/);
   assert.match(coreAdminMain, /document-location-hero/);
-  assert.match(coreAdminMain, /data-open-modal="location-find-modal"/);
-  assert.match(coreAdminMain, /data-location-find-step="1"/);
-  assert.match(coreAdminMain, /data-rack-code-input/);
-  assert.match(coreAdminMain, /data-field-readability/);
+  assert.doesNotMatch(coreAdminMain, /현장 찾기|location-find|data-find-|data-rack-code-input|data-field-readability/);
   assert.match(coreAdminHtml, /기본 정보/);
   assert.match(coreAdminHtml, /보존 정보/);
   assert.match(coreAdminHtml, /href="\/documents\/7\/edit"[^>]*>정보 수정/);
@@ -713,7 +710,7 @@ test("document details page keeps core information and permission-scoped actions
     document: baseDocument,
     ...coreEmptyLogs
   }).text();
-  assert.match(coreViewerHtml, /data-open-modal="location-find-modal"/);
+  assert.doesNotMatch(coreViewerHtml, /현장 찾기|location-find|data-find-|data-rack-code-input|data-field-readability/);
   assert.doesNotMatch(coreViewerHtml, /data-open-modal="dispose-modal"|감사 이력|위치 이동/);
   const coreViewerNav = coreViewerHtml.match(/<nav[^>]*aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(coreViewerNav, /href="\/app"/);

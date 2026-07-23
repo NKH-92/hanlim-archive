@@ -16,6 +16,7 @@ import {
   documentIdentity
 } from "../src/domains/snapshots/index.js";
 import { PERMISSIONS } from "../src/permissions.js";
+import { handleCreateDocumentSnapshot } from "../src/handlers/snapshotHandlers.js";
 import { documentSnapshotDetailPage } from "../src/views/snapshotViews.js";
 import { actorFixture } from "./helpers/fixtures.js";
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
@@ -41,6 +42,56 @@ test("문서관리 권한만 가진 User는 snapshot apply를 할 수 없다", (
   });
   assert.equal(result.ok, false);
   assert.equal(result.code, "SNAPSHOT_APPLY_PERMISSION_REQUIRED");
+});
+
+test("동기화 작업 생성은 사유를 필수로 저장하고 시작 감사에 포함한다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  const actor = actorFixture();
+  try {
+    const baseInput = {
+      sourceName: "reason.xlsx",
+      sourceHash: "0".repeat(64),
+      sourceSize: 4096,
+      totalCount: 1,
+      schemaVersion: 1,
+      mode: "bootstrap",
+      bootstrapConfirmation: "BOOTSTRAP",
+      backupConfirmed: true
+    };
+    const missing = await createDocumentSnapshotRaw(env, baseInput, actor);
+    assert.equal(missing.ok, false);
+    assert.equal(missing.code, "SNAPSHOT_REASON_REQUIRED");
+    assert.match(missing.message, /동기화 사유/);
+
+    const syncReason = "2026년 정기 문서고 관리대장 현행화";
+    const form = new FormData();
+    Object.entries({ ...baseInput, syncReason }).forEach(([key, value]) => {
+      form.set(key, value === true ? "1" : String(value));
+    });
+    const response = await handleCreateDocumentSnapshot(
+      new Request("https://archive.example/document-snapshots", { method: "POST", body: form }),
+      env,
+      actor
+    );
+    assert.equal(response.status, 201);
+    const created = await response.json();
+    assert.equal(created.ok, true, created.message);
+    assert.equal(
+      database.prepare("SELECT apply_reason FROM document_snapshots WHERE id = ?").get(created.id).apply_reason,
+      syncReason
+    );
+    const details = JSON.parse(
+      database.prepare(`
+        SELECT details_json
+        FROM system_audit_logs
+        WHERE entity_type = 'document_snapshot' AND entity_id = ? AND action = 'create'
+      `).get(String(created.id)).details_json
+    );
+    assert.equal(details.syncReason, syncReason);
+  } finally {
+    database.close();
+  }
 });
 
 test("위치·폐기·폐기해제 추가 권한이 없으면 apply가 403으로 거부된다", () => {
@@ -788,6 +839,7 @@ function row(rowNumber, documentNumber, revisionNumber, overrides = {}) {
 function createDocumentSnapshot(env, input, actor) {
   return createDocumentSnapshotRaw(env, {
     sourceSize: 4096,
+    syncReason: "통합 테스트 문서고 대장 동기화",
     bootstrapConfirmation: input?.mode === "bootstrap" ? "BOOTSTRAP" : "",
     backupConfirmed: input?.mode === "bootstrap",
     ...input

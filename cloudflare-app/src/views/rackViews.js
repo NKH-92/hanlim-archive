@@ -107,6 +107,7 @@ export function rackFormPage({ session, values = {}, action, title, error = "" }
         ${expectedRowVersion > 0 ? `<input type="hidden" name="expectedRowVersion" value="${expectedRowVersion}">` : ""}
         <label>구역<input type="number" name="zoneNumber" min="1" max="3" value="${escapeHtml(values.zone_number ?? values.zoneNumber ?? 1)}" required></label>
         <label>랙 번호<input type="number" name="rackNumber" min="1" max="15" value="${escapeHtml(values.rack_number ?? values.rackNumber ?? 1)}" required></label>
+        <p class="muted">랙 번호는 구역마다 1번부터 별도로 사용합니다. 예: 1구역 1번 랙과 2구역 1번 랙을 함께 등록할 수 있습니다.</p>
         <p class="muted">랙 구조는 면당 7열 × 6선반(42칸)으로 고정되어 있습니다.</p>
         <label>이름<input name="name" value="${escapeHtml(values.name || "")}"></label>
         <label>설명<textarea name="description" rows="3">${escapeHtml(values.description || "")}</textarea></label>

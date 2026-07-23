@@ -211,24 +211,6 @@ export function experienceStyles() {
       .mini-column-guide { gap: var(--sp-2); }
       .mini-column-guide strong { padding-inline: var(--sp-2); }
       .mini-compass { display: flex; border-radius: var(--r-md); line-height: 1.45; }
-      .location-find-dialog[open] { position: fixed; inset: 0; width: 100%; height: 100%; max-height: none; margin: 0; border: 0; border-radius: 0; }
-      .location-find-shell { height: 100%; max-height: none; }
-      .location-find-header { padding: var(--sp-3) var(--sp-4); }
-      .location-find-header-actions [data-field-readability] { min-height: 44px; padding-inline: var(--sp-2); }
-      .location-find-progress { padding: var(--sp-2) var(--sp-4); }
-      .location-find-progress li { display: grid; justify-items: center; gap: var(--sp-1); text-align: center; }
-      .location-find-progress li:not(:last-child)::after { position: absolute; left: calc(50% + var(--sp-4)); right: calc(-50% + var(--sp-4)); top: 14px; margin: 0; }
-      .location-find-progress strong { font-size: 11px; }
-      .location-find-content { padding: var(--sp-4); }
-      .find-map-viewport { min-height: 180px; }
-      .rack-label-check > div { grid-template-columns: minmax(0, 1fr); }
-      .rack-label-check button { min-height: 44px; }
-      .find-facing-card { grid-template-columns: 1fr; min-height: 0; padding: var(--sp-4); }
-      .find-facing-card span { display: none; }
-      .location-find-step.minimap-card { padding: var(--sp-4); }
-      .location-find-controls { padding-inline: var(--sp-4); }
-      .location-find-controls button { min-height: 44px; }
-      body.is-location-finding .mobile-tabs { display: none; }
       .floor-plan-hero, .workflow-hero, .admin-hero, .disposal-hero { align-items: flex-start; padding: var(--sp-5) var(--sp-4); }
       .hero-stat { min-width: 96px; padding: var(--sp-3); }
       .hero-stat strong { font-size: 22px; }

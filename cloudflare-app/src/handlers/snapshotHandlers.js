@@ -80,6 +80,7 @@ export async function handleCreateDocumentSnapshot(request, env, session) {
     currentSnapshotId: form.get("currentSnapshotId"),
     exportManifestId: form.get("exportManifestId"),
     canonicalExportHash: form.get("canonicalExportHash"),
+    syncReason: form.get("syncReason"),
     mode: form.get("mode"),
     hasRowKeys: form.get("hasRowKeys") === "1",
     bootstrapConfirmation: form.get("bootstrapConfirmation"),

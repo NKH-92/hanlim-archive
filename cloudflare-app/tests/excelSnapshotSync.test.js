@@ -298,6 +298,7 @@ function buildRows(count) {
 function createDocumentSnapshot(env, input, actor) {
   return createDocumentSnapshotRaw(env, {
     sourceSize: 4096,
+    syncReason: "통합 테스트 문서고 대장 동기화",
     bootstrapConfirmation: input?.mode === "bootstrap" ? "BOOTSTRAP" : "",
     backupConfirmed: input?.mode === "bootstrap",
     ...input

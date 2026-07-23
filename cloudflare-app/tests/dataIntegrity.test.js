@@ -445,6 +445,62 @@ test("실제 SQLite에서 세트 200건 추가와 부분 경합 감사·버전·
   }
 });
 
+test("랙 추가는 구역별 번호를 독립적으로 사용하고 예약된 비활성 랙을 재활성화한다", async () => {
+  const { database, env } = await migratedSqliteEnv();
+  try {
+    const zoneOne = database.prepare("SELECT id, is_active FROM racks WHERE zone_number = 1 AND rack_number = 1").get();
+    const zoneTwo = database.prepare("SELECT id, is_active FROM racks WHERE zone_number = 2 AND rack_number = 1").get();
+    assert.equal(zoneOne.is_active, 1);
+    assert.equal(zoneTwo.is_active, 0);
+
+    const rackId = await upsertRack(env, {
+      zoneNumber: 2,
+      rackNumber: 1,
+      name: "2구역 1번 랙",
+      description: "구역별 번호 검증",
+      isSingleSided: false,
+      isActive: true,
+      columnCount: 7,
+      shelfCount: 6
+    }, actor);
+
+    assert.equal(rackId, zoneTwo.id);
+    assert.notEqual(rackId, zoneOne.id);
+    assert.deepEqual(
+      { ...database.prepare("SELECT zone_number, rack_number, code, is_active FROM racks WHERE id = ?").get(rackId) },
+      { zone_number: 2, rack_number: 1, code: "2-01", is_active: 1 }
+    );
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM racks WHERE zone_number = 2 AND rack_number = 1").get().count,
+      1
+    );
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM rack_slots WHERE rack_id = ? AND is_active = 1").get(rackId).count,
+      42
+    );
+    assert.equal(
+      database.prepare("SELECT action FROM system_audit_logs WHERE entity_type = 'rack' AND entity_id = ? ORDER BY id DESC LIMIT 1").get(String(rackId)).action,
+      "reactivate"
+    );
+
+    await assert.rejects(
+      upsertRack(env, {
+        zoneNumber: 2,
+        rackNumber: 1,
+        name: "중복 랙",
+        description: "",
+        isSingleSided: false,
+        isActive: true,
+        columnCount: 7,
+        shelfCount: 6
+      }, actor),
+      (error) => error?.code === "RACK_LOCATION_EXISTS"
+    );
+  } finally {
+    database.close();
+  }
+});
+
 test("실제 SQLite에서 마스터·랙 동시 수정은 첫 버전만 반영하고 stale 감사를 남기지 않는다", async () => {
   const { database, env } = await migratedSqliteEnv();
   try {

@@ -11,6 +11,7 @@ import {
   evaluateSnapshotApplyAuthorization,
   missingPermissionsForSession,
   normalizeApplyReason,
+  normalizeSyncReason,
   requiredPermissionsForDiff,
   resolveSnapshotApplyMode
 } from "../domain/authorization.js";
@@ -120,6 +121,8 @@ export async function createDocumentSnapshot(env, input, actor) {
   if (!SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS.has(schemaVersion)) {
     return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED, "지원하지 않는 엑셀 스키마 버전입니다.");
   }
+  const reason = normalizeSyncReason(input?.syncReason ?? input?.applyReason);
+  if (!reason.ok) return reason;
 
   const state = await getDocumentSyncState(env);
 
@@ -177,10 +180,10 @@ export async function createDocumentSnapshot(env, input, actor) {
     env.DB.prepare(`
       INSERT INTO document_snapshots (
         snapshot_code, source_name, source_hash, schema_version, base_version, previous_snapshot_id, status,
-        mode, export_manifest_id, has_row_keys, total_count, source_size,
+        mode, export_manifest_id, has_row_keys, total_count, source_size, apply_reason,
         bootstrap_backup_confirmed, bootstrap_confirmed_at, created_by_user_id, created_by_name
       )
-      SELECT ?, ?, ?, ?, state.current_version, NULLIF(state.current_snapshot_id, 0), 'staging', ?, ?, ?, ?, ?, ?,
+      SELECT ?, ?, ?, ?, state.current_version, NULLIF(state.current_snapshot_id, 0), 'staging', ?, ?, ?, ?, ?, ?, ?,
              CASE WHEN ? = 'bootstrap' THEN CURRENT_TIMESTAMP ELSE NULL END, ?, ?
       FROM document_sync_state state
       WHERE state.id = 1
@@ -197,6 +200,7 @@ export async function createDocumentSnapshot(env, input, actor) {
       input?.hasRowKeys ? 1 : 0,
       totalCount,
       sourceSize,
+      reason.syncReason,
       mode === "bootstrap" ? 1 : 0,
       mode,
       actorSnapshot.userId,
@@ -219,6 +223,7 @@ export async function createDocumentSnapshot(env, input, actor) {
           'clientSourceHash', source_hash,
           'sourceSize', source_size,
           'totalCount', total_count,
+          'syncReason', apply_reason,
           'baseVersion', base_version,
           'schemaVersion', schema_version,
           'mode', mode,

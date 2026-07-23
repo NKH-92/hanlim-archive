@@ -113,6 +113,7 @@ test("엑셀 준비 단계는 개정 연결 문서의 식별정보 변경과 자
     sourceName: "개정이력_충돌.xlsx",
     sourceHash: "9".repeat(64),
     sourceSize: 4096,
+    syncReason: "개정 이력 충돌 검증용 동기화",
     totalCount: rows.length,
     schemaVersion: 1,
     mode: "managed",

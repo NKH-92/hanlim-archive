@@ -255,6 +255,12 @@ export function excelSnapshotScript() {
             var file = fileInput.files && fileInput.files[0];
             if (!file) throw new Error('업로드할 엑셀 파일을 선택하세요.');
             if (!excelCachedParsed || excelCachedFile !== file) excelCachedParsed = await readExcelSnapshot(file);
+            var syncReasonInput = excelUploadForm.elements.namedItem('syncReason');
+            var syncReason = syncReasonInput ? syncReasonInput.value.trim() : '';
+            if (syncReason.length < 10 || syncReason.length > 500) {
+              syncReasonInput?.focus();
+              throw new Error('동기화 사유는 10자 이상 500자 이하로 입력하세요.');
+            }
             button.disabled = true;
             excelProgress(1, excelCachedParsed.rows.length + 2, '동기화 작업을 준비하고 있습니다.');
             var bootstrapConfirmation = '';
@@ -278,6 +284,7 @@ export function excelSnapshotScript() {
               currentSnapshotId: excelCachedParsed.currentSnapshotId ? String(excelCachedParsed.currentSnapshotId) : '',
               exportManifestId: excelCachedParsed.exportManifestId || '',
               canonicalExportHash: excelCachedParsed.canonicalExportHash || '',
+              syncReason: syncReason,
               mode: excelCachedParsed.mode,
               hasRowKeys: excelCachedParsed.hasRowKeys ? '1' : '',
               bootstrapConfirmation: bootstrapConfirmation,
