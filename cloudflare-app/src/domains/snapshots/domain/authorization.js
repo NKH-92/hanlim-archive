@@ -121,7 +121,7 @@ export function normalizeApplyReason(input = {}) {
   if (applyReason.length < 10 || applyReason.length > 500) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_REASON_REQUIRED,
-      "반영 사유는 10자 이상 500자 이하로 입력하세요."
+      "동기화 사유는 10자 이상 500자 이하로 입력하세요."
     );
   }
   if (approvalReference.length > 200) {
@@ -131,6 +131,17 @@ export function normalizeApplyReason(input = {}) {
     );
   }
   return { ok: true, applyReason, approvalReference };
+}
+
+export function normalizeSyncReason(value) {
+  const syncReason = String(value || "").trim();
+  if (syncReason.length < 10 || syncReason.length > 500) {
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_REASON_REQUIRED,
+      "동기화 사유는 10자 이상 500자 이하로 입력하세요."
+    );
+  }
+  return { ok: true, syncReason };
 }
 
 export function rowHasFlag(flags = [], flag) {

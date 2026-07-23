@@ -21,7 +21,7 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
   const isExcluded = document.sync_state === "excluded";
   const orientation = rackViewOrientation(document);
   const rackLabel = rackFaceLabel(document);
-  const canStartLocationFind = document.status === "active" && !isExcluded && !replacementId;
+  const locationAction = locationPrimaryAction(document, { replacementId, isExcluded });
   const syncBadge = isExcluded
     ? `<span class="status disposed" title="현재 대장에는 포함되지 않은 문서">현재 대장 제외</span>`
     : `<span class="status active">현재 대장 포함</span>`;
@@ -44,9 +44,7 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
         <strong id="document-location-title" class="mono">${escapeHtml(location)}</strong>
         <span>${escapeHtml(locationGuidance(document, orientation, rackLabel))}</span>
       </div>
-      <div class="location-hero-actions">
-        ${locationPrimaryAction(document, { canStartLocationFind, replacementId, isExcluded })}
-      </div>
+      ${locationAction ? `<div class="location-hero-actions">${locationAction}</div>` : ""}
     </section>
 
     <section class="document-location-visuals" aria-label="문서 보관 위치 도면">
@@ -85,7 +83,6 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
 
     ${canViewAudit ? `<details class="panel detail-history"><summary>감사 이력 <span class="count-badge">${auditLogs.length}건</span></summary>${timeline(auditLogs, renderAuditLog, "감사 이력이 없습니다.")}</details>` : ""}
     ${canViewMovements ? `<details class="panel detail-history"><summary>위치 이동 이력 <span class="count-badge">${movements.length}건</span></summary>${timeline(movements, renderMovementLog, "위치 이동 이력이 없습니다.")}</details>` : ""}
-    ${canStartLocationFind ? renderLocationFinder(document, floorPlan) : ""}
     ${!isExcluded && canManageDisposals && document.status === "active" ? disposeModal(document) : ""}
     ${!isExcluded && session.role === "Admin" && document.status === "disposed" && !replacementId ? restoreModal(document) : ""}
   </div>`, session);
@@ -102,11 +99,10 @@ function locationGuidance(document, orientation, rackLabel) {
   return parts.filter(Boolean).join(" · ");
 }
 
-function locationPrimaryAction(document, { canStartLocationFind, replacementId, isExcluded }) {
+function locationPrimaryAction(document, { replacementId, isExcluded }) {
   if (replacementId) return `<a class="button action-button" href="/documents/${replacementId}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>현재 개정본 보기</a>`;
   if (document.status === "disposed") return `<a class="button secondary" href="/app?status=active"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>보관중 문서 검색</a>`;
   if (isExcluded) return `<a class="button secondary" href="/app"><i class="fa-solid fa-list" aria-hidden="true"></i>현재 대장 검색</a>`;
-  if (canStartLocationFind) return `<button type="button" class="button action-button" data-open-modal="location-find-modal"><i class="fa-solid fa-location-arrow" aria-hidden="true"></i>현장 찾기 시작</button>`;
   return "";
 }
 
@@ -185,7 +181,7 @@ function renderDocumentFloorPlan(document, floorPlan = []) {
   `;
 }
 
-function renderMiniRackContent(document, { compact = false } = {}) {
+function renderMiniRackContent(document) {
   const cols = Math.max(1, Number(document.column_count || 1));
   const rows = Math.max(1, Number(document.shelf_count || 3));
   const activeCol = Number(document.column_number || 0);
@@ -208,7 +204,7 @@ function renderMiniRackContent(document, { compact = false } = {}) {
   ].filter(Boolean).join(" · ");
   const rackLabel = rackFaceLabel(document);
 
-  return `${compact ? "" : `<div class="section-title"><h2 id="rack-position-title">랙 위치 · ${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙</h2><span class="count-badge">${activeCol}열 ${activeRow}선반</span></div>`}
+  return `<div class="section-title"><h2 id="rack-position-title">랙 위치 · ${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙</h2><span class="count-badge">${activeCol}열 ${activeRow}선반</span></div>
       <div class="mini-column-guide" data-column-origin="${orientation.origin}">
         <span>${orientation.origin === "left" ? "1열 · 통로 안쪽" : `${cols}열 · 바깥쪽`}</span>
         <strong>사용자 시선</strong>
@@ -227,51 +223,6 @@ function renderMiniRackContent(document, { compact = false } = {}) {
 
 function renderMiniVisualizer(document) {
   return `<section class="panel minimap-card" aria-labelledby="rack-position-title">${renderMiniRackContent(document)}</section>`;
-}
-
-function renderLocationFinder(document, floorPlan = []) {
-  const orientation = rackViewOrientation(document);
-  const rackLabel = rackFaceLabel(document);
-  const location = locationLabel(document);
-  const region = floorPlan.find((item) => item.racks.some((rack) => rack.code === document.rack_code));
-  const zoneMap = region
-    ? zoneFloorPlanView(region, { hitCode: document.rack_code, hitFace: document.rack_face, interactive: false, spotlight: true })
-    : `<div class="empty-state"><p>현재 도면에 이 랙이 표시되지 않습니다. 아래 위치 문장을 기준으로 이동하세요.</p></div>`;
-  return `<dialog id="location-find-modal" class="location-find-dialog" data-location-find-dialog data-location-find-step="1" data-expected-rack-code="${escapeHtml(document.rack_code)}" aria-labelledby="location-find-title">
-    <div class="location-find-shell">
-      <header class="location-find-header">
-        <div><small>현장 찾기 모드</small><h2 id="location-find-title">${escapeHtml(document.document_name)}</h2><p class="mono">${escapeHtml(document.document_number)} · ${escapeHtml(document.revision_number)}</p></div>
-        <div class="location-find-header-actions"><button type="button" class="button secondary sm" data-field-readability aria-pressed="false" aria-label="현장 가독성 전환"><i class="fa-solid fa-sun" aria-hidden="true"></i>가독성</button><button type="button" class="icon-button" data-close-modal aria-label="찾기 모드 종료">×</button></div>
-      </header>
-      <ol class="location-find-progress" aria-label="위치 찾기 단계">
-        <li class="is-current" data-find-progress-step="1"><span>1</span><strong>구역·랙</strong></li>
-        <li data-find-progress-step="2"><span>2</span><strong>면·방향</strong></li>
-        <li data-find-progress-step="3"><span>3</span><strong>열·선반</strong></li>
-      </ol>
-      <div class="location-find-content">
-        <section class="location-find-step" data-find-step="1" aria-labelledby="find-step-one-title">
-          <div class="find-step-heading"><span>1</span><div><h3 id="find-step-one-title" tabindex="-1">${escapeHtml(region?.label || `${document.zone_number || "-"}구역`)}에서 ${escapeHtml(rackLabel || document.rack_code)}번 랙을 찾으세요.</h3><p class="mono">${escapeHtml(location)}</p></div></div>
-          <div class="find-map-viewport">${zoneMap}</div>
-          <div class="rack-label-check"><label for="rack-label-input">랙 표지와 대조</label><div><input id="rack-label-input" type="text" data-rack-code-input autocomplete="off" autocapitalize="characters" placeholder="예: ${escapeHtml(document.rack_code)}"><button type="button" class="button secondary" data-rack-check>표지 확인</button></div><p class="muted" role="status" aria-live="polite" data-rack-check-status>랙 표지의 코드를 직접 입력해 현재 위치와 대조할 수 있습니다.</p></div>
-        </section>
-        <section class="location-find-step" data-find-step="2" aria-labelledby="find-step-two-title" hidden>
-          <div class="find-step-heading"><span>2</span><div><h3 id="find-step-two-title" tabindex="-1">${readBoolean(document.is_single_sided) ? "단면 랙" : `${escapeHtml(rackLabel)} 면`}을 바라보세요.</h3><p>${escapeHtml(orientation.description)}</p></div></div>
-          <div class="find-facing-card"><span>통로 안쪽</span><i class="fa-solid fa-person" aria-hidden="true"></i><strong>사용자 시선 → ${escapeHtml(rackLabel || document.rack_code)}</strong><span>통로 바깥쪽</span></div>
-          <p class="find-answer mono">1열은 ${escapeHtml(orientation.originLabel)}에서 시작합니다.</p>
-        </section>
-        <section class="location-find-step minimap-card" data-find-step="3" aria-labelledby="find-step-three-title" hidden>
-          <div class="find-step-heading"><span>3</span><div><h3 id="find-step-three-title" tabindex="-1">${Number(document.column_number || 0)}열 · ${Number(document.shelf_number || 0)}선반을 찾으세요.</h3><p>핀으로 표시된 칸이 최종 위치입니다.</p></div></div>
-          ${renderMiniRackContent(document, { compact: true })}
-        </section>
-      </div>
-      <footer class="location-find-controls">
-        <button type="button" class="button secondary" data-find-previous disabled>이전</button>
-        <span data-find-progress-text aria-live="polite">1 / 3</span>
-        <button type="button" class="button action-button" data-find-next>다음</button>
-        <button type="button" class="button secondary" data-find-finish data-close-modal hidden>찾기 모드 종료</button>
-      </footer>
-    </div>
-  </dialog>`;
 }
 
 function renderAuditLog(log) {

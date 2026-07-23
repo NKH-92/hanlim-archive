@@ -82,6 +82,14 @@ export async function getRackDetails(env, id) {
   `).bind(id).first();
 }
 
+async function getRackByLocation(env, zoneNumber, rackNumber) {
+  return env.DB.prepare(`
+    SELECT id, zone_number, rack_number, code, name, description, is_single_sided, is_active, column_count, shelf_count, row_version
+    FROM racks
+    WHERE zone_number = ? AND rack_number = ?
+  `).bind(zoneNumber, rackNumber).first();
+}
+
 export async function getRackConfigurationVersion(env) {
   const row = await env.DB.prepare(`
     SELECT current_version
@@ -170,6 +178,22 @@ export async function upsertRack(env, values, actor = {}) {
 
   if (values.columnCount < 1 || values.columnCount > MAX_RACK_COLUMNS || values.shelfCount < 1 || values.shelfCount > MAX_RACK_SHELVES) {
     throw new Error(`랙 구조는 1~${MAX_RACK_COLUMNS}열, 1~${MAX_RACK_SHELVES}선반 사이로 설정해야 합니다.`);
+  }
+
+  if (!values.id) {
+    const existing = await getRackByLocation(env, values.zoneNumber, values.rackNumber);
+    if (existing) {
+      if (Number(existing.is_active) === 1) throw duplicateRackLocationError();
+
+      // 구역별 설정은 증설에 대비해 비활성 랙 행을 미리 보존한다. 화면에서는 숨겨진 이 행을
+      // 신규 INSERT하면 중복 제약에 걸리므로, 같은 구역·번호의 비활성 랙을 OCC로 재활성화한다.
+      return upsertRack(env, {
+        ...values,
+        id: Number(existing.id),
+        expectedRowVersion: Number(existing.row_version),
+        isActive: true
+      }, actor);
+    }
   }
 
   const code = `${values.zoneNumber}-${String(values.rackNumber).padStart(2, "0")}`;
@@ -614,5 +638,12 @@ function staleRackError() {
   return Object.assign(
     new Error("랙이 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요."),
     { code: "STALE_VERSION" }
+  );
+}
+
+function duplicateRackLocationError() {
+  return Object.assign(
+    new Error("같은 구역에 동일한 랙 번호가 이미 있습니다."),
+    { code: "RACK_LOCATION_EXISTS" }
   );
 }

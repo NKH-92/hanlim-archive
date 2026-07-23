@@ -59,6 +59,10 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
         <h2>엑셀 전체 동기화</h2>
         <p>최신 대장을 추출해 수정한 파일을 올리세요. 파일 전체를 검증하고 추가·변경·제외 내역을 먼저 보여준 뒤 확인할 때만 반영합니다.</p>
         <form class="stack" data-excel-snapshot-upload>
+          <label>동기화 사유 (10~500자)
+            <textarea name="syncReason" required minlength="10" maxlength="500" rows="3" placeholder="예: 2026년 정기 문서고 대장 현행화"></textarea>
+          </label>
+          <p class="muted">전체 문서 리스트를 변경하는 목적과 근거를 입력하세요. 작업 생성 시 감사 이력에 저장됩니다.</p>
           <label>문서고 관리대장 엑셀
             <input type="file" name="excelFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
           </label>
@@ -217,6 +221,7 @@ export function documentSnapshotDetailPage({
           <p class="muted">기준 버전 ${number(snapshot.base_version)}${snapshot.canonical_rows_hash ? ` · canonical hash ${escapeHtml(String(snapshot.canonical_rows_hash).slice(0, 12))}…` : ""} · ${escapeHtml(snapshot.created_by_name)} · ${escapeHtml(snapshot.created_at)}</p>
           <p class="muted">필요 권한: ${escapeHtml(permissionText || "문서 관리 + 엑셀 반영")}</p>
           ${missingText ? `<p class="muted">부족 권한: ${escapeHtml(missingText)}</p>` : ""}
+          <p><strong>동기화 사유:</strong> ${escapeHtml(snapshot.apply_reason || "미입력(기존 작업)")}</p>
           <p class="muted">client source hash(브라우저 보고값): <span class="mono">${escapeHtml(snapshot.source_hash || "-")}</span></p>
         </div>
       </div>
@@ -302,8 +307,8 @@ function validationErrorPanel(errors = []) {
 function applyForm(snapshot, excludeCount, reviewCount) {
   return `
     <form method="post" action="/document-snapshots/${Number(snapshot.id)}/apply" class="stack snapshot-apply-form">
-      <label>반영 사유 (10~500자)
-        <textarea name="applyReason" required minlength="10" maxlength="500" rows="3" placeholder="예: 2026년 문서고 정기 대장 현행화"></textarea>
+      <label>동기화 사유 확인 (10~500자)
+        <textarea name="applyReason" required minlength="10" maxlength="500" rows="3" placeholder="예: 2026년 문서고 정기 대장 현행화">${escapeHtml(snapshot.apply_reason || "")}</textarea>
       </label>
       <label>승인 참조 (조건부 필수)
         <input type="text" name="approvalReference" maxlength="200" placeholder="예: CC-2026-0142">

@@ -42,6 +42,7 @@ test("서버 export를 실제 XLSX로 생성·재파싱한 무수정 파일은 0
       sourceName: "untouched-roundtrip.xlsx",
       sourceHash,
       sourceSize: workbookBytes.byteLength,
+      syncReason: "엑셀 무수정 왕복 동기화 검증",
       totalCount: rows.length,
       schemaVersion: exported.schemaVersion,
       mode: "managed",

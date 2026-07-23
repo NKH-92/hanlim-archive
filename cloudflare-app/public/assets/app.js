@@ -668,6 +668,12 @@
             var file = fileInput.files && fileInput.files[0];
             if (!file) throw new Error('업로드할 엑셀 파일을 선택하세요.');
             if (!excelCachedParsed || excelCachedFile !== file) excelCachedParsed = await readExcelSnapshot(file);
+            var syncReasonInput = excelUploadForm.elements.namedItem('syncReason');
+            var syncReason = syncReasonInput ? syncReasonInput.value.trim() : '';
+            if (syncReason.length < 10 || syncReason.length > 500) {
+              syncReasonInput?.focus();
+              throw new Error('동기화 사유는 10자 이상 500자 이하로 입력하세요.');
+            }
             button.disabled = true;
             excelProgress(1, excelCachedParsed.rows.length + 2, '동기화 작업을 준비하고 있습니다.');
             var bootstrapConfirmation = '';
@@ -691,6 +697,7 @@
               currentSnapshotId: excelCachedParsed.currentSnapshotId ? String(excelCachedParsed.currentSnapshotId) : '',
               exportManifestId: excelCachedParsed.exportManifestId || '',
               canonicalExportHash: excelCachedParsed.canonicalExportHash || '',
+              syncReason: syncReason,
               mode: excelCachedParsed.mode,
               hasRowKeys: excelCachedParsed.hasRowKeys ? '1' : '',
               bootstrapConfirmation: bootstrapConfirmation,
@@ -934,75 +941,6 @@
         }
         syncDetailActions();
         actionQuery?.addEventListener?.('change', syncDetailActions);
-
-        var finder = documentDetail.querySelector('[data-location-find-dialog]');
-        if (finder) {
-          var currentStep = 1;
-          var previousButton = finder.querySelector('[data-find-previous]');
-          var nextButton = finder.querySelector('[data-find-next]');
-          var finishButton = finder.querySelector('[data-find-finish]');
-          var progressText = finder.querySelector('[data-find-progress-text]');
-
-          function showFindStep(step) {
-            currentStep = Math.min(3, Math.max(1, Number(step) || 1));
-            finder.dataset.locationFindStep = String(currentStep);
-            finder.querySelectorAll('[data-find-step]').forEach(function (panel) {
-              panel.hidden = Number(panel.dataset.findStep) !== currentStep;
-            });
-            finder.querySelectorAll('[data-find-progress-step]').forEach(function (item) {
-              var itemStep = Number(item.dataset.findProgressStep);
-              item.classList.toggle('is-current', itemStep === currentStep);
-              item.classList.toggle('is-complete', itemStep < currentStep);
-            });
-            if (previousButton) previousButton.disabled = currentStep === 1;
-            if (nextButton) nextButton.hidden = currentStep === 3;
-            if (finishButton) finishButton.hidden = currentStep !== 3;
-            if (progressText) progressText.textContent = currentStep + ' / 3';
-            requestAnimationFrame(function () {
-              centerLocationTargets(finder);
-              finder.querySelector('[data-find-step="' + currentStep + '"] h3')?.focus?.({ preventScroll: true });
-            });
-          }
-
-          nextButton?.addEventListener('click', function () { showFindStep(currentStep + 1); });
-          previousButton?.addEventListener('click', function () { showFindStep(currentStep - 1); });
-          documentDetail.querySelectorAll('[data-open-modal="location-find-modal"]').forEach(function (button) {
-            button.addEventListener('click', function () {
-              showFindStep(1);
-              document.body.classList.add('is-location-finding');
-            });
-          });
-          finder.addEventListener('close', function () {
-            document.body.classList.remove('is-location-finding');
-            finder.classList.remove('is-field-readable');
-            var readability = finder.querySelector('[data-field-readability]');
-            readability?.setAttribute('aria-pressed', 'false');
-          });
-
-          finder.querySelector('[data-field-readability]')?.addEventListener('click', function (event) {
-            var pressed = finder.classList.toggle('is-field-readable');
-            event.currentTarget.setAttribute('aria-pressed', pressed ? 'true' : 'false');
-          });
-
-          var rackInput = finder.querySelector('[data-rack-code-input]');
-          var rackStatus = finder.querySelector('[data-rack-check-status]');
-          finder.querySelector('[data-rack-check]')?.addEventListener('click', function () {
-            var expected = String(finder.dataset.expectedRackCode || '').trim().toUpperCase();
-            var entered = String(rackInput?.value || '').trim().toUpperCase();
-            if (!entered) {
-              if (rackStatus) rackStatus.textContent = '랙 표지의 코드를 입력해 주세요.';
-              rackInput?.focus();
-              return;
-            }
-            var matched = entered === expected;
-            if (rackStatus) {
-              rackStatus.textContent = matched ? '현재 찾는 랙과 일치합니다.' : '다른 랙입니다. 위치 Hero의 랙 코드를 다시 확인하세요.';
-              rackStatus.classList.toggle('is-match', matched);
-              rackStatus.classList.toggle('is-mismatch', !matched);
-            }
-            if (matched && navigator.vibrate) navigator.vibrate(40);
-          });
-        }
       }
 
       var currentPath = location.pathname;

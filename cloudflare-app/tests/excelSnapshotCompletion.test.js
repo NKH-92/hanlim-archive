@@ -12,7 +12,7 @@ import { loadDocumentFormOptions } from "../src/domains/documents/index.js";
 import {
   applyDocumentSnapshot,
   cancelDocumentSnapshot,
-  createDocumentSnapshot,
+  createDocumentSnapshot as createDocumentSnapshotRaw,
   getDocumentSyncState,
   prepareDocumentSnapshot,
   stageDocumentSnapshotRows
@@ -288,4 +288,11 @@ function snapshotRow(rowNumber, documentNumber, sourceRowKey = "") {
       status: "보관중"
     }
   };
+}
+
+function createDocumentSnapshot(env, input, actor) {
+  return createDocumentSnapshotRaw(env, {
+    syncReason: "완료 상태 검증용 문서고 대장 동기화",
+    ...input
+  }, actor);
 }

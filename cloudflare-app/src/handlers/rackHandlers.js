@@ -182,7 +182,8 @@ export async function handleSaveRack(request, env, session, id = 0) {
         error: error.message
       });
     }
-    const duplicate = error instanceof Error && error.message.includes("UNIQUE");
+    const duplicate = error instanceof Error
+      && (error.code === "RACK_LOCATION_EXISTS" || error.message.includes("UNIQUE"));
     if (!duplicate) {
       logError("rack.save", error, { rackId: id || null });
     }
