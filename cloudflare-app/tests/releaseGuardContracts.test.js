@@ -11,6 +11,7 @@ import { applyExactTransforms, COMPATIBILITY_FILES } from "../scripts/apply-sess
 
 // Synthetic UUID: contract tests must not duplicate a real production D1 identifier.
 const TEST_PRODUCTION_ID = "00000000-0000-4000-8000-000000000001";
+const TEST_SEARCH_ID = "00000000-0000-4000-8000-000000000002";
 const RELEASE_SHA = "a".repeat(40);
 const BACKUP_DIGEST = "b".repeat(64);
 
@@ -38,6 +39,12 @@ function baseConfig() {
   };
 }
 
+function searchConfig(searchDatabaseId = TEST_SEARCH_ID) {
+  const config = baseConfig();
+  config.env.production.d1_databases.push({ binding: "SEARCH_DB", database_id: searchDatabaseId });
+  return config;
+}
+
 test("remote migrate는 env database_id 불일치·placeholder·누락 승인을 mutation 전에 거부한다", () => {
   const config = baseConfig();
   assert.equal(preflightRemoteMigrate({
@@ -46,6 +53,20 @@ test("remote migrate는 env database_id 불일치·placeholder·누락 승인을
     ...migrationEvidence(),
     config
   }).ok, false);
+
+  assert.equal(preflightRemoteMigrate({
+    envName: "production",
+    expectedDatabaseId: TEST_PRODUCTION_ID,
+    ...migrationEvidence(),
+    config: searchConfig("REPLACE_WITH_PRODUCTION_SEARCH_D1_DATABASE_ID")
+  }).ok, false);
+  assert.equal(preflightRemoteMigrate({
+    envName: "production",
+    expectedDatabaseId: TEST_PRODUCTION_ID,
+    expectedSearchDatabaseId: TEST_SEARCH_ID,
+    ...migrationEvidence(),
+    config: searchConfig()
+  }).ok, true);
 
   assert.equal(preflightRemoteMigrate({
     envName: "staging",
@@ -111,6 +132,20 @@ test("deploy preflight는 unscoped env와 staging placeholder를 거부한다", 
     config: baseConfig()
   });
   assert.equal(ok.ok, true);
+
+  assert.equal(preflightDeploy({
+    envName: "production",
+    expectedDatabaseId: TEST_PRODUCTION_ID,
+    requireSearchDatabase: true,
+    config: searchConfig("REPLACE_WITH_PRODUCTION_SEARCH_D1_DATABASE_ID")
+  }).ok, false);
+  assert.equal(preflightDeploy({
+    envName: "production",
+    expectedDatabaseId: TEST_PRODUCTION_ID,
+    expectedSearchDatabaseId: TEST_SEARCH_ID,
+    requireSearchDatabase: true,
+    config: searchConfig()
+  }).ok, true);
 
   assert.equal(preflightDeploy({
     envName: "production",

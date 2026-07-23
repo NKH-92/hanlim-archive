@@ -14,6 +14,9 @@ export function excelSnapshotScript() {
       var excelSnapshotMaxFileBytes = ${FREE_TIER_BUDGET.excelSnapshotMaxFileBytes};
       var excelSnapshotMaxZipEntries = ${FREE_TIER_BUDGET.excelSnapshotMaxZipEntries};
       var excelSnapshotMaxZipUncompressedBytes = ${FREE_TIER_BUDGET.excelSnapshotMaxZipUncompressedBytes};
+      var excelSnapshotMaxItems = ${FREE_TIER_BUDGET.excelSnapshotMaxItems};
+      var excelSnapshotDeltaMaxItems = ${FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems};
+      var excelSnapshotMembershipChunkSize = ${FREE_TIER_BUDGET.excelSnapshotMembershipChunkSize};
       var excelCsvFormulaPrefix = new RegExp(${JSON.stringify(CSV_FORMULA_PREFIX_PATTERN_SOURCE)});
 
       function excelCellText(cell) {
@@ -57,6 +60,17 @@ export function excelSnapshotScript() {
           return excelUtcDateOnly(date);
         }
         return excelCellText(cell);
+      }
+
+      async function excelRowBaseHash(source) {
+        var canonical = JSON.stringify([
+          source.documentNumber || '', source.revisionNumber || '', source.revisionDate || '',
+          source.disposalDueYear || '', source.documentName || '', source.category || '',
+          source.rackNumber || '', source.rackColumn || '', source.shelfNumber || '',
+          source.rackFace || '', source.tags || '', source.note || '', source.status || ''
+        ]);
+        var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+        return Array.from(new Uint8Array(digest)).map(function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
       }
 
       function excelDataSheet(workbook) {
@@ -105,24 +119,32 @@ export function excelSnapshotScript() {
           if (visible.every(function (value) { return !value; })) continue;
           var originalKey = excelCellText(row.getCell(14));
           if (originalKey) originalKeyCount += 1;
+          var source = {
+            documentNumber: visible[0], revisionNumber: visible[1], revisionDate: excelDateText(row.getCell(3), workbook),
+            disposalDueYear: visible[3], documentName: visible[4], category: visible[5], rackNumber: visible[6],
+            rackColumn: visible[7], shelfNumber: visible[8], rackFace: visible[9], tags: visible[10], note: visible[11], status: visible[12]
+          };
           rows.push({
             rowNumber: rowNumber,
             sourceRowKey: originalKey || '',
-            source: {
-              documentNumber: visible[0], revisionNumber: visible[1], revisionDate: excelDateText(row.getCell(3), workbook),
-              disposalDueYear: visible[3], documentName: visible[4], category: visible[5], rackNumber: visible[6],
-              rackColumn: visible[7], shelfNumber: visible[8], rackFace: visible[9], tags: visible[10], note: visible[11], status: visible[12]
-            }
+            membershipRowKey: originalKey || ('TMP-CLIENT-' + crypto.randomUUID()),
+            baseRowVersion: Number(excelCellText(row.getCell(15)) || 0),
+            baseHash: excelCellText(row.getCell(16)).toLowerCase(),
+            source: source
           });
         }
         if (!rows.length) throw new Error('엑셀에 동기화할 문서가 없습니다.');
-        if (rows.length > 1000) throw new Error('엑셀 문서는 최대 1,000건까지 동기화할 수 있습니다.');
+        if (rows.length > excelSnapshotMaxItems) throw new Error('엑셀 문서는 최대 ' + excelSnapshotMaxItems.toLocaleString('ko-KR') + '건까지 동기화할 수 있습니다.');
         if (meta.hasSystemInfo) {
           if (!meta.schemaVersion) throw new Error('관리 파일의 schemaVersion이 없습니다.');
           if (!meta.baseVersion) throw new Error('관리 파일의 baseVersion이 없습니다.');
           if (!meta.currentSnapshotId && !meta.exportManifestId) throw new Error('관리 파일의 currentSnapshotId 또는 exportManifestId가 필요합니다.');
           if (meta.exportManifestId && !/^[a-f0-9]{64}$/i.test(meta.canonicalExportHash)) throw new Error('관리 파일의 canonicalExportHash가 없거나 올바르지 않습니다.');
         }
+        await Promise.all(rows.map(async function (row) {
+          row.currentHash = await excelRowBaseHash(row.source);
+          row.isDelta = meta.schemaVersion < 2 || !row.sourceRowKey || !row.baseHash || row.currentHash !== row.baseHash;
+        }));
         var digest = await crypto.subtle.digest('SHA-256', buffer);
         var hash = Array.from(new Uint8Array(digest)).map(function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
         return {
@@ -291,9 +313,29 @@ export function excelSnapshotScript() {
               backupConfirmed: backupConfirmed
             });
             showRecovery(created.id);
+            if (excelCachedParsed.schemaVersion >= 2) {
+              for (var membershipIndex = 0; membershipIndex < excelCachedParsed.rows.length; membershipIndex += excelSnapshotMembershipChunkSize) {
+                var membershipChunk = excelCachedParsed.rows.slice(membershipIndex, membershipIndex + excelSnapshotMembershipChunkSize).map(function (entry) {
+                  return {
+                    rowNumber: entry.rowNumber,
+                    rowKey: entry.membershipRowKey,
+                    baseRowVersion: entry.baseRowVersion || '',
+                    baseHash: entry.baseHash || ''
+                  };
+                });
+                await excelPost('/document-snapshots/' + created.id + '/membership', { rows: JSON.stringify(membershipChunk) });
+                excelProgress(Math.min(membershipIndex + membershipChunk.length, excelCachedParsed.rows.length), excelCachedParsed.rows.length + 2, '전체 membership을 안전하게 나누어 전송하고 있습니다.');
+              }
+            }
+            var deltaRows = excelCachedParsed.schemaVersion >= 2
+              ? excelCachedParsed.rows.filter(function (entry) { return entry.isDelta; })
+              : excelCachedParsed.rows;
+            if (excelCachedParsed.mode !== 'bootstrap' && deltaRows.length > excelSnapshotDeltaMaxItems) {
+              throw new Error('일상 변경 영향은 최대 ' + excelSnapshotDeltaMaxItems.toLocaleString('ko-KR') + '건입니다. 최신 대장을 기준으로 작업을 나누세요.');
+            }
             var chunkSize = 50;
-            for (var index = 0; index < excelCachedParsed.rows.length; index += chunkSize) {
-              var chunk = excelCachedParsed.rows.slice(index, index + chunkSize).map(function (entry) {
+            for (var index = 0; index < deltaRows.length; index += chunkSize) {
+              var chunk = deltaRows.slice(index, index + chunkSize).map(function (entry) {
                 return {
                   rowNumber: entry.rowNumber,
                   sourceRowKey: entry.sourceRowKey || '',
@@ -301,7 +343,7 @@ export function excelSnapshotScript() {
                 };
               });
               await excelPost('/document-snapshots/' + created.id + '/rows', { rows: JSON.stringify(chunk) });
-              excelProgress(Math.min(index + chunk.length, excelCachedParsed.rows.length), excelCachedParsed.rows.length + 2, '엑셀 행을 안전하게 나누어 전송하고 있습니다.');
+              excelProgress(Math.min(index + chunk.length, deltaRows.length), Math.max(deltaRows.length, 1) + 2, '변경된 엑셀 행을 안전하게 나누어 전송하고 있습니다.');
             }
             excelProgress(excelCachedParsed.rows.length + 1, excelCachedParsed.rows.length + 2, '대분류, 태그, 랙 위치와 변경 내역을 검증하고 있습니다.');
             await excelPost('/document-snapshots/' + created.id + '/prepare', {});
@@ -330,7 +372,7 @@ export function excelSnapshotScript() {
         var revisionDate = document.revisionDate ? excelDateOnlyToUtcDate(document.revisionDate) : '';
         return [document.documentNumber, document.revisionNumber, revisionDate || '', document.disposalDueYear || '', document.documentName,
           document.category, document.rackNumber, document.rackColumn, document.shelfNumber, document.rackFace,
-          document.tags || '', document.note || '', document.status, document.rowKey];
+          document.tags || '', document.note || '', document.status, document.rowKey, document.baseRowVersion || '', document.baseHash || ''];
       }
 
       async function buildExcelSnapshot(payload) {
@@ -342,19 +384,32 @@ export function excelSnapshotScript() {
         workbook.modified = new Date();
         workbook.calcProperties.fullCalcOnLoad = true;
 
+        payload.documents = await Promise.all(payload.documents.map(async function (document) {
+          var values = excelDataValues(document);
+          var source = {
+            documentNumber: String(values[0] || ''), revisionNumber: String(values[1] || ''),
+            revisionDate: document.revisionDate || '', disposalDueYear: String(values[3] || ''),
+            documentName: String(values[4] || ''), category: String(values[5] || ''),
+            rackNumber: String(values[6] || ''), rackColumn: String(values[7] || ''),
+            shelfNumber: String(values[8] || ''), rackFace: String(values[9] || ''),
+            tags: String(values[10] || ''), note: String(values[11] || ''), status: String(values[12] || '')
+          };
+          return Object.assign({}, document, { baseHash: await excelRowBaseHash(source) });
+        }));
         var data = workbook.addWorksheet('문서데이터', { views: [{ state: 'frozen', ySplit: 1 }] });
         data.columns = [
           { width: 18 }, { width: 12 }, { width: 13 }, { width: 15 }, { width: 32 }, { width: 16 },
-          { width: 14 }, { width: 13 }, { width: 15 }, { width: 15 }, { width: 24 }, { width: 30 }, { width: 12 }, { width: 40, hidden: true }
+          { width: 14 }, { width: 13 }, { width: 15 }, { width: 15 }, { width: 24 }, { width: 30 }, { width: 12 },
+          { width: 40, hidden: true }, { width: 16, hidden: true }, { width: 66, hidden: true }
         ];
-        data.addRow(excelHeaders.concat(['_엑셀관리ID']));
+        data.addRow(excelHeaders.concat(['_엑셀관리ID', '_기준행버전', '_기준행해시']));
         excelHeaderStyle(data.getRow(1));
         payload.documents.forEach(function (document) { data.addRow(excelDataValues(document)); });
         data.autoFilter = { from: 'A1', to: 'M' + Math.max(1, payload.documents.length + 1) };
         data.getColumn(3).numFmt = 'yyyy-mm-dd';
         data.getColumn(4).numFmt = '0';
         data.getColumn(7).numFmt = '0'; data.getColumn(8).numFmt = '0'; data.getColumn(9).numFmt = '0';
-        data.getColumn(14).hidden = true;
+        data.getColumn(14).hidden = true; data.getColumn(15).hidden = true; data.getColumn(16).hidden = true;
         for (var rowIndex = 2; rowIndex <= payload.documents.length + 1; rowIndex += 1) {
           var row = data.getRow(rowIndex);
           row.height = 22;
@@ -419,7 +474,7 @@ export function excelSnapshotScript() {
         guide.addRow(['항목','작성 방법']); excelHeaderStyle(guide.getRow(1));
         [
           ['문서데이터','첫 행의 한글 13개 열 제목과 순서를 변경하지 마세요. 필터·정렬과 행 추가는 가능합니다.'],
-          ['숨김 관리 ID','N열은 문서 이력을 연결하는 시스템 값입니다. 열을 삭제하거나 값을 복사하지 마세요. 인쇄에는 나오지 않습니다.'],
+          ['숨김 관리 정보','N~P열은 문서 이력, 기준 버전, 변경 탐지를 위한 시스템 값입니다. 열을 삭제하거나 값을 복사하지 마세요. 인쇄에는 나오지 않습니다.'],
           ['태그','여러 태그는 세미콜론(;)으로 구분합니다. 관리자 화면에 등록된 태그만 사용할 수 있습니다.'],
           ['랙 위치','1번 랙은 단면, 2~13번 랙은 1면 또는 2면을 사용합니다. 열은 1~7, 선반은 1~6입니다.'],
           ['상태','보관중 또는 폐기만 입력합니다.'],
@@ -452,9 +507,22 @@ export function excelSnapshotScript() {
           var original = button.textContent;
           try {
             button.disabled = true; button.textContent = '엑셀 생성 중...';
-            var response = await fetch('/api/document-snapshot/export', { headers: { Accept: 'application/json' } });
-            var payload = await response.json();
-            if (!response.ok || !payload.ok) throw new Error(payload.message || '현재 대장을 불러올 수 없습니다.');
+            var payload = await excelPost('/document-snapshot-exports', {});
+            var documents = [];
+            var exportPage = 1;
+            var hasMore = true;
+            while (hasMore) {
+              button.textContent = '엑셀 자료 ' + exportPage + '쪽 받는 중...';
+              var response = await fetch('/document-snapshot-exports/' + encodeURIComponent(payload.exportManifestId) + '/rows?page=' + exportPage, { headers: { Accept: 'application/json' } });
+              var pagePayload = await response.json();
+              if (!response.ok || !pagePayload.ok) throw new Error(pagePayload.message || '현재 대장 page를 불러올 수 없습니다.');
+              documents = documents.concat(pagePayload.documents || []);
+              hasMore = !!pagePayload.hasMore;
+              exportPage += 1;
+            }
+            var finalized = await excelPost('/document-snapshot-exports/' + encodeURIComponent(payload.exportManifestId) + '/finalize', {});
+            payload.canonicalExportHash = finalized.canonicalExportHash;
+            payload.documents = documents;
             await buildExcelSnapshot(payload);
           } catch (error) {
             if (window.showAppMessage) window.showAppMessage(error.message, true);

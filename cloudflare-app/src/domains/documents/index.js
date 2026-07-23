@@ -6,3 +6,4 @@ export { valuesFromDocumentForm } from "./web/forms.js";
 export { documentRowToPublicReadModel, documentToFormValues } from "./web/presenters.js";
 export { getDocumentMovementPage, getDocumentMovements } from "./infrastructure/movement.js";
 export { validateDocumentRevisionInput } from "./infrastructure/revision.js";
+export { getDocumentCapacity, isDocumentCapacityError } from "./infrastructure/capacity.js";

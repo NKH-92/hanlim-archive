@@ -32,6 +32,7 @@ jobs:
       CLOUDFLARE_ENV: production
       D1_MIGRATE_ENV: production
       D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
+      SEARCH_D1_TARGET_DATABASE_ID: ${{ vars.SEARCH_D1_TARGET_DATABASE_ID }}
       PRODUCTION_URL: https://hanlim-archive.skarhkdgus7.workers.dev
       SMOKE_ALLOWED_HOSTS: hanlim-archive.skarhkdgus7.workers.dev
       WORKER_VERSION_TAG: release-${{ github.sha }}

@@ -59,6 +59,9 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("documents.dispose-filtered", "documents", "POST", "/documents/dispose-filtered", { permission: PERMISSIONS.MANAGE_DISPOSALS }),
   route("documents.export", "documents", "GET", "/documents/export.csv", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.snapshot.export", "snapshots", "GET", "/api/document-snapshot/export", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("documents.snapshot.export.create", "snapshots", "POST", "/document-snapshot-exports", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("documents.snapshot.export.rows", "snapshots", "GET", "/document-snapshot-exports/:id/rows", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("documents.snapshot.export.finalize", "snapshots", "POST", "/document-snapshot-exports/:id/finalize", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.import.form", "imports", "GET", "/documents/import", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.new", "documents", "GET", "/documents/new", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.details", "documents", "GET", "/documents/:id"),
@@ -103,6 +106,7 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("snapshots.create", "snapshots", "POST", "/document-snapshots", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("snapshots.details", "snapshots", "GET", "/document-snapshots/:id", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("snapshots.rows", "snapshots", "POST", "/document-snapshots/:id/rows", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("snapshots.membership", "snapshots", "POST", "/document-snapshots/:id/membership", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("snapshots.prepare", "snapshots", "POST", "/document-snapshots/:id/prepare", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("snapshots.apply", "snapshots", "POST", "/document-snapshots/:id/apply", {
     // 실행 계약: 문서 관리 + 스냅샷 반영 권한을 모두 요구한다(카탈로그·핸들러·서비스 동일).

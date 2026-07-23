@@ -75,7 +75,13 @@ export function matchDocumentImportJobRoute(path) {
 }
 
 export function matchDocumentSnapshotRoute(path) {
-  const match = path.match(/^\/document-snapshots\/(\d+)(?:\/(rows|prepare|apply|cancel))?$/);
+  const match = path.match(/^\/document-snapshots\/(\d+)(?:\/(rows|membership|prepare|apply|cancel))?$/);
   if (!match) return null;
   return { id: Number(match[1]), action: match[2] || "details" };
+}
+
+export function matchDocumentSnapshotExportRoute(path) {
+  const match = path.match(/^\/document-snapshot-exports\/(EXP-[A-Za-z0-9-]+)\/(rows|finalize)$/);
+  if (!match) return null;
+  return { id: match[1], action: match[2] };
 }

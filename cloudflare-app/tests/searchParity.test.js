@@ -87,7 +87,7 @@ async function renderServer(items, query, totalItems = items.length) {
   return response.text();
 }
 
-async function renderBrowser(documents, query) {
+async function renderBrowser(items, query) {
   const listeners = {};
   const inputListeners = {};
   const input = {
@@ -135,7 +135,17 @@ async function renderBrowser(documents, query) {
     clearTimeout() {},
     console,
     document,
-    fetch: async () => ({ ok: true, json: async () => ({ documents }) }),
+    fetch: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        items,
+        candidateCount: items.length,
+        hasMore: false,
+        nextCursor: ""
+      })
+    }),
     location: { href: "https://archive.example.com/app", pathname: "/app", search: "" },
     navigator: {},
     setTimeout(handler) {
@@ -164,7 +174,7 @@ async function renderBrowser(documents, query) {
 test("server and browser keep the exact-code row fields and key markup", async () => {
   const query = "PV-2026-014";
   const serverHtml = serverResultsBody(await renderServer([serverItem()], query));
-  const browser = await renderBrowser([browserItem()], query);
+  const browser = await renderBrowser([serverItem()], query);
 
   assert.doesNotMatch(serverHtml, /data-answer-card/);
   assert.doesNotMatch(browser.html, /data-answer-card/);
@@ -190,8 +200,8 @@ test("server and browser always keep row-only behavior for dominant and ambiguou
     serverItem({ id: 8, documentNumber: "PV-2026-015", relevanceScore: 200 })
   ];
   const dominantBrowser = [
-    browserItem({ document_name: "밸리데이션", tag_names: "", popularity: 20 }),
-    browserItem({ id: 8, document_number: "PV-2026-015", document_name: "설비 밸리데이션 보고서", tag_names: "" })
+    serverItem({ documentName: "밸리데이션", relevanceScore: 300 }),
+    serverItem({ id: 8, documentNumber: "PV-2026-015", documentName: "설비 밸리데이션 보고서", relevanceScore: 200 })
   ];
   const serverHtml = serverResultsBody(await renderServer(dominantServer, query, 2));
   const browser = await renderBrowser(dominantBrowser, query);
@@ -206,11 +216,10 @@ test("server and browser always keep row-only behavior for dominant and ambiguou
   ], query, 2));
   assert.doesNotMatch(ambiguousServer, /data-answer-card/);
 
-  const core = createSearchCore();
-  const first = { ...browserItem(), ...core.scoreDocumentMatch(browserItem(), query) };
-  const second = { ...browserItem({ id: 8, document_number: "PV-2026-015" }), ...core.scoreDocumentMatch(browserItem({ id: 8, document_number: "PV-2026-015" }), query) };
-  first.relevance_score = second.relevance_score;
-  const ambiguousBrowser = await renderBrowser([first, second], query);
+  const ambiguousBrowser = await renderBrowser([
+    serverItem({ relevanceScore: 200 }),
+    serverItem({ id: 8, documentNumber: "PV-2026-015", relevanceScore: 200 })
+  ], query);
   assert.doesNotMatch(ambiguousBrowser.html, /data-answer-card/);
   assert.match(ambiguousBrowser.html, /^<div class="viewer-result-table"/);
 });

@@ -14,7 +14,7 @@ export function buildApplyStatements(env, {
   const reason = applyReason;
   const approval = approvalReference || "";
 
-  return [
+  const statements = [
     env.DB.prepare(`
       UPDATE document_snapshots
       SET status = 'applying',
@@ -357,4 +357,72 @@ export function buildApplyStatements(env, {
       RETURNING *
     `).bind(id)
   ];
+
+  if (snapshot.mode === "bootstrap") {
+    const claim = statements.shift();
+    const completed = statements.pop();
+    const exactSeedPredicate = `
+      note = 'Cloudflare 테스트 기본 문서'
+      AND (
+        (storage_code = 'ARC-000001' AND document_number = 'MR-2026-001')
+        OR (storage_code = 'ARC-000002' AND document_number = 'PV-2026-014')
+      )
+    `;
+
+    statements.unshift(
+      claim,
+      env.DB.prepare(`
+        UPDATE bootstrap_runtime_control
+        SET suppress_derived_triggers = 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = 1
+          AND suppress_derived_triggers = 0
+          AND EXISTS (
+            SELECT 1
+            FROM document_snapshots
+            WHERE id = ? AND status = 'applying' AND mode = 'bootstrap'
+          )
+          AND (SELECT COUNT(*) FROM documents) = 2
+          AND (SELECT COUNT(*) FROM documents WHERE ${exactSeedPredicate}) = 2
+      `).bind(id),
+      env.DB.prepare(exactChangeCountAssertionSql("1")),
+      env.DB.prepare(`
+        DELETE FROM documents
+        WHERE ${exactSeedPredicate}
+          AND EXISTS (
+            SELECT 1
+            FROM bootstrap_runtime_control
+            WHERE id = 1 AND suppress_derived_triggers = 1
+          )
+      `),
+      env.DB.prepare(exactChangeCountAssertionSql("2"))
+    );
+
+    statements.push(
+      env.DB.prepare(`
+        UPDATE search_index_state
+        SET rebuild_required = 1,
+            generation = generation + 1,
+            indexed_document_count = 0,
+            last_error = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = 1
+          AND EXISTS (
+            SELECT 1
+            FROM document_snapshots
+            WHERE id = ? AND status = 'applying'
+          )
+      `).bind(id),
+      env.DB.prepare(`
+        UPDATE bootstrap_runtime_control
+        SET suppress_derived_triggers = 0,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = 1 AND suppress_derived_triggers = 1
+      `),
+      env.DB.prepare(exactChangeCountAssertionSql("1")),
+      completed
+    );
+  }
+
+  return statements;
 }

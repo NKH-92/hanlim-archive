@@ -153,12 +153,58 @@ export async function verifyMigrationChain({
   return { ok: true, errors: [], names, fileHashes };
 }
 
+export async function verifySearchMigrationChain({
+  migrationsDir = join(DEFAULT_ROOT, "search-migrations"),
+  applySchema = true
+} = {}) {
+  const manifest = JSON.parse(await readFile(join(migrationsDir, "manifest.json"), "utf8"));
+  const names = (await readdir(migrationsDir))
+    .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name))
+    .sort();
+  const expectedNumbers = Array.from({ length: names.length }, (_, index) => String(index + 1).padStart(4, "0"));
+  const errors = [];
+  if (JSON.stringify(names.map((name) => name.slice(0, 4))) !== JSON.stringify(expectedNumbers)) {
+    errors.push("Search D1 migration 번호는 0001부터 연속이어야 합니다.");
+  }
+  if (JSON.stringify(names) !== JSON.stringify(Object.keys(manifest.checksums || {}))) {
+    errors.push("Search D1 migration manifest의 파일 목록이 실제 파일과 다릅니다.");
+  }
+  for (const name of names) {
+    const checksum = hashMigrationSql(await readFile(join(migrationsDir, name), "utf8"));
+    if (checksum !== manifest.checksums?.[name]) errors.push(`${name}: Search D1 checksum 불일치`);
+  }
+  if (errors.length || !applySchema) return { ok: errors.length === 0, errors, names };
+
+  const database = new DatabaseSync(":memory:");
+  try {
+    for (const name of names) database.exec(await readFile(join(migrationsDir, name), "utf8"));
+    const requiredTables = database.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type IN ('table', 'view')
+        AND name IN ('search_documents', 'search_documents_fts', 'search_runtime_state')
+      ORDER BY name
+    `).all().map(({ name }) => name);
+    if (JSON.stringify(requiredTables) !== JSON.stringify(manifest.schema.tables)) {
+      errors.push("Search D1 핵심 schema manifest 불일치");
+    }
+    if (database.prepare("PRAGMA foreign_key_check").all().length) {
+      errors.push("Search D1 foreign key 위반");
+    }
+  } finally {
+    database.close();
+  }
+  return { ok: errors.length === 0, errors, names };
+}
+
 const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  const result = await verifyMigrationChain();
-  if (!result.ok) {
-    for (const error of result.errors) console.error(`[migrations] ${error}`);
+  const [result, searchResult] = await Promise.all([
+    verifyMigrationChain(),
+    verifySearchMigrationChain()
+  ]);
+  if (!result.ok || !searchResult.ok) {
+    for (const error of [...result.errors, ...searchResult.errors]) console.error(`[migrations] ${error}`);
     process.exit(1);
   }
-  console.log(`✓ migration ${result.names.length}개 checksum·schema·FK·released-baseline 검사 통과`);
+  console.log(`✓ Core migration ${result.names.length}개 + Search migration ${searchResult.names.length}개 checksum·schema·FK 검사 통과`);
 }

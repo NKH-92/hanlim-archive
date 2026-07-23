@@ -18,7 +18,12 @@ import {
 import { formatCanonicalErrors, prepareCanonicalSnapshotRows } from "../domain/canonicalRow.js";
 import { computeRiskWarnings, summarizeChangeFlags } from "../domain/diff.js";
 import { SNAPSHOT_ERROR_CODES, snapshotError } from "../domain/errorCodes.js";
-import { computeCanonicalRowsHash, computeExportManifestHash, SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS } from "../domain/hash.js";
+import {
+  computeCanonicalRowsHash,
+  computeExportManifestHash,
+  computeExportPageChainHash,
+  SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS
+} from "../domain/hash.js";
 import { isStableRowKey, temporaryStagingRowKey } from "../domain/identity.js";
 import { matchCanonicalSnapshotRows } from "../domain/matchRows.js";
 import { validateRevisionHistorySnapshotChanges } from "../domain/revisionPolicy.js";
@@ -155,13 +160,15 @@ export async function createDocumentSnapshot(env, input, actor) {
     if (exportManifestId) {
       const manifest = await env.DB.prepare(`
         SELECT manifest_id, schema_version, base_version, current_snapshot_id,
-               canonical_export_hash, created_by_user_id
+               canonical_export_hash, created_by_user_id, status, finalized_at
         FROM document_snapshot_export_manifests
         WHERE manifest_id = ?
       `).bind(exportManifestId).first();
       const sameActor = !manifest?.created_by_user_id || Number(manifest.created_by_user_id) === Number(actor?.userId);
       if (
         !manifest ||
+        manifest.status !== "completed" ||
+        !manifest.finalized_at ||
         Number(manifest.schema_version) !== schemaVersion ||
         Number(manifest.base_version) !== state.currentVersion ||
         Number(manifest.current_snapshot_id || 0) !== state.currentSnapshotId ||
@@ -345,6 +352,73 @@ export async function stageDocumentSnapshotRows(env, snapshotId, rows) {
   return { ok: true, stagedCount: Number(progress.staged_count || 0), totalCount: Number(progress.total_count || 0) };
 }
 
+export async function stageDocumentSnapshotMembership(env, snapshotId, rows) {
+  if (!Array.isArray(rows) || !rows.length || rows.length > FREE_TIER_BUDGET.excelSnapshotMembershipChunkSize) {
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH,
+      `membership은 한 번에 ${FREE_TIER_BUDGET.excelSnapshotMembershipChunkSize}행까지 전송할 수 있습니다.`
+    );
+  }
+  const normalized = [];
+  const seenRows = new Set();
+  const seenKeys = new Set();
+  for (const entry of rows) {
+    const rowNumber = Number(entry?.rowNumber);
+    const rowKey = clean(entry?.rowKey ?? entry?.sourceRowKey);
+    const baseRowVersion = optionalPositiveInteger(entry?.baseRowVersion);
+    const baseHash = clean(entry?.baseHash).toLowerCase();
+    if (!Number.isInteger(rowNumber) || rowNumber < 2 || rowNumber > FREE_TIER_BUDGET.excelSnapshotMaxItems + 1) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "membership 행 번호가 올바르지 않습니다.");
+    }
+    if (!rowKey || !isStableRowKey(rowKey)) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `${rowNumber}행의 숨김 관리 ID가 올바르지 않습니다.`);
+    }
+    if (baseHash && !/^[a-f0-9]{64}$/.test(baseHash)) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `${rowNumber}행의 기준 행 해시가 올바르지 않습니다.`);
+    }
+    if (seenRows.has(rowNumber) || seenKeys.has(rowKey)) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_DUPLICATE, "membership 행 번호 또는 관리 ID가 중복되었습니다.");
+    }
+    seenRows.add(rowNumber);
+    seenKeys.add(rowKey);
+    normalized.push({ rowNumber, rowKey, baseRowVersion, baseHash: baseHash || null });
+  }
+  const payload = JSON.stringify(normalized);
+  const results = await executeMutationBatch(env, createSnapshotPlan("membership", [
+    env.DB.prepare(`
+      INSERT INTO document_snapshot_membership (
+        snapshot_id, row_number, row_key, base_row_version, base_hash
+      )
+      SELECT
+        ?,
+        CAST(json_extract(item.value, '$.rowNumber') AS INTEGER),
+        json_extract(item.value, '$.rowKey'),
+        CAST(json_extract(item.value, '$.baseRowVersion') AS INTEGER),
+        NULLIF(json_extract(item.value, '$.baseHash'), '')
+      FROM json_each(?) item
+      WHERE EXISTS (
+        SELECT 1 FROM document_snapshots
+        WHERE id = ? AND status = 'staging' AND schema_version = 2
+      )
+      ON CONFLICT(snapshot_id, row_number) DO UPDATE SET
+        row_key = excluded.row_key,
+        base_row_version = excluded.base_row_version,
+        base_hash = excluded.base_hash
+    `).bind(snapshotId, payload, snapshotId),
+    env.DB.prepare(`
+      UPDATE document_snapshots
+      SET updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status = 'staging' AND schema_version = 2
+      RETURNING (
+        SELECT COUNT(*) FROM document_snapshot_membership WHERE snapshot_id = ?
+      ) AS membership_count
+    `).bind(snapshotId, snapshotId)
+  ]));
+  const count = Number(results[1]?.results?.[0]?.membership_count || 0);
+  if (!count) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "membership을 추가할 수 없는 동기화 작업입니다.");
+  return { ok: true, membershipCount: count };
+}
+
 export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyPrepareRows, actor) {
   const snapshot = await getDocumentSnapshot(env, snapshotId);
   if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾을 수 없습니다.");
@@ -353,7 +427,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "검증할 수 없는 동기화 작업 상태입니다.");
   }
 
-  const [rowResult, documentResult, revisionLinkResult, state] = await Promise.all([
+  const [rowResult, membershipResult, documentResult, revisionLinkResult, state] = await Promise.all([
     env.DB.prepare(`
       SELECT row_number, row_key, source_row_key, source_json
       FROM document_snapshot_rows
@@ -361,8 +435,14 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
       ORDER BY row_number
     `).bind(snapshotId).all(),
     env.DB.prepare(`
+      SELECT row_number, row_key, base_row_version, base_hash
+      FROM document_snapshot_membership
+      WHERE snapshot_id = ?
+      ORDER BY row_number
+    `).bind(snapshotId).all(),
+    env.DB.prepare(`
       SELECT
-        d.id, d.excel_row_key, d.sync_state, d.category_id, d.document_number,
+        d.id, d.storage_code, d.excel_row_key, d.sync_state, d.category_id, d.document_number,
         d.revision_number, d.revision_date, d.disposal_due_year, d.document_name,
         d.note, d.rack_slot_id, d.rack_face, d.status, d.row_version,
         GROUP_CONCAT(dt.tag_id, ',') AS tag_ids
@@ -378,11 +458,31 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     getDocumentSyncState(env)
   ]);
   const stagedRows = rowResult.results ?? [];
-  if (stagedRows.length !== Number(snapshot.total_count) || stagedRows.length !== Number(snapshot.staged_count)) {
+  const membershipRows = membershipResult.results ?? [];
+  const schemaVersion = Number(snapshot.schema_version || 1);
+  // schema v2 정식 클라이언트는 membership을 먼저 보내지만, 배포 중 열린 탭처럼
+  // 전체 행을 staging한 호출도 전환 릴리스 동안 호환한다.
+  const usesMembership = schemaVersion >= 2 && membershipRows.length > 0;
+  const receivedCount = usesMembership ? membershipRows.length : stagedRows.length;
+  if (receivedCount !== Number(snapshot.total_count) || stagedRows.length !== Number(snapshot.staged_count)) {
     return failSnapshotValidation(
       env,
       snapshotId,
-      `전체 ${snapshot.total_count}행 중 ${stagedRows.length}행만 전송되었습니다.`,
+      `전체 ${snapshot.total_count}행 중 ${receivedCount}행의 membership만 전송되었습니다.`,
+      actor,
+      false,
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH
+    );
+  }
+  if (
+    usesMembership &&
+    snapshot.mode !== "bootstrap" &&
+    stagedRows.length > FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems
+  ) {
+    return failSnapshotValidation(
+      env,
+      snapshotId,
+      `일상 변경 영향은 최대 ${FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems}건입니다. 최신 대장을 기준으로 작업을 나누세요.`,
       actor,
       false,
       SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH
@@ -407,8 +507,28 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
       sourceRowKey: clean(row.source_row_key),
       rowKey: clean(row.source_row_key || row.row_key)
     }));
+    if (usesMembership) {
+      const stagedNumbers = new Set(stagedRows.map((row) => Number(row.row_number)));
+      const documentsByKey = new Map((documentResult.results ?? []).map((document) => [clean(document.excel_row_key), document]));
+      for (const membership of membershipRows) {
+        const rowNumber = Number(membership.row_number);
+        if (stagedNumbers.has(rowNumber)) continue;
+        const document = documentsByKey.get(clean(membership.row_key));
+        if (!document || document.sync_state !== "current") {
+          throw new Error(`${rowNumber}행의 기준 문서를 찾을 수 없습니다.`);
+        }
+        if (
+          Number(membership.base_row_version || 0) > 0 &&
+          Number(membership.base_row_version) !== Number(document.row_version)
+        ) {
+          throw new Error(`${rowNumber}행의 기준 버전이 현재 문서와 다릅니다.`);
+        }
+        sourceRows.push(sourceRowFromCurrentDocument(document, membership, options));
+      }
+      sourceRows.sort((left, right) => Number(left.rowNumber) - Number(right.rowNumber));
+    }
   } catch {
-    return failSnapshotValidation(env, snapshotId, "저장된 엑셀 행을 읽을 수 없습니다.", actor);
+    return failSnapshotValidation(env, snapshotId, "저장된 엑셀 행 또는 기준 membership을 읽을 수 없습니다.", actor);
   }
 
   const prepared = prepareCanonicalSnapshotRows(sourceRows, options);
@@ -429,7 +549,10 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     tagNames: new Map((options.tags || []).map((tag) => [Number(tag.id), tag.name])),
     slotsById: new Map((options.slots || []).map((slot) => [Number(slot.id), slot]))
   };
-  const match = matchCanonicalSnapshotRows(prepared.items, documentResult.results ?? [], {
+  const existingDocuments = snapshot.mode === "bootstrap"
+    ? (documentResult.results ?? []).filter((document) => !isInitialBootstrapSeed(document))
+    : (documentResult.results ?? []);
+  const match = matchCanonicalSnapshotRows(prepared.items, existingDocuments, {
     managedMode: snapshot.mode !== "bootstrap",
     lookup
   });
@@ -467,7 +590,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
   if (Number(summary.restoreCount) > 0 && actor?.role !== "Admin" && !missing.includes("Admin")) {
     missing.push("Admin(폐기 해제)");
   }
-  const baselineCurrentDocumentCount = (documentResult.results ?? []).filter((document) => document.sync_state === "current").length;
+  const baselineCurrentDocumentCount = existingDocuments.filter((document) => document.sync_state === "current").length;
   const warnings = computeRiskWarnings({
     summary,
     currentDocumentCount: baselineCurrentDocumentCount,
@@ -653,9 +776,22 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
     );
   }
   const currentDocuments = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'
+    SELECT
+      COUNT(*) AS count,
+      SUM(CASE WHEN (
+        (storage_code = 'ARC-000001' AND document_number = 'MR-2026-001' AND note = 'Cloudflare 테스트 기본 문서')
+        OR
+        (storage_code = 'ARC-000002' AND document_number = 'PV-2026-014' AND note = 'Cloudflare 테스트 기본 문서')
+      ) THEN 1 ELSE 0 END) AS seed_count
+    FROM documents
+    WHERE sync_state = 'current'
   `).first();
-  if (Number(snapshot.baseline_current_document_count || 0) !== Number(currentDocuments?.count || 0)) {
+  const bootstrapSeedCount = snapshot.mode === "bootstrap" ? Number(currentDocuments?.seed_count || 0) : 0;
+  const expectedCurrentCount = Number(snapshot.baseline_current_document_count || 0) + bootstrapSeedCount;
+  if (
+    expectedCurrentCount !== Number(currentDocuments?.count || 0) ||
+    (snapshot.mode === "bootstrap" && bootstrapSeedCount !== 2)
+  ) {
     await markSnapshotStale(env, snapshotId, actor, "미리보기 이후 현재 대장 건수가 변경되었습니다.");
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE,
@@ -741,12 +877,78 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
   return { ok: true, snapshot: completed, statementCount: statements.length };
 }
 
+export async function createDocumentSnapshotExport(env, actor = {}, attempt = 0) {
+  const stateBefore = await getDocumentSyncState(env);
+  const [countResult, categoryResult, tagResult, rackResult] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").first(),
+    env.DB.prepare("SELECT name FROM categories WHERE is_active = 1 ORDER BY sort_order, name").all(),
+    env.DB.prepare("SELECT name FROM tags WHERE is_active = 1 ORDER BY name").all(),
+    env.DB.prepare("SELECT rack_number, code, is_single_sided FROM racks WHERE is_active = 1 ORDER BY zone_number, rack_number").all()
+  ]);
+  const state = await getDocumentSyncState(env);
+  if (
+    state.currentVersion !== stateBefore.currentVersion ||
+    state.currentSnapshotId !== stateBefore.currentSnapshotId
+  ) {
+    if (attempt >= 1) throw new Error("엑셀 추출 중 문서고가 계속 변경되어 일관된 export를 만들 수 없습니다.");
+    return createDocumentSnapshotExport(env, actor, attempt + 1);
+  }
+
+  const documentCount = Number(countResult?.count || 0);
+  const exportManifestId = `EXP-${crypto.randomUUID()}`;
+  const actorSnapshot = auditActorSnapshot(actor);
+  const persisted = await env.DB.prepare(`
+    INSERT INTO document_snapshot_export_manifests (
+      manifest_id, schema_version, base_version, current_snapshot_id,
+      canonical_export_hash, document_count, created_by_user_id, created_by_name,
+      status, page_size, finalized_at
+    )
+    SELECT ?, 2, state.current_version, NULLIF(state.current_snapshot_id, 0), ?, ?, ?, ?,
+           'building', ?, NULL
+    FROM document_sync_state state
+    WHERE state.id = 1
+      AND state.current_version = ?
+      AND COALESCE(state.current_snapshot_id, 0) = ?
+    RETURNING manifest_id
+  `).bind(
+    exportManifestId,
+    "0".repeat(64),
+    documentCount,
+    actorSnapshot.userId,
+    actorSnapshot.displayName,
+    FREE_TIER_BUDGET.excelSnapshotExportPageSize,
+    state.currentVersion,
+    state.currentSnapshotId
+  ).first();
+  if (!persisted?.manifest_id) {
+    if (attempt >= 1) throw new Error("엑셀 추출 중 문서고가 계속 변경되어 일관된 export를 만들 수 없습니다.");
+    return createDocumentSnapshotExport(env, actor, attempt + 1);
+  }
+
+  return {
+    schemaVersion: 2,
+    baseVersion: state.currentVersion,
+    currentSnapshotId: state.currentSnapshotId || null,
+    exportManifestId,
+    exportedAt: new Date().toISOString(),
+    documentCount,
+    clientSourceHashNote: "업로드 시 sourceHash는 브라우저가 계산한 원본 XLSX SHA-256이며 서버 검증 해시가 아닙니다.",
+    codes: {
+      categories: (categoryResult.results ?? []).map((row) => row.name),
+      tags: (tagResult.results ?? []).map((row) => row.name),
+      racks: (rackResult.results ?? []).map((row) => ({
+        rackNumber: Number(row.rack_number), code: row.code, singleSided: Boolean(row.is_single_sided)
+      }))
+    }
+  };
+}
+
 export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
   const stateBefore = await getDocumentSyncState(env);
   const [result, categoryResult, tagResult, rackResult] = await Promise.all([
     env.DB.prepare(`
       SELECT
-        d.excel_row_key, d.document_number, d.revision_number, d.revision_date,
+        d.excel_row_key, d.row_version, d.document_number, d.revision_number, d.revision_date,
         d.disposal_due_year, d.document_name, c.name AS category_name,
         r.rack_number, r.code AS rack_code, r.is_single_sided,
         rs.column_number, rs.shelf_number, d.rack_face,
@@ -781,9 +983,11 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
   const persisted = await env.DB.prepare(`
     INSERT INTO document_snapshot_export_manifests (
       manifest_id, schema_version, base_version, current_snapshot_id,
-      canonical_export_hash, document_count, created_by_user_id, created_by_name
+      canonical_export_hash, document_count, created_by_user_id, created_by_name,
+      status, page_size, finalized_at
     )
-    SELECT ?, 1, state.current_version, NULLIF(state.current_snapshot_id, 0), ?, ?, ?, ?
+    SELECT ?, 2, state.current_version, NULLIF(state.current_snapshot_id, 0), ?, ?, ?, ?,
+           'completed', ?, CURRENT_TIMESTAMP
     FROM document_sync_state state
     WHERE state.id = 1
       AND state.current_version = ?
@@ -795,6 +999,7 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
     documents.length,
     actorSnapshot.userId,
     actorSnapshot.displayName,
+    FREE_TIER_BUDGET.excelSnapshotExportPageSize,
     state.currentVersion,
     state.currentSnapshotId
   ).first();
@@ -803,7 +1008,7 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
     return getDocumentSnapshotExport(env, actor, attempt + 1);
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     baseVersion: state.currentVersion,
     currentSnapshotId: state.currentSnapshotId || null,
     exportManifestId,
@@ -818,6 +1023,134 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
         rackNumber: Number(row.rack_number), code: row.code, singleSided: Boolean(row.is_single_sided)
       }))
     }
+  };
+}
+
+export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber) {
+  const id = clean(manifestId);
+  const page = Number(pageNumber);
+  if (!/^EXP-[A-Za-z0-9-]{16,}$/.test(id) || !Number.isInteger(page) || page < 1) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "export page 요청이 올바르지 않습니다.");
+  }
+  const manifest = await env.DB.prepare(`
+    SELECT manifest_id, base_version, current_snapshot_id, document_count, page_size
+    FROM document_snapshot_export_manifests
+    WHERE manifest_id = ? AND status IN ('building', 'completed')
+  `).bind(id).first();
+  if (!manifest) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "export manifest를 찾을 수 없습니다.");
+  const state = await getDocumentSyncState(env);
+  if (
+    Number(manifest.base_version) !== state.currentVersion ||
+    Number(manifest.current_snapshot_id || 0) !== state.currentSnapshotId
+  ) {
+    await env.DB.prepare("UPDATE document_snapshot_export_manifests SET status = 'invalidated' WHERE manifest_id = ?").bind(id).run();
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "export 도중 문서고가 변경되었습니다. 다시 추출하세요.", { stale: true });
+  }
+  const pageSize = Math.min(Number(manifest.page_size || 250), FREE_TIER_BUDGET.excelSnapshotExportPageSize);
+  const expectedPages = Math.max(1, Math.ceil(Number(manifest.document_count || 0) / pageSize));
+  if (page > expectedPages) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "export page 범위를 벗어났습니다.");
+  }
+  const offset = (page - 1) * pageSize;
+  const result = await env.DB.prepare(`
+    SELECT
+      d.excel_row_key, d.row_version, d.document_number, d.revision_number, d.revision_date,
+      d.disposal_due_year, d.document_name, c.name AS category_name,
+      r.rack_number, r.code AS rack_code, r.is_single_sided,
+      rs.column_number, rs.shelf_number, d.rack_face,
+      GROUP_CONCAT(t.name, ';') AS tag_names,
+      d.note, d.status
+    FROM documents d
+    JOIN categories c ON c.id = d.category_id
+    JOIN rack_slots rs ON rs.id = d.rack_slot_id
+    JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN document_tags dt ON dt.document_id = d.id
+    LEFT JOIN tags t ON t.id = dt.tag_id
+    WHERE d.sync_state = 'current'
+    GROUP BY d.id
+    ORDER BY r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number, d.id
+    LIMIT ? OFFSET ?
+  `).bind(pageSize, offset).all();
+  const documents = (result.results ?? []).map(exportDocument);
+  const pageHash = await computeExportManifestHash(documents);
+  await env.DB.prepare(`
+    INSERT INTO document_snapshot_export_pages (
+      manifest_id, page_number, row_offset, row_count, page_hash
+    )
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(manifest_id, page_number) DO UPDATE SET
+      row_offset = excluded.row_offset,
+      row_count = excluded.row_count,
+      page_hash = excluded.page_hash
+  `).bind(id, page, offset, documents.length, pageHash).run();
+  return {
+    ok: true,
+    manifestId: id,
+    page,
+    pageSize,
+    pageHash,
+    documents,
+    hasMore: offset + documents.length < Number(manifest.document_count || 0)
+  };
+}
+
+export async function finalizeDocumentSnapshotExport(env, manifestId) {
+  const id = clean(manifestId);
+  const manifest = await env.DB.prepare(`
+    SELECT manifest_id, base_version, current_snapshot_id, document_count, page_size,
+           canonical_export_hash, status
+    FROM document_snapshot_export_manifests
+    WHERE manifest_id = ? AND status IN ('building', 'completed')
+  `).bind(id).first();
+  if (!manifest) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "완료할 export manifest를 찾을 수 없습니다.");
+  const state = await getDocumentSyncState(env);
+  if (
+    Number(manifest.base_version) !== state.currentVersion ||
+    Number(manifest.current_snapshot_id || 0) !== state.currentSnapshotId
+  ) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "export 도중 문서고가 변경되었습니다.", { stale: true });
+  const pages = await env.DB.prepare(`
+    SELECT page_number, row_offset, row_count, page_hash
+    FROM document_snapshot_export_pages
+    WHERE manifest_id = ?
+    ORDER BY page_number
+  `).bind(id).all();
+  const pageRows = pages.results ?? [];
+  const pageSize = Number(manifest.page_size || 250);
+  const documentCount = Number(manifest.document_count || 0);
+  const expectedPages = Math.max(1, Math.ceil(documentCount / pageSize));
+  const validPageChain = pageRows.length === expectedPages && pageRows.every((page, index) => {
+    const expectedOffset = index * pageSize;
+    const expectedRowCount = Math.max(0, Math.min(pageSize, documentCount - expectedOffset));
+    return Number(page.page_number) === index + 1 &&
+      Number(page.row_offset) === expectedOffset &&
+      Number(page.row_count) === expectedRowCount &&
+      /^[a-f0-9]{64}$/i.test(clean(page.page_hash));
+  });
+  if (!validPageChain) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, "모든 export page를 받은 뒤 완료하세요.");
+  }
+  const canonicalExportHash = manifest.status === "completed"
+    ? clean(manifest.canonical_export_hash)
+    : await computeExportPageChainHash(pageRows);
+  if (manifest.status === "building") {
+    const completed = await env.DB.prepare(`
+      UPDATE document_snapshot_export_manifests
+      SET status = 'completed',
+          canonical_export_hash = ?,
+          finalized_at = CURRENT_TIMESTAMP
+      WHERE manifest_id = ? AND status = 'building'
+      RETURNING manifest_id
+    `).bind(canonicalExportHash, id).first();
+    if (!completed?.manifest_id) {
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_CONCURRENT_APPLY, "export 완료 상태가 동시에 변경되었습니다.");
+    }
+  }
+  return {
+    ok: true,
+    manifestId: id,
+    documentCount,
+    pageCount: expectedPages,
+    canonicalExportHash
   };
 }
 
@@ -852,6 +1185,7 @@ async function markSnapshotStale(env, snapshotId, actor, message) {
 function exportDocument(row) {
   return {
     rowKey: clean(row.excel_row_key),
+    baseRowVersion: Number(row.row_version || 0),
     documentNumber: clean(row.document_number),
     revisionNumber: clean(row.revision_number),
     revisionDate: clean(row.revision_date),
@@ -866,6 +1200,42 @@ function exportDocument(row) {
     note: clean(row.note),
     status: row.status === "disposed" ? "폐기" : "보관중"
   };
+}
+
+function sourceRowFromCurrentDocument(document, membership, options) {
+  const category = (options.categories || []).find((item) => Number(item.id) === Number(document.category_id));
+  const slot = (options.slots || []).find((item) => Number(item.id) === Number(document.rack_slot_id));
+  const tagIds = String(document.tag_ids || "").split(",").map(Number).filter(Number.isInteger);
+  const tagNames = tagIds.map((id) => (options.tags || []).find((tag) => Number(tag.id) === id)?.name).filter(Boolean);
+  return {
+    rowNumber: Number(membership.row_number),
+    sourceRowKey: clean(membership.row_key),
+    rowKey: clean(membership.row_key),
+    documentNumber: clean(document.document_number),
+    revisionNumber: clean(document.revision_number),
+    revisionDate: clean(document.revision_date),
+    disposalDueYear: document.disposal_due_year,
+    documentName: clean(document.document_name),
+    category: clean(category?.name),
+    rackCode: clean(slot?.code),
+    rackNumber: clean(slot?.code),
+    rackColumn: Number(slot?.column_number || 0),
+    shelfNumber: Number(slot?.shelf_number || 0),
+    rackFace: clean(document.rack_face),
+    tags: tagNames.join(";"),
+    note: clean(document.note),
+    status: document.status === "disposed" ? "폐기" : "보관중"
+  };
+}
+
+function isInitialBootstrapSeed(document) {
+  const storageCode = clean(document.storage_code);
+  const documentNumber = clean(document.document_number);
+  const note = clean(document.note);
+  return note === "Cloudflare 테스트 기본 문서" && (
+    (storageCode === "ARC-000001" && documentNumber === "MR-2026-001") ||
+    (storageCode === "ARC-000002" && documentNumber === "PV-2026-014")
+  );
 }
 
 function normalizeSourceRow(source = {}) {
