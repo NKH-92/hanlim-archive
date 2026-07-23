@@ -43,5 +43,7 @@ test("모든 인증 POST descriptor는 Origin·CSRF를 요구하고 permission k
   });
   assert.deepEqual(invalid, []);
   assert.equal(ROUTES.find((item) => item.id === "documents.restore").policy, "admin-only");
+  assert.equal(ROUTES.find((item) => item.id === "admin.user.password-reset").policy, "admin-only");
+  assert.equal(ROUTES.find((item) => item.id === "admin.user.password-reset.form").policy, "admin-only");
   assert.equal(ROUTES.find((item) => item.id === "session.signup.blocked").policy, "always-404");
 });

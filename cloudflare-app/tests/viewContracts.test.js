@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { dataQualityPage } from "../src/domains/dataQuality/index.js";
 import { loginPage } from "../src/views/authViews.js";
-import { passwordPage } from "../src/views/adminViews.js";
+import { passwordPage, userPasswordResetPage } from "../src/views/adminViews.js";
 import { disposalBatchFormPage, disposalBatchListPage } from "../src/views/disposalBatchViews.js";
 import { documentImportJobCreatePage, documentImportJobsPage } from "../src/views/importJobViews.js";
 import { canMoveDocuments, movementFormPage, movementsPage } from "../src/views/movementViews.js";
@@ -34,6 +34,29 @@ test("로그인과 최초 비밀번호 변경 화면은 등록 이메일·보안
   const password = await htmlPage(passwordPage({ session: admin, required: true }), "비밀번호 변경");
   assert.match(password, /최초 로그인입니다/);
   assertPostForm(password, "/account/password", ["currentPassword", "newPassword", "confirmPassword"]);
+});
+
+test("관리자 비밀번호 초기화 화면은 세션 종료와 다음 로그인 변경 강제를 명시한다", async () => {
+  const html = await htmlPage(userPasswordResetPage({
+    session: admin,
+    user: {
+      id: 7,
+      username: "target<script>@hanlim.com",
+      display_name: "초기화 <대상>"
+    },
+    minLength: 8
+  }), "비밀번호 초기화");
+
+  assertPostForm(
+    html,
+    "/admin/users/7/reset-password",
+    ["temporaryPassword", "confirmPassword", "confirmReset"]
+  );
+  assert.match(html, /기존 로그인 세션이 모두 종료됩니다/);
+  assert.match(html, /새 비밀번호로 변경해야만 시스템을 이용/);
+  assert.match(html, /minlength="8"/);
+  assert.match(html, /target&lt;script&gt;@hanlim\.com/);
+  assert.doesNotMatch(html, /target<script>@hanlim\.com/);
 });
 
 test("랙 목록·설정·상세·폼은 위치 구조와 입력 계약을 공개 배럴에서 유지한다", async () => {

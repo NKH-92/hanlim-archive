@@ -96,10 +96,13 @@ test("사용자 관리 화면은 반려와 사용중지를 분리한다", async 
   assert.match(html, /action="\/admin\/users\/7\/disable"/);
   assert.match(html, /action="\/admin\/users\/8\/enable"/);
   assert.match(html, /href="\/admin\/users\/7\/permissions"/);
+  assert.match(html, /href="\/admin\/users\/7\/reset-password"/);
+  assert.match(html, /href="\/admin\/users\/8\/reset-password"/);
   assert.match(html, /action="\/admin\/users\/9\/reject"/);
   assert.doesNotMatch(html, /action="\/admin\/users\/7\/reject"/);
   assert.match(html, /보안 검토 필요/);
   assert.match(html, /보안 검토 대상 · 일반 재승인 불가/);
   assert.doesNotMatch(html, /action="\/admin\/users\/10\/approve"/);
   assert.doesNotMatch(html, /href="\/admin\/users\/10\/permissions"/);
+  assert.doesNotMatch(html, /href="\/admin\/users\/10\/reset-password"/);
 });

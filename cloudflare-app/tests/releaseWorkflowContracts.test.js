@@ -5,6 +5,7 @@ import test from "node:test";
 const ci = await readFile(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
 const deploy = await readFile(new URL("../../.github/workflows/deploy.yml", import.meta.url), "utf8");
 const provisionAdmin = await readFile(new URL("../../.github/workflows/provision-admin.yml", import.meta.url), "utf8");
+const remediateMainAdmin = await readFile(new URL("../../.github/workflows/remediate-main-admin.yml", import.meta.url), "utf8");
 const owners = await readFile(new URL("../../.github/CODEOWNERS", import.meta.url), "utf8");
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
@@ -145,6 +146,25 @@ test("독립 Admin provisioning은 수동 production Environment 승인과 guard
   assert.match(provisionAdmin, /ADMIN_PROVISION_PASSWORD: \$\{\{ secrets\.ADMIN_PROVISION_PASSWORD \}\}/);
   assert.match(provisionAdmin, /ADMIN_PROVISION_OPERATION_ID: github-run-\$\{\{ github\.run_id \}\}/);
   assert.doesNotMatch(provisionAdmin, /123456|nkh92@hanlim\.com/);
+});
+
+test("메인 Admin 보안 복구는 별도 secret·production 승인·독립 Admin 확인을 강제한다", () => {
+  assert.match(remediateMainAdmin, /workflow_dispatch/);
+  assert.match(remediateMainAdmin, /environment:\s+name: production/);
+  assert.match(remediateMainAdmin, /npm run admin:check:remote/);
+  assert.match(remediateMainAdmin, /npm run admin:remediate-main:remote/);
+  assert.match(
+    remediateMainAdmin,
+    /MAIN_ADMIN_REMEDIATION_PASSWORD: \$\{\{ secrets\.MAIN_ADMIN_REMEDIATION_PASSWORD \}\}/
+  );
+  assert.match(
+    remediateMainAdmin,
+    /MAIN_ADMIN_REMEDIATION_OPERATION_ID: github-run-\$\{\{ github\.run_id \}\}/
+  );
+  assert.ok(
+    remediateMainAdmin.indexOf("npm run admin:check:remote")
+      < remediateMainAdmin.indexOf("npm run admin:remediate-main:remote")
+  );
 });
 
 test("CODEOWNERS는 migration, security, audit, workflow 변경을 지정한다", () => {

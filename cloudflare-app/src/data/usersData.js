@@ -5,7 +5,11 @@ import { createSystemAuditStatement } from "../domains/audit/index.js";
 import { actorUsername } from "../domains/identity/domain/actor.js";
 import { validateNewPassword } from "../domains/identity/domain/passwordPolicy.js";
 import { canTransitionUser, transitionFor } from "../domains/identity/domain/userState.js";
-import { createUserPermissionMutationPlan, createUserStatusMutationPlan } from "../domains/identity/infrastructure/userMutationPlans.js";
+import {
+  createUserPasswordResetMutationPlan,
+  createUserPermissionMutationPlan,
+  createUserStatusMutationPlan
+} from "../domains/identity/infrastructure/userMutationPlans.js";
 import { executeMutationBatch } from "../platform/d1/requestGateway.js";
 
 const USER_PERMISSION_COLUMNS = PERMISSION_KEYS.join(", ");
@@ -209,6 +213,98 @@ export async function updateUserPermissions(env, id, permissions, actor) {
   return changed(results[1])
     ? { ok: true }
     : { ok: false, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+}
+
+export async function resetUserPassword(env, id, temporaryPassword, actor) {
+  if (actor?.role !== "Admin") {
+    return { ok: false, message: "비밀번호 초기화는 시스템 관리자만 수행할 수 있습니다." };
+  }
+
+  const user = await getAppUser(env, id);
+  if (
+    !user
+    || !["approved", "disabled"].includes(user.status)
+    || Number(user.security_review_required || 0) === 1
+  ) {
+    return { ok: false, message: "비밀번호를 초기화할 사용자를 찾을 수 없습니다." };
+  }
+  if (Number(user.id) === Number(actor.userId) || user.username === actor.username) {
+    return { ok: false, message: "현재 로그인한 계정은 비밀번호 변경 화면을 이용하세요." };
+  }
+
+  const passwordValidation = validateNewPassword(temporaryPassword, { label: "임시 비밀번호" });
+  if (!passwordValidation.ok) return passwordValidation;
+
+  const passwordRecord = await createPasswordRecord(temporaryPassword);
+  const currentSessionEpoch = Number(user.session_epoch || 0);
+  const nextSessionEpoch = currentSessionEpoch + 1;
+  const guardSql = `
+    FROM app_users
+    WHERE id = ?
+      AND username = ?
+      AND status IN ('approved', 'disabled')
+      AND security_review_required = 0
+      AND session_epoch = ?
+  `;
+  const guardBinds = [user.id, user.username, currentSessionEpoch];
+  const audit = createSystemAuditStatement(env, {
+    entityType: "user",
+    entityId: user.id,
+    entityReference: user.username,
+    action: "password_reset",
+    actor,
+    summary: "사용자 비밀번호 초기화",
+    details: {
+      before: {
+        status: user.status,
+        role: user.role,
+        mustChangePassword: Number(user.must_change_password || 0) === 1,
+        sessionEpoch: currentSessionEpoch
+      },
+      after: {
+        status: user.status,
+        role: user.role,
+        mustChangePassword: true,
+        sessionEpoch: nextSessionEpoch
+      }
+    }
+  }, { guardSql, guardBinds });
+  const clearThrottle = env.DB.prepare(`
+    DELETE FROM login_throttle
+    WHERE username = ?
+       OR substr(username, 1, length(?) + 1) = ? || '|'
+  `).bind(user.username, user.username, user.username);
+  const update = env.DB.prepare(`
+    UPDATE app_users
+    SET password_salt = ?,
+        password_hash = ?,
+        must_change_password = 1,
+        session_epoch = ?,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+      AND username = ?
+      AND status IN ('approved', 'disabled')
+      AND security_review_required = 0
+      AND session_epoch = ?
+  `).bind(
+    passwordRecord.salt,
+    passwordRecord.hash,
+    nextSessionEpoch,
+    user.id,
+    user.username,
+    currentSessionEpoch
+  );
+  const plan = createUserPasswordResetMutationPlan(
+    audit,
+    clearThrottle,
+    update,
+    `app_users:${user.id}:password:${currentSessionEpoch}`
+  );
+  const results = await executeMutationBatch(env, plan);
+
+  return changed(results[2])
+    ? { ok: true }
+    : { ok: false, message: "사용자 인증 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
 }
 
 async function transitionUserStatus(env, id, actor, spec) {

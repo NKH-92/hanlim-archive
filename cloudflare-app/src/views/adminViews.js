@@ -129,36 +129,65 @@ export function adminSettingsPage({ session, users }) {
   const rejected = users.filter((u) => u.status === "rejected");
   return page("사용자 관리", `
     <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리합니다.</p></div><a class="button secondary" href="/admin">관리 설정</a></section>
-    <section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${pending.length ? userRequestTable(pending) : emptyState("대기 중인 가입 요청이 없습니다.")}</section>
+    <section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${pending.length ? userRequestTable(pending, session) : emptyState("대기 중인 가입 요청이 없습니다.")}</section>
     <section class="two-col">
-      <article class="panel">${sectionHeader("승인된 사용자", `${approved.length}명`)}${approved.length ? userRequestTable(approved) : emptyState("승인된 사용자가 없습니다.")}</article>
-      <article class="panel">${sectionHeader("사용중지 사용자", `${disabled.length}명`)}${disabled.length ? userRequestTable(disabled) : emptyState("사용중지된 사용자가 없습니다.")}</article>
-      <article class="panel">${sectionHeader("반려된 요청", `${rejected.length}건`)}${rejected.length ? userRequestTable(rejected) : emptyState("반려된 요청이 없습니다.")}</article>
+      <article class="panel">${sectionHeader("승인된 사용자", `${approved.length}명`)}${approved.length ? userRequestTable(approved, session) : emptyState("승인된 사용자가 없습니다.")}</article>
+      <article class="panel">${sectionHeader("사용중지 사용자", `${disabled.length}명`)}${disabled.length ? userRequestTable(disabled, session) : emptyState("사용중지된 사용자가 없습니다.")}</article>
+      <article class="panel">${sectionHeader("반려된 요청", `${rejected.length}건`)}${rejected.length ? userRequestTable(rejected, session) : emptyState("반려된 요청이 없습니다.")}</article>
     </section>
   `, session);
 }
 
-function userRequestTable(users) {
+function userRequestTable(users, session) {
   return `
     <div class="table-wrap"><table class="doc-table">
       <caption class="sr-only">사용자 목록</caption>
       <thead><tr><th>아이디</th><th>이름</th><th>상태</th><th>요청일</th><th>처리</th></tr></thead>
-      <tbody>${users.map((user) => `<tr><td data-label="아이디">${escapeHtml(user.username)}</td><td data-label="이름">${escapeHtml(user.display_name)}</td><td data-label="상태">${userStatus(user)}</td><td data-label="요청일">${escapeHtml(user.requested_at || "-")}</td><td data-label="처리">${userActions(user)}</td></tr>`).join("")}</tbody>
+      <tbody>${users.map((user) => `<tr><td data-label="아이디">${escapeHtml(user.username)}</td><td data-label="이름">${escapeHtml(user.display_name)}</td><td data-label="상태">${userStatus(user)}</td><td data-label="요청일">${escapeHtml(user.requested_at || "-")}</td><td data-label="처리">${userActions(user, session)}</td></tr>`).join("")}</tbody>
     </table></div>
   `;
 }
 
-function userActions(user) {
+function userActions(user, session) {
   if (Number(user.security_review_required || 0) === 1) {
     return `<span class="muted">보안 검토 대상 · 일반 재승인 불가</span>`;
   }
-  if (user.role === "Admin") return `<span class="muted">관리자 계정</span>`;
+  const canResetPassword = session?.role === "Admin"
+    && Number(user.id) !== Number(session.userId)
+    && user.username !== session.username
+    && ["approved", "disabled"].includes(user.status);
+  const passwordReset = canResetPassword
+    ? `<a class="button secondary sm" href="/admin/users/${user.id}/reset-password">비밀번호 초기화</a>`
+    : "";
+  if (user.role === "Admin") {
+    return passwordReset || `<span class="muted">현재 관리자 계정</span>`;
+  }
   const permissions = `<a class="button secondary sm" href="/admin/users/${user.id}/permissions">권한</a>`;
   const target = `${user.display_name} (${user.username})`;
-  if (user.status === "approved") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/disable" data-confirm="${escapeHtml(target)} 계정의 로그인을 중지합니다. 계속할까요?"><button type="submit" class="danger-button sm">사용중지</button></form></div>`;
-  if (user.status === "disabled") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/enable" data-confirm="${escapeHtml(target)} 계정을 다시 사용할 수 있게 합니다. 계속할까요?"><button type="submit" class="primary sm">다시 사용</button></form></div>`;
+  if (user.status === "approved") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/disable" data-confirm="${escapeHtml(target)} 계정의 로그인을 중지합니다. 계속할까요?"><button type="submit" class="danger-button sm">사용중지</button></form></div>`;
+  if (user.status === "disabled") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/enable" data-confirm="${escapeHtml(target)} 계정을 다시 사용할 수 있게 합니다. 계속할까요?"><button type="submit" class="primary sm">다시 사용</button></form></div>`;
   if (user.status === "rejected") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 계정을 재승인합니다. 저장된 권한도 함께 확인하세요."><button type="submit" class="primary sm">재승인</button></form></div>`;
   return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 가입 요청을 승인합니다. 승인 후 권한을 설정하세요."><button type="submit" class="primary sm">승인</button></form><form method="post" action="/admin/users/${user.id}/reject" data-confirm="${escapeHtml(target)} 가입 요청을 반려합니다. 계속할까요?"><button type="submit" class="danger-button sm">반려</button></form></div>`;
+}
+
+export function userPasswordResetPage({ session, user, error = "", minLength = PASSWORD_POLICY.minLength }) {
+  return page("비밀번호 초기화", `
+    <section class="page-head">
+      <div><h1>비밀번호 초기화</h1><p class="muted">${escapeHtml(user.display_name)} (${escapeHtml(user.username)})</p></div>
+      <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
+    </section>
+    <section class="panel narrow">
+      ${alertWarning("초기화 즉시 이 계정의 기존 로그인 세션이 모두 종료됩니다. 사용자는 임시 비밀번호로 로그인한 뒤 새 비밀번호로 변경해야만 시스템을 이용할 수 있습니다.")}
+      ${error ? alertDanger(error) : ""}
+      <form method="post" action="/admin/users/${user.id}/reset-password" class="stack">
+        <label>임시 비밀번호<input type="password" name="temporaryPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
+        <label>임시 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
+        <label class="checkbox"><input type="checkbox" name="confirmReset" value="1" required><span>기존 세션 종료와 다음 로그인 시 비밀번호 변경 강제를 확인했습니다.</span></label>
+        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 설정하고 사용자에게 별도 보안 채널로 전달하세요. 감사로그에는 비밀번호 값이나 해시를 기록하지 않습니다.</p>
+        <button type="submit" class="danger-button">비밀번호 초기화</button>
+      </form>
+    </section>
+  `, session);
 }
 
 function userStatus(user) {
