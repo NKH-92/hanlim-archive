@@ -1,6 +1,3 @@
-# Web AI 검증 산출물은 원본 ZIP·patch·log를 포함한 생성 증거다. 일반 코드 diff와 whitespace gate에서 분리한다.
-cloudflare-app/reports/web-ai-verify/** -diff linguist-generated=true
-
 # Browser assets are generated with LF and checked byte-for-byte in CI.
 cloudflare-app/public/assets/*.css text eol=lf
 cloudflare-app/public/assets/*.js text eol=lf

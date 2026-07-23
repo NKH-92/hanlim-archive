@@ -11,6 +11,7 @@ cloudflare-app/.dev.vars
 cloudflare-app/release-evidence/
 cloudflare-app/release-backup/
 cloudflare-app/backup-artifact/
+cloudflare-app/reports/
 hl-archive-github-deploy.txt
 .DS_Store
 Thumbs.db

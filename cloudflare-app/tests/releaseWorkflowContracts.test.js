@@ -23,6 +23,13 @@ test("PR required CI는 verify, audit, Worker dry-run과 증빙 보존을 강제
 });
 
 test("production deploy는 승인, 백업, migration, deploy, smoke, rollback 순서를 고정한다", () => {
+  assert.match(
+    deploy,
+    /push:\s+branches: \[main\]\s+paths:\s+- "cloudflare-app\/\*\*"\s+- "\.github\/workflows\/deploy\.yml"/
+  );
+  assert.match(deploy, /workflow_dispatch: \{\}/);
+  assert.doesNotMatch(deploy.slice(0, deploy.indexOf("permissions:")), /docs\/\*\*|README\.md/);
+
   const markers = [
     "name: production",
     "Enforce production release from main",
