@@ -160,8 +160,15 @@ test("release smoke provisioning accepts Wrangler progress text before JSON", as
           return {
             status: 0,
             stdout: `├ Checking if file needs uploading\n${JSON.stringify([{
-              results: [{ provisioned: 2 }]
+              results: [{ "Total queries executed": 2, "Rows written": 2 }]
             }])}`
+          };
+        }
+        const sql = args[args.indexOf("--command") + 1] || "";
+        if (sql.includes("COUNT(*) AS provisioned")) {
+          return {
+            status: 0,
+            stdout: JSON.stringify([{ results: [{ provisioned: 2 }] }])
           };
         }
         return {
@@ -172,7 +179,7 @@ test("release smoke provisioning accepts Wrangler progress text before JSON", as
     });
     assert.equal(result.ok, true);
     assert.equal(result.provisioned, 2);
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
     const credentials = JSON.parse(await readFile(credentialPath, "utf8"));
     assert.match(credentials.reader.username, /^release-reader-/);
     assert.ok(credentials.reader.password.length >= 6);
