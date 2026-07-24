@@ -21,7 +21,7 @@ import { handleSaveSet, handleSetRoute, handleSets, renderNewSetForm } from "./s
 
 export async function routeMasterRequest(request, env, session, url, path) {
   if (path === "/sets" && request.method === "GET") {
-    return handleSets(env, session);
+    return handleSets(request, env, session);
   }
 
   if (path === "/sets/new" && request.method === "GET") {

@@ -1,5 +1,6 @@
 import {
   addDocumentsToSet,
+  cloneDocumentSet,
   deleteDocumentSet,
   getDocumentSet,
   getDocumentSetDocuments,
@@ -14,16 +15,22 @@ import { getRackSummaries } from "../domains/racks/index.js";
 import { searchDocuments } from "../domains/search/index.js";
 import { buildDocumentSetCsv } from "../documentCsv.js";
 import { errorPage, notFoundPage } from "../views/authViews.js";
-import { setDetailsPage, setFormPage, setsPage } from "../views/setViews.js";
+import { setClonePage, setDetailsPage, setFormPage, setsPage } from "../views/setViews.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { redirect } from "../platform/http/responses.js";
 import { clean } from "../shared/text/normalize.js";
 import { requireManageSets } from "./permissionGuards.js";
 import { csvDownloadResponse } from "./responseHelpers.js";
 
-export async function handleSets(env, session) {
-  const sets = await getDocumentSets(env);
-  return setsPage({ session, sets });
+export async function handleSets(request, env, session) {
+  const params = new URL(request.url).searchParams;
+  const filters = {
+    q: clean(params.get("q")),
+    status: clean(params.get("status")) || "all",
+    sort: clean(params.get("sort")) || "updated"
+  };
+  const sets = await getDocumentSets(env, filters);
+  return setsPage({ session, sets, filters });
 }
 
 export function renderNewSetForm(session) {
@@ -43,9 +50,13 @@ async function renderSetDetails(env, session, id, options = {}) {
   ]);
 
   let addCandidates = null;
-  if (hasPermission(session, PERMISSIONS.MANAGE_SETS) && options.addQuery && !Number(set.is_locked)) {
+  if (
+    hasPermission(session, PERMISSIONS.MANAGE_SETS)
+    && options.addQuery
+    && (!Number(set.is_locked) || options.preserveAddSelection)
+  ) {
     const memberIds = new Set(documents.map((document) => document.id));
-    const results = await searchDocuments(env, options.addQuery, 20);
+    const results = await searchDocuments(env, options.addQuery, 200);
     addCandidates = results.map((document) => ({ ...document, inSet: memberIds.has(document.id) }));
   }
 
@@ -57,6 +68,8 @@ async function renderSetDetails(env, session, id, options = {}) {
     logs,
     addQuery: options.addQuery || "",
     addCandidates,
+    selectedCandidateIds: options.selectedCandidateIds || [],
+    preserveAddSelection: Boolean(options.preserveAddSelection),
     addResult: options.addResult || null,
     error: options.error || ""
   });
@@ -119,6 +132,33 @@ export async function handleSetRoute(request, env, session, routeInfo) {
     return requireManageSets(session) ?? handleSaveSet(request, env, session, id);
   }
 
+  if (request.method === "GET" && action === "clone") {
+    const denied = requireManageSets(session);
+    if (denied) return denied;
+    const set = await getDocumentSet(env, id);
+    if (!set) return notFoundPage(session);
+    const documents = await getDocumentSetDocuments(env, id);
+    return setClonePage({ session, set, documentCount: documents.length });
+  }
+
+  if (request.method === "POST" && action === "clone") {
+    const denied = requireManageSets(session);
+    if (denied) return denied;
+    const set = await getDocumentSet(env, id);
+    if (!set) return notFoundPage(session);
+    const form = await request.formData();
+    const values = {
+      name: clean(form.get("name")),
+      expectedRowVersion: Number(form.get("expectedRowVersion"))
+    };
+    const result = await cloneDocumentSet(env, id, values, session);
+    if (!result.ok) {
+      const documents = await getDocumentSetDocuments(env, id);
+      return setClonePage({ session, set, documentCount: documents.length, values, error: result.message });
+    }
+    return redirect(`/sets/${result.id}?toast=saved`);
+  }
+
   if (request.method === "POST" && action === "delete") {
     const denied = requireManageSets(session);
     if (denied) {
@@ -172,33 +212,48 @@ export async function handleSetRoute(request, env, session, routeInfo) {
 async function handleAddSetDocuments(request, env, session, setId) {
   const form = await request.formData();
   const returnTo = safeWorkspaceReturn(form.get("returnTo"));
-  const set = await getDocumentSet(env, setId);
-  if (!set) {
-    return notFoundPage(session);
-  }
-  if (Number(set.is_locked) === 1) {
-    if (returnTo) return redirect(withToast(returnTo, "error"));
-    return renderSetDetails(env, session, setId, { error: "잠긴 세트는 문서를 추가할 수 없습니다." });
-  }
-
-  const documentId = Number(form.get("documentId"));
-  const expectedRowVersion = Number(form.get("expectedRowVersion"));
+  const addQuery = clean(form.get("add-q"));
   const selectedIds = [...new Set(
     form.getAll("documentIds")
       .flatMap((value) => clean(value).split(","))
       .map(Number)
       .filter((id) => Number.isInteger(id) && id > 0)
   )];
+  const set = await getDocumentSet(env, setId);
+  if (!set) {
+    return notFoundPage(session);
+  }
+
+  if (Number(set.is_locked) === 1) {
+    if (returnTo) return redirect(workspaceErrorReturn(returnTo, selectedIds));
+    return renderSetDetails(env, session, setId, {
+      addQuery,
+      selectedCandidateIds: selectedIds,
+      preserveAddSelection: Boolean(addQuery || selectedIds.length),
+      error: "세트가 잠겨 문서를 추가하지 못했습니다. 검색 조건과 선택 문서는 그대로 유지했습니다."
+    });
+  }
+
+  const documentId = Number(form.get("documentId"));
+  const expectedRowVersion = Number(form.get("expectedRowVersion"));
 
   if (selectedIds.length) {
     if (selectedIds.length > 200) {
-      if (returnTo) return redirect(withToast(returnTo, "error"));
-      return renderSetDetails(env, session, setId, { error: "일괄 추가는 한 번에 200건 이하만 선택하세요." });
+      if (returnTo) return redirect(workspaceErrorReturn(returnTo, selectedIds));
+      return renderSetDetails(env, session, setId, {
+        addQuery,
+        selectedCandidateIds: selectedIds.slice(0, 200),
+        error: "일괄 추가는 한 번에 200건 이하만 선택하세요."
+      });
     }
     const result = await addDocumentsToSet(env, setId, selectedIds, session, expectedRowVersion);
     if (result.message) {
-      if (returnTo) return redirect(withToast(returnTo, "error"));
-      return renderSetDetails(env, session, setId, { error: result.message });
+      if (returnTo) return redirect(workspaceErrorReturn(returnTo, selectedIds));
+      return renderSetDetails(env, session, setId, {
+        addQuery,
+        selectedCandidateIds: selectedIds,
+        error: result.message
+      });
     }
     if (returnTo) return redirect(withToast(returnTo, "saved"));
     return renderSetDetails(env, session, setId, { addResult: { added: result.added, missing: [] } });
@@ -248,4 +303,11 @@ function withToast(path, toast) {
   const url = new URL(path, "https://archive.local");
   url.searchParams.set("toast", toast);
   return `${url.pathname}${url.search}`;
+}
+
+function workspaceErrorReturn(path, selectedIds) {
+  const url = new URL(path, "https://archive.local");
+  const ids = selectedIds.slice(0, 200);
+  if (ids.length) url.searchParams.set("selected", ids.join(","));
+  return withToast(`${url.pathname}${url.search}`, "error");
 }

@@ -7,6 +7,7 @@ export function createSetMutationPlan(action, statements, guard = "set-unlocked"
     delete: [["set.log.delete", false], ["set.items.delete", false], ["set.delete", true]],
     add: [["set.log.add", false], ["set.touch.add", true], ["set.items.add", true]],
     remove: [["set.log.remove", false], ["set.touch.remove", true], ["set.item.remove", true]],
+    clone: [["set.clone.insert", true], ["set.clone.items", false], ["set.clone.log", true], ["system.audit.set-clone", true]],
     lock: [["set.log.lock", false], ["system.audit.set-lock", false], ["set.lock.update", true]],
     unlock: [["set.log.unlock", false], ["system.audit.set-unlock", false], ["set.lock.update", true]]
   };

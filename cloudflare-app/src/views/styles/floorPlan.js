@@ -13,6 +13,7 @@ export function floorPlanStyles() {
 
     .floor-plan-shell { display: grid; gap: var(--sp-2); }
     .floor-plan-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); color: var(--gray-500); font-size: 12.5px; }
+    .floor-rack-search { flex: 1 1 260px; max-width: 420px; }
     .floor-plan-page-head p { max-width: 720px; margin: var(--sp-1) 0 0; color: var(--gray-500); font-size: 13px; }
     .archive-floor-plan-page { overflow: hidden; }
     .floor-plan-scroll { width: 100%; overflow-x: auto; padding-bottom: var(--sp-1); scrollbar-gutter: stable; }
@@ -40,6 +41,7 @@ export function floorPlanStyles() {
     .floor-rack.is-hit, .floor-rack.is-single.is-hit { background: var(--primary); color: var(--surface); box-shadow: 0 0 0 2px var(--ring); z-index: 1; }
     .floor-rack.is-hit .rack-face-a { border-right-color: rgba(255, 255, 255, .6); }
     .floor-rack.is-hit:hover { background: var(--primary-strong); }
+    .floor-rack.is-selected { z-index: 3; background: var(--primary-soft); box-shadow: 0 0 0 3px var(--ring), inset 0 0 0 1px var(--primary); }
     .rack-hit-pin { position: absolute; left: 50%; bottom: calc(100% + var(--sp-2)); z-index: 6; transform: translateX(-50%); padding: var(--sp-1) var(--sp-2); border-radius: 999px; background: var(--action); color: var(--action-ink); font-size: 10px; font-weight: 800; line-height: 1; white-space: nowrap; box-shadow: var(--shadow-1); }
 
     /* 구역 확대 도면(문서 상세): 전체 도면을 스케일·이동해 한 구역만 채운다. */
@@ -62,5 +64,12 @@ export function floorPlanStyles() {
     .zone-overview summary { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) 0; cursor: pointer; }
     .zone-rack-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); padding: 0 0 var(--sp-3); }
     .zone-rack-links a { padding: var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+    .zone-rack-links a.is-selected { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+    .floor-rack-inspector { position: sticky; top: var(--sp-4); display: grid; gap: var(--sp-3); margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--line); }
+    .floor-rack-inspector-close { display: none; justify-self: end; }
+    .floor-rack-facts { display: grid; gap: var(--sp-2); margin: 0; }
+    .floor-rack-facts div { display: flex; justify-content: space-between; gap: var(--sp-3); padding-bottom: var(--sp-2); border-bottom: 1px solid var(--gray-100); }
+    .floor-rack-facts dt { color: var(--gray-500); font-size: 12px; }
+    .floor-rack-facts dd { margin: 0; font-weight: 700; }
 `;
 }

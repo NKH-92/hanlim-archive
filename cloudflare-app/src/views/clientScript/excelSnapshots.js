@@ -85,7 +85,7 @@ export function excelSnapshotScript() {
 
       function excelMeta(workbook) {
         var sheet = workbook.getWorksheet('_시스템정보');
-        if (!sheet) return { hasSystemInfo: false, baseVersion: 0, schemaVersion: 0, currentSnapshotId: 0, exportManifestId: '', canonicalExportHash: '' };
+        if (!sheet) return { hasSystemInfo: false, baseVersion: 0, schemaVersion: 0, currentSnapshotId: 0, exportManifestId: '', canonicalExportHash: '', exportedAt: '' };
         var values = {};
         sheet.eachRow(function (row) { values[excelCellText(row.getCell(1))] = excelCellText(row.getCell(2)); });
         return {
@@ -94,7 +94,8 @@ export function excelSnapshotScript() {
           schemaVersion: Number(values.schemaVersion || 0),
           currentSnapshotId: Number(values.currentSnapshotId || 0),
           exportManifestId: values.exportManifestId || values.sourceExportId || '',
-          canonicalExportHash: values.canonicalExportHash || ''
+          canonicalExportHash: values.canonicalExportHash || '',
+          exportedAt: values.exportedAt || ''
         };
       }
 
@@ -156,6 +157,7 @@ export function excelSnapshotScript() {
           currentSnapshotId: meta.currentSnapshotId,
           exportManifestId: meta.exportManifestId,
           canonicalExportHash: meta.canonicalExportHash,
+          exportedAt: meta.exportedAt,
           hasRowKeys: originalKeyCount === rows.length
         };
       }
@@ -164,7 +166,18 @@ export function excelSnapshotScript() {
         var node = document.querySelector('[data-excel-file-summary]');
         if (!node) return;
         node.hidden = false;
-        node.textContent = file.name + ' · ' + parsed.rows.length.toLocaleString('ko-KR') + '건' + (parsed.mode === 'managed' ? ' · 대장 버전 ' + parsed.baseVersion : ' · bootstrap(메타데이터 없음)');
+        var size = file.size >= 1048576 ? (file.size / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(file.size / 1024)) + 'KB';
+        node.textContent = file.name + ' · ' + size + ' · ' + parsed.rows.length.toLocaleString('ko-KR') + '행' + (parsed.mode === 'managed' ? ' · 기준 버전 ' + parsed.baseVersion : ' · bootstrap(메타데이터 없음)');
+        var root = document.querySelector('[data-excel-snapshot]');
+        var currentVersion = Number(root && root.getAttribute('data-current-version') || 0);
+        var base = document.querySelector('[data-excel-base-version]');
+        var latest = document.querySelector('[data-excel-latest]');
+        var exported = document.querySelector('[data-excel-exported-at]');
+        var stale = document.querySelector('[data-excel-stale-warning]');
+        if (base) base.textContent = parsed.baseVersion ? 'V' + parsed.baseVersion : '메타데이터 없음';
+        if (exported) exported.textContent = parsed.exportedAt || '기록 없음';
+        if (latest) latest.textContent = parsed.baseVersion && parsed.baseVersion === currentVersion ? '현재 버전과 일치' : parsed.baseVersion ? '현재 버전과 불일치' : '서버 검증 필요';
+        if (stale) stale.hidden = !(parsed.baseVersion && currentVersion && parsed.baseVersion < currentVersion);
       }
 
       function excelProgress(done, total, message) {

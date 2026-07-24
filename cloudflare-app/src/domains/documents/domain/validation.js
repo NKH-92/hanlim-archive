@@ -29,10 +29,10 @@ export function collectDocumentFieldErrors(values = {}) {
   else if (revisionNumber.length > DOCUMENT_FIELD_LIMITS.revisionNumber) errors.revisionNumber = `개정번호는 ${DOCUMENT_FIELD_LIMITS.revisionNumber}자 이하로 입력하세요.`;
   if (!documentName) errors.documentName = "문서명을 입력하세요.";
   else if (documentName.length > DOCUMENT_FIELD_LIMITS.documentName) errors.documentName = `문서명은 ${DOCUMENT_FIELD_LIMITS.documentName}자 이하로 입력하세요.`;
-  if (!revisionDate) errors.revisionDate = "제/개정일을 입력하세요.";
-  else if (!isValidIsoDate(revisionDate)) errors.revisionDate = "제/개정일은 YYYY-MM-DD 형식의 유효한 날짜여야 합니다.";
-  if (!disposalDueYearText) errors.disposalDueYear = "폐기 예정 년도를 입력하세요.";
-  else if (!validYear(disposalDueYearText)) errors.disposalDueYear = "폐기 예정 년도는 1900년부터 9999년 사이의 정수여야 합니다.";
+  if (!revisionDate) errors.revisionDate = "제·개정일을 입력하세요.";
+  else if (!isValidIsoDate(revisionDate)) errors.revisionDate = "제·개정일은 YYYY-MM-DD 형식의 유효한 날짜여야 합니다.";
+  if (!disposalDueYearText) errors.disposalDueYear = "폐기 예정 연도를 입력하세요.";
+  else if (!validYear(disposalDueYearText)) errors.disposalDueYear = "폐기 예정 연도는 1900년부터 9999년 사이의 정수여야 합니다.";
   if (note.length > DOCUMENT_FIELD_LIMITS.note) errors.note = `비고는 ${DOCUMENT_FIELD_LIMITS.note}자 이하로 입력하세요.`;
   if (!positiveInteger(values.categoryId)) errors.categoryId = "대분류를 선택하세요.";
   if (!positiveInteger(values.rackSlotId)) errors.rackSlotId = "보관 위치를 선택하세요.";
@@ -43,9 +43,9 @@ export function collectDocumentFieldErrors(values = {}) {
 export function validateDocumentRecordFields(values = {}, { required = false } = {}) {
   const revisionDate = clean(values.revisionDate);
   const disposalDueYearText = clean(values.disposalDueYear);
-  if (required && (!revisionDate || !disposalDueYearText)) return "제/개정일과 폐기 예정 년도는 필수입니다.";
-  if (revisionDate && !isValidIsoDate(revisionDate)) return "제/개정일은 YYYY-MM-DD 형식의 유효한 날짜여야 합니다.";
-  if (disposalDueYearText && !validYear(disposalDueYearText)) return "폐기 예정 년도는 1900년부터 9999년 사이의 정수여야 합니다.";
+  if (required && (!revisionDate || !disposalDueYearText)) return "제·개정일과 폐기 예정 연도는 필수입니다.";
+  if (revisionDate && !isValidIsoDate(revisionDate)) return "제·개정일은 YYYY-MM-DD 형식의 유효한 날짜여야 합니다.";
+  if (disposalDueYearText && !validYear(disposalDueYearText)) return "폐기 예정 연도는 1900년부터 9999년 사이의 정수여야 합니다.";
   return "";
 }
 

@@ -1,6 +1,7 @@
 // 문서고 도면(플로어 플랜)과 랙 지도 렌더링.
 
 import { readBoolean } from "../shared/coercion.js";
+import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { escapeHtml } from "../ui/html/escape.js";
 import { page } from "./layout.js";
 
@@ -24,7 +25,7 @@ function floorRackMarkup(rack, { hit = false, hitFace = "", zoneNumber = 0, inte
     : `${rack.code} · 양면 (좌 ${rack.rackNumber}-1: 1열 왼쪽 시작 / 우 ${rack.rackNumber}-2: 1열 오른쪽 시작)`;
   const active = hit || Boolean(hitFace);
   const content = `${faces}${active ? `<span class="rack-hit-pin" aria-hidden="true">현재</span>` : ""}<span class="rack-num">${escapeHtml(badgeLabel)}</span>`;
-  const common = `class="${classes.join(" ")}"${faceAttr} style="--rack-left:${rack.leftPct}%;--rack-width:${rack.widthPct}%;" data-rack-code="${escapeHtml(rack.code)}" data-zone="${escapeHtml(String(zoneNumber))}" title="${escapeHtml(title)}"`;
+  const common = `class="${classes.join(" ")}"${faceAttr} style="--rack-left:${rack.leftPct}%;--rack-width:${rack.widthPct}%;" data-rack-select data-rack-id="${Number(rack.id)}" data-rack-code="${escapeHtml(rack.code)}" data-rack-type="${rack.isSingleSided ? "단면" : "양면"}" data-rack-faces="${rack.isSingleSided ? 1 : 2}" data-rack-columns="${Number(rack.columnCount || 0)}" data-rack-shelves="${Number(rack.shelfCount || 0)}" data-rack-documents="${Number(rack.documentCount || 0)}" data-zone="${escapeHtml(String(zoneNumber))}" title="${escapeHtml(title)}"`;
   if (!interactive) return `<span ${common} aria-hidden="true">${content}</span>`;
   return `<a ${common} href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" aria-label="${escapeHtml(title)}">${content}</a>`;
 }
@@ -33,7 +34,10 @@ export function floorPlanView(regions, hits = new Set()) {
   const activeRackCount = regions.reduce((sum, region) => sum + region.racks.filter((rack) => hits.has(rack.code)).length, 0);
   return `
     <div class="floor-plan-shell">
-      <div class="floor-plan-tools"><span>전체 배치를 먼저 보고, 필요한 경우 확대해 좌우로 이동하세요.</span><button type="button" class="button secondary sm" data-floor-plan-zoom aria-pressed="false">도면 확대</button></div>
+      <div class="floor-plan-tools">
+        <label class="floor-rack-search"><span class="sr-only">구역·랙 검색</span><input type="search" data-floor-rack-search placeholder="구역 또는 랙 코드 검색"></label>
+        <div class="button-group"><button type="button" class="button secondary sm" data-floor-plan-fit>화면 맞춤</button><button type="button" class="button secondary sm" data-floor-plan-zoom aria-pressed="false">도면 확대</button></div>
+      </div>
       <div class="floor-plan-scroll" data-floor-plan-scroll tabindex="0" aria-label="문서고 랙 도면. 확대 보기에서는 좌우로 스크롤하여 모든 랙을 확인할 수 있습니다.">
         <div class="floor-plan-media">
           <img src="/images/Archive.png" alt="한림 문서고 도면">
@@ -117,6 +121,7 @@ export function archiveMap(racks, hits) {
 }
 
 export function floorPlanPage({ session, floorPlan = [] }) {
+  const canManageMasters = hasPermission(session, PERMISSIONS.MANAGE_MASTERS);
   const rackCount = floorPlan.reduce((sum, region) => sum + region.racks.length, 0);
   const zoneRows = floorPlan.map((region) => ({
     zoneNumber: Number(region.zoneNumber),
@@ -133,9 +138,8 @@ export function floorPlanPage({ session, floorPlan = [] }) {
       </div>
       <div class="button-group"><button type="button" class="button secondary" data-print><i class="fa-solid fa-print" aria-hidden="true"></i>도면 인쇄</button><a class="button action-button" href="/app"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>위치 검색</a></div>
     </section>
-    <section class="operation-hero floor-plan-hero" aria-label="문서고 운영 요약">
-      <div><p class="hero-kicker">Archive floor control</p><h2>현재 ${floorPlan.length}개 구역 · ${rackCount}개 랙을 운영 중입니다.</h2><p>선택한 랙에서 보관중 문서 목록으로 바로 이동할 수 있습니다.</p></div>
-      <div class="hero-stat"><strong>${rackCount}</strong><span>운영 랙</span></div>
+    <section class="panel floor-plan-summary" aria-label="문서고 운영 요약">
+      <div><strong>현재 ${floorPlan.length}개 구역 · ${rackCount}개 랙을 운영 중입니다.</strong><p>선택한 랙에서 보관 중인 문서 목록으로 바로 이동할 수 있습니다.</p></div>
     </section>
     <div class="floor-plan-layout">
       <section class="panel archive-floor-plan-page" aria-label="문서고 전체 도면">
@@ -143,17 +147,80 @@ export function floorPlanPage({ session, floorPlan = [] }) {
           ? floorPlanView(floorPlan)
           : `<div class="empty-state"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><p>표시할 랙 도면이 없습니다.</p></div>`}
       </section>
-      ${zoneRows.length ? `<aside class="panel" aria-labelledby="zone-overview-title"><div class="section-title"><h2 id="zone-overview-title">구역·랙 목록</h2><span class="count-badge">${rackCount}개 랙</span></div><div class="zone-overview">${floorPlan.map((region) => `<details><summary><span><strong>${escapeHtml(region.label)}</strong><small>${region.racks.reduce((sum, rack) => sum + Number(rack.documentCount || 0), 0).toLocaleString("ko-KR")}건</small></span><span>${region.racks.length}개 랙</span></summary><div class="zone-rack-links">${region.racks.map((rack) => `<a href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location"><span class="mono">${escapeHtml(rack.code)}</span><span>${Number(rack.documentCount || 0).toLocaleString("ko-KR")}건</span></a>`).join("")}</div></details>`).join("")}</div></aside>` : ""}
+      ${zoneRows.length ? `<aside class="panel floor-plan-side" aria-labelledby="zone-overview-title">
+        <div class="section-title"><h2 id="zone-overview-title">구역·랙 목록</h2><span class="count-badge">${rackCount}개 랙</span></div>
+        <div class="zone-overview">${floorPlan.map((region) => `<details><summary><span><strong>${escapeHtml(region.label)}</strong><small>${region.racks.reduce((sum, rack) => sum + Number(rack.documentCount || 0), 0).toLocaleString("ko-KR")}건</small></span><span>${region.racks.length}개 랙</span></summary><div class="zone-rack-links">${region.racks.map((rack) => `<a href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" data-rack-select data-rack-id="${Number(rack.id)}" data-rack-code="${escapeHtml(rack.code)}" data-rack-type="${rack.isSingleSided ? "단면" : "양면"}" data-rack-faces="${rack.isSingleSided ? 1 : 2}" data-rack-columns="${Number(rack.columnCount || 0)}" data-rack-shelves="${Number(rack.shelfCount || 0)}" data-rack-documents="${Number(rack.documentCount || 0)}" data-zone="${Number(region.zoneNumber)}"><span class="mono">${escapeHtml(rack.code)}</span><span>${Number(rack.documentCount || 0).toLocaleString("ko-KR")}건</span></a>`).join("")}</div></details>`).join("")}</div>
+        <section class="floor-rack-inspector" data-rack-inspector aria-live="polite" tabindex="-1">
+          <button type="button" class="icon-button floor-rack-inspector-close" data-rack-inspector-close aria-label="랙 정보 닫기"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+          <p class="muted" data-rack-inspector-empty>도면이나 목록에서 랙을 선택하세요.</p>
+          <div data-rack-inspector-content hidden>
+            <div class="section-title"><h2 data-rack-inspector-title>랙 정보</h2><span class="count-badge" data-rack-inspector-type></span></div>
+            <dl class="floor-rack-facts">
+              <div><dt>구조</dt><dd data-rack-inspector-structure>-</dd></div>
+              <div><dt>활성 문서</dt><dd data-rack-inspector-count>-</dd></div>
+            </dl>
+            <div class="button-group">
+              <a class="button" data-rack-inspector-documents href="/app">문서 보기</a>
+              ${canManageMasters ? `<a class="button secondary" data-rack-inspector-edit href="/racks">기준정보 편집</a>` : ""}
+            </div>
+          </div>
+        </section>
+      </aside>` : ""}
     </div>
     <script>
       (function () {
         var button = document.querySelector('[data-floor-plan-zoom]');
         var scroll = document.querySelector('[data-floor-plan-scroll]');
+        var fit = document.querySelector('[data-floor-plan-fit]');
+        var search = document.querySelector('[data-floor-rack-search]');
+        var inspector = document.querySelector('[data-rack-inspector]');
+        var lastRackTrigger = null;
+        var selectRack = function (link) {
+          if (!inspector) return;
+          lastRackTrigger = link;
+          var code = link.getAttribute('data-rack-code') || '';
+          var id = link.getAttribute('data-rack-id') || '';
+          inspector.classList.add('is-open');
+          inspector.querySelector('[data-rack-inspector-empty]').hidden = true;
+          inspector.querySelector('[data-rack-inspector-content]').hidden = false;
+          inspector.querySelector('[data-rack-inspector-title]').textContent = code;
+          inspector.querySelector('[data-rack-inspector-type]').textContent = link.getAttribute('data-rack-type') || '';
+          inspector.querySelector('[data-rack-inspector-structure]').textContent = (link.getAttribute('data-rack-faces') || '1') + '면 · ' + (link.getAttribute('data-rack-columns') || '0') + '열 · ' + (link.getAttribute('data-rack-shelves') || '0') + '단';
+          inspector.querySelector('[data-rack-inspector-count]').textContent = Number(link.getAttribute('data-rack-documents') || 0).toLocaleString('ko-KR') + '건';
+          inspector.querySelector('[data-rack-inspector-documents]').href = '/app?rack=' + encodeURIComponent(id) + '&status=active&sort=location';
+          var edit = inspector.querySelector('[data-rack-inspector-edit]');
+          if (edit) edit.href = '/racks/' + encodeURIComponent(id) + '/edit';
+          document.querySelectorAll('[data-rack-select]').forEach(function (item) { item.classList.toggle('is-selected', item.getAttribute('data-rack-id') === id); });
+          if (window.matchMedia('(max-width: 760px)').matches) inspector.focus();
+        };
+        document.querySelectorAll('[data-rack-select]').forEach(function (link) {
+          link.addEventListener('click', function (event) { event.preventDefault(); selectRack(link); });
+        });
         button?.addEventListener('click', function () {
           var expanded = scroll?.classList.toggle('is-zoomed') || false;
           button.setAttribute('aria-pressed', expanded ? 'true' : 'false');
           button.textContent = expanded ? '전체 보기' : '도면 확대';
           if (!expanded && scroll) scroll.scrollLeft = 0;
+        });
+        fit?.addEventListener('click', function () {
+          scroll?.classList.remove('is-zoomed');
+          if (scroll) scroll.scrollLeft = 0;
+          if (button) { button.setAttribute('aria-pressed', 'false'); button.textContent = '도면 확대'; }
+        });
+        search?.addEventListener('input', function () {
+          var query = search.value.trim().toLocaleLowerCase('ko-KR');
+          document.querySelectorAll('[data-rack-select]').forEach(function (item) {
+            var haystack = ((item.getAttribute('data-zone') || '') + '구역 ' + (item.getAttribute('data-rack-code') || '')).toLocaleLowerCase('ko-KR');
+            item.hidden = Boolean(query) && haystack.indexOf(query) === -1;
+          });
+        });
+        var closeInspector = function () {
+          inspector.classList.remove('is-open');
+          lastRackTrigger?.focus();
+        };
+        inspector?.querySelector('[data-rack-inspector-close]')?.addEventListener('click', closeInspector);
+        inspector?.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') { event.preventDefault(); closeInspector(); }
         });
       })();
     </script>

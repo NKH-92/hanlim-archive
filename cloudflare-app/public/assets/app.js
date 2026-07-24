@@ -494,7 +494,7 @@
 
       function excelMeta(workbook) {
         var sheet = workbook.getWorksheet('_시스템정보');
-        if (!sheet) return { hasSystemInfo: false, baseVersion: 0, schemaVersion: 0, currentSnapshotId: 0, exportManifestId: '', canonicalExportHash: '' };
+        if (!sheet) return { hasSystemInfo: false, baseVersion: 0, schemaVersion: 0, currentSnapshotId: 0, exportManifestId: '', canonicalExportHash: '', exportedAt: '' };
         var values = {};
         sheet.eachRow(function (row) { values[excelCellText(row.getCell(1))] = excelCellText(row.getCell(2)); });
         return {
@@ -503,7 +503,8 @@
           schemaVersion: Number(values.schemaVersion || 0),
           currentSnapshotId: Number(values.currentSnapshotId || 0),
           exportManifestId: values.exportManifestId || values.sourceExportId || '',
-          canonicalExportHash: values.canonicalExportHash || ''
+          canonicalExportHash: values.canonicalExportHash || '',
+          exportedAt: values.exportedAt || ''
         };
       }
 
@@ -656,6 +657,7 @@
           currentSnapshotId: meta.currentSnapshotId,
           exportManifestId: meta.exportManifestId,
           canonicalExportHash: meta.canonicalExportHash,
+          exportedAt: meta.exportedAt,
           hasRowKeys: originalKeyCount === rows.length
         };
       }
@@ -664,7 +666,18 @@
         var node = document.querySelector('[data-excel-file-summary]');
         if (!node) return;
         node.hidden = false;
-        node.textContent = file.name + ' · ' + parsed.rows.length.toLocaleString('ko-KR') + '건' + (parsed.mode === 'managed' ? ' · 대장 버전 ' + parsed.baseVersion : ' · bootstrap(메타데이터 없음)');
+        var size = file.size >= 1048576 ? (file.size / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(file.size / 1024)) + 'KB';
+        node.textContent = file.name + ' · ' + size + ' · ' + parsed.rows.length.toLocaleString('ko-KR') + '행' + (parsed.mode === 'managed' ? ' · 기준 버전 ' + parsed.baseVersion : ' · bootstrap(메타데이터 없음)');
+        var root = document.querySelector('[data-excel-snapshot]');
+        var currentVersion = Number(root && root.getAttribute('data-current-version') || 0);
+        var base = document.querySelector('[data-excel-base-version]');
+        var latest = document.querySelector('[data-excel-latest]');
+        var exported = document.querySelector('[data-excel-exported-at]');
+        var stale = document.querySelector('[data-excel-stale-warning]');
+        if (base) base.textContent = parsed.baseVersion ? 'V' + parsed.baseVersion : '메타데이터 없음';
+        if (exported) exported.textContent = parsed.exportedAt || '기록 없음';
+        if (latest) latest.textContent = parsed.baseVersion && parsed.baseVersion === currentVersion ? '현재 버전과 일치' : parsed.baseVersion ? '현재 버전과 불일치' : '서버 검증 필요';
+        if (stale) stale.hidden = !(parsed.baseVersion && currentVersion && parsed.baseVersion < currentVersion);
       }
 
       function excelProgress(done, total, message) {
@@ -1169,15 +1182,30 @@
         var currentCursor = '';
         var currentItems = [];
 
+        var replaceResults = function (html, preserveSelection) {
+          var selectedIds = preserveSelection
+            ? new Set(Array.from(document.querySelectorAll('[data-bulk-item]:checked')).map(function (item) { return item.value; }))
+            : new Set();
+          if (resultsBody) {
+            resultsBody.innerHTML = html;
+            if (selectedIds.size) {
+              resultsBody.querySelectorAll('[data-bulk-item]').forEach(function (item) {
+                item.checked = selectedIds.has(item.value);
+              });
+            }
+          }
+          syncBulk();
+        };
+
         var restoreInitial = function () {
           if (activeRequest) activeRequest.abort();
           currentCursor = ''; currentItems = [];
-          if (resultsBody) resultsBody.innerHTML = initialResults.body;
+          replaceResults(initialResults.body, false);
           if (resultsTitle) resultsTitle.textContent = initialResults.title;
           if (resultsCount) resultsCount.textContent = initialResults.count;
           if (searchLive) searchLive.textContent = '검색어를 입력하면 보관중 문서를 바로 찾습니다.';
           if (homeExtras) homeExtras.hidden = false;
-          if (viewerApp.classList.contains('is-home')) viewerApp.hidden = true;
+          if (viewerApp.classList.contains('is-home')) viewerApp.hidden = false;
         };
 
         var formValue = function (name) {
@@ -1193,6 +1221,17 @@
           });
           if (cursor) params.set('cursor', cursor);
           return params;
+        };
+
+        var syncWorkspaceReturnTo = function () {
+          var params = searchParams('');
+          params.delete('limit');
+          if (!viewerInput.value.trim()) params.delete('q');
+          var query = params.toString();
+          var returnTo = '/app' + (query ? '?' + query : '');
+          document.querySelectorAll('[data-workspace-return-to]').forEach(function (input) {
+            input.value = returnTo;
+          });
         };
 
         var resultRow = function (item, query) {
@@ -1231,7 +1270,7 @@
           if (payload.fallback) {
             html = '<div class="alert warning" role="status">검색 인덱스 점검 중입니다. 결과가 제한될 수 있습니다.</div>' + html;
           }
-          if (resultsBody) resultsBody.innerHTML = html;
+          replaceResults(html, append);
           if (resultsTitle) resultsTitle.textContent = '"' + query + '" 검색 결과';
           if (resultsCount) resultsCount.textContent = Number(payload.candidateCount || currentItems.length).toLocaleString('ko-KR') + '건';
           if (searchLive) searchLive.textContent = currentItems.length ? currentItems.length + '건을 표시했습니다.' : '검색 결과가 없습니다.';
@@ -1248,7 +1287,8 @@
 
         var renderError = function (message) {
           var params = searchParams('');
-          if (resultsBody) resultsBody.innerHTML = '<div class="alert danger" role="alert">' + escapeHtmlClient(message || '검색을 처리하지 못했습니다.') + '</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">검색 화면에서 계속</a></div>';
+          var html = '<div class="alert danger" role="alert">' + escapeHtmlClient(message || '검색을 처리하지 못했습니다.') + '</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">검색 화면에서 계속</a></div>';
+          replaceResults(html, false);
           if (resultsTitle) resultsTitle.textContent = '검색을 계속할 수 없습니다';
           if (resultsCount) resultsCount.textContent = '-';
           if (searchLive) searchLive.textContent = '검색 요청을 처리하지 못했습니다.';
@@ -1283,9 +1323,11 @@
 
         viewerInput.addEventListener('input', function () {
           clearTimeout(renderTimer);
+          syncWorkspaceReturnTo();
           if (!viewerInput.value.trim()) { restoreInitial(); return; }
           renderTimer = setTimeout(function () { requestSearch('', false); }, 180);
         });
+        viewerForm.addEventListener?.('change', syncWorkspaceReturnTo);
         resultsBody?.addEventListener?.('click', function (event) {
           var target = event.target instanceof Element ? event.target : null;
           if (target?.closest('[data-search-retry]')) { requestSearch('', false); return; }
@@ -1350,7 +1392,7 @@
         }
         var row = target?.closest('[data-document-row]');
         if (!row || target.closest('a, button, input, select, textarea, label')) return;
-        if (window.matchMedia?.('(min-width: 1181px)').matches && workspacePreview) {
+        if (window.matchMedia?.('(min-width: 1180px)').matches && workspacePreview) {
           fillPreview(row);
           return;
         }
@@ -1373,11 +1415,11 @@
         if (event.key === 'ArrowDown' && rows[index + 1]) {
           event.preventDefault();
           rows[index + 1].focus();
-          fillPreview(rows[index + 1]);
+          if (window.matchMedia?.('(min-width: 1180px)').matches) fillPreview(rows[index + 1]);
         } else if (event.key === 'ArrowUp' && rows[index - 1]) {
           event.preventDefault();
           rows[index - 1].focus();
-          fillPreview(rows[index - 1]);
+          if (window.matchMedia?.('(min-width: 1180px)').matches) fillPreview(rows[index - 1]);
         } else if (event.key === 'Enter' && row.dataset.documentUrl) {
           event.preventDefault();
           location.assign(row.dataset.documentUrl);

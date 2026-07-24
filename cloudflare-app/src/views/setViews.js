@@ -6,7 +6,7 @@ import { escapeHtml } from "../ui/html/escape.js";
 import { archiveMap } from "./floorPlanViews.js";
 import { alertDanger, alertWarning, emptyState, metric, page, sectionHeader, statusBadge, timeline, timelineItem } from "./layout.js";
 
-export function setsPage({ session, sets }) {
+export function setsPage({ session, sets, filters = {} }) {
   const canManage = hasPermission(session, PERMISSIONS.MANAGE_SETS);
   return page("준비 문서 세트", `
     <section class="page-head">
@@ -16,6 +16,25 @@ export function setsPage({ session, sets }) {
       </div>
     </section>
     <p class="muted">감사 준비문서 목록처럼 자주 찾는 문서 묶음을 저장해 두고 한눈에 관리합니다.</p>
+    <section class="panel">
+      <form method="get" action="/sets" class="filter-row set-list-filters">
+        <label class="search-input"><span>세트 검색</span><input type="search" name="q" value="${escapeHtml(filters.q || "")}" placeholder="세트 이름 또는 설명"></label>
+        <label><span>상태</span><select name="status">
+          ${setFilterOption("all", "전체", filters.status)}
+          ${setFilterOption("editable", "편집 가능", filters.status)}
+          ${setFilterOption("locked", "잠김", filters.status)}
+          ${setFilterOption("disposed", "폐기 포함", filters.status)}
+          ${setFilterOption("excluded", "제외 포함", filters.status)}
+        </select></label>
+        <label><span>정렬</span><select name="sort">
+          ${setFilterOption("updated", "최근 수정순", filters.sort)}
+          ${setFilterOption("created", "최근 생성순", filters.sort)}
+          ${setFilterOption("name", "이름순", filters.sort)}
+        </select></label>
+        <button type="submit" class="button">적용</button>
+        <a class="button secondary" href="/sets">초기화</a>
+      </form>
+    </section>
     ${sets.length ? `<section class="rack-grid">
       ${sets.map((set) => `
         <a class="panel rack-card" href="/sets/${set.id}">
@@ -44,7 +63,27 @@ export function setFormPage({ session, values = {}, action, title, error = "" })
   `, session);
 }
 
-export function setDetailsPage({ session, set, documents, racks, logs = [], addQuery = "", addCandidates = null, addResult = null, error = "", printedAt = new Date() }) {
+export function setClonePage({ session, set, documentCount = 0, values = {}, error = "" }) {
+  const suggestedName = values.name || `${set.name} 복사본`;
+  return page("준비 문서 세트 복제", `
+    <section class="page-head"><div><h1>준비 문서 세트 복제</h1><p class="muted">원본 구성원 ${Number(documentCount).toLocaleString("ko-KR")}건을 그대로 복사하고, 새 세트는 편집 가능한 상태로 만듭니다.</p></div></section>
+    <section class="panel narrow">
+      ${error ? alertDanger(error) : ""}
+      <dl class="detail-list">
+        <div><dt>원본 세트</dt><dd>${escapeHtml(set.name)}</dd></div>
+        <div><dt>원본 버전</dt><dd>${Number(set.row_version || 0)}</dd></div>
+        <div><dt>새 세트 상태</dt><dd>편집 가능</dd></div>
+      </dl>
+      <form method="post" action="/sets/${Number(set.id)}/clone" class="stack">
+        <input type="hidden" name="expectedRowVersion" value="${Number(values.expectedRowVersion || set.row_version || 0)}">
+        <label>새 세트 이름 <em>*</em><input name="name" value="${escapeHtml(suggestedName)}" maxlength="100" required></label>
+        <div class="button-group"><a class="button secondary" href="/sets/${Number(set.id)}">취소</a><button type="submit" class="primary">복제</button></div>
+      </form>
+    </section>
+  `, session);
+}
+
+export function setDetailsPage({ session, set, documents, racks, logs = [], addQuery = "", addCandidates = null, selectedCandidateIds = [], preserveAddSelection = false, addResult = null, error = "", printedAt = new Date() }) {
   const canManage = hasPermission(session, PERMISSIONS.MANAGE_SETS);
   const isLocked = Number(set.is_locked) === 1;
   const disposedCount = documents.filter((doc) => doc.status !== "active").length;
@@ -60,6 +99,7 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
       <div class="button-group">
         <button type="button" class="button secondary" data-print><i class="fa-solid fa-print"></i> 목록 인쇄</button>
         <a class="button secondary" href="/sets/${set.id}/export.csv">CSV 내보내기</a>
+        ${canManage ? `<a class="button secondary" href="/sets/${set.id}/clone">세트 복제</a>` : ""}
         ${canManage && !isLocked ? `<a class="button secondary" href="/sets/${set.id}/edit">세트 수정</a>` : ""}
       </div>
     </section>
@@ -85,7 +125,7 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
       ${archiveMap(racks, hits)}
     </section>` : ""}
     ${canManage ? setLockControls(set, isLocked) : ""}
-    ${canManage && !isLocked ? setAdminTools(set, addQuery, addCandidates) : ""}
+    ${canManage && (!isLocked || preserveAddSelection) ? setAdminTools(set, addQuery, addCandidates, selectedCandidateIds, { readOnly: isLocked }) : ""}
     ${logs.length ? `<section class="panel">
       ${sectionHeader("세트 변경 이력", `${logs.length}건`)}
       ${timeline(logs, renderSetLog, "변경 이력이 없습니다.")}
@@ -164,7 +204,17 @@ function setPrintFooter() {
   return `<section class="print-only set-print-signatures"><div>작성자 서명 <span></span></div><div>검토자 서명 <span></span></div></section><div class="print-only set-print-page">페이지 <span></span></div>`;
 }
 
-function setAdminTools(set, addQuery, addCandidates) {
+function setAdminTools(set, addQuery, addCandidates, selectedCandidateIds = [], { readOnly = false } = {}) {
+  if (readOnly) {
+    return `
+      <section class="panel set-admin-tools" data-preserved-set-selection>
+        ${sectionHeader("문서 추가 요청", "잠금 경합")}
+        ${alertWarning("세트가 잠겨 추가 작업은 중단됐지만 검색 조건과 선택 문서는 보존했습니다.")}
+        <label>보존된 검색 조건<input value="${escapeHtml(addQuery)}" readonly></label>
+        ${addCandidates ? setCandidateList(set, addQuery, addCandidates, selectedCandidateIds, { readOnly: true }) : ""}
+      </section>
+    `;
+  }
   return `
     <section class="panel set-admin-tools">
       ${sectionHeader("문서 추가", "관리자")}
@@ -183,7 +233,7 @@ function setAdminTools(set, addQuery, addCandidates) {
             </label>
             <button type="submit" class="button secondary">검색</button>
           </form>
-          ${addCandidates ? setCandidateList(set, addQuery, addCandidates) : ""}
+          ${addCandidates ? setCandidateList(set, addQuery, addCandidates, selectedCandidateIds) : ""}
         </div>
       </div>
       <div class="set-danger-row">
@@ -196,25 +246,30 @@ function setAdminTools(set, addQuery, addCandidates) {
   `;
 }
 
-function setCandidateList(set, addQuery, candidates) {
+function setCandidateList(set, addQuery, candidates, selectedCandidateIds = [], { readOnly = false } = {}) {
   if (!candidates.length) {
     return `<p class="muted">검색 결과가 없습니다.</p>`;
   }
 
-  return `<div class="set-candidate-list">${candidates.map((doc) => `
-    <div class="set-candidate ${doc.status !== "active" ? "is-disposed" : ""}">
-      <div>
-        <strong>${escapeHtml(doc.document_name)}</strong> ${statusBadge(doc.status)}
-        <small>${escapeHtml(doc.document_number)} · ${escapeHtml(doc.revision_number)} · ${escapeHtml(locationLabel(doc))}</small>
-      </div>
-      ${doc.inSet ? `<span class="muted">이미 포함됨</span>` : `
-        <form method="post" action="/sets/${set.id}/add">
-          <input type="hidden" name="documentId" value="${doc.id}">
-          <input type="hidden" name="add-q" value="${escapeHtml(addQuery)}">
-          <input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}">
-          <button type="submit" class="button sm">추가</button>
-        </form>
-      `}
-    </div>
-  `).join("")}</div>`;
+  const selected = new Set(selectedCandidateIds.map(Number));
+  const tag = readOnly ? "div" : "form";
+  return `<${tag}${readOnly ? "" : ` method="post" action="/sets/${set.id}/add"`} class="stack">
+    <input type="hidden" name="add-q" value="${escapeHtml(addQuery)}">
+    <input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}">
+    <div class="set-candidate-list">${candidates.map((doc) => `
+      <label class="set-candidate ${doc.status !== "active" ? "is-disposed" : ""}">
+        <input type="checkbox" name="documentIds" value="${Number(doc.id)}" ${(doc.inSet || readOnly) ? "disabled" : ""} ${selected.has(Number(doc.id)) ? "checked" : ""}>
+        <span>
+          <strong>${escapeHtml(doc.document_name)}</strong> ${statusBadge(doc.status)}
+          <small>${escapeHtml(doc.document_number)} · ${escapeHtml(doc.revision_number)} · ${escapeHtml(locationLabel(doc))}</small>
+        </span>
+        ${doc.inSet ? `<span class="muted">이미 포함됨</span>` : ""}
+      </label>
+    `).join("")}</div>
+    ${readOnly ? "" : `<button type="submit" class="button">선택 문서 추가 (최대 200건)</button>`}
+  </${tag}>`;
+}
+
+function setFilterOption(value, label, selected) {
+  return `<option value="${value}"${String(selected || "all") === value ? " selected" : ""}>${label}</option>`;
 }

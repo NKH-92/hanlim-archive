@@ -51,10 +51,14 @@ export function documentFormPage({
             </select>
           </label>
           ${fieldError("categoryId", normalizedValidation)}
-          <fieldset id="field-tagIds" class="check-grid form-tags" tabindex="-1">
-            <legend>태그</legend>
-            ${tags.map((tag) => `<label class="check-item"><input type="checkbox" name="tagIds" value="${tag.id}" ${selectedTags.includes(tag.id) ? "checked" : ""}><span>${escapeHtml(tag.name)}</span></label>`).join("")}
-          </fieldset>
+          <div class="tag-picker" data-tag-picker>
+            <label class="tag-search"><span>태그 검색</span><input type="search" data-tag-search placeholder="태그 이름으로 찾기" autocomplete="off"></label>
+            <p class="muted" data-tag-count aria-live="polite"></p>
+            <fieldset id="field-tagIds" class="check-grid form-tags" tabindex="-1">
+              <legend>태그 다중 선택</legend>
+              ${tags.map((tag) => `<label class="check-item" data-tag-option data-tag-name="${escapeHtml(tag.name)}"><input type="checkbox" name="tagIds" value="${tag.id}" ${selectedTags.includes(tag.id) ? "checked" : ""}><span>${escapeHtml(tag.name)}</span></label>`).join("")}
+            </fieldset>
+          </div>
           ${fieldError("tagIds", normalizedValidation)}
         </fieldset>
 
@@ -76,6 +80,11 @@ export function documentFormPage({
           </label>
           ${fieldError("rackFace", normalizedValidation)}
           <p class="muted" data-face-hint>양면 랙은 13-1(1면)/13-2(2면)처럼 면 단위로 표기합니다. 단면 랙은 면 구분이 없습니다.</p>
+          <div class="location-selection-preview" data-location-selection aria-live="polite">
+            <div><span>선택 위치</span><strong data-location-selection-label>위치를 선택하세요.</strong></div>
+            <div><span>활성 문서</span><strong data-location-selection-count>-</strong></div>
+            <a class="button secondary sm" data-location-selection-link href="/app" hidden>같은 위치 문서 보기</a>
+          </div>
         </fieldset>` : ""}
 
         <section class="form-section form-note-section" aria-labelledby="note-title">
@@ -85,7 +94,10 @@ export function documentFormPage({
           ${fieldError("note", normalizedValidation)}
         </section>
 
-        <div class="form-actions"><a class="button secondary" href="${escapeHtml(cancelUrl)}">취소</a><button type="submit" class="primary">${submitLabel}</button></div>
+        <div class="form-actions sticky-save-bar" data-save-bar>
+          <div class="form-completion"><strong data-form-completion>필수 입력 0/0</strong><span><i data-form-completion-bar></i></span></div>
+          <div class="button-group"><a class="button secondary" href="${escapeHtml(cancelUrl)}">취소</a><button type="submit" class="primary">${submitLabel}</button></div>
+        </div>
       </form>
 
       <details class="panel form-review" open data-form-review>
@@ -174,6 +186,88 @@ function documentFormScript(showLocation) {
     form.addEventListener('input', updateSummary);
     form.addEventListener('change', updateSummary);
     updateSummary();
+
+    var tagSearch = form.querySelector('[data-tag-search]');
+    var tagOptions = Array.prototype.slice.call(form.querySelectorAll('[data-tag-option]'));
+    var tagCount = form.querySelector('[data-tag-count]');
+    var updateTagCount = function () {
+      if (!tagCount) return;
+      var selected = tagOptions.filter(function (item) { return item.querySelector('input').checked; }).length;
+      var visible = tagOptions.filter(function (item) { return !item.hidden; }).length;
+      tagCount.textContent = '선택 ' + selected + '개 · 표시 ' + visible + '개';
+    };
+    tagSearch?.addEventListener('input', function () {
+      var query = tagSearch.value.trim().toLocaleLowerCase('ko-KR');
+      tagOptions.forEach(function (item) {
+        item.hidden = Boolean(query) && (item.getAttribute('data-tag-name') || '').toLocaleLowerCase('ko-KR').indexOf(query) === -1;
+      });
+      updateTagCount();
+    });
+    tagOptions.forEach(function (item) { item.querySelector('input')?.addEventListener('change', updateTagCount); });
+    updateTagCount();
+
+    var requiredInputs = function () {
+      return Array.prototype.slice.call(form.querySelectorAll('[required]')).filter(function (input) {
+        return !input.disabled && input.type !== 'hidden';
+      });
+    };
+    var updateCompletion = function () {
+      var inputs = requiredInputs();
+      var completed = inputs.filter(function (input) {
+        if (input.type === 'checkbox' || input.type === 'radio') return input.checked;
+        return Boolean(String(input.value || '').trim()) && input.checkValidity();
+      }).length;
+      var label = form.querySelector('[data-form-completion]');
+      var bar = form.querySelector('[data-form-completion-bar]');
+      if (label) label.textContent = '필수 입력 ' + completed + '/' + inputs.length;
+      if (bar) bar.style.width = (inputs.length ? Math.round(completed / inputs.length * 100) : 100) + '%';
+    };
+    var updateLocationSelection = function () {
+      var slot = form.elements.rackSlotId;
+      var face = form.elements.rackFace;
+      var selected = slot && slot.selectedIndex >= 0 ? slot.options[slot.selectedIndex] : null;
+      var label = form.querySelector('[data-location-selection-label]');
+      var count = form.querySelector('[data-location-selection-count]');
+      var link = form.querySelector('[data-location-selection-link]');
+      if (!selected || !selected.value) {
+        if (label) label.textContent = '위치를 선택하세요.';
+        if (count) count.textContent = '-';
+        if (link) link.hidden = true;
+        return;
+      }
+      var selectedFace = face && face.value === 'B' ? 'B' : 'A';
+      var activeCount = Number(selected.getAttribute(selectedFace === 'B' ? 'data-active-b' : 'data-active-a') || 0);
+      if (label) label.textContent = selected.textContent.trim() + (selected.getAttribute('data-single-sided') === '1' ? '' : ' · ' + (selectedFace === 'B' ? '2면' : '1면'));
+      if (count) count.textContent = activeCount.toLocaleString('ko-KR') + '건';
+      if (link) {
+        var params = new URLSearchParams({
+          status: 'active',
+          sort: 'location',
+          rack: selected.getAttribute('data-rack-id') || '',
+          face: selectedFace,
+          column: selected.getAttribute('data-column') || '',
+          shelf: selected.getAttribute('data-shelf') || ''
+        });
+        link.href = '/app?' + params.toString();
+        link.hidden = false;
+      }
+    };
+    var dirty = false;
+    var markDirty = function () {
+      dirty = true;
+      updateCompletion();
+      updateLocationSelection();
+    };
+    form.addEventListener('input', markDirty);
+    form.addEventListener('change', markDirty);
+    form.addEventListener('submit', function () { dirty = false; });
+    window.addEventListener('beforeunload', function (event) {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
+    updateCompletion();
+    updateLocationSelection();
 
     var numberInput = form.elements.documentNumber;
     var revisionInput = form.elements.revisionNumber;

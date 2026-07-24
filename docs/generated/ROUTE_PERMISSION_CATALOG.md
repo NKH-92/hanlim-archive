@@ -70,6 +70,8 @@
 | `sets.export` | `GET` | `/sets/:id/export` | required | authenticated |
 | `sets.export.csv` | `GET` | `/sets/:id/export.csv` | required | authenticated |
 | `sets.edit.form` | `GET` | `/sets/:id/edit` | required | `can_manage_sets` |
+| `sets.clone.form` | `GET` | `/sets/:id/clone` | required | `can_manage_sets` |
+| `sets.clone` | `POST` | `/sets/:id/clone` | required | `can_manage_sets` |
 | `sets.edit` | `POST` | `/sets/:id/edit` | required | `can_manage_sets` |
 | `sets.delete` | `POST` | `/sets/:id/delete` | required | `can_manage_sets` |
 | `sets.add` | `POST` | `/sets/:id/add` | required | `can_manage_sets` |
@@ -127,7 +129,7 @@
 | `can_manage_disposals` | `documents.disposal`, `documents.bulk-dispose`, `documents.disposal.process`, `documents.dispose-filtered`, `documents.dispose`, `documents.delete-permanent`, `disposal.list`, `disposal.new`, `disposal.create`, `disposal.details`, `disposal.edit.form`, `disposal.edit`, `disposal.freeze`, `disposal.start`, `disposal.process`, `disposal.cancel`, `disposal.export`, `disposal.item.exclude`, `disposal.item.include` |
 | `can_manage_documents` | `admin.data-quality`, `documents.duplicate`, `documents.create`, `documents.export`, `documents.snapshot.export`, `documents.snapshot.export.create`, `documents.snapshot.export.rows`, `documents.snapshot.export.finalize`, `documents.import.form`, `documents.new`, `documents.edit.form`, `documents.edit`, `documents.revise.form`, `documents.revise`, `imports.list`, `imports.create`, `imports.details`, `imports.failures`, `imports.process`, `imports.cancel`, `snapshots.list`, `snapshots.create`, `snapshots.details`, `snapshots.rows`, `snapshots.membership`, `snapshots.prepare`, `snapshots.cancel` |
 | `can_manage_masters` | `racks.list`, `racks.create`, `racks.new`, `racks.configure.form`, `racks.configure`, `racks.details`, `racks.edit.form`, `racks.edit`, `categories.list`, `categories.save`, `categories.edit`, `categories.delete`, `tags.list`, `tags.save`, `tags.edit`, `tags.delete` |
-| `can_manage_sets` | `sets.create.form`, `sets.create`, `sets.edit.form`, `sets.edit`, `sets.delete`, `sets.add`, `sets.remove`, `sets.lock`, `sets.unlock` |
+| `can_manage_sets` | `sets.create.form`, `sets.create`, `sets.edit.form`, `sets.clone.form`, `sets.clone`, `sets.edit`, `sets.delete`, `sets.add`, `sets.remove`, `sets.lock`, `sets.unlock` |
 | `can_manage_users` | `admin.settings`, `admin.user.permissions.form`, `admin.user.permissions`, `admin.user.password-reset.form`, `admin.user.password-reset`, `admin.user.approve`, `admin.user.reject`, `admin.user.disable`, `admin.user.enable` |
 | `can_move_documents` | `documents.move.form`, `documents.move` |
 | `can_view_audit` | `admin.search-report`, `admin.audit` |

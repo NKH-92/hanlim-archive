@@ -108,8 +108,12 @@ test("dashboard status selector defaults to active and supports disposed or all"
     headers: { Cookie: homeCookie }
   }), homeEnv);
   const homeHtml = await homeResponse.text();
+  const homeSearch = authoritativeDocumentSearch(homeEnv.state.calls);
+  assert.ok(homeSearch, "초기 /app도 서버에서 기본 문서 목록을 읽어야 한다");
+  assert.ok(homeSearch.args.includes(30), "초기 문서 목록은 30행 단위를 사용해야 한다");
   assert.match(homeHtml, /<option value="active" selected>보관중 문서<\/option>/);
   assert.match(homeHtml, /<option value="updated" selected>최신순<\/option>/);
+  assert.match(homeHtml, /충전 공정 밸리데이션 보고서/);
 
   const defaultEnv = dashboardSearchEnv();
   const defaultCookie = await createSessionCookie(user, defaultEnv, false);
@@ -205,6 +209,8 @@ test("bulk disposal redirect preserves filters and reports disposed and skipped 
       csrf_token: csrfToken,
       ids: "1,2",
       reason: "보존기간 만료",
+      confirmedTargetCount: "2",
+      confirmDisposal: "1",
       returnTo: "/documents/disposal?category=3&rack=9&disposalDueYear=2031"
     })
   }), env);
@@ -216,6 +222,39 @@ test("bulk disposal redirect preserves filters and reports disposed and skipped 
   );
   assert.equal(env.state.batches.length, 1);
   assert.equal(env.state.batches[0].filter((statement) => statement.sql.includes("UPDATE documents")).length, 1);
+});
+
+test("legacy bulk disposal rejects missing or mismatched count confirmation before mutation", async () => {
+  const cases = [
+    { confirmedTargetCount: "2", confirmDisposal: "" },
+    { confirmedTargetCount: "1", confirmDisposal: "1" }
+  ];
+
+  for (const confirmation of cases) {
+    const env = bulkDisposalEnv();
+    const user = { username: "admin", displayName: "관리자", role: "Admin" };
+    const cookie = await createSessionCookie(user, env, false);
+    const csrfToken = csrfFromCookie(cookie);
+    const response = await worker.fetch(new Request("https://archive.example.com/documents/bulk-dispose", {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        Origin: "https://archive.example.com"
+      },
+      body: new URLSearchParams({
+        csrf_token: csrfToken,
+        ids: "1,2",
+        reason: "보존기간 만료",
+        returnTo: "/documents/disposal",
+        ...confirmation
+      })
+    }), env);
+    const html = await response.text();
+
+    assert.equal(response.status, 409);
+    assert.match(html, /현재 선택한 폐기 대상은 2건입니다/);
+    assert.equal(env.state.batches.length, 0);
+  }
 });
 
 test("기존 CSV 추가 등록 경로는 닫고 엑셀 전체 동기화 경로만 사용한다", async () => {

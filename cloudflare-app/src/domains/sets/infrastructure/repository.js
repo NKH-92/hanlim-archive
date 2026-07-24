@@ -10,6 +10,7 @@ import { actorDisplayName } from "../domain/policy.js";
 import { createSetMutationPlan } from "./mutationPlans.js";
 import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+import { auditActorSnapshot } from "../../identity/index.js";
 
 async function runSetMutationBatch(env, plan) {
   try {
@@ -22,7 +23,33 @@ async function runSetMutationBatch(env, plan) {
   }
 }
 
-export async function getDocumentSets(env) {
+export async function getDocumentSets(env, filters = {}) {
+  const query = clean(filters.q);
+  const status = ["editable", "locked", "disposed", "excluded"].includes(clean(filters.status))
+    ? clean(filters.status)
+    : "all";
+  const sort = ["updated", "name", "created"].includes(clean(filters.sort))
+    ? clean(filters.sort)
+    : "updated";
+  const where = [];
+  const binds = [];
+  if (query) {
+    const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
+    where.push("(s.name LIKE ? ESCAPE '\\' OR COALESCE(s.description, '') LIKE ? ESCAPE '\\')");
+    binds.push(pattern, pattern);
+  }
+  if (status === "editable") where.push("s.is_locked = 0");
+  if (status === "locked") where.push("s.is_locked = 1");
+  const having = status === "disposed"
+    ? "HAVING SUM(CASE WHEN d.status = 'disposed' THEN 1 ELSE 0 END) > 0"
+    : status === "excluded"
+      ? "HAVING SUM(CASE WHEN d.sync_state = 'excluded' THEN 1 ELSE 0 END) > 0"
+      : "";
+  const order = sort === "name"
+    ? "s.name COLLATE NOCASE, s.id"
+    : sort === "created"
+      ? "s.created_at DESC, s.id DESC"
+      : "s.updated_at DESC, s.id DESC";
   const result = await env.DB.prepare(`
     SELECT
       s.id,
@@ -42,11 +69,90 @@ export async function getDocumentSets(env) {
     FROM document_sets s
     LEFT JOIN document_set_items i ON i.set_id = s.id
     LEFT JOIN documents d ON d.id = i.document_id
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
     GROUP BY s.id
-    ORDER BY s.name
-  `).all();
+    ${having}
+    ORDER BY ${order}
+  `).bind(...binds).all();
 
   return result.results ?? [];
+}
+
+export async function cloneDocumentSet(env, sourceId, values = {}, actor = {}) {
+  const id = Number(sourceId);
+  const expectedVersion = positiveVersion(values.expectedRowVersion ?? values.rowVersion);
+  const name = clean(values.name);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, message: "복제할 세트를 찾을 수 없습니다." };
+  if (!expectedVersion) return staleSetResult();
+  if (!name) return { ok: false, message: "새 세트 이름은 필수입니다." };
+  if (name.length > 100) return { ok: false, message: "새 세트 이름은 100자 이하로 입력하세요." };
+
+  const source = await getDocumentSet(env, id);
+  if (!source) return { ok: false, message: "복제할 세트를 찾을 수 없습니다." };
+  if (Number(source.row_version) !== expectedVersion) return staleSetResult();
+  const performedBy = actorDisplayName(actor);
+  const snapshot = auditActorSnapshot(actor);
+  const details = JSON.stringify({
+    sourceSetId: id,
+    sourceSetName: source.name,
+    sourceRowVersion: expectedVersion
+  });
+  const statements = [
+    env.DB.prepare(`
+      INSERT INTO document_sets (name, description, created_by, is_locked, updated_at)
+      SELECT ?, description, ?, 0, CURRENT_TIMESTAMP
+      FROM document_sets
+      WHERE id = ? AND row_version = ?
+      RETURNING id
+    `).bind(name, performedBy, id, expectedVersion),
+    env.DB.prepare(`
+      INSERT INTO document_set_items (set_id, document_id)
+      SELECT clone.id, item.document_id
+      FROM document_sets clone
+      JOIN document_sets source ON source.id = ? AND source.row_version = ?
+      JOIN document_set_items item ON item.set_id = source.id
+      WHERE clone.name = ?
+    `).bind(id, expectedVersion, name),
+    env.DB.prepare(`
+      INSERT INTO document_set_logs (set_id, set_name, action, actor, details)
+      SELECT clone.id, clone.name, 'create', ?, ?
+      FROM document_sets clone
+      JOIN document_sets source ON source.id = ? AND source.row_version = ?
+      WHERE clone.name = ?
+    `).bind(performedBy, `세트 복제: ${source.name}`, id, expectedVersion, name),
+    env.DB.prepare(`
+      INSERT INTO system_audit_logs (
+        entity_type, entity_id, entity_reference, action,
+        actor_user_id, actor_username_snapshot, actor_display_name_snapshot,
+        actor_permissions_snapshot, summary, details_json
+      )
+      SELECT
+        'document_set', CAST(clone.id AS TEXT), clone.name, 'clone',
+        ?, ?, ?, ?, '준비 문서 세트 복제', ?
+      FROM document_sets clone
+      JOIN document_sets source ON source.id = ? AND source.row_version = ?
+      WHERE clone.name = ?
+    `).bind(
+      snapshot.userId,
+      snapshot.username,
+      snapshot.displayName,
+      JSON.stringify(snapshot.permissions),
+      details,
+      id,
+      expectedVersion,
+      name
+    )
+  ];
+
+  try {
+    const ran = await runSetMutationBatch(env, createSetMutationPlan("clone", statements));
+    if (!ran.ok) return staleSetResult();
+    const cloneId = Number(ran.results[0]?.results?.[0]?.id || ran.results[0]?.meta?.last_row_id || 0);
+    if (!cloneId) return staleSetResult();
+    return { ok: true, id: cloneId };
+  } catch (error) {
+    return { ok: false, message: uniqueViolationMessage(error, "세트") };
+  }
 }
 
 export async function getDocumentSet(env, id) {

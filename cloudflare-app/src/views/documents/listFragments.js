@@ -10,7 +10,7 @@ export function disposalFeedback(feedback) {
   if (feedback.type === "warning") return alertWarning(feedback.message);
   if (feedback.type === "success") return `<div class="alert success disposal-complete" role="status">
     <strong>${escapeHtml(feedback.message)}</strong>
-    <div class="disposal-complete-actions"><a class="button secondary sm" href="/documents/disposal?tab=history">폐기 이력 보기</a><a class="button secondary sm" href="/app">문서로 이동</a></div>
+    <div class="disposal-complete-actions"><a class="button secondary sm" href="/documents/disposal?tab=documents">폐기 이력 보기</a><a class="button secondary sm" href="/app">문서로 이동</a></div>
   </div>`;
   return alertDanger(feedback.message);
 }

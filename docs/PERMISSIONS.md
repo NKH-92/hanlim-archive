@@ -27,7 +27,7 @@ Admin은 세부 flag와 관계없이 모든 권한을 가진다. 일반 User는 
 | 이동 이력 | `can_move_documents` 또는 `can_view_audit` |
 | 폐기·캠페인·영구삭제 | `can_manage_disposals` |
 | 폐기 해제 | Admin |
-| 준비 문서 세트 변경·잠금 | `can_manage_sets` |
+| 준비 문서 세트 변경·잠금·복제 | `can_manage_sets` |
 | 랙·대분류·태그 | `can_manage_masters` |
 | 사용자 상태·권한 | `can_manage_users` |
 | 사용자 비밀번호 초기화 | `Admin`만 가능(자기 계정·보안 검토 계정 제외) |

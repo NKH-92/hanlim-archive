@@ -5,7 +5,9 @@ import test from "node:test";
 
 import {
   addDocumentsToSet,
+  cloneDocumentSet,
   deleteDocumentSet,
+  getDocumentSets,
   removeDocumentFromSet,
   setDocumentSetLock,
   upsertDocumentSet
@@ -390,6 +392,38 @@ test("실제 SQLite에서 세트 batch 후반 실패는 앞선 이력·touch까�
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_set_items WHERE set_id = ?").get(created.id).count, 1);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_set_logs WHERE set_id = ?").get(created.id).count, logsBeforeRemove);
     assert.equal(database.prepare("SELECT updated_at FROM document_sets WHERE id = ?").get(created.id).updated_at, "2001-01-01 00:00:00");
+  } finally {
+    database.close();
+  }
+});
+
+test("세트 복제는 원본 버전을 검사하고 구성원·감사 이력을 원자적으로 복사한다", async () => {
+  const { database, env } = await migratedSqliteEnv();
+  try {
+    const source = await upsertDocumentSet(env, { name: "복제 원본 세트", description: "원본 설명" }, actor);
+    const documentId = Number(database.prepare("SELECT id FROM documents ORDER BY id LIMIT 1").get().id);
+    assert.deepEqual(await addDocumentsToSet(env, source.id, [documentId], actor, 1), { added: 1 });
+
+    const cloned = await cloneDocumentSet(env, source.id, {
+      name: "복제 결과 세트",
+      expectedRowVersion: 2
+    }, actor);
+    assert.equal(cloned.ok, true);
+    const clone = database.prepare("SELECT name, description, is_locked, row_version FROM document_sets WHERE id = ?").get(cloned.id);
+    assert.deepEqual({ ...clone }, { name: "복제 결과 세트", description: "원본 설명", is_locked: 0, row_version: 1 });
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_set_items WHERE set_id = ?").get(cloned.id).count, 1);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_set_logs WHERE set_id = ? AND action = 'create'").get(cloned.id).count, 1);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM system_audit_logs WHERE entity_type = 'document_set' AND entity_id = ? AND action = 'clone'").get(String(cloned.id)).count, 1);
+    const filtered = await getDocumentSets(env, { q: "복제 결과", status: "editable", sort: "updated" });
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0].id, cloned.id);
+
+    const stale = await cloneDocumentSet(env, source.id, {
+      name: "생기면 안 되는 복제본",
+      expectedRowVersion: 1
+    }, actor);
+    assert.equal(stale.ok, false);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM document_sets WHERE name = '생기면 안 되는 복제본'").get().count, 0);
   } finally {
     database.close();
   }

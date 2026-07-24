@@ -3,9 +3,17 @@ import test from "node:test";
 
 import { processDisposalBatch } from "../src/domains/disposal/index.js";
 import { handleFilteredDispose } from "../src/handlers/documentHandlers.js";
+import { handleDisposalBatches } from "../src/handlers/disposalBatchHandlers.js";
+import { handleSetRoute } from "../src/handlers/setHandlers.js";
 import { documentFormPage } from "../src/views/documentViews.js";
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 import { sqliteD1 } from "./helpers/sqliteD1.js";
+
+test("기존 폐기 캠페인 목록 주소는 통합 폐기 관리 이력 탭으로 연결한다", async () => {
+  const response = await handleDisposalBatches({}, { role: "Admin" });
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("Location"), "/documents/disposal?tab=history");
+});
 
 test("필터 전체 폐기는 확인한 275건을 한 캠페인으로 동결하고 자동 처리 상태로 만든다", async () => {
   const targetCount = 275;
@@ -242,4 +250,119 @@ test("미등록 세트 문서 연결은 문서번호와 안전한 복귀 경로�
 
   assert.match(html, /name="documentNumber" value="PV-NEW-01"/);
   assert.match(html, /name="returnTo" value="\/sets\/9"/);
+});
+
+test("세트 잠금 경합은 상세와 문서 작업 공간의 검색·선택 상태를 보존한다", async (context) => {
+  const database = await createMigratedDatabase();
+  context.after(() => database.close());
+  const setId = Number(database.prepare(`
+    INSERT INTO document_sets (
+      name, description, created_by, is_locked, locked_at,
+      locked_by_user_id, locked_by_name, lock_reason
+    )
+    VALUES ('잠금 경합 세트', '선택 보존 검증', '통합 테스트', 1, CURRENT_TIMESTAMP, 88, '다른 담당자', '검토 중')
+    RETURNING id
+  `).get().id);
+  const document = database.prepare(`
+    SELECT id, document_number
+    FROM documents
+    ORDER BY id
+    LIMIT 1
+  `).get();
+  const env = { DB: sqliteD1(database) };
+  const session = {
+    userId: 77,
+    username: "set-manager@hanlim.test",
+    displayName: "세트 담당자",
+    role: "Admin",
+    csrfToken: "set-route-csrf"
+  };
+  const form = {
+    "add-q": String(document.document_number),
+    documentIds: String(document.id),
+    expectedRowVersion: "1"
+  };
+
+  const detailsResponse = await handleSetRoute(new Request(`https://archive.example.com/sets/${setId}/add`, {
+    method: "POST",
+    body: new URLSearchParams(form)
+  }), env, session, { id: setId, action: "add" });
+  const detailsHtml = await detailsResponse.text();
+  assert.equal(detailsResponse.status, 200);
+  assert.match(detailsHtml, /data-preserved-set-selection/);
+  assert.match(detailsHtml, new RegExp(`value="${document.id}"[^>]*disabled[^>]*checked`));
+  assert.match(detailsHtml, new RegExp(`value="${document.document_number}" readonly`));
+
+  const workspaceResponse = await handleSetRoute(new Request(`https://archive.example.com/sets/${setId}/add`, {
+    method: "POST",
+    body: new URLSearchParams({ ...form, returnTo: "/app?q=SOP&status=active" })
+  }), env, session, { id: setId, action: "add" });
+  const location = new URL(workspaceResponse.headers.get("Location"), "https://archive.example.com");
+  assert.equal(workspaceResponse.status, 302);
+  assert.equal(location.pathname, "/app");
+  assert.equal(location.searchParams.get("q"), "SOP");
+  assert.equal(location.searchParams.get("status"), "active");
+  assert.equal(location.searchParams.get("selected"), String(document.id));
+  assert.equal(location.searchParams.get("toast"), "error");
+});
+
+test("세트 추가와 복제 HTTP 경로는 버전 검사를 거쳐 잠기지 않은 복제본을 만든다", async (context) => {
+  const database = await createMigratedDatabase();
+  context.after(() => database.close());
+  const sourceId = Number(database.prepare(`
+    INSERT INTO document_sets (name, description, created_by)
+    VALUES ('원본 준비 세트', '복제 경로 검증', '통합 테스트')
+    RETURNING id
+  `).get().id);
+  const documentIds = database.prepare("SELECT id FROM documents ORDER BY id LIMIT 2").all().map((row) => Number(row.id));
+  assert.equal(documentIds.length, 2);
+  database.prepare("INSERT INTO document_set_items (set_id, document_id) VALUES (?, ?)").run(sourceId, documentIds[0]);
+  const env = { DB: sqliteD1(database) };
+  const session = {
+    userId: 77,
+    username: "set-manager@hanlim.test",
+    displayName: "세트 담당자",
+    role: "Admin",
+    csrfToken: "set-route-csrf"
+  };
+
+  const addVersion = Number(database.prepare("SELECT row_version FROM document_sets WHERE id = ?").get(sourceId).row_version);
+  const addResponse = await handleSetRoute(new Request(`https://archive.example.com/sets/${sourceId}/add`, {
+    method: "POST",
+    body: new URLSearchParams({
+      documentId: String(documentIds[1]),
+      expectedRowVersion: String(addVersion)
+    })
+  }), env, session, { id: sourceId, action: "add" });
+  assert.equal(addResponse.status, 200);
+  assert.equal(
+    database.prepare("SELECT COUNT(*) AS count FROM document_set_items WHERE set_id = ?").get(sourceId).count,
+    2
+  );
+
+  const cloneVersion = Number(database.prepare("SELECT row_version FROM document_sets WHERE id = ?").get(sourceId).row_version);
+  const cloneForm = await handleSetRoute(
+    new Request(`https://archive.example.com/sets/${sourceId}/clone`),
+    env,
+    session,
+    { id: sourceId, action: "clone" }
+  );
+  assert.equal(cloneForm.status, 200);
+  assert.match(await cloneForm.text(), /원본 세트<\/dt><dd>원본 준비 세트/);
+
+  const cloneResponse = await handleSetRoute(new Request(`https://archive.example.com/sets/${sourceId}/clone`, {
+    method: "POST",
+    body: new URLSearchParams({
+      name: "원본 준비 세트 복제본",
+      expectedRowVersion: String(cloneVersion)
+    })
+  }), env, session, { id: sourceId, action: "clone" });
+  assert.equal(cloneResponse.status, 302);
+  const cloneId = Number(cloneResponse.headers.get("Location")?.match(/^\/sets\/(\d+)\?toast=saved$/)?.[1]);
+  assert.ok(cloneId > 0);
+  assert.equal(database.prepare("SELECT is_locked FROM document_sets WHERE id = ?").get(cloneId).is_locked, 0);
+  assert.equal(
+    database.prepare("SELECT COUNT(*) AS count FROM document_set_items WHERE set_id = ?").get(cloneId).count,
+    2
+  );
 });

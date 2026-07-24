@@ -29,6 +29,7 @@ test("matchSetRoute resolves set detail and action routes", () => {
   assert.deepEqual(matchSetRoute("/sets/3/edit"), { id: 3, action: "edit" });
   assert.deepEqual(matchSetRoute("/sets/3/add"), { id: 3, action: "add" });
   assert.deepEqual(matchSetRoute("/sets/3/remove"), { id: 3, action: "remove" });
+  assert.deepEqual(matchSetRoute("/sets/3/clone"), { id: 3, action: "clone" });
   assert.deepEqual(matchSetRoute("/sets/3/export.csv"), { id: 3, action: "export.csv" });
   assert.equal(matchSetRoute("/sets/new"), null);
   assert.equal(matchSetRoute("/sets"), null);

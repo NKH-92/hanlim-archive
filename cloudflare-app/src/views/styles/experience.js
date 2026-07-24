@@ -62,9 +62,9 @@ export function experienceStyles() {
     .minimap-card .mini-slot.active { background: var(--action); border-color: var(--action); color: var(--action-ink); box-shadow: 0 0 0 3px var(--action-soft); }
     .minimap-card .mini-compass { background: var(--action-soft); color: var(--action-ink); }
 
-    .floor-plan-hero, .workflow-hero, .admin-hero, .disposal-hero { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-6); padding: var(--sp-6) var(--sp-8); margin-bottom: var(--sp-4); }
-    .floor-plan-hero h2, .workflow-hero h2, .admin-hero h2, .disposal-hero h2 { margin-top: var(--sp-2); color: var(--surface); font-size: 22px; }
-    .floor-plan-hero p, .workflow-hero p, .admin-hero p, .disposal-hero p { margin: var(--sp-1) 0 0; color: rgba(255, 255, 255, .82); }
+    .floor-plan-hero, .workflow-hero, .disposal-hero { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-6); padding: var(--sp-6) var(--sp-8); margin-bottom: var(--sp-4); }
+    .floor-plan-hero h2, .workflow-hero h2, .disposal-hero h2 { margin-top: var(--sp-2); color: var(--surface); font-size: 22px; }
+    .floor-plan-hero p, .workflow-hero p, .disposal-hero p { margin: var(--sp-1) 0 0; color: rgba(255, 255, 255, .82); }
     .hero-stat { min-width: 128px; padding: var(--sp-4); border: 1px solid rgba(255, 255, 255, .18); border-radius: var(--r-lg); background: rgba(255, 255, 255, .12); text-align: center; }
     .hero-stat strong { display: block; color: var(--action); font-size: 28px; line-height: 1.2; }
     .hero-stat span { color: rgba(255, 255, 255, .82); font-size: 12px; font-weight: 600; }
@@ -86,7 +86,7 @@ export function experienceStyles() {
     .ledger-method-note { padding: var(--sp-3); border-radius: var(--r-md); background: var(--gray-50); color: var(--gray-600); }
     .ledger-method-card > .button { margin-top: auto; }
     .snapshot-upload-panel { grid-template-columns: minmax(0, 1fr); scroll-margin-top: var(--sp-4); }
-    .workflow-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-bottom: var(--sp-4); padding: var(--sp-4) var(--sp-5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    .workflow-stepper { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; margin-bottom: var(--sp-4); padding: var(--sp-4) var(--sp-5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
     .workflow-step { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--sp-2); align-items: center; min-width: 0; }
     .workflow-step:not(:last-child)::after { content: ""; position: absolute; top: 14px; left: 38px; right: var(--sp-2); height: 1px; background: var(--line); }
     .workflow-step-index { position: relative; z-index: 1; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: var(--gray-100); color: var(--gray-500); font-size: 12px; font-weight: 800; }
@@ -113,9 +113,14 @@ export function experienceStyles() {
     .disposal-targets-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
     .bulk-bar { border: 1px solid rgba(255, 255, 255, .18); }
 
-    .admin-hero-copy { display: grid; gap: var(--sp-2); }
-    .admin-hero-actions { display: flex; align-items: center; gap: var(--sp-2); }
-    .admin-hero .action-button { align-self: start; }
+    .admin-status-panel { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-5); border-left: 4px solid var(--success); background: var(--success-soft); }
+    .admin-status-panel.is-attention { border-left-color: var(--warning); background: var(--warning-soft); }
+    .admin-status-copy { display: grid; gap: var(--sp-2); }
+    .admin-status-copy h2, .admin-status-copy p { margin: 0; }
+    .admin-status-copy .action-button { justify-self: start; margin-top: var(--sp-1); }
+    .admin-status-count { min-width: 112px; padding-left: var(--sp-4); border-left: 1px solid var(--line); text-align: center; }
+    .admin-status-count strong { display: block; color: var(--gray-900); font-size: 28px; line-height: 1.2; }
+    .admin-status-count span { color: var(--gray-600); font-size: 12px; font-weight: 600; }
     .management-section { padding: 0; overflow: hidden; }
     .management-heading { padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--line); }
     .management-heading p { margin: var(--sp-1) 0 0; }
@@ -215,10 +220,11 @@ export function experienceStyles() {
       .mini-column-guide { gap: var(--sp-2); }
       .mini-column-guide strong { padding-inline: var(--sp-2); }
       .mini-compass { display: flex; border-radius: var(--r-md); line-height: 1.45; }
-      .floor-plan-hero, .workflow-hero, .admin-hero, .disposal-hero { align-items: flex-start; padding: var(--sp-5) var(--sp-4); }
+      .floor-plan-hero, .workflow-hero, .disposal-hero { align-items: flex-start; padding: var(--sp-5) var(--sp-4); }
+      .admin-status-panel { align-items: flex-start; }
       .hero-stat { min-width: 96px; padding: var(--sp-3); }
       .hero-stat strong { font-size: 22px; }
-      .workflow-stepper { grid-template-columns: repeat(4, minmax(64px, 1fr)); overflow-x: auto; padding: var(--sp-3); }
+      .workflow-stepper { grid-template-columns: repeat(5, minmax(64px, 1fr)); overflow-x: auto; padding: var(--sp-3); }
       .workflow-step { grid-template-columns: 24px; justify-items: center; text-align: center; }
       .workflow-step:not(:last-child)::after { top: 12px; left: calc(50% + var(--sp-3)); right: calc(-50% + var(--sp-3)); }
       .workflow-step-index { width: 24px; height: 24px; }

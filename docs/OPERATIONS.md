@@ -204,7 +204,16 @@ npm run check:migrations
 | 백업 artifact | GitHub Actions의 D1 Backup | 최근 성공과 암호화 파일·checksum만 존재하는지 확인 |
 | 검색 index | 앱 관리 화면 | 경고 기준에서 크기 추적, 상한에서 구조 재검토 |
 
-월 1회 `/healthz`와 검색·상세 표본, 데이터 품질 작업목록, 유지관리자·2단계 인증, API token 최소권한을 함께 점검한다. 엑셀 대장 반영 전후에는 최근 백업·대장 버전·행 수·추가/변경/제외와 감사로그를 확인하고, 폐기 캠페인 전후에는 동결 건수·승인 참조·감사로그·결과 CSV를 대조한다.
+월 1회 `/healthz`와 검색·상세 표본, 데이터 품질 작업목록, 유지관리자·2단계 인증, API token 최소권한을 함께 점검한다. 엑셀 대장 반영 전후에는 최근 백업·대장 버전·행 수·추가/변경/제외와 감사로그를 확인하고, 폐기 캠페인 전후에는 대상 확정 건수·승인 참조·감사로그·결과 CSV를 대조한다.
+
+## 문서 작업 공간 호환 계약
+
+- 대표 문서 주소는 `/app`이다. 기존 `GET /documents`는 검색·필터 쿼리를 보존해 `/app`으로 302 연결하고, `POST /documents` 등록 주소는 유지한다.
+- `GET /sets`는 `q`, `status`, `sort`를 받는다. `status`는 `all/editable/locked/disposed/excluded`, `sort`는 `updated/created/name`만 허용한다.
+- `POST /sets/:id/add`는 검증된 `expectedRowVersion`과 최대 200개의 `documentIds`를 사용한다. `/app` 복귀 주소만 `returnTo`로 허용한다.
+- `GET/POST /sets/:id/clone`은 원본 `row_version`을 다시 검사한 뒤 구성원·세트 이력·시스템 감사를 한 batch에서 기록한다. 새 세트는 잠기지 않은 상태다.
+- 폐기 작업 공간은 `/documents/disposal?tab=active|history|documents`를 사용한다. 기존 `/disposal-batches` 목록은 캠페인 이력 탭으로 302 연결하고 상세·생성 주소는 유지한다.
+- 이 호환 변경에는 새 테이블·컬럼·migration이 없다. CSRF, Origin, 권한, 행 버전 검사는 기존 서버 경계를 그대로 사용한다.
 
 ## 최초·수동 운영 설정
 

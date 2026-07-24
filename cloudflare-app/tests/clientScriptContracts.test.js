@@ -1,9 +1,36 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 import { escapeHtml } from "../src/ui/html/escape.js";
 import * as clientScriptModule from "../src/views/clientScript.js";
 import { TOAST_MESSAGES } from "../src/views/clientScript/navigationFeedback.js";
+
+function sourceModules(directory = new URL("../src/", import.meta.url)) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const url = new URL(entry.name + (entry.isDirectory() ? "/" : ""), directory);
+    if (entry.isDirectory()) return sourceModules(url);
+    return entry.isFile() && entry.name.endsWith(".js") ? [readFileSync(url, "utf8")] : [];
+  });
+}
+
+function producedToastKeys() {
+  const keys = new Set();
+  const addMatches = (source, pattern, indexes = [1]) => {
+    for (const match of source.matchAll(pattern)) {
+      for (const index of indexes) {
+        if (match[index]) keys.add(match[index]);
+      }
+    }
+  };
+  for (const source of sourceModules()) {
+    addMatches(source, /[?&]toast=([a-z][a-z0-9-]*)/g);
+    addMatches(source, /withToast\([^,\n]+,\s*["']([a-z][a-z0-9-]*)["']/g);
+    addMatches(source, /toast=\$\{[^}]*\?\s*["']([a-z][a-z0-9-]*)["']\s*:\s*["']([a-z][a-z0-9-]*)["'][^}]*\}/g, [1, 2]);
+    addMatches(source, /\b(?:const|let|var)\s+toast\s*=\s*[^;]*\?\s*["']([a-z][a-z0-9-]*)["']\s*:\s*["']([a-z][a-z0-9-]*)["']/g, [1, 2]);
+  }
+  return [...keys].sort();
+}
 
 test("전역 클라이언트 스크립트는 한 번 초기화되고 문법적으로 실행 가능하다", () => {
   const script = clientScriptModule.clientScript();
@@ -63,35 +90,36 @@ test("문서 작업 공간은 검색 단축키·행 탐색·열 설정·선택 �
   assert.match(script, /event\.key === 'ArrowDown'/);
   assert.match(script, /event\.key === 'ArrowUp'/);
   assert.match(script, /data-document-preview/);
+  assert.match(script, /\(min-width: 1180px\)/);
+  assert.doesNotMatch(script, /\(min-width: 1181px\)/);
   assert.match(script, /hanlimDocumentColumns/);
   assert.match(script, /data-set-selection-form/);
   assert.match(script, /data-disposal-limit/);
 });
 
-test("라우트가 생산하는 전역 토스트 키는 모두 표시 문구를 가진다", () => {
-  const producedKeys = [
-    "approved",
-    "bulk-disposed",
-    "created",
-    "deleted",
-    "disabled",
-    "disposed",
-    "document-created",
-    "enabled",
-    "moved",
-    "password-changed",
-    "password-reset",
-    "permissions-saved",
-    "rejected",
-    "restored",
-    "revised",
-    "saved",
-    "set-locked",
-    "set-unlocked",
-    "updated"
-  ];
+test("즉시 검색 DOM 교체는 화면에 남은 선택만 일괄 작업 상태로 동기화한다", () => {
+  const script = clientScriptModule.clientScript();
 
-  for (const key of producedKeys) {
+  assert.match(script, /var replaceResults = function \(html, preserveSelection\)/);
+  assert.match(script, /new Set\(Array\.from\(document\.querySelectorAll\('\[data-bulk-item\]:checked'\)\)/);
+  assert.match(script, /item\.checked = selectedIds\.has\(item\.value\)/);
+  assert.match(script, /replaceResults\(initialResults\.body, false\)/);
+  assert.match(script, /replaceResults\(html, append\)/);
+  assert.match(script, /replaceResults\(html, false\)/);
+  assert.match(script, /viewerApp\.hidden = false/);
+  assert.doesNotMatch(script, /viewerApp\.hidden = true/);
+  assert.match(script, /syncBulk\(\);/);
+  assert.match(script, /var syncWorkspaceReturnTo = function \(\)/);
+  assert.match(script, /params\.delete\('limit'\)/);
+  assert.match(script, /document\.querySelectorAll\('\[data-workspace-return-to\]'\)/);
+  assert.match(script, /input\.value = returnTo/);
+  assert.match(script, /viewerForm\.addEventListener\?\.\('change', syncWorkspaceReturnTo\)/);
+});
+
+test("라우트가 생산하는 전역 토스트 키는 모두 표시 문구를 가진다", () => {
+  const keys = producedToastKeys();
+  assert.ok(keys.length > 0, "생산된 토스트 키를 찾지 못했습니다.");
+  for (const key of keys) {
     assert.equal(typeof TOAST_MESSAGES[key], "string", `${key} 토스트 문구가 필요합니다.`);
     assert.ok(TOAST_MESSAGES[key].length > 0);
   }
