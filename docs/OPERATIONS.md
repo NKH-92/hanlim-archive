@@ -235,8 +235,8 @@ npm run check:migrations
 
 저장소 관리자는 GitHub UI에서 PR 승인, CODEOWNERS, required check `required / verify`, direct/force push 금지와 production Environment reviewer를 설정한다. Actions에는 값이 아니라 다음 secret 이름과 최소 scope만 관리한다.
 
-- `CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN`: 대상 Worker deploy·version 조회·rollback 전용
-- `CLOUDFLARE_D1_MIGRATE_API_TOKEN`: Core·Search migration과 release 전용 계정 생성·삭제 전용
+- repository secret `CLOUDFLARE_API_TOKEN`: 대상 Worker deploy·version 조회·rollback과 Core·Search
+  migration·release 전용 계정 생성·삭제에 필요한 권한만 부여한다. workflow는 필요한 step에만 이 값을 전달한다.
 - `ADMIN_PROVISION_USERNAME`, `ADMIN_PROVISION_DISPLAY_NAME`, `ADMIN_PROVISION_PASSWORD`: 독립 Admin을 최초 1회 생성할 때만 사용하는 production Environment secret. 시스템 비밀번호 정책에 따라 6자 이상으로 둔다.
 
 Worker 런타임에는 Wrangler의 운영 환경 secret으로 다음 값을 각각 별도 생성해 등록한다.
