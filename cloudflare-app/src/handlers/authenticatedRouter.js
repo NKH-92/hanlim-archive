@@ -13,12 +13,6 @@ import {
   renderPasswordPage
 } from "./adminHandlers.js";
 import { handleSystemAudit } from "./auditHandlers.js";
-import {
-  handleBeginMfaEnrollment,
-  handleConfirmMfaEnrollment,
-  handleDisableMfa,
-  renderMfaSettings
-} from "./mfaHandlers.js";
 import { handleDataQuality } from "./dataQualityHandlers.js";
 import { routeDocumentRequest } from "./documentRouter.js";
 import { routeMasterRequest } from "./masterRouter.js";
@@ -85,22 +79,6 @@ export async function routeAuthenticatedRequest(request, env, session, url, path
 
   if (path === "/account/password" && request.method === "POST") {
     return handleChangePassword(request, env, session);
-  }
-
-  if (path === "/account/mfa" && request.method === "GET") {
-    return renderMfaSettings(env, session);
-  }
-
-  if (path === "/account/mfa/enroll" && request.method === "POST") {
-    return handleBeginMfaEnrollment(request, env, session);
-  }
-
-  if (path === "/account/mfa/confirm" && request.method === "POST") {
-    return handleConfirmMfaEnrollment(request, env, session);
-  }
-
-  if (path === "/account/mfa/disable" && request.method === "POST") {
-    return handleDisableMfa(request, env, session);
   }
 
   if (path === "/admin" && request.method === "GET") {

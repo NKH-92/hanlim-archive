@@ -102,8 +102,6 @@ export async function readSession(request, env) {
       role: normalizeRole(user.role),
       mustChangePassword: Number(user.must_change_password) === 1,
       sessionEpoch: currentSessionEpoch,
-      mfaEnabled: Number(user.mfa_enabled || 0) === 1,
-      mfaPolicyAvailable: Number(user.mfa_policy_available || 0) === 1,
       ...permissionFlags(user)
     };
   } catch {
@@ -131,11 +129,6 @@ async function loadSessionUser(env, username) {
   try {
     return await env.DB.prepare(`
       SELECT u.*,
-        EXISTS (
-          SELECT 1 FROM user_mfa m
-          WHERE m.user_id = u.id AND m.status = 'enabled'
-        ) AS mfa_enabled,
-        1 AS mfa_policy_available,
         CASE
           WHEN u.expires_at IS NOT NULL AND u.expires_at <= CURRENT_TIMESTAMP THEN 1
           ELSE 0
@@ -145,28 +138,9 @@ async function loadSessionUser(env, username) {
       LIMIT 1
     `).bind(username).first();
   } catch (error) {
-    if (
-      !/no such column:\s*u?\.?expires_at|no such table:\s*user_mfa/i
-        .test(String(error?.message || error))
-    ) {
+    if (!/no such column:\s*u?\.?expires_at/i.test(String(error?.message || error))) {
       throw error;
     }
-  }
-  try {
-    return await env.DB.prepare(`
-      SELECT u.*,
-        EXISTS (
-          SELECT 1 FROM user_mfa m
-          WHERE m.user_id = u.id AND m.status = 'enabled'
-        ) AS mfa_enabled,
-        1 AS mfa_policy_available,
-        0 AS account_expired
-      FROM app_users u
-      WHERE u.username = ?
-      LIMIT 1
-    `).bind(username).first();
-  } catch (error) {
-    if (!/no such table:\s*user_mfa/i.test(String(error?.message || error))) throw error;
   }
   const legacy = await env.DB.prepare(`
     SELECT *
@@ -174,7 +148,7 @@ async function loadSessionUser(env, username) {
     WHERE username = ?
     LIMIT 1
   `).bind(username).first();
-  return legacy ? { ...legacy, mfa_enabled: 0, mfa_policy_available: 0, account_expired: 0 } : null;
+  return legacy ? { ...legacy, account_expired: 0 } : null;
 }
 
 function createCsrfToken() {

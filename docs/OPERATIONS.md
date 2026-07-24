@@ -21,8 +21,7 @@ npm test
 npm run dev
 ```
 
-`.dev.vars`에는 서로 다른 최소 32자의 무작위 `SESSION_SECRET`, `AUTH_HMAC_SECRET`과
-32바이트를 base64url로 인코딩한 `MFA_ENCRYPTION_KEY_V1`을 넣고 commit하지 않는다.
+`.dev.vars`에는 서로 다른 최소 32자의 무작위 `SESSION_SECRET`, `AUTH_HMAC_SECRET`을 넣고 commit하지 않는다.
 `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`로 각 값을
 별도로 생성할 수 있다. migration은 로컬에서도 번호 순서대로 전체 적용하며 기존 파일을 수정하지 않는다.
 
@@ -221,7 +220,7 @@ npm run check:migrations
 | D1 복구 | Time Travel과 release artifact | Core·Search bookmark, 7일 보존 기간, 복구 승인 절차 확인 |
 | 검색 index | 앱 관리 화면 | 경고 기준에서 크기 추적, 상한에서 구조 재검토 |
 
-월 1회 `/healthz`·`/readyz`와 검색·상세 표본, 데이터 품질 작업목록, 유지관리자·2단계 인증, API token 최소권한을 함께 점검한다. 엑셀 대장 반영 전후에는 최근 백업·대장 버전·행 수·추가/변경/제외와 감사로그를 확인하고, 폐기 캠페인 전후에는 대상 확정 건수·승인 참조·감사로그·결과 CSV를 대조한다.
+월 1회 `/healthz`·`/readyz`와 검색·상세 표본, 데이터 품질 작업목록, 유지관리자 접근권한, API token 최소권한을 함께 점검한다. 엑셀 대장 반영 전후에는 최근 백업·대장 버전·행 수·추가/변경/제외와 감사로그를 확인하고, 폐기 캠페인 전후에는 대상 확정 건수·승인 참조·감사로그·결과 CSV를 대조한다.
 
 ## 문서 작업 공간 호환 계약
 
@@ -242,22 +241,19 @@ npm run check:migrations
 
 Worker 런타임에는 Wrangler의 운영 환경 secret으로 다음 값을 각각 별도 생성해 등록한다.
 
-- `SESSION_SECRET`: 세션과 MFA 로그인 challenge 서명용, 최소 32자
-- `AUTH_HMAC_SECRET`: 로그인 제한 식별자와 복구 코드 digest용, 최소 32자
-- `MFA_ENCRYPTION_KEY_V1`: TOTP seed 암호화용 32바이트 base64url 키
+- `SESSION_SECRET`: 세션 서명용, 최소 32자
+- `AUTH_HMAC_SECRET`: 로그인 제한 식별자용, 최소 32자
 
-세 값은 서로 재사용하지 않는다. `MFA_ENCRYPTION_KEY_V1`을 분실하면 D1 Time Travel로도 기존 사용자의
-TOTP seed를 복호화할 수 없으므로 이중 통제 secret 보관소에 별도로 보존한다. 키를 교체할 때는
-기존 `v1` 복호화 지원과 재암호화 migration을 먼저 배포한 뒤 새 쓰기 버전을 전환한다.
+두 값은 서로 재사용하지 않는다.
 
 배포 smoke 계정은 run마다 무작위 reader와 `can_manage_users`만 가진 일반 User로 생성하고 credential은
 runner 임시 파일에만 둔다. 두 계정의 TTL은 45분이며 workflow는 성공·실패와 관계없이 `always()` cleanup을
 실행한다. 다음 release의 사전 정리와 Cron janitor도 만료 계정을 제거한다. cleanup 실패는 운영 사고로
 취급해 `approved_by = release-smoke:<operation-id>` 계정을 즉시 격리한다.
 
-Admin은 TOTP MFA 활성화 전 `/account/mfa` 외의 업무 경로로 이동할 수 없다. 등록 시작·확인·해제에는
-현재 비밀번호를 다시 입력하며 로그인 throttle이 동일하게 적용된다. 비밀번호 최소 길이는 6자를 유지하고,
-신규 hash는 PBKDF2-SHA256 600,000회 반복을 사용한다. 기존 100,000회 record는 성공 로그인 시 자동 승격한다.
+비밀번호 최소 길이는 6자를 유지하고, 신규 hash는 PBKDF2-SHA256 600,000회 반복을 사용한다.
+기존 100,000회 record는 성공 로그인 시 자동 승격한다. 로그인 실패 제한과 session epoch 기반 세션
+무효화는 계속 적용한다.
 
 최초 또는 복구 환경에서 독립 Admin이 없으면 production Environment reviewer 승인 후 `Provision Independent Admin` workflow를 한 번 실행한다. 이 workflow는 알려진 bootstrap·smoke 사용자명을 거부하고, 대상 환경·D1 ID를 확인한 뒤 기존 계정을 덮어쓰지 않는 INSERT만 수행한다. 배포 workflow는 migration 전후에 승인된 독립 Admin 존재를 확인하고, 배포 전후 해당 계정으로 `/admin/settings` 접근까지 smoke한다.
 
@@ -266,4 +262,4 @@ commit SHA와 production Environment 승인 context가 모두 일치할 때만 g
 GitHub artifact에는 DB 데이터가 아니라 bookmark와 release metadata만 올린다. raw
 `wrangler d1 migrations apply`와 unscoped `wrangler deploy`는 운영 절차로 사용하지 않는다.
 
-secret 값, 기본 비밀번호, 개인 계정 정보는 저장소·로그·issue·PR에 기록하지 않는다. 저장소 visibility, token 회전, 유지관리자 2단계 인증, branch protection은 운영 책임자가 수동으로 확인한다.
+secret 값, 기본 비밀번호, 개인 계정 정보는 저장소·로그·issue·PR에 기록하지 않는다. 저장소 visibility, token 회전, 유지관리자 접근권한, branch protection은 운영 책임자가 수동으로 확인한다.

@@ -9,7 +9,6 @@ import {
   revokeUserSessions,
   validateUser
 } from "../auth.js";
-import { createMfaChallengeCookie } from "../auth/mfaChallenge.js";
 import { isPasswordInputBounded } from "../auth/passwords.js";
 import { getAppConfig } from "../config.js";
 import { loginPage } from "../views/authViews.js";
@@ -57,15 +56,6 @@ export async function handleLogin(request, env) {
   const destination = user.mustChangePassword
     ? "/account/password?required=1"
     : returnUrl === "/" ? "/app" : returnUrl;
-  if (user.mfaEnabled && !user.mustChangePassword) {
-    const challengeCookie = await createMfaChallengeCookie({
-      userId: user.userId,
-      username: user.username,
-      sessionEpoch: user.sessionEpoch,
-      returnUrl: destination
-    }, env, secureCookie);
-    return redirect("/login/mfa", { "Set-Cookie": challengeCookie });
-  }
   await clearLoginFailures(env, throttleIdentity);
   return redirect(destination, { "Set-Cookie": await createSessionCookie(user, env, secureCookie) });
 }

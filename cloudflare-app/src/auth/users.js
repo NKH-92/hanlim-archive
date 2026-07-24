@@ -18,27 +18,12 @@ export async function validateUser(env, username, password, { verifyPasswordFn =
   const normalizedUsername = String(username ?? "").trim();
   if (normalizedUsername.length > 320 || !isPasswordInputBounded(password)) return null;
 
-  let user;
-  try {
-    user = await env.DB.prepare(`
-      SELECT u.*,
-        EXISTS (
-          SELECT 1 FROM user_mfa m
-          WHERE m.user_id = u.id AND m.status = 'enabled'
-        ) AS mfa_enabled
-      FROM app_users u
-      WHERE u.username = ?
-      LIMIT 1
-    `).bind(normalizedUsername).first();
-  } catch (error) {
-    if (!/no such table:\s*user_mfa/i.test(String(error?.message || error))) throw error;
-    user = await env.DB.prepare(`
-      SELECT *
-      FROM app_users
-      WHERE username = ?
-      LIMIT 1
-    `).bind(normalizedUsername).first();
-  }
+  const user = await env.DB.prepare(`
+    SELECT *
+    FROM app_users
+    WHERE username = ?
+    LIMIT 1
+  `).bind(normalizedUsername).first();
 
   // 보안 검토 대상은 승인·비밀번호가 맞아도 로그인하지 않는다(fail-closed).
   // pre-0034 스키마에는 security_review_required가 없을 수 있다.
@@ -75,8 +60,7 @@ export async function validateUser(env, username, password, { verifyPasswordFn =
     displayName: user.display_name,
     role: normalizeRole(user.role),
     mustChangePassword: Number(user.must_change_password) === 1,
-    sessionEpoch: Number(user.session_epoch || 0),
-    mfaEnabled: Number(user.mfa_enabled || 0) === 1
+    sessionEpoch: Number(user.session_epoch || 0)
   };
 }
 
