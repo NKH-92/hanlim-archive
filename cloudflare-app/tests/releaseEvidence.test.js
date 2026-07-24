@@ -67,40 +67,6 @@ test("release smoke 로그인 실패는 상태 코드와 Cloudflare Ray를 남�
   );
 });
 
-test("zero-traffic smoke는 모든 요청을 지정 Worker version override에 고정한다", async () => {
-  const calls = [];
-  const versionId = "12345678-1234-1234-1234-123456789abc";
-  const responses = [
-    new Response('{"ok":true}', { status: 200, headers: { "Content-Type": "application/json" } }),
-    new Response('<input name="username">', { status: 200 }),
-    new Response("not found", { status: 404 }),
-    new Response(null, {
-      status: 302,
-      headers: { Location: "/app", "Set-Cookie": "hanlim_session=token; Path=/" }
-    }),
-    new Response('<main data-viewer-app></main>', { status: 200 })
-  ];
-  await runReleaseSmoke({
-    baseUrl: "https://archive.example.com",
-    username: "smoke@example.com",
-    password: "secret-value",
-    workerVersionOverrideName: "hanlim-archive",
-    workerVersionOverrideId: versionId,
-    allowedHosts: ["archive.example.com"],
-    fetchImpl: async (url, options = {}) => {
-      calls.push({ url, options });
-      return responses.shift();
-    }
-  });
-
-  for (const call of calls) {
-    assert.equal(
-      new Headers(call.options.headers).get("Cloudflare-Workers-Version-Overrides"),
-      `hanlim-archive="${versionId}"`
-    );
-  }
-});
-
 test("release smoke는 Worker 배포 전파 중 health 실패를 재시도한다", async () => {
   const calls = [];
   const waits = [];

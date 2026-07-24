@@ -87,8 +87,6 @@ export async function runReleaseSmoke({
   requireSessionEpochCompatibility = false,
   requireReadiness = false,
   expectedWorkerVersion = "",
-  workerVersionOverrideName = "",
-  workerVersionOverrideId = "",
   verifyPublicSurface = false,
   healthAttempts = HEALTH_ATTEMPTS,
   healthRetryMs = HEALTH_RETRY_MS,
@@ -104,10 +102,7 @@ export async function runReleaseSmoke({
   }
 
   const origin = target.origin;
-  const smokeFetch = versionOverrideFetch(fetchImpl, {
-    workerName: workerVersionOverrideName,
-    versionId: workerVersionOverrideId
-  });
+  const smokeFetch = fetchImpl;
   const retryPolicy = resolveRetryPolicy({ healthAttempts, healthRetryMs });
   let health;
   let healthBody = null;
@@ -224,23 +219,6 @@ export async function runReleaseSmoke({
   return Object.freeze(summary);
 }
 
-function versionOverrideFetch(fetchImpl, { workerName, versionId }) {
-  const name = String(workerName || "").trim();
-  const id = String(versionId || "").trim();
-  if (!name && !id) return fetchImpl;
-  if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(name)) {
-    throw new Error("SMOKE_WORKER_VERSION_OVERRIDE_NAME 형식이 올바르지 않습니다.");
-  }
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    throw new Error("SMOKE_WORKER_VERSION_OVERRIDE_ID 형식이 올바르지 않습니다.");
-  }
-  return (input, init = {}) => {
-    const headers = new Headers(init.headers);
-    headers.set("Cloudflare-Workers-Version-Overrides", `${name}="${id}"`);
-    return fetchImpl(input, { ...init, headers });
-  };
-}
-
 export async function verifyReleasePublicSurface({ target, fetchImpl = fetch }) {
   const insecure = new URL(`${target.origin}/login`);
   insecure.protocol = "http:";
@@ -332,8 +310,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     requireSessionEpochCompatibility: process.env.SMOKE_REQUIRE_SESSION_EPOCH_COMPAT === "1",
     requireReadiness: process.env.SMOKE_REQUIRE_READINESS === "1",
     expectedWorkerVersion: process.env.SMOKE_EXPECTED_WORKER_VERSION || "",
-    workerVersionOverrideName: process.env.SMOKE_WORKER_VERSION_OVERRIDE_NAME || "",
-    workerVersionOverrideId: process.env.SMOKE_WORKER_VERSION_OVERRIDE_ID || "",
     verifyPublicSurface: process.env.SMOKE_VERIFY_PUBLIC_SURFACE === "1",
     healthAttempts: process.env.SMOKE_HEALTH_ATTEMPTS || HEALTH_ATTEMPTS,
     healthRetryMs: process.env.SMOKE_HEALTH_RETRY_MS || HEALTH_RETRY_MS

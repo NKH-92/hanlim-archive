@@ -58,4 +58,4 @@ jobs:
           name: ci-evidence-${{ github.sha }}
           path: cloudflare-app/release-evidence/
           if-no-files-found: error
-          retention-days: 35
+          retention-days: 7
