@@ -1,7 +1,9 @@
 {
   "version": 1,
-  "releasedThrough": "0001_search_index.sql",
+  "releasedThrough": "0003_rebuild_barriers_and_watermarks.sql",
   "checksums": {
-    "0001_search_index.sql": "83bdc52be4ae1f5b6b731bdcd5de2d55cb78ec29c863b35a67aef46d8c805d42"
+    "0001_search_index.sql": "83bdc52be4ae1f5b6b731bdcd5de2d55cb78ec29c863b35a67aef46d8c805d42",
+    "0002_shadow_generations_and_facets.sql": "2efb38c07494b7b332536e07fa5eef663c57f6e037c9327ba9f65c8f7fbd6501",
+    "0003_rebuild_barriers_and_watermarks.sql": "adc1c60c2f4511a8898ad88ea3cb9f6953295f9b2393abf9835bb57e9bfb5bec"
   }
 }
