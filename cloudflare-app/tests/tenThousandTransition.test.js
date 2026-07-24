@@ -208,9 +208,21 @@ test("Search D1 rebuild, 30건 cursor 계약, stale generation, outbox 동기화
     assert.ok(first.nextCursor);
     assert.equal(first.fallback, false);
 
+    const exactName = await getViewerSearchPayload(env, {
+      q: "2026년 1분기 제조기록서",
+      limit: 30
+    });
+    assert.equal(exactName.pagination.totalItems, 1);
+    assert.deepEqual(exactName.items.map((item) => item.documentNumber), ["MR-2026-001"]);
+    assert.equal(exactName.items[0].matchReason, "문서명 정확히 일치");
+
     const fuzzy = await getViewerSearchPayload(env, { q: "밸리데이선", limit: 30 });
     assert.equal(fuzzy.ok, true);
-    assert.ok(fuzzy.items.some((item) => item.documentNumber === "PV-2026-014"), "Search D1 후보 뒤 Core 퍼지 점수를 유지한다");
+    assert.deepEqual(
+      fuzzy.items.map((item) => item.documentNumber),
+      ["PV-2026-014"],
+      "Search D1 후보 뒤 Core 퍼지 점수로 무관한 n-gram 후보를 제거한다"
+    );
 
     const activeBeforeShadow = searchDatabase.prepare(
       "SELECT active_generation FROM search_runtime_state WHERE id = 1"
@@ -345,7 +357,7 @@ test("Search D1 v2는 200건을 넘는 결과의 정확한 페이지·전체 합
         'EXACT-' || printf('%03d', sequence.value),
         'Rev.0',
         CASE
-          WHEN sequence.value = 250 THEN '정확검색'
+          WHEN sequence.value = 250 THEN '정확검색 대표 문서'
           ELSE '정확검색 공통 문서 ' || sequence.value
         END,
         source.rack_slot_id,
@@ -363,7 +375,8 @@ test("Search D1 v2는 200건을 넘는 결과의 정확한 페이지·전체 합
       page: 1,
       pageSize: 30
     });
-    assert.equal(firstPage.items[0].documentNumber, "EXACT-250");
+    assert.equal(firstPage.items.length, 30);
+    assert.equal(firstPage.pagination.totalItems, 250);
 
     const payload = await getViewerSearchPayload(env, {
       q: "정확검색",
