@@ -195,7 +195,7 @@ export function experienceStyles() {
       .search-band.operation-hero { margin: calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3)) 0; padding: var(--sp-5) var(--sp-4); border-radius: 0 0 var(--r-lg) var(--r-lg); }
       .search-band.operation-hero .hero-kicker, .search-band.operation-hero .page-sub { display: none; }
       .search-band.operation-hero h1 { font-size: 20px; }
-      .document-detail-head { grid-template-columns: minmax(0, 1fr); margin: calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3)) var(--sp-3); padding: var(--sp-5) var(--sp-4); border-radius: 0 0 var(--r-lg) var(--r-lg); }
+      .document-detail-head { grid-template-columns: minmax(0, 1fr); max-inline-size: none; margin: calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3)) var(--sp-3); padding: var(--sp-5) calc(var(--sp-4) + var(--sp-3)); border-radius: 0 0 var(--r-lg) var(--r-lg); }
       .document-detail-head .breadcrumb { display: flex; align-items: center; margin: 0; }
       .document-detail-head .breadcrumb > span { display: none; }
       .document-detail-head .breadcrumb a { display: inline-flex; align-items: center; min-height: 44px; color: var(--surface); font-weight: 700; }

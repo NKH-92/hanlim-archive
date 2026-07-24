@@ -97,6 +97,7 @@ test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한�
   assert.match(css, /\.viewer-result-row > \.check-col \{ width: 100%; \}/);
   assert.match(css, /\.viewer-result-row \.mono \.viewer-result-value \{ min-width: 0; white-space: nowrap; overflow-wrap: normal; \}/);
   assert.match(css, /\.workflow-stepper \{ grid-template-columns: repeat\(5, minmax\(104px, 1fr\)\)/);
+  assert.match(css, /\.document-detail-head \{ grid-template-columns: minmax\(0, 1fr\); max-inline-size: none; margin: calc\(-1 \* var\(--sp-3\)\) calc\(-1 \* var\(--sp-3\)\) var\(--sp-3\); padding: var\(--sp-5\) calc\(var\(--sp-4\) \+ var\(--sp-3\)\)/);
 });
 
 test("view 소스는 CSP가 차단하는 style 속성과 동적 CSSOM mutation을 만들지 않는다", () => {
