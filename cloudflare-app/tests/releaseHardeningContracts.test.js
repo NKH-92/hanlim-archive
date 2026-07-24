@@ -9,7 +9,7 @@ import {
   preflightD1Recovery,
   validateD1RecoveryEvidence
 } from "../scripts/capture-d1-recovery.mjs";
-import { preflightSmokePrincipal } from "../scripts/release-smoke-principal.mjs";
+import { preflightSmokePrincipal, runSmokePrincipal } from "../scripts/release-smoke-principal.mjs";
 
 const CORE_ID = "1262ca00-b431-490c-aad2-539d77d4f73f";
 const SEARCH_ID = "e9dc4469-30ca-47c7-ad01-6aa9aea0b3ac";
@@ -142,6 +142,43 @@ test("ephemeral smoke preflight rejects implicit targets and persistent credenti
     action: "cleanup",
     environment: releaseEnvironment({ RELEASE_SMOKE_CREDENTIAL_PATH: "" })
   }).ok, true);
+});
+
+test("release smoke provisioning accepts Wrangler progress text before JSON", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "release-smoke-prefix-"));
+  try {
+    const credentialPath = path.join(directory, "credentials.json");
+    const calls = [];
+    const result = await runSmokePrincipal({
+      action: "provision",
+      environment: releaseEnvironment({
+        RELEASE_SMOKE_CREDENTIAL_PATH: credentialPath
+      }),
+      spawn(command, args, options) {
+        calls.push({ command, args, options });
+        if (args.includes("--file")) {
+          return {
+            status: 0,
+            stdout: `├ Checking if file needs uploading\n${JSON.stringify([{
+              results: [{ provisioned: 2 }]
+            }])}`
+          };
+        }
+        return {
+          status: 0,
+          stdout: JSON.stringify([{ results: [{ removed: 0 }, { remaining: 0 }] }])
+        };
+      }
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.provisioned, 2);
+    assert.equal(calls.length, 2);
+    const credentials = JSON.parse(await readFile(credentialPath, "utf8"));
+    assert.match(credentials.reader.username, /^release-reader-/);
+    assert.ok(credentials.reader.password.length >= 6);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("release smoke 계정은 TTL과 최소 사용자관리 권한만 가지며 다음 run이 누수를 정리한다", async () => {
