@@ -55,7 +55,12 @@ export async function validateUser(env, username, password, { verifyPasswordFn =
   if (!canAuthenticate || !validPassword) {
     return null;
   }
-  if (verifyPasswordFn === verifyPassword && passwordRecordNeedsUpgrade(user.password_hash)) {
+  if (
+    verifyPasswordFn === verifyPassword
+    && passwordRecordNeedsUpgrade(user.password_hash)
+    // Release smoke credentials must remain readable if this Worker is rolled back.
+    && !isReleaseSmokePrincipal(user)
+  ) {
     const upgraded = await createPasswordRecord(password);
     await env.DB.prepare(`
       UPDATE app_users
@@ -104,4 +109,9 @@ function isExpired(value) {
   const normalized = String(value).includes("T") ? String(value) : `${String(value).replace(" ", "T")}Z`;
   const timestamp = Date.parse(normalized);
   return !Number.isFinite(timestamp) || timestamp <= Date.now();
+}
+
+function isReleaseSmokePrincipal(user) {
+  return Boolean(user?.expires_at)
+    && String(user?.approved_by || "").startsWith("release-smoke:");
 }
