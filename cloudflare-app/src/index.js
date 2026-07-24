@@ -19,10 +19,9 @@ import {
 } from "./app/routeRegistry.js";
 import { createRequestD1Environment } from "./platform/d1/requestGateway.js";
 import {
-  processPendingSearchOutboxImmediately,
-  processSearchOutbox,
-  processSearchOutboxForDocuments,
-  rebuildSearchIndexChunk
+  runBoundedSearchMaintenance,
+  syncChangedSearchDocuments,
+  syncPendingSearchDocuments
 } from "./domains/search/index.js";
 
 export default {
@@ -35,15 +34,15 @@ export default {
     const effects = {
       async syncSearchDocument(documentId) {
         const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search` });
-        return processSearchOutboxForDocuments(searchEnv, [documentId]);
+        return syncChangedSearchDocuments(searchEnv, [documentId]);
       },
       async syncSearchDocuments(documentIds) {
         const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search` });
-        return processSearchOutboxForDocuments(searchEnv, documentIds);
+        return syncChangedSearchDocuments(searchEnv, documentIds);
       },
       async syncPendingSearchDocuments(limit) {
         const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search-batch` });
-        return processPendingSearchOutboxImmediately(searchEnv, { limit });
+        return syncPendingSearchDocuments(searchEnv, { limit });
       }
     };
     let response;
@@ -77,9 +76,7 @@ export default {
 
 async function runSearchMaintenance(env) {
   try {
-    const outbox = await processSearchOutbox(env);
-    const rebuild = await rebuildSearchIndexChunk(env);
-    return { ok: outbox.ok !== false && rebuild.ok !== false, outbox, rebuild };
+    return await runBoundedSearchMaintenance(env);
   } catch (error) {
     logError("worker.search-maintenance", error);
     throw error;

@@ -66,6 +66,43 @@ test("D1 recovery preflight binds both production databases and release identity
   }).ok, false);
 });
 
+test("runtime-only recovery는 임시 smoke 계정이 쓰는 Core bookmark만 캡처한다", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "d1-core-recovery-test-"));
+  try {
+    const outputPath = path.join(directory, "recovery.json");
+    const calls = [];
+    const environment = releaseEnvironment({
+      D1_RECOVERY_SCOPE: "core",
+      SEARCH_D1_TARGET_DATABASE_ID: "",
+      D1_RECOVERY_EVIDENCE_PATH: outputPath
+    });
+    const result = captureD1Recovery({
+      environment,
+      config: productionConfig(),
+      execPath: "node-runtime",
+      spawn(command, args, options) {
+        calls.push({ command, args, options });
+        return { status: 0, stdout: JSON.stringify({ bookmark: CORE_BOOKMARK }) };
+      }
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(Object.keys(result.evidence.databases), ["core"]);
+    assert.equal(result.evidence.scope, "core");
+    assert.equal(validateD1RecoveryEvidence(result.evidence, {
+      envName: "production",
+      coreDatabaseId: CORE_ID,
+      searchDatabaseId: "",
+      releaseSha: RELEASE_SHA,
+      runId: "12345678",
+      scope: "core"
+    }).ok, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("D1 recovery captures both Time Travel bookmarks and rejects tampering", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "d1-recovery-test-"));
   try {

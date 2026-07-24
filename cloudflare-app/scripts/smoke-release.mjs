@@ -18,6 +18,15 @@ const PUBLIC_ASSET_CONTRACTS = Object.freeze([
   Object.freeze({ path: "/assets/app.js", contentType: "text/javascript" }),
   Object.freeze({ path: "/images/hanlim-pharm-logo.svg", contentType: "image/svg+xml" })
 ]);
+const PUBLIC_ASSET_SECURITY_HEADERS = Object.freeze({
+  "Cache-Control": "public, max-age=0, must-revalidate",
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Referrer-Policy": "same-origin",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "X-Robots-Tag": "noindex, nofollow"
+});
 
 /**
  * smoke credential을 읽거나 전송하기 전에 대상 URL을 검증한다.
@@ -88,6 +97,7 @@ export async function runReleaseSmoke({
   requireReadiness = false,
   expectedWorkerVersion = "",
   verifyPublicSurface = false,
+  publicOnly = false,
   healthAttempts = HEALTH_ATTEMPTS,
   healthRetryMs = HEALTH_RETRY_MS,
   allowedHosts,
@@ -96,8 +106,10 @@ export async function runReleaseSmoke({
 }) {
   // credential을 검사·전송하기 전에 URL을 먼저 검증한다.
   const target = resolveSmokeTarget(baseUrl, { allowedHosts });
-  if (!username || !password) throw new Error("SMOKE_USERNAME, SMOKE_PASSWORD가 필요합니다.");
-  if (requireAdmin && (!adminUsername || !adminPassword)) {
+  if (!publicOnly && (!username || !password)) {
+    throw new Error("SMOKE_USERNAME, SMOKE_PASSWORD가 필요합니다.");
+  }
+  if (!publicOnly && requireAdmin && (!adminUsername || !adminPassword)) {
     throw new Error("관리자 smoke에는 SMOKE_ADMIN_USERNAME, SMOKE_ADMIN_PASSWORD가 필요합니다.");
   }
 
@@ -172,6 +184,16 @@ export async function runReleaseSmoke({
   const signup = await smokeFetch(`${origin}/signup`, { redirect: "manual" });
   if (signup.status !== 404) throw new Error("/signup 404 계약 실패");
 
+  const summary = { health: health.status, login: login.status, signup: signup.status, origin };
+  if (requireReadiness) summary.readiness = readiness.status;
+  if (publicSurface) {
+    summary.httpRedirect = publicSurface.httpRedirect;
+    summary.assets = publicSurface.assets;
+  }
+  if (requireSessionEpochCompatibility) summary.sessionEpochCompatibility = 1;
+  if (expectedWorkerVersion) summary.workerVersion = healthBody.workerVersion;
+  if (publicOnly) return Object.freeze(summary);
+
   const cookie = await authenticateSmokeUser({
     origin,
     username,
@@ -188,14 +210,7 @@ export async function runReleaseSmoke({
   const html = await search.text();
   if (search.status !== 200 || !html.includes("data-viewer-app")) throw new Error("인증 read-only 검색 smoke 실패");
 
-  const summary = { health: health.status, login: login.status, signup: signup.status, search: search.status, origin };
-  if (requireReadiness) summary.readiness = readiness.status;
-  if (publicSurface) {
-    summary.httpRedirect = publicSurface.httpRedirect;
-    summary.assets = publicSurface.assets;
-  }
-  if (requireSessionEpochCompatibility) summary.sessionEpochCompatibility = 1;
-  if (expectedWorkerVersion) summary.workerVersion = healthBody.workerVersion;
+  summary.search = search.status;
   if (requireAdmin) {
     const adminCookie = await authenticateSmokeUser({
       origin,
@@ -233,6 +248,11 @@ export async function verifyReleasePublicSurface({ target, fetchImpl = fetch }) 
     const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
     if (response.status !== 200 || !contentType.startsWith(contract.contentType)) {
       throw new Error(`정적 asset smoke 실패(path=${contract.path}, status=${response.status}, content-type=${contentType || "none"})`);
+    }
+    for (const [header, expected] of Object.entries(PUBLIC_ASSET_SECURITY_HEADERS)) {
+      if (response.headers.get(header) !== expected) {
+        throw new Error(`정적 asset 보안 header smoke 실패(path=${contract.path}, header=${header})`);
+      }
     }
     const revalidated = await fetchImpl(`${target.origin}${contract.path}`, {
       headers: { "If-None-Match": "*" },
@@ -311,6 +331,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     requireReadiness: process.env.SMOKE_REQUIRE_READINESS === "1",
     expectedWorkerVersion: process.env.SMOKE_EXPECTED_WORKER_VERSION || "",
     verifyPublicSurface: process.env.SMOKE_VERIFY_PUBLIC_SURFACE === "1",
+    publicOnly: process.env.SMOKE_PUBLIC_ONLY === "1",
     healthAttempts: process.env.SMOKE_HEALTH_ATTEMPTS || HEALTH_ATTEMPTS,
     healthRetryMs: process.env.SMOKE_HEALTH_RETRY_MS || HEALTH_RETRY_MS
   });

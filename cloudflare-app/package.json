@@ -22,6 +22,7 @@
     "audit:dependencies": "npm audit --audit-level=high",
     "audit:excel-snapshots": "node scripts/audit-excel-snapshot-data.mjs",
     "release:evidence": "node scripts/generate-release-evidence.mjs",
+    "release:classify": "node scripts/classify-release.mjs",
     "smoke:release": "node scripts/smoke-release.mjs",
     "smoke:principal": "node scripts/release-smoke-principal.mjs",
     "recovery:d1:time-travel": "node scripts/capture-d1-recovery.mjs",

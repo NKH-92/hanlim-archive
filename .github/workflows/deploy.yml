@@ -56,6 +56,29 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: cloudflare-app/package-lock.json
+      - name: Classify release scope
+        id: classify_release
+        env:
+          EVENT_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          RELEASE_BASE_SHA="$EVENT_BEFORE_SHA"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            RELEASE_BASE_SHA="$GITHUB_SHA"
+          elif ! [[ "$RELEASE_BASE_SHA" =~ ^[a-f0-9]{40}$ ]] || [[ "$RELEASE_BASE_SHA" =~ ^0+$ ]]; then
+            RELEASE_BASE_SHA="$(git rev-parse "$GITHUB_SHA^1")"
+          fi
+          CLASSIFICATION="$(node scripts/classify-release.mjs --base "$RELEASE_BASE_SHA" --head "$GITHUB_SHA")"
+          RELEASE_CLASS="$(jq -r .releaseClass <<< "$CLASSIFICATION")"
+          RECOVERY_SCOPE="$(jq -r .recoveryScope <<< "$CLASSIFICATION")"
+          test "$RELEASE_CLASS" = "asset-only" \
+            || test "$RELEASE_CLASS" = "runtime-only" \
+            || test "$RELEASE_CLASS" = "database"
+          echo "release_class=$RELEASE_CLASS" >> "$GITHUB_OUTPUT"
+          echo "recovery_scope=$RECOVERY_SCOPE" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_CLASS=$RELEASE_CLASS" >> "$GITHUB_ENV"
+          mkdir -p release-evidence
+          printf '%s\n' "$CLASSIFICATION" > release-evidence/release-classification.json
       - name: Verify released migrations against release base
         env:
           EVENT_BEFORE_SHA: ${{ github.event.before }}
@@ -90,15 +113,19 @@ jobs:
             > release-evidence/version-before.json
           echo "PREVIOUS_VERSION_ID=$PREVIOUS_VERSION_ID" >> "$GITHUB_ENV"
       - name: Verify independent administrator before migration
+        if: steps.classify_release.outputs.release_class == 'database'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           D1_ADMIN_CHECK_PHASE: pre-migration
         run: npm run admin:check:remote
       - name: Capture Core and Search D1 Time Travel recovery points
+        if: steps.classify_release.outputs.release_class != 'asset-only'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          D1_RECOVERY_SCOPE: ${{ steps.classify_release.outputs.recovery_scope }}
         run: npm run recovery:d1:time-travel
       - name: Verify current Worker compatibility before migration
+        if: steps.classify_release.outputs.release_class == 'database'
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --retry 3 "$PRODUCTION_URL/healthz" \
@@ -111,16 +138,19 @@ jobs:
           test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
             "$PRODUCTION_URL/signup")" = "404"
       - name: Upload pre-mutation recovery and migration evidence
+        if: steps.classify_release.outputs.release_class != 'asset-only'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pre-mutation-evidence-${{ github.sha }}-${{ github.run_id }}
           path: |
             cloudflare-app/release-evidence/d1-recovery.json
+            cloudflare-app/release-evidence/release-classification.json
             cloudflare-app/release-evidence/migration-manifest.json
             cloudflare-app/release-evidence/release-evidence.json
           if-no-files-found: error
           retention-days: 8
       - name: Apply D1 migrations
+        if: steps.classify_release.outputs.release_class == 'database'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           D1_MIGRATE_APPROVAL_CONTEXT: github-environment:production:${{ github.run_id }}:${{ github.sha }}
@@ -129,17 +159,20 @@ jobs:
           set -o pipefail
           npm run db:migrate:remote 2>&1 | tee release-evidence/migration-apply.txt
       - name: Verify independent administrator after migration
+        if: steps.classify_release.outputs.release_class == 'database'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           D1_ADMIN_CHECK_PHASE: post-migration
         run: npm run admin:check:remote
       - name: Provision release-scoped smoke principals
         id: provision_smoke
+        if: steps.classify_release.outputs.release_class != 'asset-only'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           D1_PROVISION_ENV: production
         run: npm run smoke:principal -- --action provision
       - name: Verify rollback Worker against migrated schema
+        if: steps.classify_release.outputs.release_class == 'database'
         env:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
           SMOKE_REQUIRE_ADMIN: "1"
@@ -186,17 +219,20 @@ jobs:
         continue-on-error: true
         env:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_REQUIRE_ADMIN: "1"
+          SMOKE_REQUIRE_ADMIN: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '0' || '1' }}
+          SMOKE_PUBLIC_ONLY: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '1' || '0' }}
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
           SMOKE_REQUIRE_READINESS: "1"
           SMOKE_VERIFY_PUBLIC_SURFACE: "1"
           SMOKE_HEALTH_ATTEMPTS: "60"
           SMOKE_HEALTH_RETRY_MS: "2000"
         run: |
-          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          if [ "$RELEASE_CLASS" != "asset-only" ]; then
+            export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+            export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+            export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+            export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          fi
           export SMOKE_EXPECTED_WORKER_VERSION="$DEPLOYED_VERSION_ID"
           set -o pipefail
           npm run smoke:release 2>&1 | tee release-evidence/smoke.txt
@@ -207,14 +243,17 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_REQUIRE_ADMIN: "1"
+          SMOKE_REQUIRE_ADMIN: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '0' || '1' }}
+          SMOKE_PUBLIC_ONLY: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '1' || '0' }}
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
         run: |
           set -euo pipefail
-          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          if [ "$RELEASE_CLASS" != "asset-only" ]; then
+            export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+            export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+            export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+            export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          fi
           CURRENT_VERSION_ID=""
           if npx wrangler deployments status --env production --json \
               > release-evidence/deployment-failed-release-before-rollback.json \
