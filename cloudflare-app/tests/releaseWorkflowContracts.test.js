@@ -42,7 +42,7 @@ test("production deploy는 승인, 백업, migration, deploy, smoke, rollback �
     "Apply D1 migrations",
     "Verify independent administrator after migration",
     "Deploy Worker",
-    "Post-deploy login and read-only search smoke",
+    "Post-deploy transport, assets, login and read-only search smoke",
     "Roll back Worker after release failure",
     "Upload release evidence"
   ];
@@ -63,7 +63,10 @@ test("production deploy는 승인, 백업, migration, deploy, smoke, rollback �
   assert.match(deploy, /test "\$DEPLOYED_VERSION_ID" != "\$PREVIOUS_VERSION_ID"/);
   assert.match(deploy, /\.annotations\["workers\/tag"\] == \$tag and \.annotations\["workers\/message"\] == \$message/);
   assert.match(deploy, /SMOKE_EXPECTED_WORKER_VERSION="\$DEPLOYED_VERSION_ID"/);
-  assert.match(deploy, /Post-deploy login and read-only search smoke[\s\S]*SMOKE_HEALTH_ATTEMPTS: "60"[\s\S]*SMOKE_HEALTH_RETRY_MS: "2000"/);
+  assert.match(deploy, /Post-deploy transport, assets, login and read-only search smoke[\s\S]*SMOKE_HEALTH_ATTEMPTS: "60"[\s\S]*SMOKE_HEALTH_RETRY_MS: "2000"/);
+  assert.match(deploy, /verify_legacy_tls_blocked --tlsv1\.0 1\.0/);
+  assert.match(deploy, /verify_legacy_tls_blocked --tlsv1\.1 1\.1/);
+  assert.match(deploy, /\} 2>&1 \| tee -a release-evidence\/smoke\.txt/);
   assert.doesNotMatch(deploy, /versions list --json > release-evidence\/versions-before\.json/);
   assert.ok((deploy.match(/set -o pipefail/g)?.length || 0) >= 10);
   assert.doesNotMatch(deploy, /123456|SESSION_SECRET/);

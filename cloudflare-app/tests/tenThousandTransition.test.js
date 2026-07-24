@@ -6,6 +6,7 @@ import test from "node:test";
 import worker from "../src/index.js";
 import { createSessionCookie } from "../src/auth.js";
 import { createDocument, loadDocumentFormOptions } from "../src/domains/documents/index.js";
+import { createDocumentImportJob } from "../src/domains/imports/index.js";
 import {
   createDocumentSnapshotExport,
   createDocumentSnapshot,
@@ -16,8 +17,10 @@ import {
 } from "../src/domains/snapshots/index.js";
 import {
   getViewerSearchPayload,
+  processPendingSearchOutboxImmediately,
   processSearchOutbox,
   processSearchOutboxForDocument,
+  processSearchOutboxForDocuments,
   rebuildSearchIndexChunk
 } from "../src/domains/search/index.js";
 import { FREE_TIER_BUDGET } from "../src/freeTierBudget.js";
@@ -244,7 +247,33 @@ test("개별 문서 outbox는 등록 직후 대상 문서만 Search D1에 반영
   }
 });
 
-test("개별 문서 등록 응답 직후 문서명과 태그를 실제 검색 API에서 찾을 수 있다", async () => {
+test("여러 생성 경로의 outbox는 대상 목록 또는 즉시 pending batch로 한 번에 반영한다", async () => {
+  const coreDatabase = await createMigratedDatabase();
+  const searchDatabase = new DatabaseSync(":memory:");
+  searchDatabase.exec(await readFile(new URL("../search-migrations/0001_search_index.sql", import.meta.url), "utf8"));
+  const env = { DB: sqliteD1(coreDatabase), SEARCH_DB: sqliteD1(searchDatabase) };
+  try {
+    await rebuildSearchIndexChunk(env);
+    await rebuildSearchIndexChunk(env);
+
+    coreDatabase.prepare("UPDATE documents SET document_name = ? WHERE id = 1").run("대상 목록 즉시 반영");
+    coreDatabase.prepare("UPDATE documents SET document_name = ? WHERE id = 2").run("pending batch 즉시 반영");
+    const first = await processSearchOutboxForDocuments(env, [1, 1, 999999]);
+    assert.equal(first.processed, 1);
+    assert.equal(coreDatabase.prepare("SELECT COUNT(*) AS count FROM search_index_outbox").get().count, 1);
+    assert.equal(searchDatabase.prepare("SELECT document_name FROM search_documents WHERE document_id = 1").get().document_name, "대상 목록 즉시 반영");
+
+    const remaining = await processPendingSearchOutboxImmediately(env);
+    assert.equal(remaining.processed, 1);
+    assert.equal(coreDatabase.prepare("SELECT COUNT(*) AS count FROM search_index_outbox").get().count, 0);
+    assert.equal(searchDatabase.prepare("SELECT document_name FROM search_documents WHERE document_id = 2").get().document_name, "pending batch 즉시 반영");
+  } finally {
+    coreDatabase.close();
+    searchDatabase.close();
+  }
+});
+
+test("개별 등록·개정·CSV 생성 경로는 응답 직후 실제 검색 API에 반영된다", async () => {
   const coreDatabase = await createMigratedDatabase();
   const searchDatabase = new DatabaseSync(":memory:");
   searchDatabase.exec(await readFile(new URL("../search-migrations/0001_search_index.sql", import.meta.url), "utf8"));
@@ -316,6 +345,71 @@ test("개별 문서 등록 응답 직후 문서명과 태그를 실제 검색 AP
     ), env);
     const tagPayload = await byTag.json();
     assert.ok(tagPayload.items.some((item) => item.documentNumber === "IMM-WORKER-2026-001"));
+
+    const createdId = Number((created.headers.get("Location") || "").match(/\/documents\/(\d+)/)?.[1] || 0);
+    const createdRow = coreDatabase.prepare("SELECT updated_at, row_version FROM documents WHERE id = ?").get(createdId);
+    const revision = new URLSearchParams({
+      csrf_token: csrfToken,
+      revisionNumber: "Rev.1",
+      revisionDate: "2026-07-24",
+      confirmReplacement: "1",
+      expectedUpdatedAt: createdRow.updated_at,
+      expectedRowVersion: String(createdRow.row_version)
+    });
+    const revised = await worker.fetch(new Request(`https://archive.example.com/documents/${createdId}/revise`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        Origin: "https://archive.example.com"
+      },
+      body: revision
+    }), env);
+    assert.equal(revised.status, 302);
+    const revisedSearch = await worker.fetch(new Request(
+      "https://archive.example.com/api/viewer/search?q=" + encodeURIComponent("Rev.1 응답 직후 검색 문서"),
+      { headers: { Cookie: cookie, Accept: "application/json" } }
+    ), env);
+    assert.ok((await revisedSearch.json()).items.some((item) => item.revisionNumber === "Rev.1"));
+
+    const admin = coreDatabase.prepare("SELECT id FROM app_users WHERE username = ?").get(session.username);
+    const importJob = await createDocumentImportJob(env, {
+      sourceName: "immediate-search.csv",
+      items: [{
+        values: {
+          categoryId: source.category_id,
+          documentNumber: "IMM-CSV-2026-001",
+          revisionNumber: "Rev.0",
+          revisionDate: "2026-07-24",
+          disposalDueYear: "2031",
+          documentName: "CSV 응답 직후 검색 문서",
+          note: "",
+          rackSlotId: source.rack_slot_id,
+          rackFace: source.rack_face,
+          tagIds: [tag.id]
+        },
+        status: "active"
+      }]
+    }, { ...session, id: admin.id, userId: admin.id });
+    const imported = await worker.fetch(new Request(
+      `https://archive.example.com/document-import-jobs/${importJob.id}/process`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          Origin: "https://archive.example.com",
+          Accept: "application/json"
+        },
+        body: new URLSearchParams({ csrf_token: csrfToken })
+      }
+    ), env);
+    assert.equal(imported.status, 200);
+    const importedPayload = await imported.json();
+    assert.ok(importedPayload.createdDocumentId > 0);
+    const importedSearch = await worker.fetch(new Request(
+      "https://archive.example.com/api/viewer/search?q=" + encodeURIComponent("CSV 응답 직후 검색"),
+      { headers: { Cookie: cookie, Accept: "application/json" } }
+    ), env);
+    assert.ok((await importedSearch.json()).items.some((item) => item.documentNumber === "IMM-CSV-2026-001"));
   } finally {
     coreDatabase.close();
     searchDatabase.close();

@@ -13,6 +13,11 @@ const ADMIN_SETTINGS_MARKERS = Object.freeze([
   "가입 요청",
   "승인된 사용자"
 ]);
+const PUBLIC_ASSET_CONTRACTS = Object.freeze([
+  Object.freeze({ path: "/assets/app.css", contentType: "text/css" }),
+  Object.freeze({ path: "/assets/app.js", contentType: "text/javascript" }),
+  Object.freeze({ path: "/images/hanlim-pharm-logo.svg", contentType: "image/svg+xml" })
+]);
 
 /**
  * smoke credential을 읽거나 전송하기 전에 대상 URL을 검증한다.
@@ -81,6 +86,7 @@ export async function runReleaseSmoke({
   requireAdmin = false,
   requireSessionEpochCompatibility = false,
   expectedWorkerVersion = "",
+  verifyPublicSurface = false,
   healthAttempts = HEALTH_ATTEMPTS,
   healthRetryMs = HEALTH_RETRY_MS,
   allowedHosts,
@@ -132,6 +138,11 @@ export async function runReleaseSmoke({
     throw new Error("현재 Worker는 session-epoch rollback 호환성을 선언하지 않습니다. 호환 Worker를 먼저 배포하세요.");
   }
 
+  let publicSurface = null;
+  if (verifyPublicSurface) {
+    publicSurface = await verifyReleasePublicSurface({ target, fetchImpl });
+  }
+
   const login = await fetchImpl(`${origin}/login`, { redirect: "manual" });
   if (login.status !== 200 || !(await login.text()).includes('name="username"')) throw new Error("/login smoke 실패");
 
@@ -148,6 +159,10 @@ export async function runReleaseSmoke({
   if (search.status !== 200 || !html.includes("data-viewer-app")) throw new Error("인증 read-only 검색 smoke 실패");
 
   const summary = { health: health.status, login: login.status, signup: signup.status, search: search.status, origin };
+  if (publicSurface) {
+    summary.httpRedirect = publicSurface.httpRedirect;
+    summary.assets = publicSurface.assets;
+  }
   if (requireSessionEpochCompatibility) summary.sessionEpochCompatibility = 1;
   if (expectedWorkerVersion) summary.workerVersion = healthBody.workerVersion;
   if (requireAdmin) {
@@ -171,6 +186,37 @@ export async function runReleaseSmoke({
   }
 
   return Object.freeze(summary);
+}
+
+export async function verifyReleasePublicSurface({ target, fetchImpl = fetch }) {
+  const insecure = new URL(`${target.origin}/login`);
+  insecure.protocol = "http:";
+  const redirectResponse = await fetchImpl(insecure.toString(), { redirect: "manual" });
+  if (redirectResponse.status !== 308 || redirectResponse.headers.get("Location") !== `${target.origin}/login`) {
+    throw new Error(`HTTP→HTTPS 전환 smoke 실패(status=${redirectResponse.status})`);
+  }
+
+  const assets = {};
+  for (const contract of PUBLIC_ASSET_CONTRACTS) {
+    const response = await fetchImpl(`${target.origin}${contract.path}`, { redirect: "manual" });
+    const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+    if (response.status !== 200 || !contentType.startsWith(contract.contentType)) {
+      throw new Error(`정적 asset smoke 실패(path=${contract.path}, status=${response.status}, content-type=${contentType || "none"})`);
+    }
+    const revalidated = await fetchImpl(`${target.origin}${contract.path}`, {
+      headers: { "If-None-Match": "*" },
+      redirect: "manual"
+    });
+    if (revalidated.status !== 304) {
+      throw new Error(`정적 asset 재검증 smoke 실패(path=${contract.path}, status=${revalidated.status})`);
+    }
+    assets[contract.path] = response.status;
+  }
+
+  return Object.freeze({
+    httpRedirect: redirectResponse.status,
+    assets: Object.freeze(assets)
+  });
 }
 
 async function authenticateSmokeUser({ origin, username, password, returnUrl, label, fetchImpl }) {
@@ -232,6 +278,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     requireAdmin: process.env.SMOKE_REQUIRE_ADMIN === "1",
     requireSessionEpochCompatibility: process.env.SMOKE_REQUIRE_SESSION_EPOCH_COMPAT === "1",
     expectedWorkerVersion: process.env.SMOKE_EXPECTED_WORKER_VERSION || "",
+    verifyPublicSurface: true,
     healthAttempts: process.env.SMOKE_HEALTH_ATTEMPTS || HEALTH_ATTEMPTS,
     healthRetryMs: process.env.SMOKE_HEALTH_RETRY_MS || HEALTH_RETRY_MS
   });

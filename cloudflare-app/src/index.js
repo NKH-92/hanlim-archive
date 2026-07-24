@@ -6,25 +6,43 @@ import { routeAuthenticatedRequest } from "./handlers/authenticatedRouter.js";
 import { handleLogin, handleLogout, renderLogin } from "./handlers/sessionHandlers.js";
 import { normalizePath } from "./platform/http/routeMatcher.js";
 import { redirect } from "./platform/http/responses.js";
+import { headResponse, servePublicAsset } from "./platform/http/assets.js";
 import { logError } from "./platform/observability/logger.js";
 import { isValidCsrfToken } from "./platform/security/csrf.js";
 import { isTrustedPostOrigin } from "./platform/security/origin.js";
-import { resolveAuthenticatedRoute, resolvePublicRoute } from "./app/routeRegistry.js";
+import { enforceTransportSecurity } from "./platform/security/transport.js";
+import {
+  allowedMethodsForPath,
+  resolveAuthenticatedRoute,
+  resolvePublicRoute
+} from "./app/routeRegistry.js";
 import { createRequestD1Environment } from "./platform/d1/requestGateway.js";
 import {
+  processPendingSearchOutboxImmediately,
   processSearchOutbox,
-  processSearchOutboxForDocument,
+  processSearchOutboxForDocuments,
   rebuildSearchIndexChunk
 } from "./domains/search/index.js";
 
 export default {
   async fetch(request, env) {
+    const transportResponse = enforceTransportSecurity(request);
+    if (transportResponse) return withSecurityHeaders(transportResponse, request);
+
     const reqId = shortRequestId();
     const requestEnv = createRequestD1Environment(env, { requestId: reqId });
     const effects = {
       async syncSearchDocument(documentId) {
         const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search` });
-        return processSearchOutboxForDocument(searchEnv, documentId);
+        return processSearchOutboxForDocuments(searchEnv, [documentId]);
+      },
+      async syncSearchDocuments(documentIds) {
+        const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search` });
+        return processSearchOutboxForDocuments(searchEnv, documentIds);
+      },
+      async syncPendingSearchDocuments(limit) {
+        const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search-batch` });
+        return processPendingSearchOutboxImmediately(searchEnv, { limit });
       }
     };
     let response;
@@ -35,7 +53,8 @@ export default {
       // 상관용 짧은 reqId만 사용자에게 주고, 전체 오류는 서버 로그에만 남긴다.
       const url = new URL(request.url);
       const path = normalizePath(url.pathname);
-      const routeId = (resolvePublicRoute(path, request.method) || resolveAuthenticatedRoute(path, request.method))?.descriptor.id || "unmatched";
+      const method = request.method === "HEAD" ? "GET" : request.method;
+      const routeId = (resolvePublicRoute(path, method) || resolveAuthenticatedRoute(path, method))?.descriptor.id || "unmatched";
       logError("worker.fetch", error, { reqId, routeId, method: request.method, path });
       const session = await readSession(request, requestEnv).catch(() => null);
       response = errorPage(
@@ -74,15 +93,28 @@ function shortRequestId() {
 async function route(request, env, effects = {}) {
   const url = new URL(request.url);
   const path = normalizePath(url.pathname);
-  const publicRoute = resolvePublicRoute(path, request.method);
+  const headOnly = request.method === "HEAD";
+  const method = headOnly ? "GET" : request.method;
+
+  if (request.method === "OPTIONS") {
+    const allowed = allowedMethodsForPath(path);
+    if (!allowed.length) return new Response(null, { status: 404 });
+    return new Response(null, {
+      status: 204,
+      headers: { Allow: allowed.join(", ") }
+    });
+  }
+
+  const publicRoute = resolvePublicRoute(path, method);
 
   if (publicRoute?.descriptor.family === "assets") {
-    return env.ASSETS.fetch(request);
+    return servePublicAsset(request, env.ASSETS);
   }
 
   // 무인증 헬스체크: D1 도달성까지 확인해 외부 업타임 모니터가 종단 상태를 알 수 있게 한다.
   if (publicRoute?.descriptor.id === "health.read") {
-    return handleHealthCheck(env);
+    const response = await handleHealthCheck(env);
+    return headOnly ? headResponse(response) : response;
   }
 
   if (request.method === "POST" && !isTrustedPostOrigin(request)) {
@@ -90,7 +122,8 @@ async function route(request, env, effects = {}) {
   }
 
   if (publicRoute?.descriptor.id === "session.login.form") {
-    return renderLogin(url, env);
+    const response = await renderLogin(url, env);
+    return headOnly ? headResponse(response) : response;
   }
 
   if (publicRoute?.descriptor.id === "session.login") {
@@ -98,7 +131,8 @@ async function route(request, env, effects = {}) {
   }
 
   if (publicRoute?.descriptor.id === "session.signup.blocked") {
-    return notFoundPage(null);
+    const response = notFoundPage(null);
+    return headOnly ? headResponse(response) : response;
   }
 
   const session = await readSession(request, env);

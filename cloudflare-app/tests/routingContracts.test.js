@@ -17,7 +17,10 @@ test("전역 CSS와 JS asset은 인증 없이 정적 asset binding에서 제공�
       fetch(request) {
         const path = new URL(request.url).pathname;
         return new Response(`asset:${path}`, {
-          headers: { "Content-Type": contentTypes.get(path) || "application/octet-stream" }
+          headers: {
+            "Content-Type": contentTypes.get(path) || "application/octet-stream",
+            ETag: `"${path}"`
+          }
         });
       }
     }
@@ -29,6 +32,43 @@ test("전역 CSS와 JS asset은 인증 없이 정적 asset binding에서 제공�
       assert.equal(response.status, 200);
       assert.equal(response.headers.get("Content-Type"), contentType);
       assert.equal(await response.text(), `asset:${path}`);
+
+      const revalidated = await worker.fetch(new Request(`${ORIGIN}${path}`, {
+        headers: { "If-None-Match": "*" }
+      }), env);
+      assert.equal(revalidated.status, 304);
+      assert.equal(await revalidated.text(), "");
+    });
+  }
+});
+
+test("공개 GET 경로의 HEAD와 OPTIONS는 본문 없이 정상 method 계약을 응답한다", async (t) => {
+  const env = {
+    ...sessionEnv(false),
+    ASSETS: {
+      fetch() {
+        return new Response("asset", {
+          headers: { "Content-Type": "text/css", ETag: "\"asset\"" }
+        });
+      }
+    }
+  };
+  const cases = [
+    { path: "/healthz", method: "HEAD", status: 200, allow: null },
+    { path: "/login", method: "HEAD", status: 200, allow: null },
+    { path: "/healthz", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" },
+    { path: "/login", method: "OPTIONS", status: 204, allow: "GET, HEAD, POST, OPTIONS" },
+    { path: "/assets/app.css", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" }
+  ];
+
+  for (const item of cases) {
+    await t.test(`${item.method} ${item.path}`, async () => {
+      const response = await worker.fetch(new Request(`${ORIGIN}${item.path}`, {
+        method: item.method
+      }), env);
+      assert.equal(response.status, item.status);
+      assert.equal(response.headers.get("Allow"), item.allow);
+      assert.equal(await response.text(), "");
     });
   }
 });
@@ -134,31 +174,30 @@ function sessionEnv(mustChangePassword) {
   return {
     SESSION_SECRET,
     DB: {
-      prepare() {
-        return {
-          bind() {
+      prepare(sql) {
+        const statement = {
+          bind() { return this; },
+          async first() {
+            if (/SELECT 1 AS ok/.test(sql)) return { ok: 1 };
             return {
-              async first() {
-                return {
-                  id: 1,
-                  username: "user@hanlim.com",
-                  display_name: "사용자",
-                  status: "approved",
-                  role: "User",
-                  must_change_password: mustChangePassword ? 1 : 0,
-                  can_manage_documents: 0,
-                  can_move_documents: 0,
-                  can_manage_disposals: 0,
-                  can_manage_sets: 0,
-                  can_manage_masters: 0,
-                  can_manage_users: 0,
-                  can_view_audit: 0,
-                  can_apply_document_snapshots: 0
-                };
-              }
+              id: 1,
+              username: "user@hanlim.com",
+              display_name: "사용자",
+              status: "approved",
+              role: "User",
+              must_change_password: mustChangePassword ? 1 : 0,
+              can_manage_documents: 0,
+              can_move_documents: 0,
+              can_manage_disposals: 0,
+              can_manage_sets: 0,
+              can_manage_masters: 0,
+              can_manage_users: 0,
+              can_view_audit: 0,
+              can_apply_document_snapshots: 0
             };
           }
         };
+        return statement;
       }
     }
   };

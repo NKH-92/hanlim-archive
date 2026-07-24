@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ADMIN_SMOKE_PATH, resolveSmokeTarget, runReleaseSmoke } from "../scripts/smoke-release.mjs";
+import {
+  ADMIN_SMOKE_PATH,
+  resolveSmokeTarget,
+  runReleaseSmoke,
+  verifyReleasePublicSurface
+} from "../scripts/smoke-release.mjs";
 import { resolveAuthenticatedRoute } from "../src/app/routeRegistry.js";
 import { PERMISSIONS } from "../src/permissions.js";
 import { adminSettingsPage } from "../src/views/adminViews.js";
@@ -20,6 +25,44 @@ test("smoke URL은 credential 사용 전에 host·protocol·path를 거부한다
     { origin: "https://archive.example", hostname: "archive.example", protocol: "https:" }
   );
   assert.equal(resolveSmokeTarget("http://127.0.0.1:8787").hostname, "127.0.0.1");
+});
+
+test("운영 공개면 smoke는 HTTPS 전환과 asset MIME·304 재검증을 함께 확인한다", async () => {
+  const target = resolveSmokeTarget("https://archive.example", { allowedHosts: ["archive.example"] });
+  const calls = [];
+  const contentTypes = new Map([
+    ["/assets/app.css", "text/css; charset=utf-8"],
+    ["/assets/app.js", "text/javascript; charset=utf-8"],
+    ["/images/hanlim-pharm-logo.svg", "image/svg+xml"]
+  ]);
+  const result = await verifyReleasePublicSurface({
+    target,
+    fetchImpl: async (input, init = {}) => {
+      const url = new URL(input);
+      calls.push({ url: url.toString(), init });
+      if (url.protocol === "http:") {
+        return new Response(null, {
+          status: 308,
+          headers: { Location: "https://archive.example/login" }
+        });
+      }
+      if (new Headers(init.headers).get("If-None-Match") === "*") {
+        return new Response(null, { status: 304 });
+      }
+      return new Response("asset", {
+        status: 200,
+        headers: { "Content-Type": contentTypes.get(url.pathname) }
+      });
+    }
+  });
+
+  assert.equal(result.httpRedirect, 308);
+  assert.deepEqual(result.assets, {
+    "/assets/app.css": 200,
+    "/assets/app.js": 200,
+    "/images/hanlim-pharm-logo.svg": 200
+  });
+  assert.equal(calls.length, 7);
 });
 
 test("관리자 smoke는 route registry의 사용자 관리 GET 계약을 사용한다", () => {

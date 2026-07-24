@@ -107,7 +107,7 @@ async function renderEditDocumentForm(env, session, id, values, selectedTags, va
   });
 }
 
-export async function handleDocumentRoute(request, env, session, routeInfo) {
+export async function handleDocumentRoute(request, env, session, routeInfo, effects = {}) {
   const { id, action } = routeInfo;
 
   if (request.method === "GET" && action === "details") {
@@ -202,7 +202,19 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
       expectedRowVersion: Number(form.get("expectedRowVersion"))
     };
     const result = await reviseDocument(env, id, values, session);
-    if (result.ok) return redirect(`/documents/${result.newDocumentId}?toast=revised`);
+    if (result.ok) {
+      if (typeof effects.syncSearchDocuments === "function") {
+        try {
+          await effects.syncSearchDocuments([id, result.newDocumentId]);
+        } catch (error) {
+          logError("documents.revision.search-index-immediate", error, {
+            documentId: id,
+            newDocumentId: result.newDocumentId
+          });
+        }
+      }
+      return redirect(`/documents/${result.newDocumentId}?toast=revised`);
+    }
     if (result.replacementId) return redirect(`/documents/${result.replacementId}`);
     if (result.validation) {
       return documentRevisionPage({ session, document, values, validation: result.validation });

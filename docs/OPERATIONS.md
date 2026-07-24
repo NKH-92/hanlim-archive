@@ -74,7 +74,9 @@ workflow는 그 SHA를 detached worktree로 checkout하고, 허용된 인증·he
 
 배포 후 아래 항목을 확인한다.
 
+- HTTP `/login`의 HTTPS 308 전환, TLS 1.2 미만의 애플리케이션 차단
 - `/healthz` 200와 기대한 `workerVersion`·`rollbackCompatibility.sessionEpoch`, `/login` 200, `/signup` 404
+- `/assets/app.css`, `/assets/app.js`, 로고의 상태·MIME와 `If-None-Match` 304 재검증
 - 미인증 업무 경로의 로그인 redirect
 - 승인 계정의 검색·문서 상세 read-only 표본
 - 독립 Admin의 `/admin/settings` 200과 실제 사용자 관리 marker

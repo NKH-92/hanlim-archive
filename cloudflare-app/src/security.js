@@ -2,13 +2,14 @@
 // HTML 응답은 page()가 nonce 기반 CSP를 직접 설정하고, 그 밖의 응답(JSON/리다이렉트/CSV/정적자산)은
 // withSecurityHeaders가 제한적 폴백 CSP를 붙인다. 공통 헤더는 모든 응답에 일괄 주입한다.
 
-// 인라인 <style> 블록과 동적 위치용 style="--var" 속성 때문에 style-src는 'unsafe-inline'이 필요하다.
-// script-src는 인라인 이벤트 핸들러가 전혀 없어 nonce로 엄격하게 잠근다(XSS 방어심층의 핵심).
+// 인라인 <script>/<style> 블록은 요청별 nonce로 허용하고, style 속성과 인라인 이벤트 핸들러는
+// 모두 금지한다. 동적 도면 값도 nonce가 붙는 <style> 규칙으로만 렌더링한다.
 export function htmlContentSecurityPolicy(nonce) {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}'`,
-    "style-src 'self' 'unsafe-inline'",
+    `style-src 'self' 'nonce-${nonce}'`,
+    "style-src-attr 'none'",
     "font-src 'self' data:",
     "img-src 'self' data:",
     "connect-src 'self'",

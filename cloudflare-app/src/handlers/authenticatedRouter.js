@@ -130,7 +130,7 @@ export async function routeAuthenticatedRequest(request, env, session, url, path
     return handleAdminUserAction(env, session, adminUserRoute);
   }
 
-  const workflowResponse = await routeWorkflowRequest(request, env, session, path);
+  const workflowResponse = await routeWorkflowRequest(request, env, session, path, effects);
   if (workflowResponse) return workflowResponse;
 
   const documentResponse = await routeDocumentRequest(request, env, session, url, path, effects);

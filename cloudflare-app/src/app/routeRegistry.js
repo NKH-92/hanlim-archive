@@ -123,6 +123,25 @@ export const ROUTES = Object.freeze([...PUBLIC_ROUTES, ...AUTHENTICATED_ROUTES])
 export function resolvePublicRoute(path, method) { return resolve(PUBLIC_ROUTES, path, method); }
 export function resolveAuthenticatedRoute(path, method) { return resolve(AUTHENTICATED_ROUTES, path, method); }
 
+export function allowedMethodsForPath(path) {
+  const matches = ROUTES.filter((item) => matchPath(item.path, path));
+  if (!matches.length) return Object.freeze([]);
+  const methods = new Set();
+  for (const item of matches) {
+    if (item.method === ANY) {
+      methods.add("GET");
+      methods.add("HEAD");
+      if (item.family !== "assets") methods.add("POST");
+    } else {
+      methods.add(item.method);
+      if (item.method === "GET") methods.add("HEAD");
+    }
+  }
+  methods.add("OPTIONS");
+  const order = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+  return Object.freeze([...methods].sort((left, right) => order.indexOf(left) - order.indexOf(right)));
+}
+
 export function routeStatus(path, method, authenticated = true) {
   const routes = authenticated ? AUTHENTICATED_ROUTES : PUBLIC_ROUTES;
   if (resolve(routes, path, method)) return 200;

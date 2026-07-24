@@ -50,8 +50,10 @@ export function workflowStyles() {
     .form-actions { display: flex; justify-content: space-between; gap: var(--sp-2); }
     .sticky-save-bar { position: sticky; bottom: var(--sp-3); z-index: 15; align-items: center; padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-2); }
     .form-completion { display: grid; gap: var(--sp-1); min-width: 150px; color: var(--gray-700); font-size: 12px; }
-    .form-completion > span { display: block; width: 100%; height: 5px; overflow: hidden; border-radius: 999px; background: var(--gray-100); }
-    .form-completion i { display: block; width: 0; height: 100%; background: var(--primary); transition: width .18s ease; }
+    .form-completion progress { appearance: none; display: block; width: 100%; height: 5px; overflow: hidden; border: 0; border-radius: 999px; background: var(--gray-100); }
+    .form-completion progress::-webkit-progress-bar { background: var(--gray-100); }
+    .form-completion progress::-webkit-progress-value { background: var(--primary); transition: inline-size .18s ease; }
+    .form-completion progress::-moz-progress-bar { background: var(--primary); }
     .tag-picker { display: grid; gap: var(--sp-2); }
     .tag-picker > .muted { margin: 0; font-size: 12px; }
     .tag-search { max-width: 360px; }
@@ -131,7 +133,7 @@ export function workflowStyles() {
     .rack-column-guide { min-width: 700px; display: flex; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-2); color: var(--gray-500); font-size: 12px; }
     .rack-column-guide strong { color: var(--gray-700); }
     .rack-grid-scroll { overflow-x: auto; padding-bottom: var(--sp-2); outline-offset: 2px; }
-    .rack-digital-grid { min-width: 700px; display: grid; grid-template-columns: repeat(var(--cols), minmax(88px, 1fr)); gap: var(--sp-2); }
+    .rack-digital-grid { --cols: 7; min-width: 700px; display: grid; grid-template-columns: repeat(var(--cols), minmax(88px, 1fr)); gap: var(--sp-2); }
     .rack-cell { min-height: 76px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
     .rack-cell > a:first-child { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); color: var(--ink); text-decoration: none; }
     .rack-cell > a:first-child:hover, .rack-cell > a:first-child:focus-visible { background: var(--primary-soft); color: var(--primary); }
@@ -151,8 +153,10 @@ export function workflowStyles() {
     .snapshot-version span, .snapshot-version small { color: var(--gray-600); }
     .snapshot-version strong { font-size: 36px; line-height: 1; }
     .snapshot-file-summary { padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--gray-50); font-size: 13px; font-weight: 700; }
-    .snapshot-progress { height: 8px; overflow: hidden; border-radius: 999px; background: var(--gray-100); }
-    .snapshot-progress span { display: block; width: 0; height: 100%; background: var(--primary); transition: width .2s ease; }
+    .snapshot-progress { appearance: none; display: block; width: 100%; height: 8px; overflow: hidden; border: 0; border-radius: 999px; background: var(--gray-100); }
+    .snapshot-progress::-webkit-progress-bar { background: var(--gray-100); }
+    .snapshot-progress::-webkit-progress-value { background: var(--primary); transition: inline-size .2s ease; }
+    .snapshot-progress::-moz-progress-bar { background: var(--primary); }
     .snapshot-rules { margin: 0; padding-left: var(--sp-5); display: grid; gap: var(--sp-2); color: var(--gray-600); font-size: 13px; }
     .snapshot-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     .snapshot-apply-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--line); }

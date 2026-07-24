@@ -8,7 +8,13 @@ import { page } from "./layout.js";
 // 도면 위 랙 실루엣 한 개. 양면 랙은 좌(N-1면)·우(N-2면) 두 칸을 세로 점선으로 나눈다.
 // hit: 랙 전체 강조(검색 일치), hitFace('A'|'B'): 양면 랙에서 해당 면(반쪽)만 강조(문서 상세).
 // interactive=false는 특정 문서의 위치만 읽어야 하는 상세·찾기 화면에서 주변 랙 오탭을 막는다.
-function floorRackMarkup(rack, { hit = false, hitFace = "", zoneNumber = 0, interactive = true } = {}) {
+function floorRackMarkup(rack, {
+  hit = false,
+  hitFace = "",
+  zoneNumber = 0,
+  interactive = true,
+  layoutKey = ""
+} = {}) {
   const classes = ["floor-rack", rack.isSingleSided ? "is-single" : "is-double"];
   const isZoneOneRightSingle = rack.isSingleSided && Number(zoneNumber) === 1 && Number(rack.rackNumber) === 1;
   if (isZoneOneRightSingle) classes.push("column-origin-right");
@@ -25,14 +31,36 @@ function floorRackMarkup(rack, { hit = false, hitFace = "", zoneNumber = 0, inte
     : `${rack.code} · 양면 (좌 ${rack.rackNumber}-1: 1열 왼쪽 시작 / 우 ${rack.rackNumber}-2: 1열 오른쪽 시작)`;
   const active = hit || Boolean(hitFace);
   const content = `${faces}${active ? `<span class="rack-hit-pin" aria-hidden="true">현재</span>` : ""}<span class="rack-num">${escapeHtml(badgeLabel)}</span>`;
-  const common = `class="${classes.join(" ")}"${faceAttr} style="--rack-left:${rack.leftPct}%;--rack-width:${rack.widthPct}%;" data-rack-select data-rack-id="${Number(rack.id)}" data-rack-code="${escapeHtml(rack.code)}" data-rack-type="${rack.isSingleSided ? "단면" : "양면"}" data-rack-faces="${rack.isSingleSided ? 1 : 2}" data-rack-columns="${Number(rack.columnCount || 0)}" data-rack-shelves="${Number(rack.shelfCount || 0)}" data-rack-documents="${Number(rack.documentCount || 0)}" data-zone="${escapeHtml(String(zoneNumber))}" title="${escapeHtml(title)}"`;
+  const common = `class="${classes.join(" ")}"${faceAttr} data-floor-layout="${layoutKey}" data-rack-select data-rack-id="${Number(rack.id)}" data-rack-code="${escapeHtml(rack.code)}" data-rack-type="${rack.isSingleSided ? "단면" : "양면"}" data-rack-faces="${rack.isSingleSided ? 1 : 2}" data-rack-columns="${Number(rack.columnCount || 0)}" data-rack-shelves="${Number(rack.shelfCount || 0)}" data-rack-documents="${Number(rack.documentCount || 0)}" data-zone="${escapeHtml(String(zoneNumber))}" title="${escapeHtml(title)}"`;
   if (!interactive) return `<span ${common} aria-hidden="true">${content}</span>`;
   return `<a ${common} href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" aria-label="${escapeHtml(title)}">${content}</a>`;
 }
 
 export function floorPlanView(regions, hits = new Set()) {
   const activeRackCount = regions.reduce((sum, region) => sum + region.racks.filter((rack) => hits.has(rack.code)).length, 0);
+  const layoutRules = [];
+  const regionMarkup = regions.map((region, regionIndex) => {
+    const regionKey = `floor-plan-region-${regionIndex}`;
+    layoutRules.push(regionLayoutRule(regionKey, region));
+    const racks = region.racks.map((rack, rackIndex) => {
+      const rackKey = `${regionKey}-rack-${rackIndex}`;
+      layoutRules.push(rackLayoutRule(rackKey, rack));
+      return floorRackMarkup(rack, {
+        hit: hits.has(rack.code),
+        zoneNumber: region.zoneNumber,
+        layoutKey: rackKey
+      });
+    }).join("");
+    return `
+      <section class="floor-region" data-floor-layout="${regionKey}" aria-label="${escapeHtml(region.label)}">
+        <span class="floor-region-label">${escapeHtml(region.label)}</span>
+        ${region.zoneNumber === 1 ? `<span class="floor-wall-marker">벽면 ↑</span>` : ""}
+        ${racks}
+      </section>
+    `;
+  }).join("");
   return `
+    <style>${layoutRules.join("")}</style>
     <div class="floor-plan-shell">
       <div class="floor-plan-tools">
         <label class="floor-rack-search"><span class="sr-only">구역·랙 검색</span><input type="search" data-floor-rack-search placeholder="구역 또는 랙 코드 검색"></label>
@@ -41,13 +69,7 @@ export function floorPlanView(regions, hits = new Set()) {
       <div class="floor-plan-scroll" data-floor-plan-scroll tabindex="0" aria-label="문서고 랙 도면. 확대 보기에서는 좌우로 스크롤하여 모든 랙을 확인할 수 있습니다.">
         <div class="floor-plan-media">
           <img src="/images/Archive.png" alt="한림 문서고 도면">
-          ${regions.map((region) => `
-            <section class="floor-region" aria-label="${escapeHtml(region.label)}" style="--top:${region.topPct}%;--left:${region.leftPct}%;--width:${region.widthPct}%;--height:${region.heightPct}%;">
-              <span class="floor-region-label">${escapeHtml(region.label)}</span>
-              ${region.zoneNumber === 1 ? `<span class="floor-wall-marker">벽면 ↑</span>` : ""}
-              ${region.racks.map((rack) => floorRackMarkup(rack, { hit: hits.has(rack.code), zoneNumber: region.zoneNumber })).join("")}
-            </section>
-          `).join("")}
+          ${regionMarkup}
         </div>
       </div>
 
@@ -70,26 +92,74 @@ export function floorPlanView(regions, hits = new Set()) {
 export function zoneFloorPlanView(region, { hitCode = "", hitFace = "", interactive = true, spotlight = false } = {}) {
   const aspectW = Math.max(1, Math.round(1024 * region.widthPct));
   const aspectH = Math.max(1, Math.round(797 * region.heightPct));
+  const scope = `floor-zone-${Number(region.zoneNumber) || 0}`;
+  const zoomKey = `${scope}-zoom`;
+  const canvasKey = `${scope}-canvas`;
+  const regionKey = `${scope}-region`;
+  const layoutRules = [
+    layoutRule(zoomKey, {
+      "--z-aw": cssNumber(aspectW, 1),
+      "--z-ah": cssNumber(aspectH, 1)
+    }),
+    layoutRule(canvasKey, {
+      "--zw": cssNumber(region.widthPct, 1),
+      "--zh": cssNumber(region.heightPct, 1),
+      "--zl": cssNumber(region.leftPct),
+      "--zt": cssNumber(region.topPct)
+    }),
+    regionLayoutRule(regionKey, region)
+  ];
+  const racks = region.racks.map((rack, rackIndex) => {
+    const rackKey = `${scope}-rack-${rackIndex}`;
+    layoutRules.push(rackLayoutRule(rackKey, rack));
+    const isHitRack = rack.code === hitCode;
+    return floorRackMarkup(rack, {
+      hit: isHitRack && (rack.isSingleSided || !hitFace),
+      hitFace: isHitRack && !rack.isSingleSided ? hitFace : "",
+      zoneNumber: region.zoneNumber,
+      interactive,
+      layoutKey: rackKey
+    });
+  }).join("");
   return `
-    <div class="floor-zoom${spotlight ? " is-spotlight" : ""}" style="--z-aw:${aspectW};--z-ah:${aspectH};">
-      <div class="floor-zoom-canvas" style="--zw:${region.widthPct};--zh:${region.heightPct};--zl:${region.leftPct};--zt:${region.topPct};">
+    <style>${layoutRules.join("")}</style>
+    <div class="floor-zoom${spotlight ? " is-spotlight" : ""}" data-floor-layout="${zoomKey}">
+      <div class="floor-zoom-canvas" data-floor-layout="${canvasKey}">
         <img class="floor-zoom-img" src="/images/Archive.png" alt="${escapeHtml(region.label)} 도면">
-        <section class="floor-region" aria-label="${escapeHtml(region.label)}" style="--top:${region.topPct}%;--left:${region.leftPct}%;--width:${region.widthPct}%;--height:${region.heightPct}%;">
+        <section class="floor-region" data-floor-layout="${regionKey}" aria-label="${escapeHtml(region.label)}">
           <span class="floor-region-label">${escapeHtml(region.label)}</span>
           ${region.zoneNumber === 1 ? `<span class="floor-wall-marker">벽면 ↑</span>` : ""}
-          ${region.racks.map((rack) => {
-            const isHitRack = rack.code === hitCode;
-            return floorRackMarkup(rack, {
-              hit: isHitRack && (rack.isSingleSided || !hitFace),
-              hitFace: isHitRack && !rack.isSingleSided ? hitFace : "",
-              zoneNumber: region.zoneNumber,
-              interactive
-            });
-          }).join("")}
+          ${racks}
         </section>
       </div>
     </div>
   `;
+}
+
+function regionLayoutRule(key, region) {
+  return layoutRule(key, {
+    "--top": `${cssNumber(region.topPct)}%`,
+    "--left": `${cssNumber(region.leftPct)}%`,
+    "--width": `${cssNumber(region.widthPct)}%`,
+    "--height": `${cssNumber(region.heightPct)}%`
+  });
+}
+
+function rackLayoutRule(key, rack) {
+  return layoutRule(key, {
+    "--rack-left": `${cssNumber(rack.leftPct)}%`,
+    "--rack-width": `${cssNumber(rack.widthPct, 6)}%`
+  });
+}
+
+function layoutRule(key, declarations) {
+  const body = Object.entries(declarations).map(([name, value]) => `${name}:${value};`).join("");
+  return `[data-floor-layout="${key}"]{${body}}`;
+}
+
+function cssNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 export function archiveMap(racks, hits) {

@@ -94,6 +94,8 @@ async function nonceContract(response, label) {
   const nonce = csp.match(/script-src[^;]*'nonce-([^']+)'/)?.[1];
   assert.ok(nonce, `${label} CSP nonce`);
   assert.doesNotMatch(csp, /script-src[^;]*'unsafe-inline'/, `${label} script CSP`);
+  assert.doesNotMatch(csp, /style-src[^;]*'unsafe-inline'/, `${label} style CSP`);
+  assert.match(csp, /style-src-attr 'none'/, `${label} style attribute CSP`);
 
   const html = await response.text();
   const tags = [...html.matchAll(/<(script|style)\b[^>]*>/gi)];

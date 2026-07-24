@@ -93,7 +93,7 @@ export async function handleCreateDocumentSnapshot(request, env, session) {
   return jsonResponse(result, { status: result.ok ? 201 : statusForSnapshotError(result) });
 }
 
-export async function handleDocumentSnapshotRoute(request, env, session, routeInfo) {
+export async function handleDocumentSnapshotRoute(request, env, session, routeInfo, effects = {}) {
   const denied = requireManageDocuments(session);
   if (denied) return denied;
   const { id, action = "details" } = routeInfo;
@@ -224,6 +224,14 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
           applyMode: resolveSnapshotApplyMode(env),
           status
         });
+      }
+      if (typeof effects.syncPendingSearchDocuments === "function") {
+        try {
+          await effects.syncPendingSearchDocuments();
+        } catch (error) {
+          // Core snapshot은 이미 원자적으로 확정됐다. 남은 outbox는 Cron이 재처리한다.
+          logError("document-snapshot.search-index-immediate", error, { snapshotId: id });
+        }
       }
       return redirect(`/document-snapshots/${id}?applied=1`);
     } catch (error) {

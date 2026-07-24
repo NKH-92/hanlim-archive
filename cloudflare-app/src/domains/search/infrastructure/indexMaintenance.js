@@ -13,17 +13,58 @@ export async function processSearchOutbox(env, {
   limit = FREE_TIER_BUDGET.searchOutboxCronChunkSize,
   documentId = 0
 } = {}) {
+  const targetId = Number(documentId);
+  const documentIds = Number.isInteger(targetId) && targetId > 0 ? [targetId] : [];
+  return processSearchOutboxBatch(env, {
+    limit,
+    documentIds,
+    maxLimit: FREE_TIER_BUDGET.searchOutboxCronChunkSize
+  });
+}
+
+export function processSearchOutboxForDocument(env, documentId) {
+  return processSearchOutboxForDocuments(env, [documentId]);
+}
+
+export function processSearchOutboxForDocuments(env, documentIds) {
+  const ids = normalizedDocumentIds(documentIds);
+  if (!ids.length) {
+    return Promise.resolve({ ok: false, skipped: true, processed: 0, reason: "유효한 문서 ID가 필요합니다." });
+  }
+  return processSearchOutboxBatch(env, {
+    limit: ids.length,
+    documentIds: ids,
+    maxLimit: FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems
+  });
+}
+
+export function processPendingSearchOutboxImmediately(env, {
+  limit = FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems
+} = {}) {
+  return processSearchOutboxBatch(env, {
+    limit,
+    documentIds: [],
+    maxLimit: FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems
+  });
+}
+
+async function processSearchOutboxBatch(env, {
+  limit,
+  documentIds,
+  maxLimit
+}) {
   if (!env.SEARCH_DB) return { ok: false, skipped: true, reason: "SEARCH_DB binding이 없습니다." };
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 1, FREE_TIER_BUDGET.searchOutboxCronChunkSize));
-  const safeDocumentId = Number(documentId);
-  const targetDocument = Number.isInteger(safeDocumentId) && safeDocumentId > 0;
-  const outboxStatement = targetDocument
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 1, maxLimit));
+  const targetIds = normalizedDocumentIds(documentIds).slice(0, safeLimit);
+  const outboxStatement = targetIds.length
     ? env.DB.prepare(`
       SELECT document_id, operation, event_version
       FROM search_index_outbox
-      WHERE document_id = ? AND available_at <= CURRENT_TIMESTAMP
-      LIMIT 1
-    `).bind(safeDocumentId)
+      WHERE document_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))
+        AND available_at <= CURRENT_TIMESTAMP
+      ORDER BY available_at, updated_at, document_id
+      LIMIT ?
+    `).bind(JSON.stringify(targetIds), safeLimit)
     : env.DB.prepare(`
     SELECT document_id, operation, event_version
     FROM search_index_outbox
@@ -59,12 +100,10 @@ export async function processSearchOutbox(env, {
   }
 }
 
-export function processSearchOutboxForDocument(env, documentId) {
-  const id = Number(documentId);
-  if (!Number.isInteger(id) || id < 1) {
-    return Promise.resolve({ ok: false, skipped: true, processed: 0, reason: "유효한 문서 ID가 필요합니다." });
-  }
-  return processSearchOutbox(env, { limit: 1, documentId: id });
+function normalizedDocumentIds(documentIds) {
+  return [...new Set((Array.isArray(documentIds) ? documentIds : [])
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0))];
 }
 
 export async function rebuildSearchIndexChunk(env, {

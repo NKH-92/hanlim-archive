@@ -95,7 +95,7 @@ export function documentFormPage({
         </section>
 
         <div class="form-actions sticky-save-bar" data-save-bar>
-          <div class="form-completion"><strong data-form-completion>필수 입력 0/0</strong><span><i data-form-completion-bar></i></span></div>
+          <div class="form-completion"><strong data-form-completion>필수 입력 0/0</strong><progress data-form-completion-bar max="100" value="0" aria-label="필수 입력 완료도"></progress></div>
           <div class="button-group"><a class="button secondary" href="${escapeHtml(cancelUrl)}">취소</a><button type="submit" class="primary">${submitLabel}</button></div>
         </div>
       </form>
@@ -220,7 +220,7 @@ function documentFormScript(showLocation) {
       var label = form.querySelector('[data-form-completion]');
       var bar = form.querySelector('[data-form-completion-bar]');
       if (label) label.textContent = '필수 입력 ' + completed + '/' + inputs.length;
-      if (bar) bar.style.width = (inputs.length ? Math.round(completed / inputs.length * 100) : 100) + '%';
+      if (bar) bar.value = inputs.length ? Math.round(completed / inputs.length * 100) : 100;
     };
     var updateLocationSelection = function () {
       var slot = form.elements.rackSlotId;
