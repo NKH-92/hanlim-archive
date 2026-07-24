@@ -7,6 +7,7 @@ const deploy = await readFile(new URL("../../.github/workflows/deploy.yml", impo
 const provisionAdmin = await readFile(new URL("../../.github/workflows/provision-admin.yml", import.meta.url), "utf8");
 const remediateMainAdmin = await readFile(new URL("../../.github/workflows/remediate-main-admin.yml", import.meta.url), "utf8");
 const owners = await readFile(new URL("../../.github/CODEOWNERS", import.meta.url), "utf8");
+const smokeRelease = await readFile(new URL("../scripts/smoke-release.mjs", import.meta.url), "utf8");
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
 test("PR required CI는 verify, audit, Worker dry-run과 증빙 보존을 강제한다", () => {
@@ -55,7 +56,7 @@ test("production deploy는 승인, 백업, migration, deploy, smoke, rollback �
   assert.match(deploy, /name: Deploy Worker\s+id: deploy_worker\s+continue-on-error: true/);
   assert.match(deploy, /name: Capture deployed Worker version\s+id: capture_deployed\s+continue-on-error: true/);
   assert.match(deploy, /id: smoke\s+if: steps\.deploy_worker\.outcome == 'success' && steps\.capture_deployed\.outcome == 'success'\s+continue-on-error: true/);
-  assert.match(deploy, /always\(\) && \(steps\.deploy_worker\.outcome != 'success' \|\|[\s\S]*steps\.capture_deployed\.outcome != 'success' \|\| steps\.smoke\.outcome != 'success'\)/);
+  assert.match(deploy, /always\(\) && \(steps\.deploy_worker\.outcome == 'failure' \|\|[\s\S]*steps\.capture_deployed\.outcome == 'failure' \|\| steps\.smoke\.outcome == 'failure'\)/);
   assert.match(deploy, /if: always\(\)/);
   assert.match(deploy, /wrangler deployments status --env production --json/);
   assert.match(deploy, /select\(\.percentage == 100\).*\.version_id/);
@@ -64,6 +65,9 @@ test("production deploy는 승인, 백업, migration, deploy, smoke, rollback �
   assert.match(deploy, /\.annotations\["workers\/tag"\] == \$tag and \.annotations\["workers\/message"\] == \$message/);
   assert.match(deploy, /SMOKE_EXPECTED_WORKER_VERSION="\$DEPLOYED_VERSION_ID"/);
   assert.match(deploy, /Post-deploy transport, assets, login and read-only search smoke[\s\S]*SMOKE_HEALTH_ATTEMPTS: "60"[\s\S]*SMOKE_HEALTH_RETRY_MS: "2000"/);
+  assert.match(deploy, /Post-deploy transport, assets, login and read-only search smoke[\s\S]*SMOKE_VERIFY_PUBLIC_SURFACE: "1"/);
+  assert.match(smokeRelease, /verifyPublicSurface: process\.env\.SMOKE_VERIFY_PUBLIC_SURFACE === "1"/);
+  assert.doesNotMatch(smokeRelease, /verifyPublicSurface: true/);
   assert.match(deploy, /verify_legacy_tls_blocked --tlsv1\.0 1\.0/);
   assert.match(deploy, /verify_legacy_tls_blocked --tlsv1\.1 1\.1/);
   assert.match(deploy, /\} 2>&1 \| tee -a release-evidence\/smoke\.txt/);

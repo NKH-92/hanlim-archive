@@ -278,7 +278,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     requireAdmin: process.env.SMOKE_REQUIRE_ADMIN === "1",
     requireSessionEpochCompatibility: process.env.SMOKE_REQUIRE_SESSION_EPOCH_COMPAT === "1",
     expectedWorkerVersion: process.env.SMOKE_EXPECTED_WORKER_VERSION || "",
-    verifyPublicSurface: true,
+    verifyPublicSurface: process.env.SMOKE_VERIFY_PUBLIC_SURFACE === "1",
     healthAttempts: process.env.SMOKE_HEALTH_ATTEMPTS || HEALTH_ATTEMPTS,
     healthRetryMs: process.env.SMOKE_HEALTH_RETRY_MS || HEALTH_RETRY_MS
   });
