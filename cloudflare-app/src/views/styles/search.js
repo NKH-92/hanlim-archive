@@ -48,6 +48,18 @@ export function searchStyles() {
     .narrow { max-width: 640px; margin-inline: auto; }
     .content-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, .8fr); gap: var(--sp-4); align-items: start; }
     .viewer-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
+    @media (min-width: 1181px) {
+      .viewer-workspace:has(.viewer-preview:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
+      .viewer-preview { position: sticky; top: var(--sp-4); }
+    }
+    .viewer-preview { display: grid; gap: var(--sp-3); }
+    .viewer-preview[hidden] { display: none; }
+    .viewer-preview > strong { font-size: 16px; }
+    .viewer-preview > p { margin: 0; color: var(--primary); }
+    .viewer-preview dl { display: grid; gap: var(--sp-2); margin: 0; }
+    .viewer-preview dl div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: var(--sp-2); }
+    .viewer-preview dt { color: var(--gray-500); font-size: 12px; font-weight: 600; }
+    .viewer-preview dd { margin: 0; }
     .viewer-location-panel { position: sticky; top: var(--sp-4); }
     .viewer-secondary { grid-template-columns: minmax(0, 1fr) minmax(280px, .7fr); }
     .two-col, .admin-grid, .rack-grid { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
@@ -74,14 +86,27 @@ export function searchStyles() {
     .viewer-result-list { display: grid; border-top: 1px solid var(--gray-100); }
     .search-live-status { margin: 0; color: var(--gray-500); font-size: 12.5px; }
     .viewer-result-table { overflow-x: auto; }
-    .viewer-result-header, .viewer-result-row { min-width: 980px; display: grid; grid-template-columns: minmax(220px, 2fr) 150px 80px 110px 110px minmax(190px, 1.5fr) 80px; align-items: center; gap: var(--sp-3); }
-    .viewer-result-header { min-height: 36px; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); background: var(--gray-50); color: var(--gray-600); font-size: 12px; font-weight: 600; }
+    .viewer-results-heading, .viewer-result-tools { display: flex; align-items: center; gap: var(--sp-3); }
+    .viewer-result-tools { margin-left: auto; }
+    .column-settings { position: relative; }
+    .column-settings summary { cursor: pointer; color: var(--gray-600); font-size: 12px; font-weight: 600; list-style: none; }
+    .column-settings summary::-webkit-details-marker { display: none; }
+    .column-settings > label { position: absolute; z-index: 5; right: 0; top: calc(100% + var(--sp-2)); min-width: 150px; padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-1); }
+    .column-settings input { width: auto; min-height: auto; margin: 0 var(--sp-1) 0 0; }
+    .active-filter-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+    .viewer-result-header, .viewer-result-row { min-width: 760px; display: grid; grid-template-columns: minmax(220px, 2fr) minmax(170px, 1fr) 110px minmax(190px, 1.5fr) 80px; align-items: center; gap: var(--sp-3); }
+    .viewer-result-table.is-selectable .viewer-result-header, .viewer-result-table.is-selectable .viewer-result-row { grid-template-columns: 32px minmax(220px, 2fr) minmax(170px, 1fr) 110px minmax(190px, 1.5fr) 80px; }
+    .viewer-result-table.show-revision-date .viewer-result-header, .viewer-result-table.show-revision-date .viewer-result-row { grid-template-columns: minmax(220px, 2fr) minmax(170px, 1fr) 110px minmax(190px, 1.5fr) 80px 110px; }
+    .viewer-result-table.is-selectable.show-revision-date .viewer-result-header, .viewer-result-table.is-selectable.show-revision-date .viewer-result-row { grid-template-columns: 32px minmax(220px, 2fr) minmax(170px, 1fr) 110px minmax(190px, 1.5fr) 80px 110px; }
+    .viewer-result-header { position: sticky; top: 0; z-index: 2; min-height: 36px; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); background: var(--gray-50); color: var(--gray-600); font-size: 12px; font-weight: 600; }
     .viewer-result-row { min-height: 48px; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--gray-100); font-size: 13px; transition: background .12s ease; }
     .viewer-result-row:hover { background: var(--gray-50); }
+    .viewer-result-row:focus, .viewer-result-row.is-selected { outline: 0; background: var(--primary-soft); box-shadow: inset 3px 0 0 var(--primary); }
     .viewer-result-row.is-disposed { box-shadow: inset 3px 0 0 var(--gray-300); }
     .viewer-result-row > span { min-width: 0; }
     .viewer-result-name a { display: block; overflow: hidden; color: var(--gray-900); font-weight: 600; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
     .viewer-result-name a:hover { color: var(--primary); text-decoration: underline; }
+    .viewer-result-row .mono small { color: var(--gray-500); font-family: inherit; }
     .viewer-result-location { font-family: var(--font-mono); color: var(--primary); font-weight: 600; }
     .doc-row { display: grid; grid-template-columns: minmax(150px, 180px) minmax(0, 1fr) auto; gap: var(--sp-4); align-items: center; padding: var(--sp-3) var(--sp-2); border-bottom: 1px solid var(--gray-100); transition: background .15s ease; }
     .doc-row:hover { background: var(--gray-50); }
@@ -110,6 +135,9 @@ export function searchStyles() {
     .check-col { width: 32px; }
     .check-col input { width: auto; min-height: auto; accent-color: var(--primary); }
     .bulk-select-all-label { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--gray-700); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+    .workspace-bulk-bar { gap: var(--sp-3); }
+    .workspace-set-form { display: flex; align-items: center; gap: var(--sp-2); }
+    .workspace-set-form select { min-width: 180px; margin: 0; }
     .loc-cell { white-space: nowrap; }
     .loc-cell-main { display: block; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--primary); }
     .loc-cell-sub { display: block; color: var(--gray-500); font-size: 11.5px; }

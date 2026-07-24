@@ -5,6 +5,7 @@ import * as documentHandlers from "../src/handlers/documentHandlers.js";
 import * as browseHandlers from "../src/handlers/documents/browse.js";
 import * as crudHandlers from "../src/handlers/documents/crud.js";
 import * as disposalHandlers from "../src/handlers/documents/disposal.js";
+import { routeDocumentRequest } from "../src/handlers/documentRouter.js";
 
 const expectedExports = [
   "handleBulkDispose",
@@ -31,6 +32,15 @@ test("문서 핸들러 호환 배럴은 기존 공개 표면을 그대로 유지
   assert.equal(documentHandlers.handleDisposalWorkspace, disposalHandlers.handleDisposalWorkspace);
   assert.equal(documentHandlers.handleFilteredDispose, disposalHandlers.handleFilteredDispose);
   assert.equal(documentHandlers.handleSelectedDisposal, disposalHandlers.handleSelectedDisposal);
+});
+
+test("GET /documents는 쿼리를 보존해 표준 문서 작업 공간으로 연결한다", async () => {
+  const request = new Request("https://archive.example.com/documents?rack=7&status=active&sort=location");
+  const url = new URL(request.url);
+  const response = await routeDocumentRequest(request, {}, { role: "User" }, url, "/documents");
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("Location"), "/app?rack=7&status=active&sort=location");
 });
 
 test("문서 상세의 지원하지 않는 액션은 DB를 조회하지 않고 404를 반환한다", async () => {

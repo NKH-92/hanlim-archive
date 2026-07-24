@@ -6,6 +6,7 @@ export function bootstrapScript(escapeHtmlSource) {
       var nav = document.querySelector('[data-nav-menu]');
       var scrim = document.querySelector('[data-nav-scrim]');
       var hamburger = document.querySelector('[data-hamburger]');
+      var mobileMore = document.querySelector('[data-mobile-more]');
       var close = document.querySelector('[data-drawer-close]');
       var mediaQuery = function (query) {
         return typeof window.matchMedia === 'function'
@@ -23,6 +24,7 @@ export function bootstrapScript(escapeHtmlSource) {
         nav.classList.toggle('is-open', visible);
         if (scrim) scrim.classList.toggle('is-open', visible);
         if (hamburger) hamburger.setAttribute('aria-expanded', visible ? 'true' : 'false');
+        if (mobileMore) mobileMore.setAttribute('aria-expanded', visible ? 'true' : 'false');
         if (mobile) {
           nav.inert = !visible;
           nav.setAttribute('aria-hidden', visible ? 'false' : 'true');
@@ -31,11 +33,12 @@ export function bootstrapScript(escapeHtmlSource) {
           nav.removeAttribute('aria-hidden');
         }
         if (visible) setTimeout(function () { (close || navFocusable()[0])?.focus(); }, 0);
-        if (!visible && restoreFocus && hamburger) hamburger.focus();
+        if (!visible && restoreFocus && (mobileMore || hamburger)) (mobileMore || hamburger).focus();
       }
       setNav(false, false);
       mobileNavigation.addEventListener?.('change', function () { setNav(false, false); });
       if (hamburger) hamburger.addEventListener('click', function () { setNav(true, false); });
+      if (mobileMore) mobileMore.addEventListener('click', function () { setNav(true, false); });
       if (close) close.addEventListener('click', function () { setNav(false, true); });
       if (scrim) scrim.addEventListener('click', function () { setNav(false, true); });
       document.addEventListener('keydown', function (event) {

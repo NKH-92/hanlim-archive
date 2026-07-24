@@ -296,7 +296,7 @@ test("dashboard page renders search-first row results without a floor plan", asy
         relevanceScore: 320,
         updatedAt: "2026-06-28"
       }],
-      pagination: { page: 1, pageSize: 12, totalItems: 1, totalPages: 1 },
+      pagination: { page: 1, pageSize: 30, totalItems: 1, totalPages: 1 },
       facets: { categories: [{ value: 1, label: "PV", count: 1 }], tags: [], zones: [{ value: 1, label: "1구역", count: 1 }], statuses: [{ value: "active", label: "보관중", count: 1 }] },
       suggestions: [{ value: "PV-2026-014", label: "PV-2026-014" }]
     },
@@ -323,14 +323,14 @@ test("dashboard page renders search-first row results without a floor plan", asy
 
   assert.match(html, /data-viewer-form/);
   assert.match(html, /id="viewer-search-form"/);
-  for (const name of ["status", "category", "zone", "sort"]) {
+  for (const name of ["status", "category", "tag", "zone", "sort"]) {
     assert.match(html, new RegExp(`<select name="${name}" form="viewer-search-form">`));
   }
   assert.match(html, /data-viewer-results/);
   assert.doesNotMatch(main, /문서고 도면|Archive\.png|floor-plan|data-answer-card/);
   assert.doesNotMatch(main, /문서번호 부분 일치/);
   assert.match(html, /viewer-result-header/);
-  for (const label of ["문서명", "문서번호", "개정", "제·개정일", "대분류", "보관 위치", "상태"]) {
+  for (const label of ["문서명", "문서번호 · 개정", "대분류", "보관 위치", "상태", "제·개정일"]) {
     assert.match(html, new RegExp(">" + label + "<"));
   }
   assert.match(html, /<mark>PV<\/mark>/, "검색어 일치 부분이 하이라이트된다");
@@ -339,7 +339,7 @@ test("dashboard page renders search-first row results without a floor plan", asy
   assert.doesNotMatch(html, /name="includeDisposed"/);
   assert.match(html, /href="\/app" class="brand"/);
   const viewerNav = html.match(/<nav[^>]*aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
-  assert.match(viewerNav, /href="\/app"[^>]*>[\s\S]*?문서검색/);
+  assert.match(viewerNav, /href="\/app"[^>]*>[\s\S]*?문서/);
   assert.match(viewerNav, /href="\/sets"/);
   assert.doesNotMatch(viewerNav, /href="\/(documents|racks|categories|tags|admin|disposal-batches)/);
   assert.match(html, /class="mobile-tabs"[\s\S]*?href="\/app"/);
@@ -387,9 +387,77 @@ test("dashboard home mode uses a search-first operational hero without a floor p
   assert.doesNotMatch(html, /검색 리포트/, "일반 사용자에게 관리자 링크가 없다");
   const mainNav = html.match(/<nav[^>]*aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(mainNav, /href="\/app"/);
-  assert.match(mainNav, /href="\/floor-plan"[^>]*>[\s\S]*?문서고 도면/);
+  assert.match(mainNav, /href="\/floor-plan"[^>]*>[\s\S]*?보관 위치/);
   assert.match(mainNav, /href="\/sets"/);
   assert.doesNotMatch(mainNav, /href="\/(documents|racks|categories|tags|disposal-batches)"/);
+});
+
+test("document workspace exposes permission-scoped selection actions and five default columns", async () => {
+  const response = dashboardPage({
+    session: {
+      username: "manager",
+      displayName: "문서 담당자",
+      role: "User",
+      csrfToken: "csrf-token-123",
+      can_manage_sets: true,
+      can_manage_disposals: true
+    },
+    query: "SOP",
+    viewerSearch: {
+      items: [{
+        id: 7,
+        documentNumber: "SOP-QA-007",
+        revisionNumber: "Rev.2",
+        revisionDate: "2026-07-24",
+        documentName: "품질 절차서",
+        categoryName: "품질",
+        status: "active",
+        location: { label: "1구역 / 3-1번 랙 / 2열 / 3선반" }
+      }],
+      pagination: { page: 1, pageSize: 30, totalItems: 1, totalPages: 1 }
+    },
+    categories: [],
+    tags: [],
+    filters: { status: "active", sort: "relevance" },
+    editableSets: [{ id: 4, name: "감사 준비", row_version: 8 }]
+  });
+  const html = await response.text();
+
+  assert.match(html, /data-bulk-item/);
+  assert.match(html, /data-set-selection-form/);
+  assert.match(html, /action="\/sets\/0\/add"/);
+  assert.match(html, /name="documentIds" data-bulk-ids/);
+  assert.match(html, /data-disposal-limit="10"/);
+  assert.match(html, /action="\/documents\/disposal\/process"/);
+  assert.match(html, /data-document-preview/);
+  assert.match(html, /data-column-toggle="revision-date"/);
+  assert.match(html, /<span>문서번호 · 개정<\/span>/);
+  assert.match(html, /data-column="revision-date" hidden>제·개정일/);
+});
+
+test("rack filter chip clears dependent face, column, and shelf filters", async () => {
+  const html = await dashboardPage({
+    session: { username: "viewer", displayName: "Viewer", role: "User", csrfToken: "csrf-token-123" },
+    query: "slot",
+    viewerSearch: {
+      items: [],
+      pagination: { page: 1, pageSize: 30, totalItems: 0, totalPages: 1 }
+    },
+    categories: [{ id: 2, name: "QA" }],
+    tags: [],
+    filters: {
+      categoryId: 2,
+      rackId: 5,
+      rackFace: "A",
+      columnNumber: 2,
+      shelfNumber: 3,
+      status: "active",
+      sort: "location"
+    }
+  }).text();
+  const chipNav = html.match(/<nav class="active-filter-chips"[\s\S]*?<\/nav>/)?.[0] || "";
+
+  assert.match(chipNav, /href="\/app\?q=slot&category=2&status=active&sort=location"/);
 });
 
 test("floor plan page keeps the map separate from search and opens rack results for every user", async () => {
@@ -412,7 +480,7 @@ test("floor plan page keeps the map separate from search and opens rack results 
   assert.match(main, /<h1>문서고 도면<\/h1>/);
   assert.match(main, /src="\/images\/Archive\.png"/);
   assert.match(main, /data-rack-code="1-03"/);
-  assert.match(main, /href="\/documents\?rack=3&amp;status=active&amp;sort=location"/);
+  assert.match(main, /href="\/app\?rack=3&amp;status=active&amp;sort=location"/);
   assert.doesNotMatch(main, /href="\/app\?q=1-03/);
 });
 
@@ -422,24 +490,27 @@ test("admin navigation exposes permission-scoped work routes", async () => {
 
   const nav = html.match(/<nav[^>]*aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   const commands = html.match(/<dialog class="command-palette"[\s\S]*?<\/dialog>/)?.[0] || "";
-  assert.match(nav, /href="\/app"[^>]*>[\s\S]*?문서검색/);
-  assert.match(nav, /href="\/floor-plan"[^>]*>[\s\S]*?문서고 도면/);
-  assert.match(nav, /href="\/documents"[^>]*>[\s\S]*?문서 관리/);
-  assert.match(nav, /href="\/documents\/import"[^>]*>[\s\S]*?리스트 동기화/);
-  assert.match(nav, /href="\/documents\/new"[^>]*>[\s\S]*?문서 추가/);
-  assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?문서폐기/);
+  assert.match(nav, /aria-label="문서"/);
+  assert.match(nav, /aria-label="업무"/);
+  assert.match(nav, /aria-label="운영"/);
+  assert.match(nav, /href="\/app"[^>]*>[\s\S]*?문서/);
+  assert.match(nav, /href="\/floor-plan"[^>]*>[\s\S]*?보관 위치/);
+  assert.match(nav, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀 대장 동기화/);
+  assert.match(nav, /href="\/documents\/new"[^>]*>[\s\S]*?문서 등록/);
+  assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?폐기 관리/);
   assert.match(nav, /class="nav-settings"/);
-  assert.match(nav, />관리자 설정<\/summary>/);
+  assert.match(nav, />기준정보<\/summary>/);
+  assert.match(nav, />이력·증적<\/summary>/);
   assert.match(APP_STYLES, /\.topbar ~ \.app-shell/);
-  assert.match(commands, /href="\/documents\/import"[^>]*>[\s\S]*?리스트 동기화/);
-  assert.match(commands, /href="\/documents\/new"[^>]*>[\s\S]*?문서 추가/);
-  assert.match(commands, /href="\/floor-plan"[^>]*>[\s\S]*?문서고 도면/);
+  assert.match(commands, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀 대장 동기화/);
+  assert.match(commands, /href="\/documents\/new"[^>]*>[\s\S]*?문서 등록/);
+  assert.match(commands, /href="\/floor-plan"[^>]*>[\s\S]*?보관 위치/);
   assert.match(commands, /href="\/racks"[^>]*>[\s\S]*?랙/);
   assert.match(commands, /href="\/categories"[^>]*>[\s\S]*?대분류/);
   assert.match(commands, /href="\/tags"[^>]*>[\s\S]*?태그/);
   assert.match(commands, /href="\/admin\/settings"[^>]*>[\s\S]*?사용자·권한/);
   assert.match(commands, /href="\/admin\/audit"[^>]*>[\s\S]*?감사 이력/);
-  assert.match(nav, /href="\/admin"[^>]*>[\s\S]*?운영 관리/);
+  assert.match(nav, /href="\/admin"[^>]*>[\s\S]*?확인할 일/);
 
   assert.match(html, /<h1>운영 관리<\/h1>/);
   assert.match(html, /class="operation-hero admin-hero"/);
@@ -451,7 +522,7 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   assert.match(html, /href="\/documents\/import"/);
   assert.match(html, /class="panel admin-tile" href="\/documents\/new"/);
   assert.match(html, /href="\/admin\/search-report"/);
-  assert.match(nav, /href="\/sets"[^>]*>[\s\S]*?문서 세트/);
+  assert.match(nav, /href="\/sets"[^>]*>[\s\S]*?준비 문서 세트/);
   assert.doesNotMatch(html, /href="\/disposal-batches"|폐기 캠페인/);
 });
 
@@ -466,12 +537,13 @@ test("desktop navigation and mobile tabs hide every unauthorized work route", as
   }).text();
   const archiveManagerNav = archiveManagerHtml.match(/<nav[^>]*aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   const archiveManagerTabs = archiveManagerHtml.match(/<nav class="mobile-tabs"[\s\S]*?<\/nav>/)?.[0] || "";
-  for (const navigation of [archiveManagerNav, archiveManagerTabs]) {
-    assert.match(navigation, /href="\/app"/);
-    assert.match(navigation, /href="\/floor-plan"/);
-    assert.match(navigation, /href="\/documents\/import"/);
-    assert.doesNotMatch(navigation, /href="\/documents\/disposal"/);
-  }
+  assert.match(archiveManagerNav, /href="\/documents\/import"/);
+  assert.doesNotMatch(archiveManagerNav, /href="\/documents\/disposal"/);
+  assert.match(archiveManagerTabs, /href="\/app"/);
+  assert.match(archiveManagerTabs, /href="\/floor-plan"/);
+  assert.match(archiveManagerTabs, /href="\/sets"/);
+  assert.match(archiveManagerTabs, />더보기</);
+  assert.doesNotMatch(archiveManagerTabs, /href="\/documents\/import"|href="\/documents\/disposal"/);
 
   const disposalManagerHtml = await dashboardPage({
     session: { username: "disposal", displayName: "폐기 담당자", role: "User", csrfToken: "csrf-token-123", can_manage_disposals: true },
@@ -484,8 +556,9 @@ test("desktop navigation and mobile tabs hide every unauthorized work route", as
   const disposalManagerTabs = disposalManagerHtml.match(/<nav class="mobile-tabs"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(disposalManagerTabs, /href="\/app"/);
   assert.match(disposalManagerTabs, /href="\/floor-plan"/);
-  assert.match(disposalManagerTabs, /href="\/documents\/disposal"/);
-  assert.doesNotMatch(disposalManagerTabs, /href="\/documents\/import"|관리자 설정/);
+  assert.match(disposalManagerTabs, /href="\/sets"/);
+  assert.match(disposalManagerTabs, />더보기</);
+  assert.doesNotMatch(disposalManagerTabs, /href="\/documents\/disposal"|href="\/documents\/import"|기준정보/);
 });
 
 test("ordinary document management list has no disposal selection and keeps mobile data labels", async () => {
@@ -578,8 +651,8 @@ test("set details page lists documents in location order with admin tools", asyn
   assert.match(adminHtml, /action="\/sets\/5\/remove"/);
   assert.match(adminHtml, /name="expectedRowVersion" value="9"/);
   assert.match(adminHtml, /data-print/);
-  assert.match(adminHtml, /href="\/documents\?rack=1&amp;status=active&amp;sort=location"/);
-  assert.match(adminHtml, /href="\/documents\?rack=2&amp;status=active&amp;sort=location"/);
+  assert.match(adminHtml, /href="\/app\?rack=1&amp;status=active&amp;sort=location"/);
+  assert.match(adminHtml, /href="\/app\?rack=2&amp;status=active&amp;sort=location"/);
   assert.doesNotMatch(adminHtml, /보관코드|ARC-00000[12]/);
   assert.ok(adminHtml.indexOf("MR-2026-001") < adminHtml.indexOf("PV-2026-014"));
 

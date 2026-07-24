@@ -12,6 +12,7 @@
       var nav = document.querySelector('[data-nav-menu]');
       var scrim = document.querySelector('[data-nav-scrim]');
       var hamburger = document.querySelector('[data-hamburger]');
+      var mobileMore = document.querySelector('[data-mobile-more]');
       var close = document.querySelector('[data-drawer-close]');
       var mediaQuery = function (query) {
         return typeof window.matchMedia === 'function'
@@ -29,6 +30,7 @@
         nav.classList.toggle('is-open', visible);
         if (scrim) scrim.classList.toggle('is-open', visible);
         if (hamburger) hamburger.setAttribute('aria-expanded', visible ? 'true' : 'false');
+        if (mobileMore) mobileMore.setAttribute('aria-expanded', visible ? 'true' : 'false');
         if (mobile) {
           nav.inert = !visible;
           nav.setAttribute('aria-hidden', visible ? 'false' : 'true');
@@ -37,11 +39,12 @@
           nav.removeAttribute('aria-hidden');
         }
         if (visible) setTimeout(function () { (close || navFocusable()[0])?.focus(); }, 0);
-        if (!visible && restoreFocus && hamburger) hamburger.focus();
+        if (!visible && restoreFocus && (mobileMore || hamburger)) (mobileMore || hamburger).focus();
       }
       setNav(false, false);
       mobileNavigation.addEventListener?.('change', function () { setNav(false, false); });
       if (hamburger) hamburger.addEventListener('click', function () { setNav(true, false); });
+      if (mobileMore) mobileMore.addEventListener('click', function () { setNav(true, false); });
       if (close) close.addEventListener('click', function () { setNav(false, true); });
       if (scrim) scrim.addEventListener('click', function () { setNav(false, true); });
       document.addEventListener('keydown', function (event) {
@@ -234,24 +237,28 @@
       });
 
       var bulkBar = document.querySelector('[data-bulk-bar]');
-      var bulkIds = document.querySelector('[data-bulk-ids]');
+      var bulkIds = Array.from(document.querySelectorAll('[data-bulk-ids]'));
       var bulkCount = document.querySelector('[data-bulk-count]');
       var bulkSummary = document.querySelector('[data-bulk-summary]');
       var bulkSelectAll = document.querySelector('[data-bulk-select-all]');
       var bulkConfirmCount = document.querySelector('[data-bulk-confirm-count]');
       var bulkConfirmCountInput = document.querySelector('[data-bulk-confirm-count-input]');
       var bulkConfirmButton = document.querySelector('[data-bulk-confirm-button]');
+      var bulkDisposalButton = document.querySelector('[data-disposal-limit]');
       function syncBulk() {
         var items = Array.from(document.querySelectorAll('[data-bulk-item]'));
         var checkedItems = items.filter(function (item) { return item.checked; });
         var checked = checkedItems.map(function (item) { return item.value; });
         if (bulkBar) bulkBar.hidden = checked.length === 0;
-        if (bulkIds) bulkIds.value = checked.join(',');
-        if (bulkCount) bulkCount.textContent = '원본 ' + checked.length + '부 선택';
+        bulkIds.forEach(function (input) { input.value = checked.join(','); });
+        if (bulkCount) bulkCount.textContent = bulkBar && bulkBar.hasAttribute('data-document-selection')
+          ? checked.length + '건 선택'
+          : '원본 ' + checked.length + '부 선택';
         if (bulkConfirmCount) bulkConfirmCount.textContent = checked.length + '부';
         if (bulkConfirmCountInput) bulkConfirmCountInput.value = String(checked.length);
         if (bulkConfirmButton) {
-          bulkConfirmButton.disabled = checked.length === 0;
+          var disposalLimit = bulkDisposalButton ? Number(bulkDisposalButton.dataset.disposalLimit || 0) : 0;
+          bulkConfirmButton.disabled = checked.length === 0 || Boolean(disposalLimit && checked.length > disposalLimit);
           bulkConfirmButton.textContent = checked.length
             ? '예, 원본 ' + checked.length + '부를 폐기합니다'
             : '예, 폐기합니다';
@@ -260,8 +267,8 @@
           bulkSummary.innerHTML = '';
           checkedItems.forEach(function (item) {
             var row = item.closest('[data-document-row]');
-            var name = row ? row.querySelector('.name-cell a') : null;
-            var number = row ? row.querySelector('.mono-cell') : null;
+            var name = row ? row.querySelector('.viewer-result-name a, .name-cell a') : null;
+            var number = row ? row.querySelector('.mono-cell, .mono') : null;
             var revision = row ? row.querySelector('.revision-cell') : null;
             var entry = document.createElement('li');
             entry.textContent = (number ? number.textContent.trim() : '선택 문서') +
@@ -275,8 +282,17 @@
           bulkSelectAll.indeterminate = checked.length > 0 && checked.length < items.length;
           bulkSelectAll.disabled = items.length === 0;
         }
+        if (bulkDisposalButton) {
+          var maxDisposal = Number(bulkDisposalButton.dataset.disposalLimit || 0);
+          bulkDisposalButton.disabled = Boolean(maxDisposal && checked.length > maxDisposal);
+          bulkDisposalButton.title = maxDisposal && checked.length > maxDisposal
+            ? '폐기는 한 번에 ' + maxDisposal + '건 이하만 선택하세요.'
+            : '';
+        }
       }
-      document.querySelectorAll('[data-bulk-item]').forEach(function (item) { item.addEventListener('change', syncBulk); });
+      document.addEventListener('change', function (event) {
+        if (event.target && event.target.matches && event.target.matches('[data-bulk-item]')) syncBulk();
+      });
       if (bulkSelectAll) {
         bulkSelectAll.addEventListener('change', function () {
           document.querySelectorAll('[data-bulk-item]').forEach(function (item) { item.checked = bulkSelectAll.checked; });
@@ -284,6 +300,20 @@
         });
       }
       syncBulk();
+
+      var setSelectionForm = document.querySelector('[data-set-selection-form]');
+      var setTarget = document.querySelector('[data-set-target]');
+      var setVersion = document.querySelector('[data-set-version]');
+      if (setSelectionForm && setTarget) {
+        var syncSetTarget = function () {
+          var option = setTarget.options[setTarget.selectedIndex];
+          var setId = Number(option ? option.value : 0);
+          setSelectionForm.action = setId ? '/sets/' + setId + '/add' : '/sets/0/add';
+          if (setVersion) setVersion.value = option ? option.dataset.version || '' : '';
+        };
+        setTarget.addEventListener('change', syncSetTarget);
+        syncSetTarget();
+      }
 
       var commandPalette = document.querySelector('[data-command-palette]');
       var commandInput = document.querySelector('[data-command-input]');
@@ -1128,6 +1158,7 @@
         var resultsCount = document.querySelector('[data-results-count]');
         var searchLive = document.querySelector('[data-search-live]');
         var homeExtras = document.querySelector('[data-home-extras]');
+        var workspaceSelectable = Boolean(document.querySelector('[data-document-selection]'));
         var initialResults = {
           body: resultsBody ? resultsBody.innerHTML : '',
           title: resultsTitle ? resultsTitle.textContent : '',
@@ -1167,14 +1198,19 @@
         var resultRow = function (item, query) {
           var location = item.location || {};
           var disposed = item.status === 'disposed';
-          return '<article class="viewer-result-row' + (disposed ? ' is-disposed' : '') + '" role="row">' +
-            '<span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/' + Number(item.id) + '" data-doc-click="' + Number(item.id) + '">' + window.SearchCore.highlightHtml(item.documentName || '문서명 없음', query, escapeHtmlClient) + '</a></span>' +
-            '<span class="mono" role="cell" data-label="문서번호">' + window.SearchCore.highlightHtml(item.documentNumber || '', query, escapeHtmlClient) + '</span>' +
-            '<span role="cell" data-label="개정">' + escapeHtmlClient(item.revisionNumber || '-') + '</span>' +
-            '<span role="cell" data-label="제·개정일">' + escapeHtmlClient(item.revisionDate || '-') + '</span>' +
-            '<span role="cell" data-label="대분류">' + escapeHtmlClient(item.categoryName || '-') + '</span>' +
-            '<span class="viewer-result-location" role="cell" data-label="보관 위치">' + escapeHtmlClient(location.label || '위치 미지정') + '</span>' +
+          var itemName = item.documentName || '문서명 없음';
+          var itemNumber = item.documentNumber || '';
+          var itemRevision = item.revisionNumber || '-';
+          var itemCategory = item.categoryName || '-';
+          var itemLocation = location.label || '위치 미지정';
+          return '<article class="viewer-result-row' + (workspaceSelectable ? ' is-selectable' : '') + (disposed ? ' is-disposed' : '') + '" role="row" tabindex="0" data-document-row data-document-url="/documents/' + Number(item.id) + '" data-document-name="' + escapeHtmlClient(itemName) + '" data-document-number="' + escapeHtmlClient(itemNumber) + '" data-document-revision="' + escapeHtmlClient(itemRevision) + '" data-document-category="' + escapeHtmlClient(itemCategory) + '" data-document-location="' + escapeHtmlClient(itemLocation) + '" data-document-status="' + (disposed ? '폐기' : '보관중') + '">' +
+            (workspaceSelectable ? '<span class="check-col" role="cell" data-label="선택"><input type="checkbox" value="' + Number(item.id) + '" data-bulk-item aria-label="' + escapeHtmlClient(itemName) + ' 선택"></span>' : '') +
+            '<span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/' + Number(item.id) + '" data-doc-click="' + Number(item.id) + '">' + window.SearchCore.highlightHtml(itemName, query, escapeHtmlClient) + '</a></span>' +
+            '<span class="mono" role="cell" data-label="문서번호 · 개정">' + window.SearchCore.highlightHtml(itemNumber, query, escapeHtmlClient) + ' <small>' + escapeHtmlClient(itemRevision) + '</small></span>' +
+            '<span role="cell" data-label="대분류">' + escapeHtmlClient(itemCategory) + '</span>' +
+            '<span class="viewer-result-location" role="cell" data-label="보관 위치">' + escapeHtmlClient(itemLocation) + '</span>' +
             '<span role="cell" data-label="상태"><span class="status ' + (disposed ? 'disposed' : 'active') + '">' + (disposed ? '폐기' : '보관중') + '</span></span>' +
+            '<span class="optional-column" data-column="revision-date" role="cell" data-label="제·개정일" hidden>' + escapeHtmlClient(item.revisionDate || '-') + '</span>' +
             '</article>';
         };
 
@@ -1182,13 +1218,13 @@
           var query = viewerInput.value.trim();
           currentItems = append ? currentItems.concat(payload.items || []) : (payload.items || []);
           currentCursor = payload.nextCursor || '';
-          var html = '<div class="viewer-result-table" role="table" aria-label="문서 검색 결과">' +
-            '<div class="viewer-result-header" role="row"><span>문서명</span><span>문서번호</span><span>개정</span><span>제·개정일</span><span>대분류</span><span>보관 위치</span><span>상태</span></div>' +
+          var html = '<div class="viewer-result-table' + (workspaceSelectable ? ' is-selectable' : '') + '" role="table" aria-label="문서 검색 결과">' +
+            '<div class="viewer-result-header" role="row">' + (workspaceSelectable ? '<span class="check-col"><span class="sr-only">선택</span></span>' : '') + '<span>문서명</span><span>문서번호 · 개정</span><span>대분류</span><span>보관 위치</span><span>상태</span><span class="optional-column" data-column="revision-date" hidden>제·개정일</span></div>' +
             '<div class="viewer-result-list" role="rowgroup">' +
             currentItems.map(function (item) { return resultRow(item, query); }).join('') +
             '</div></div>';
           if (!currentItems.length) {
-            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/documents">전체 문서 보기</a><a class="button secondary sm" href="/app">검색 초기화</a></div></div>';
+            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/app">전체 문서 보기</a><a class="button secondary sm" href="/app">검색 초기화</a></div></div>';
           } else if (payload.hasMore && currentCursor) {
             html += '<nav class="pagination"><button type="button" class="button secondary sm" data-search-more>더보기</button></nav>';
           }
@@ -1201,6 +1237,13 @@
           if (searchLive) searchLive.textContent = currentItems.length ? currentItems.length + '건을 표시했습니다.' : '검색 결과가 없습니다.';
           if (homeExtras) homeExtras.hidden = true;
           viewerApp.hidden = false;
+          var revisionToggle = document.querySelector('[data-column-toggle="revision-date"]');
+          document.querySelectorAll('[data-column="revision-date"]').forEach(function (cell) {
+            cell.hidden = !revisionToggle?.checked;
+          });
+          document.querySelectorAll('.viewer-result-table').forEach(function (table) {
+            table.classList.toggle('show-revision-date', Boolean(revisionToggle?.checked));
+          });
         };
 
         var renderError = function (message) {
@@ -1250,6 +1293,97 @@
         });
         if (viewerInput.value.trim()) requestSearch('', false);
       }
+
+      var workspaceSearch = document.querySelector('[data-viewer-form] input[name="q"]');
+      var workspacePreview = document.querySelector('[data-document-preview]');
+      var columnToggle = document.querySelector('[data-column-toggle="revision-date"]');
+
+      var applyRevisionColumn = function (visible) {
+        document.querySelectorAll('[data-column="revision-date"]').forEach(function (cell) {
+          cell.hidden = !visible;
+        });
+        document.querySelectorAll('.viewer-result-table').forEach(function (table) {
+          table.classList.toggle('show-revision-date', visible);
+        });
+        if (columnToggle) columnToggle.checked = visible;
+      };
+
+      if (columnToggle) {
+        var storedColumns = '';
+        try { storedColumns = localStorage.getItem('hanlimDocumentColumns') || ''; } catch {}
+        applyRevisionColumn(storedColumns.split(',').includes('revision-date'));
+        columnToggle.addEventListener('change', function () {
+          applyRevisionColumn(columnToggle.checked);
+          try { localStorage.setItem('hanlimDocumentColumns', columnToggle.checked ? 'revision-date' : ''); } catch {}
+        });
+      }
+
+      var fillPreview = function (row) {
+        if (!workspacePreview || !row) return;
+        var setText = function (selector, value) {
+          var target = workspacePreview.querySelector(selector);
+          if (target) target.textContent = value || '-';
+        };
+        setText('[data-preview-name]', row.dataset.documentName);
+        setText('[data-preview-number]', (row.dataset.documentNumber || '') + ' · ' + (row.dataset.documentRevision || '-'));
+        setText('[data-preview-category]', row.dataset.documentCategory);
+        setText('[data-preview-location]', row.dataset.documentLocation);
+        setText('[data-preview-status]', row.dataset.documentStatus);
+        var link = workspacePreview.querySelector('[data-preview-link]');
+        if (link) link.href = row.dataset.documentUrl || '/app';
+        document.querySelectorAll('[data-document-row]').forEach(function (item) {
+          item.classList.toggle('is-selected', item === row);
+          item.setAttribute('aria-selected', item === row ? 'true' : 'false');
+        });
+        workspacePreview.hidden = false;
+      };
+
+      document.addEventListener('click', function (event) {
+        var target = event.target instanceof Element ? event.target : null;
+        if (target?.closest('[data-preview-close]')) {
+          if (workspacePreview) workspacePreview.hidden = true;
+          document.querySelectorAll('[data-document-row]').forEach(function (item) {
+            item.classList.remove('is-selected');
+            item.removeAttribute('aria-selected');
+          });
+          return;
+        }
+        var row = target?.closest('[data-document-row]');
+        if (!row || target.closest('a, button, input, select, textarea, label')) return;
+        if (window.matchMedia?.('(min-width: 1181px)').matches && workspacePreview) {
+          fillPreview(row);
+          return;
+        }
+        if (row.dataset.documentUrl) location.assign(row.dataset.documentUrl);
+      });
+
+      document.addEventListener('keydown', function (event) {
+        var target = event.target instanceof Element ? event.target : null;
+        var editing = target?.matches('input, textarea, select, [contenteditable="true"]');
+        if (event.key === '/' && !editing && workspaceSearch) {
+          event.preventDefault();
+          workspaceSearch.focus();
+          workspaceSearch.select();
+          return;
+        }
+        var row = target?.closest('[data-document-row]');
+        if (!row) return;
+        var rows = Array.from(document.querySelectorAll('[data-document-row]'));
+        var index = rows.indexOf(row);
+        if (event.key === 'ArrowDown' && rows[index + 1]) {
+          event.preventDefault();
+          rows[index + 1].focus();
+          fillPreview(rows[index + 1]);
+        } else if (event.key === 'ArrowUp' && rows[index - 1]) {
+          event.preventDefault();
+          rows[index - 1].focus();
+          fillPreview(rows[index - 1]);
+        } else if (event.key === 'Enter' && row.dataset.documentUrl) {
+          event.preventDefault();
+          location.assign(row.dataset.documentUrl);
+        }
+      });
+
 
     });
 

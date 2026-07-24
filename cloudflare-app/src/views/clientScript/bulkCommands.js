@@ -2,24 +2,28 @@
 
 export function bulkCommandScript() {
   return `      var bulkBar = document.querySelector('[data-bulk-bar]');
-      var bulkIds = document.querySelector('[data-bulk-ids]');
+      var bulkIds = Array.from(document.querySelectorAll('[data-bulk-ids]'));
       var bulkCount = document.querySelector('[data-bulk-count]');
       var bulkSummary = document.querySelector('[data-bulk-summary]');
       var bulkSelectAll = document.querySelector('[data-bulk-select-all]');
       var bulkConfirmCount = document.querySelector('[data-bulk-confirm-count]');
       var bulkConfirmCountInput = document.querySelector('[data-bulk-confirm-count-input]');
       var bulkConfirmButton = document.querySelector('[data-bulk-confirm-button]');
+      var bulkDisposalButton = document.querySelector('[data-disposal-limit]');
       function syncBulk() {
         var items = Array.from(document.querySelectorAll('[data-bulk-item]'));
         var checkedItems = items.filter(function (item) { return item.checked; });
         var checked = checkedItems.map(function (item) { return item.value; });
         if (bulkBar) bulkBar.hidden = checked.length === 0;
-        if (bulkIds) bulkIds.value = checked.join(',');
-        if (bulkCount) bulkCount.textContent = '원본 ' + checked.length + '부 선택';
+        bulkIds.forEach(function (input) { input.value = checked.join(','); });
+        if (bulkCount) bulkCount.textContent = bulkBar && bulkBar.hasAttribute('data-document-selection')
+          ? checked.length + '건 선택'
+          : '원본 ' + checked.length + '부 선택';
         if (bulkConfirmCount) bulkConfirmCount.textContent = checked.length + '부';
         if (bulkConfirmCountInput) bulkConfirmCountInput.value = String(checked.length);
         if (bulkConfirmButton) {
-          bulkConfirmButton.disabled = checked.length === 0;
+          var disposalLimit = bulkDisposalButton ? Number(bulkDisposalButton.dataset.disposalLimit || 0) : 0;
+          bulkConfirmButton.disabled = checked.length === 0 || Boolean(disposalLimit && checked.length > disposalLimit);
           bulkConfirmButton.textContent = checked.length
             ? '예, 원본 ' + checked.length + '부를 폐기합니다'
             : '예, 폐기합니다';
@@ -28,8 +32,8 @@ export function bulkCommandScript() {
           bulkSummary.innerHTML = '';
           checkedItems.forEach(function (item) {
             var row = item.closest('[data-document-row]');
-            var name = row ? row.querySelector('.name-cell a') : null;
-            var number = row ? row.querySelector('.mono-cell') : null;
+            var name = row ? row.querySelector('.viewer-result-name a, .name-cell a') : null;
+            var number = row ? row.querySelector('.mono-cell, .mono') : null;
             var revision = row ? row.querySelector('.revision-cell') : null;
             var entry = document.createElement('li');
             entry.textContent = (number ? number.textContent.trim() : '선택 문서') +
@@ -43,8 +47,17 @@ export function bulkCommandScript() {
           bulkSelectAll.indeterminate = checked.length > 0 && checked.length < items.length;
           bulkSelectAll.disabled = items.length === 0;
         }
+        if (bulkDisposalButton) {
+          var maxDisposal = Number(bulkDisposalButton.dataset.disposalLimit || 0);
+          bulkDisposalButton.disabled = Boolean(maxDisposal && checked.length > maxDisposal);
+          bulkDisposalButton.title = maxDisposal && checked.length > maxDisposal
+            ? '폐기는 한 번에 ' + maxDisposal + '건 이하만 선택하세요.'
+            : '';
+        }
       }
-      document.querySelectorAll('[data-bulk-item]').forEach(function (item) { item.addEventListener('change', syncBulk); });
+      document.addEventListener('change', function (event) {
+        if (event.target && event.target.matches && event.target.matches('[data-bulk-item]')) syncBulk();
+      });
       if (bulkSelectAll) {
         bulkSelectAll.addEventListener('change', function () {
           document.querySelectorAll('[data-bulk-item]').forEach(function (item) { item.checked = bulkSelectAll.checked; });
@@ -52,6 +65,20 @@ export function bulkCommandScript() {
         });
       }
       syncBulk();
+
+      var setSelectionForm = document.querySelector('[data-set-selection-form]');
+      var setTarget = document.querySelector('[data-set-target]');
+      var setVersion = document.querySelector('[data-set-version]');
+      if (setSelectionForm && setTarget) {
+        var syncSetTarget = function () {
+          var option = setTarget.options[setTarget.selectedIndex];
+          var setId = Number(option ? option.value : 0);
+          setSelectionForm.action = setId ? '/sets/' + setId + '/add' : '/sets/0/add';
+          if (setVersion) setVersion.value = option ? option.dataset.version || '' : '';
+        };
+        setTarget.addEventListener('change', syncSetTarget);
+        syncSetTarget();
+      }
 
       var commandPalette = document.querySelector('[data-command-palette]');
       var commandInput = document.querySelector('[data-command-input]');

@@ -15,7 +15,7 @@ export const PERMISSION_LABELS = Object.freeze({
   [PERMISSIONS.MANAGE_DOCUMENTS]: "문서 등록·수정",
   [PERMISSIONS.MOVE_DOCUMENTS]: "문서 위치 이동",
   [PERMISSIONS.MANAGE_DISPOSALS]: "폐기 관리",
-  [PERMISSIONS.MANAGE_SETS]: "문서 세트 관리",
+  [PERMISSIONS.MANAGE_SETS]: "준비 문서 세트 관리",
   [PERMISSIONS.MANAGE_MASTERS]: "랙·대분류·태그 관리",
   [PERMISSIONS.MANAGE_USERS]: "사용자·권한 관리",
   [PERMISSIONS.VIEW_AUDIT]: "전역 감사조회",

@@ -2,6 +2,7 @@
 
 import { escapeHtml } from "../ui/html/escape.js";
 import { safeEmbeddedJson } from "../platform/web/renderContext.js";
+import { capabilitiesFromSession } from "../domains/identity/index.js";
 import { searchCoreScript } from "./clientScript.js";
 import { alertWarning, emptyResult, emptyState, filterSelectRow, listUrl, page, paginationNav, sectionHeader, statusBadge } from "./layout.js";
 import {
@@ -16,14 +17,16 @@ export { didYouMeanView, highlight, parsedChipRow, searchInputBlock };
 export function dashboardPage({
   session,
   query,
-  viewerSearch = { items: [], pagination: { totalItems: 0, totalPages: 1, page: 1, pageSize: 12 }, facets: {}, suggestions: [] },
+  viewerSearch = { items: [], pagination: { totalItems: 0, totalPages: 1, page: 1, pageSize: 30 }, facets: {}, suggestions: [] },
   categories = [],
   tags = [],
   filters = {},
   parsedQuery = null,
   didYouMean = [],
+  editableSets = [],
   mode = "results"
 }) {
+  const capabilities = capabilitiesFromSession(session);
   const viewerContext = safeEmbeddedJson({
     categories: categories.map((item) => ({ id: Number(item.id), name: String(item.name || "") })),
     tags: tags.map((item) => ({ id: Number(item.id), name: String(item.name || "") }))
@@ -31,7 +34,7 @@ export function dashboardPage({
 
   // 홈 모드: 운영 히어로 안에서 검색 입력이 첫 포커스 작업이 되도록 한다.
   if (mode === "home") {
-    return page("문서 검색", `
+    return page("문서", `
       <section class="search-home" data-search-home>
         <section class="search-home-hero" aria-labelledby="viewer-title">
           <div class="search-home-copy">
@@ -52,6 +55,8 @@ export function dashboardPage({
             </div>
             <div data-results-body></div>
           </article>
+          ${workspacePreview()}
+          ${workspaceBulkActions({ capabilities, editableSets, returnTo: "/app" })}
         </section>
 
       </section>
@@ -65,7 +70,7 @@ export function dashboardPage({
   const suggestions = viewerSearch.suggestions || [];
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
 
-  return page("문서 검색", `
+  return page("문서", `
     <section class="search-band page-head search-workspace-head" aria-labelledby="viewer-title">
       <div>
         <h1 id="viewer-title">${query ? `“${escapeHtml(query)}” 검색 결과` : "문서"}</h1>
@@ -81,22 +86,28 @@ export function dashboardPage({
       <button type="button" class="button secondary mobile-search-filter-button" data-open-modal="viewer-filter-dialog"><i class="fa-solid fa-sliders" aria-hidden="true"></i>검색 필터${activeFilterBadge(filters)}</button>
       <p class="search-live-status" data-search-live aria-live="polite">${totalItems ? `${totalItems}건을 찾았습니다.` : "검색 결과가 없습니다."}</p>
       ${parsedChipRow(parsedQuery, query)}
+      ${activeFilterChips({ query, filters, categories, tags })}
       <div class="quick-row viewer-recents" data-recent-searches></div>
     </section>
 
     <section class="viewer-workspace" data-viewer-app>
       <article class="panel results-panel" aria-labelledby="viewer-results-title" data-viewer-results aria-live="polite">
-        <div class="section-title">
+        <div class="section-title viewer-results-heading">
           <h2 id="viewer-results-title" data-results-title>${query ? `"${escapeHtml(query)}" 검색 결과` : "최근 등록·수정 문서"}</h2>
-          <span class="count-badge" data-results-count>${totalItems}건</span>
+          <div class="viewer-result-tools">
+            ${capabilities.canManageSets || capabilities.canManageDisposals ? `<label class="bulk-select-all-label"><input type="checkbox" data-bulk-select-all> 현재 목록 선택</label>` : ""}
+            ${columnSettings()}
+            <span class="count-badge" data-results-count>${totalItems}건</span>
+          </div>
         </div>
         <div data-results-body>
-          ${viewerDocumentResults(documents, query)}
+          ${viewerDocumentResults(documents, query, capabilities)}
           ${!documents.length && didYouMean.length ? didYouMeanView(didYouMean) : ""}
           ${viewerPagination(viewerSearch.pagination, { query, filters })}
         </div>
       </article>
-
+      ${workspacePreview()}
+      ${workspaceBulkActions({ capabilities, editableSets, returnTo: viewerUrl({ query, filters, page: viewerSearch.pagination?.page || 1 }) })}
     </section>
     ${mobileViewerFilterDialog({ query, categories, tags, filters })}
     <script type="application/json" data-viewer-context>${viewerContext}</script>
@@ -141,30 +152,85 @@ function homeQuickLinks(categories = []) {
   return `<nav class="search-home-filter quick-filter-row" aria-label="빠른 분류"><span>빠른 분류</span>${categoryLinks}</nav>`;
 }
 
-function viewerDocumentResults(documents, query) {
+function viewerDocumentResults(documents, query, capabilities = {}) {
   if (!documents.length) {
     return emptyResult("조건에 맞는 문서가 없습니다.");
   }
-  return `<div class="viewer-result-table" role="table" aria-label="문서 검색 결과">
-    <div class="viewer-result-header" role="row"><span>문서명</span><span>문서번호</span><span>개정</span><span>제·개정일</span><span>대분류</span><span>보관 위치</span><span>상태</span></div>
-    <div class="viewer-result-list" role="rowgroup">${documents.map((document) => viewerDocumentCard(document, query)).join("")}</div>
+  const selectable = capabilities.canManageSets || capabilities.canManageDisposals;
+  return `<div class="viewer-result-table ${selectable ? "is-selectable" : ""}" role="table" aria-label="문서 검색 결과">
+    <div class="viewer-result-header" role="row">${selectable ? `<span class="check-col"><span class="sr-only">선택</span></span>` : ""}<span>문서명</span><span>문서번호 · 개정</span><span>대분류</span><span>보관 위치</span><span>상태</span><span class="optional-column" data-column="revision-date" hidden>제·개정일</span></div>
+    <div class="viewer-result-list" role="rowgroup">${documents.map((document) => viewerDocumentCard(document, query, selectable)).join("")}</div>
   </div>`;
 }
 
-function viewerDocumentCard(document, query = "") {
+function viewerDocumentCard(document, query = "", selectable = false) {
   const location = document.location || {};
   const locationText = location.label || "위치 미지정";
   return `
-    <article class="viewer-result-row ${document.status !== "active" ? "is-disposed" : ""}" role="row">
+    <article class="viewer-result-row ${selectable ? "is-selectable" : ""} ${document.status !== "active" ? "is-disposed" : ""}" role="row" tabindex="0" data-document-row data-document-url="/documents/${document.id}" data-document-name="${escapeHtml(document.documentName || "문서명 없음")}" data-document-number="${escapeHtml(document.documentNumber || "")}" data-document-revision="${escapeHtml(document.revisionNumber || "-")}" data-document-category="${escapeHtml(document.categoryName || "-")}" data-document-location="${escapeHtml(locationText)}" data-document-status="${document.status === "active" ? "보관중" : "폐기"}">
+      ${selectable ? `<span class="check-col" role="cell" data-label="선택"><input type="checkbox" value="${Number(document.id)}" data-bulk-item aria-label="${escapeHtml(document.documentName || document.documentNumber)} 선택"></span>` : ""}
       <span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/${document.id}" data-doc-click="${document.id}">${highlight(document.documentName || "문서명 없음", query)}</a></span>
-      <span class="mono" role="cell" data-label="문서번호">${highlight(document.documentNumber, query)}</span>
-      <span role="cell" data-label="개정">${escapeHtml(document.revisionNumber || "-")}</span>
-      <span role="cell" data-label="제·개정일">${escapeHtml(document.revisionDate || "-")}</span>
+      <span class="mono" role="cell" data-label="문서번호 · 개정">${highlight(document.documentNumber, query)} <small>${escapeHtml(document.revisionNumber || "-")}</small></span>
       <span role="cell" data-label="대분류">${escapeHtml(document.categoryName || "-")}</span>
       <span class="viewer-result-location" role="cell" data-label="보관 위치">${escapeHtml(locationText)}</span>
       <span role="cell" data-label="상태">${statusBadge(document.status)}</span>
+      <span class="optional-column" data-column="revision-date" role="cell" data-label="제·개정일" hidden>${escapeHtml(document.revisionDate || "-")}</span>
     </article>
   `;
+}
+
+function columnSettings() {
+  return `<details class="column-settings"><summary><i class="fa-solid fa-table-columns" aria-hidden="true"></i>열 설정</summary><label><input type="checkbox" data-column-toggle="revision-date"> 제·개정일</label></details>`;
+}
+
+function workspacePreview() {
+  return `<aside class="panel viewer-preview" data-document-preview hidden aria-live="polite">
+    <div class="section-title"><h2>빠른 미리보기</h2><button type="button" class="icon-button" data-preview-close aria-label="미리보기 닫기">×</button></div>
+    <strong data-preview-name></strong>
+    <p class="mono" data-preview-number></p>
+    <dl><div><dt>대분류</dt><dd data-preview-category></dd></div><div><dt>보관 위치</dt><dd data-preview-location></dd></div><div><dt>상태</dt><dd data-preview-status></dd></div></dl>
+    <a class="button" href="/app" data-preview-link>문서 상세 열기</a>
+  </aside>`;
+}
+
+function workspaceBulkActions({ capabilities, editableSets = [], returnTo }) {
+  if (!capabilities.canManageSets && !capabilities.canManageDisposals) return "";
+  const setForm = capabilities.canManageSets && editableSets.length ? `<form method="post" action="/sets/0/add" class="workspace-set-form" data-set-selection-form>
+    <label><span class="sr-only">추가할 준비 문서 세트</span><select name="setTarget" required data-set-target><option value="">세트 선택</option>${editableSets.map((set) => `<option value="${Number(set.id)}" data-version="${Number(set.row_version || 0)}">${escapeHtml(set.name)}</option>`).join("")}</select></label>
+    <input type="hidden" name="documentIds" data-bulk-ids>
+    <input type="hidden" name="expectedRowVersion" data-set-version>
+    <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+    <button type="submit" class="button secondary sm">세트에 추가</button>
+  </form>` : "";
+  const disposalButton = capabilities.canManageDisposals
+    ? `<button type="button" class="danger-button sm" data-open-modal="workspace-disposal-modal" data-disposal-limit="10">선택 문서 폐기</button>`
+    : "";
+  const disposalDialog = capabilities.canManageDisposals ? `<dialog id="workspace-disposal-modal" class="modal disposal-review-modal" aria-labelledby="workspace-disposal-title">
+    <form method="post" action="/documents/disposal/process" class="modal-body" data-bulk-form>
+      <h2 id="workspace-disposal-title">선택 문서 폐기</h2>
+      <p>한 번에 최대 10건을 처리합니다. 실제 원본과 선택 수량이 같은지 확인하세요.</p>
+      <p>실제 폐기할 원본이 <strong data-bulk-confirm-count>0부</strong>가 맞습니까?</p>
+      <ol class="disposal-review-list" data-bulk-summary></ol>
+      <input type="hidden" name="ids" data-bulk-ids>
+      <input type="hidden" name="confirmedTargetCount" value="0" data-bulk-confirm-count-input>
+      <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+      <label>폐기 사유 <em>*</em><textarea name="reason" rows="3" required></textarea></label>
+      <label>승인 문서 참조<input name="approvalReference"></label>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close-modal>취소</button><button type="submit" class="danger-button" name="confirmDisposal" value="1" data-bulk-confirm-button disabled>예, 폐기합니다</button></div>
+    </form>
+  </dialog>` : "";
+  return `<div class="bulk-bar workspace-bulk-bar" data-bulk-bar data-document-selection hidden><span data-bulk-count>0건 선택</span>${setForm}${disposalButton}</div>${disposalDialog}`;
+}
+
+function activeFilterChips({ query, filters = {}, categories = [], tags = [] }) {
+  const chips = [];
+  const add = (label, patch) => chips.push(`<a class="chip active" href="${viewerUrl({ query, filters, patch })}">${escapeHtml(label)} <span aria-hidden="true">×</span></a>`);
+  if (filters.categoryId) add(categories.find((item) => Number(item.id) === Number(filters.categoryId))?.name || "대분류", { categoryId: 0 });
+  if (filters.tagId) add(tags.find((item) => Number(item.id) === Number(filters.tagId))?.name || "태그", { tagId: 0 });
+  if (filters.zoneNumber) add(`${filters.zoneNumber}구역`, { zoneNumber: 0 });
+  if (filters.rackId) add(`랙 ${filters.rackId}`, { rackId: 0, rackFace: "", columnNumber: 0, shelfNumber: 0 });
+  if (filters.status && filters.status !== "active") add(filters.status === "disposed" ? "폐기" : "전체 상태", { status: "active" });
+  return chips.length ? `<nav class="active-filter-chips" aria-label="적용된 필터">${chips.join("")}</nav>` : "";
 }
 
 function viewerPagination(pagination = {}, { query, filters }) {

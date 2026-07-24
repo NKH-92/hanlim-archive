@@ -170,17 +170,39 @@ export async function handleSetRoute(request, env, session, routeInfo) {
 }
 
 async function handleAddSetDocuments(request, env, session, setId) {
+  const form = await request.formData();
+  const returnTo = safeWorkspaceReturn(form.get("returnTo"));
   const set = await getDocumentSet(env, setId);
   if (!set) {
     return notFoundPage(session);
   }
   if (Number(set.is_locked) === 1) {
+    if (returnTo) return redirect(withToast(returnTo, "error"));
     return renderSetDetails(env, session, setId, { error: "잠긴 세트는 문서를 추가할 수 없습니다." });
   }
 
-  const form = await request.formData();
   const documentId = Number(form.get("documentId"));
   const expectedRowVersion = Number(form.get("expectedRowVersion"));
+  const selectedIds = [...new Set(
+    form.getAll("documentIds")
+      .flatMap((value) => clean(value).split(","))
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0)
+  )];
+
+  if (selectedIds.length) {
+    if (selectedIds.length > 200) {
+      if (returnTo) return redirect(withToast(returnTo, "error"));
+      return renderSetDetails(env, session, setId, { error: "일괄 추가는 한 번에 200건 이하만 선택하세요." });
+    }
+    const result = await addDocumentsToSet(env, setId, selectedIds, session, expectedRowVersion);
+    if (result.message) {
+      if (returnTo) return redirect(withToast(returnTo, "error"));
+      return renderSetDetails(env, session, setId, { error: result.message });
+    }
+    if (returnTo) return redirect(withToast(returnTo, "saved"));
+    return renderSetDetails(env, session, setId, { addResult: { added: result.added, missing: [] } });
+  }
 
   if (documentId) {
     const result = await addDocumentsToSet(env, setId, [documentId], session, expectedRowVersion);
@@ -208,4 +230,22 @@ async function handleAddSetDocuments(request, env, session, setId) {
   const { added } = result;
 
   return renderSetDetails(env, session, setId, { addResult: { added, missing } });
+}
+
+function safeWorkspaceReturn(value) {
+  const path = clean(value);
+  try {
+    const url = new URL(path, "https://archive.local");
+    return url.origin === "https://archive.local" && url.pathname === "/app"
+      ? `${url.pathname}${url.search}`
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function withToast(path, toast) {
+  const url = new URL(path, "https://archive.local");
+  url.searchParams.set("toast", toast);
+  return `${url.pathname}${url.search}`;
 }

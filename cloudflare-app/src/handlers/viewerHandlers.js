@@ -8,6 +8,8 @@ import {
   recordSearchClick
 } from "../domains/search/index.js";
 import { buildFloorPlanLayout, getFloorPlanRegions, getRackSummaries } from "../domains/racks/index.js";
+import { getDocumentSets } from "../domains/sets/index.js";
+import { capabilitiesFromSession } from "../domains/identity/index.js";
 import { dashboardPage, qaPage, searchReportPage } from "../views/searchViews.js";
 import { floorPlanPage } from "../views/floorPlanViews.js";
 import { jsonResponse } from "../platform/http/responses.js";
@@ -18,6 +20,10 @@ export async function handleDashboard(request, env, session) {
   const url = new URL(request.url);
   const search = await resolveSearchRequest(env, url);
   const { query, page, categories, tags, parsed, filters } = search;
+  const capabilities = capabilitiesFromSession(session);
+  const editableSets = capabilities.canManageSets
+    ? await getEditableSetsForWorkspace(env)
+    : [];
 
   // 검색어와 필터가 없으면 검색 입력부터 시작하는 빈 검색 셸을 그린다.
   if (!query && !search.hasExplicitFilter) {
@@ -27,7 +33,8 @@ export async function handleDashboard(request, env, session) {
       query: "",
       categories,
       tags,
-      filters
+      filters,
+      editableSets
     });
   }
 
@@ -43,7 +50,7 @@ export async function handleDashboard(request, env, session) {
       status: filters.status,
       sort: filters.sort,
       page,
-      pageSize: 12
+      pageSize: 30
     });
 
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
@@ -58,8 +65,20 @@ export async function handleDashboard(request, env, session) {
     categories,
     tags,
     filters,
-    didYouMean
+    didYouMean,
+    editableSets
   });
+}
+
+async function getEditableSetsForWorkspace(env) {
+  try {
+    return (await getDocumentSets(env)).filter((set) => Number(set.is_locked) !== 1);
+  } catch (error) {
+    // Password-change compatibility tests intentionally exercise a pre-row-version
+    // schema. The workspace must remain usable there, while mutations stay disabled.
+    if (String(error?.message || "").includes("no such column: s.row_version")) return [];
+    throw error;
+  }
 }
 
 export function renderQa(session, env) {

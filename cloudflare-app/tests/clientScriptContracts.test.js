@@ -56,6 +56,18 @@ test("명령 팔레트는 키보드 이동과 포커스 복귀 계약을 유지�
   assert.match(script, /scrollIntoView\(\{ block: 'nearest' \}\)/);
 });
 
+test("문서 작업 공간은 검색 단축키·행 탐색·열 설정·선택 폼을 연결한다", () => {
+  const script = clientScriptModule.clientScript();
+
+  assert.match(script, /event\.key === '\/'/);
+  assert.match(script, /event\.key === 'ArrowDown'/);
+  assert.match(script, /event\.key === 'ArrowUp'/);
+  assert.match(script, /data-document-preview/);
+  assert.match(script, /hanlimDocumentColumns/);
+  assert.match(script, /data-set-selection-form/);
+  assert.match(script, /data-disposal-limit/);
+});
+
 test("라우트가 생산하는 전역 토스트 키는 모두 표시 문구를 가진다", () => {
   const producedKeys = [
     "approved",

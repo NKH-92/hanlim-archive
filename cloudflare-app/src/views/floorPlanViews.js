@@ -26,7 +26,7 @@ function floorRackMarkup(rack, { hit = false, hitFace = "", zoneNumber = 0, inte
   const content = `${faces}${active ? `<span class="rack-hit-pin" aria-hidden="true">현재</span>` : ""}<span class="rack-num">${escapeHtml(badgeLabel)}</span>`;
   const common = `class="${classes.join(" ")}"${faceAttr} style="--rack-left:${rack.leftPct}%;--rack-width:${rack.widthPct}%;" data-rack-code="${escapeHtml(rack.code)}" data-zone="${escapeHtml(String(zoneNumber))}" title="${escapeHtml(title)}"`;
   if (!interactive) return `<span ${common} aria-hidden="true">${content}</span>`;
-  return `<a ${common} href="/documents?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" aria-label="${escapeHtml(title)}">${content}</a>`;
+  return `<a ${common} href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" aria-label="${escapeHtml(title)}">${content}</a>`;
 }
 
 export function floorPlanView(regions, hits = new Set()) {
@@ -104,7 +104,7 @@ export function archiveMap(racks, hits) {
             const faceSummary = single
               ? `단면${hitA ? " 일치" : ""}`
               : `${rack.rack_number}-1${hitA ? " 일치" : ""} · ${rack.rack_number}-2${hitB ? " 일치" : ""}`;
-            return `<a class="rack-tile ${isHit ? "is-hit" : ""}" href="/documents?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" title="${escapeHtml(rack.code)} ${rack.document_count || 0}건">
+            return `<a class="rack-tile ${isHit ? "is-hit" : ""}" href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" title="${escapeHtml(rack.code)} ${rack.document_count || 0}건">
               <strong>${rack.rack_number}</strong>
               <span>${escapeHtml(rack.code)}</span>
               <small>${faceSummary}</small>
@@ -143,7 +143,7 @@ export function floorPlanPage({ session, floorPlan = [] }) {
           ? floorPlanView(floorPlan)
           : `<div class="empty-state"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><p>표시할 랙 도면이 없습니다.</p></div>`}
       </section>
-      ${zoneRows.length ? `<aside class="panel" aria-labelledby="zone-overview-title"><div class="section-title"><h2 id="zone-overview-title">구역·랙 목록</h2><span class="count-badge">${rackCount}개 랙</span></div><div class="zone-overview">${floorPlan.map((region) => `<details><summary><span><strong>${escapeHtml(region.label)}</strong><small>${region.racks.reduce((sum, rack) => sum + Number(rack.documentCount || 0), 0).toLocaleString("ko-KR")}건</small></span><span>${region.racks.length}개 랙</span></summary><div class="zone-rack-links">${region.racks.map((rack) => `<a href="/documents?rack=${Number(rack.id)}&amp;status=active&amp;sort=location"><span class="mono">${escapeHtml(rack.code)}</span><span>${Number(rack.documentCount || 0).toLocaleString("ko-KR")}건</span></a>`).join("")}</div></details>`).join("")}</div></aside>` : ""}
+      ${zoneRows.length ? `<aside class="panel" aria-labelledby="zone-overview-title"><div class="section-title"><h2 id="zone-overview-title">구역·랙 목록</h2><span class="count-badge">${rackCount}개 랙</span></div><div class="zone-overview">${floorPlan.map((region) => `<details><summary><span><strong>${escapeHtml(region.label)}</strong><small>${region.racks.reduce((sum, rack) => sum + Number(rack.documentCount || 0), 0).toLocaleString("ko-KR")}건</small></span><span>${region.racks.length}개 랙</span></summary><div class="zone-rack-links">${region.racks.map((rack) => `<a href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location"><span class="mono">${escapeHtml(rack.code)}</span><span>${Number(rack.documentCount || 0).toLocaleString("ko-KR")}건</span></a>`).join("")}</div></details>`).join("")}</div></aside>` : ""}
     </div>
     <script>
       (function () {

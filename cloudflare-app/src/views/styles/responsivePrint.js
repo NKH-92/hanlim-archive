@@ -4,6 +4,7 @@ export function responsivePrintStyles() {
   return `    @media (min-width: 1100px) {
       .topbar { position: fixed; inset: 0 auto 0 0; width: 240px; flex-direction: column; align-items: stretch; padding: var(--sp-4) var(--sp-3); border-right: 1px solid var(--line); border-bottom: 0; }
       .topbar nav { flex-direction: column; align-items: stretch; gap: var(--sp-1); }
+      .nav-group { width: 100%; }
       .brand { padding: var(--sp-1) var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); margin-bottom: var(--sp-2); }
       .archive-nav-item, .nav-sub-link, .logout-link { justify-content: flex-start; }
       .nav-settings { display: block; }
@@ -30,7 +31,7 @@ export function responsivePrintStyles() {
       .nav-user { margin: auto 0 0; flex-direction: column; align-items: stretch; padding-top: var(--sp-2); border-top: 1px solid var(--line); }
       .nav-scrim.is-open { position: fixed; inset: 0; background: var(--scrim); z-index: 55; }
       .mobile-tabs { position: fixed; inset: auto 0 0; z-index: 45; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); padding: 0 var(--sp-2) env(safe-area-inset-bottom); border-top: 1px solid var(--line); background: var(--surface); }
-      .mobile-tab { min-height: 48px; min-width: 0; flex-direction: column; justify-content: center; gap: 0; padding: var(--sp-1); border-radius: var(--r-md); font-size: 11px; text-align: center; }
+      .mobile-tab { min-height: 48px; min-width: 0; flex-direction: column; justify-content: center; gap: 0; padding: var(--sp-1); border: 0; border-radius: var(--r-md); background: transparent; color: var(--gray-600); font-size: 11px; text-align: center; }
       .mobile-tab span { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .mobile-tab i { font-size: 14px; }
       .app-shell { padding-bottom: calc(var(--sp-8) + 48px + env(safe-area-inset-bottom)); }
