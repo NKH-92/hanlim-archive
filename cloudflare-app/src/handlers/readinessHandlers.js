@@ -53,14 +53,14 @@ async function readLatestMigration(database) {
 }
 
 function isSearchOperational(state) {
-  return state.searchAvailable
-    && state.v2Ready
+  // The legacy index remains the read path until the free-tier cron finishes the v2 shadow rebuild.
+  const sharedReady = state.searchAvailable
     && !state.rebuildRequired
     && state.rebuildStatus === "ready"
     && state.pendingOutboxCount === 0
     && state.generation === state.searchGeneration
-    && state.activeGeneration >= 1
     && state.indexedDocumentCount === state.searchIndexedDocumentCount;
+  return sharedReady && (!state.v2Ready || state.activeGeneration >= 1);
 }
 
 function jsonResponse(body, status) {
