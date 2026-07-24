@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -149,6 +150,7 @@ test("release smoke provisioning accepts Wrangler progress text before JSON", as
   try {
     const credentialPath = path.join(directory, "credentials.json");
     const calls = [];
+    let provisionSql = "";
     const result = await runSmokePrincipal({
       action: "provision",
       environment: releaseEnvironment({
@@ -157,6 +159,7 @@ test("release smoke provisioning accepts Wrangler progress text before JSON", as
       spawn(command, args, options) {
         calls.push({ command, args, options });
         if (args.includes("--file")) {
+          provisionSql = readFileSync(args.at(-2), "utf8");
           return {
             status: 0,
             stdout: `├ Checking if file needs uploading\n${JSON.stringify([{
@@ -180,6 +183,7 @@ test("release smoke provisioning accepts Wrangler progress text before JSON", as
     assert.equal(result.ok, true);
     assert.equal(result.provisioned, 2);
     assert.equal(calls.length, 3);
+    assert.doesNotMatch(provisionSql, /pbkdf2-sha256\$/);
     const credentials = JSON.parse(await readFile(credentialPath, "utf8"));
     assert.match(credentials.reader.username, /^release-reader-/);
     assert.ok(credentials.reader.password.length >= 6);

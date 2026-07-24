@@ -16,6 +16,16 @@ export async function createPasswordRecord(password) {
   return { salt, hash };
 }
 
+// 배포 직전의 이전 Worker와 신규 Worker가 함께 읽어야 하는 45분 TTL smoke 계정 전용이다.
+// 신규 Worker의 첫 로그인에서 현재 600,000회 형식으로 자동 승격된다.
+export async function createReleaseSmokeCompatibilityPasswordRecord(password) {
+  assertPasswordInputBounded(password);
+  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const salt = bytesToBase64Url(saltBytes);
+  const hash = await hashPassword(password, salt, LEGACY_PASSWORD_ITERATIONS);
+  return { salt, hash };
+}
+
 export async function verifyPassword(password, salt, expectedHash) {
   if (!isPasswordInputBounded(password)) return false;
   const record = parsePasswordHash(expectedHash);
