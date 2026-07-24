@@ -36,8 +36,8 @@ jobs:
       BACKUP_RECEIPT_PATH: ${{ github.workspace }}/cloudflare-app/release-evidence/backup-receipt.json
       BACKUP_REPLAY_REPORT_PATH: ${{ github.workspace }}/cloudflare-app/release-evidence/migration-replay.json
     outputs:
-      artifact-id: ${{ steps.receipt.outputs.artifact-id }}
-      artifact-digest: ${{ steps.receipt.outputs.artifact-digest }}
+      artifact_id: ${{ steps.receipt.outputs['artifact-id'] }}
+      artifact_digest: ${{ steps.receipt.outputs['artifact-digest'] }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -384,8 +384,8 @@ jobs:
       - name: Apply D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATE_API_TOKEN }}
-          D1_BACKUP_EVIDENCE_ID: ${{ needs.backup.outputs.artifact-id }}
-          D1_BACKUP_EVIDENCE_DIGEST: ${{ needs.backup.outputs.artifact-digest }}
+          D1_BACKUP_EVIDENCE_ID: ${{ needs.backup.outputs.artifact_id }}
+          D1_BACKUP_EVIDENCE_DIGEST: ${{ needs.backup.outputs.artifact_digest }}
           D1_MIGRATE_APPROVAL_CONTEXT: github-environment:production:${{ github.run_id }}:${{ github.sha }}
           D1_MIGRATE_DRY_RUN: "0"
         run: |

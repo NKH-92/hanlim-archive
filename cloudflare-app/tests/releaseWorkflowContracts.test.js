@@ -80,7 +80,11 @@ test("production deploy는 승인, 백업, migration, deploy, smoke, rollback �
   assert.doesNotMatch(deploy, /versions list --json > release-evidence\/versions-before\.json/);
   assert.ok((deploy.match(/set -o pipefail/g)?.length || 0) >= 10);
   assert.doesNotMatch(deploy, /123456|SESSION_SECRET/);
-  assert.match(deploy, /outputs:[\s\S]*artifact-id: \$\{\{ steps\.receipt\.outputs\.artifact-id \}\}[\s\S]*needs\.backup\.outputs\.artifact-id[\s\S]*needs\.backup\.outputs\.artifact-digest/);
+  assert.match(
+    deploy,
+    /outputs:[\s\S]*artifact_id: \$\{\{ steps\.receipt\.outputs\['artifact-id'\] \}\}[\s\S]*artifact_digest: \$\{\{ steps\.receipt\.outputs\['artifact-digest'\] \}\}[\s\S]*needs\.backup\.outputs\.artifact_id[\s\S]*needs\.backup\.outputs\.artifact_digest/
+  );
+  assert.doesNotMatch(deploy, /\.outputs\.[A-Za-z0-9_]+-[A-Za-z0-9_-]+/);
   assert.match(deploy, /D1_MIGRATE_APPROVAL_CONTEXT: github-environment:production:\$\{\{ github\.run_id \}\}:\$\{\{ github\.sha \}\}/);
   assert.match(deploy, /npm run backup:d1:r2/);
   assert.match(deploy, /migration-replay\.json[\s\S]*pendingReplayed[\s\S]*Apply D1 migrations/);
