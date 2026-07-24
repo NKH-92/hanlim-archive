@@ -5,6 +5,7 @@ import test from "node:test";
 import { htmlContentSecurityPolicy, withSecurityHeaders } from "../src/security.js";
 import { page } from "../src/views/layout.js";
 import { sanitizeReturnUrl } from "../src/platform/security/returnUrl.js";
+import { enforceTransportSecurity } from "../src/platform/security/transport.js";
 
 test("withSecurityHeaders injects base headers and a restrictive fallback CSP", () => {
   const original = new Response("{}", { headers: { "Content-Type": "application/json" } });
@@ -37,11 +38,31 @@ test("withSecurityHeaders omits HSTS on plain http and preserves an existing CSP
 test("htmlContentSecurityPolicy locks scripts to a nonce and denies framing", () => {
   const csp = htmlContentSecurityPolicy("abc123");
   assert.match(csp, /script-src 'self' 'nonce-abc123'/);
+  assert.match(csp, /style-src 'self' 'nonce-abc123'/);
+  assert.match(csp, /style-src-attr 'none'/);
   assert.match(csp, /frame-ancestors 'none'/);
   assert.match(csp, /object-src 'none'/);
   assert.match(csp, /base-uri 'none'/);
   // 인라인 이벤트 핸들러가 없으므로 script-src에 'unsafe-inline'을 두지 않는다.
   assert.ok(!/script-src[^;]*unsafe-inline/.test(csp));
+  assert.ok(!/style-src[^;]*unsafe-inline/.test(csp));
+});
+
+test("운영 전송 경계는 HTTP를 HTTPS로 전환하고 TLS 1.2 미만을 차단한다", async () => {
+  const redirected = enforceTransportSecurity(new Request("http://archive.example/login?q=1"));
+  assert.equal(redirected.status, 308);
+  assert.equal(redirected.headers.get("Location"), "https://archive.example/login?q=1");
+  assert.equal(enforceTransportSecurity(new Request("http://127.0.0.1:8787/login")), null);
+
+  const legacy = new Request("https://archive.example/login");
+  Object.defineProperty(legacy, "cf", { value: { tlsVersion: "TLSv1.1" } });
+  const blocked = enforceTransportSecurity(legacy);
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.headers.get("Cache-Control"), "no-store");
+
+  const current = new Request("https://archive.example/login");
+  Object.defineProperty(current, "cf", { value: { tlsVersion: "TLSv1.3" } });
+  assert.equal(enforceTransportSecurity(current), null);
 });
 
 test("page() emits a CSP whose nonce matches every inline script and style tag", async () => {

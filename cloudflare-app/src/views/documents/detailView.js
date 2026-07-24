@@ -182,8 +182,8 @@ function renderDocumentFloorPlan(document, floorPlan = []) {
 }
 
 function renderMiniRackContent(document) {
-  const cols = Math.max(1, Number(document.column_count || 1));
-  const rows = Math.max(1, Number(document.shelf_count || 3));
+  const cols = Math.max(1, Math.min(50, Number(document.column_count) || 1));
+  const rows = Math.max(1, Math.min(50, Number(document.shelf_count) || 3));
   const activeCol = Number(document.column_number || 0);
   const activeRow = Number(document.shelf_number || 0);
   const orientation = rackViewOrientation(document);
@@ -203,8 +203,10 @@ function renderMiniRackContent(document) {
     activeCol ? `${orientation.originLabel}에서 ${activeCol}번째 열` : ""
   ].filter(Boolean).join(" · ");
   const rackLabel = rackFaceLabel(document);
+  const layoutKey = `mini-rack-${Math.max(0, Number(document.id) || 0)}`;
 
-  return `<div class="section-title"><h2 id="rack-position-title">랙 위치 · ${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙</h2><span class="count-badge">${activeCol}열 ${activeRow}선반</span></div>
+  return `<style>[data-mini-rack-layout="${layoutKey}"]{--cols:${cols};--rows:${rows};--grid-min:${cols * 44}px;}</style>
+      <div class="section-title"><h2 id="rack-position-title">랙 위치 · ${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙</h2><span class="count-badge">${activeCol}열 ${activeRow}선반</span></div>
       <div class="mini-column-guide" data-column-origin="${orientation.origin}">
         <span>${orientation.origin === "left" ? "1열 · 통로 안쪽" : `${cols}열 · 바깥쪽`}</span>
         <strong>사용자 시선</strong>
@@ -213,7 +215,7 @@ function renderMiniRackContent(document) {
       <div class="mini-rack-stage">
         <div class="mini-axis" aria-hidden="true"><span>위 ↑</span><span>아래 ↓</span></div>
         <div class="mini-rack-scroll" data-rack-scroll tabindex="0" aria-label="랙 열과 선반 위치. 현재 위치는 ${activeCol}열 ${activeRow}선반입니다.">
-          <div class="mini-rack-grid" data-column-origin="${orientation.origin}" aria-hidden="true" style="--cols:${cols};--rows:${rows};--grid-min:${cols * 44}px">${slots}</div>
+          <div class="mini-rack-grid" data-mini-rack-layout="${layoutKey}" data-column-origin="${orientation.origin}" aria-hidden="true">${slots}</div>
         </div>
       </div>
       <p class="mini-orientation-note">${escapeHtml(orientation.description)} 선반은 아래에서 1선반부터 위로 올라갑니다.</p>

@@ -91,7 +91,7 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
     ${faceTabs}
     <div class="rack-column-guide" data-column-origin="${origin}"><span>${origin === "left" ? "1열" : "7열"}</span><strong>정면에서 본 모습</strong><span>${origin === "right" ? "1열" : "7열"}</span></div>
     <div class="rack-grid-scroll" tabindex="0" aria-label="랙 위치 격자. 가로로 스크롤할 수 있습니다.">
-      <div class="rack-digital-grid" role="grid" aria-rowcount="6" aria-colcount="7" style="--cols:7">${cells.join("")}</div>
+      <div class="rack-digital-grid" role="grid" aria-rowcount="6" aria-colcount="7">${cells.join("")}</div>
     </div>
     <p class="muted">위에서 6선반 → 아래에서 1선반 순서입니다. 숫자를 선택하면 해당 위치의 문서 목록으로 이동합니다.</p>
   </section>`;

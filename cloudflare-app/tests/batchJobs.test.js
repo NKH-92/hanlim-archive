@@ -239,15 +239,19 @@ test("CSV process는 pending 한 행만 token으로 선점하고 문서와 item 
       };
     },
     batch(statements) {
-      return statements.map((_, index) => {
+      return statements.map((statement, index) => {
         if (index === 0) return { meta: { changes: 1 } };
         if (index === statements.length - 1) return { meta: { changes: 1 }, results: [{ id: 4, status: "processing", total_count: 2, completed_count: 1, failed_count: 0, pending_count: 1 }] };
+        if (/RETURNING created_document_id/.test(statement.sql)) {
+          return { meta: { changes: 1 }, results: [{ created_document_id: 91 }] };
+        }
         return { meta: { changes: 1 } };
       });
     }
   });
   const result = await processDocumentImportJob(env, 4, actor);
   assert.equal(result.ok, true);
+  assert.equal(result.createdDocumentId, 91);
   assert.ok(result.statementCount <= 40);
   const statements = env.state.batches[0];
   assert.equal(statements.length, 10);

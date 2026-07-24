@@ -199,8 +199,7 @@
           var input = document.createElement('textarea');
           input.value = text;
           input.setAttribute('readonly', '');
-          input.style.position = 'fixed';
-          input.style.left = '-9999px';
+          input.className = 'clipboard-proxy';
           document.body.appendChild(input);
           input.select();
           try { document.execCommand('copy'); done(); } catch {}
@@ -685,8 +684,8 @@
         var bar = document.querySelector('[data-excel-progress-bar]');
         var text = document.querySelector('[data-excel-message]');
         var percent = Math.max(0, Math.min(100, Math.round(done / Math.max(total, 1) * 100)));
-        if (wrap) { wrap.hidden = false; wrap.setAttribute('aria-valuenow', String(percent)); }
-        if (bar) bar.style.width = Math.max(2, percent) + '%';
+        if (wrap) wrap.hidden = false;
+        if (bar) bar.value = percent;
         if (text && message) text.textContent = message;
       }
 
@@ -1245,7 +1244,7 @@
           return '<article class="viewer-result-row' + (workspaceSelectable ? ' is-selectable' : '') + (disposed ? ' is-disposed' : '') + '" role="row" tabindex="0" data-document-row data-document-url="/documents/' + Number(item.id) + '" data-document-name="' + escapeHtmlClient(itemName) + '" data-document-number="' + escapeHtmlClient(itemNumber) + '" data-document-revision="' + escapeHtmlClient(itemRevision) + '" data-document-category="' + escapeHtmlClient(itemCategory) + '" data-document-location="' + escapeHtmlClient(itemLocation) + '" data-document-status="' + (disposed ? '폐기' : '보관중') + '">' +
             (workspaceSelectable ? '<span class="check-col" role="cell" data-label="선택"><input type="checkbox" value="' + Number(item.id) + '" data-bulk-item aria-label="' + escapeHtmlClient(itemName) + ' 선택"></span>' : '') +
             '<span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/' + Number(item.id) + '" data-doc-click="' + Number(item.id) + '">' + window.SearchCore.highlightHtml(itemName, query, escapeHtmlClient) + '</a></span>' +
-            '<span class="mono" role="cell" data-label="문서번호 · 개정">' + window.SearchCore.highlightHtml(itemNumber, query, escapeHtmlClient) + ' <small>' + escapeHtmlClient(itemRevision) + '</small></span>' +
+            '<span class="mono" role="cell" data-label="문서번호/개정"><span class="viewer-result-value">' + window.SearchCore.highlightHtml(itemNumber, query, escapeHtmlClient) + ' <small>' + escapeHtmlClient(itemRevision) + '</small></span></span>' +
             '<span role="cell" data-label="대분류">' + escapeHtmlClient(itemCategory) + '</span>' +
             '<span class="viewer-result-location" role="cell" data-label="보관 위치">' + escapeHtmlClient(itemLocation) + '</span>' +
             '<span role="cell" data-label="상태"><span class="status ' + (disposed ? 'disposed' : 'active') + '">' + (disposed ? '폐기' : '보관중') + '</span></span>' +

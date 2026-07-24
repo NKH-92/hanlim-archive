@@ -272,6 +272,7 @@ export async function processDocumentImportJob(env, jobId, actor) {
           SELECT 1 FROM documents
           WHERE storage_code = ? AND status = ?
         )
+      RETURNING created_document_id
     `).bind(temporaryCode, work.item_id, jobId, token, temporaryCode, payload.status),
     env.DB.prepare(`
       UPDATE documents
@@ -300,10 +301,19 @@ export async function processDocumentImportJob(env, jobId, actor) {
     const results = await executeMutationBatch(env, createImportPlan("process", statements, "claim-token+pending-item"));
     const claim = results[0];
     const job = results[results.length - 1]?.results?.[0] || importJobFromWork(work);
+    const createdDocumentId = Number(results
+      .flatMap((result) => result?.results || [])
+      .find((row) => Number(row?.created_document_id) > 0)?.created_document_id || 0);
     if (!hasChanged(claim)) {
       return { ok: true, done: job.status === "completed", job, skipped: true, statementCount: statements.length + 1 };
     }
-    return { ok: true, done: job.status === "completed", job, statementCount: statements.length + 1 };
+    return {
+      ok: true,
+      done: job.status === "completed",
+      job,
+      createdDocumentId,
+      statementCount: statements.length + 1
+    };
   } catch (error) {
     // 알려진 행 제약 오류만 해당 행 실패로 닫는다. 일시적 D1/네트워크 오류는 batch
     // rollback 상태를 유지한 채 다시 던져, 사용자가 같은 pending 행부터 재시도할 수 있게 한다.

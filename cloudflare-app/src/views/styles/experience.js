@@ -224,12 +224,13 @@ export function experienceStyles() {
       .admin-status-panel { align-items: flex-start; }
       .hero-stat { min-width: 96px; padding: var(--sp-3); }
       .hero-stat strong { font-size: 22px; }
-      .workflow-stepper { grid-template-columns: repeat(5, minmax(64px, 1fr)); overflow-x: auto; padding: var(--sp-3); }
+      .workflow-stepper { grid-template-columns: repeat(5, minmax(104px, 1fr)); overflow-x: auto; padding: var(--sp-3); scroll-snap-type: x proximity; }
       .workflow-step { grid-template-columns: 24px; justify-items: center; text-align: center; }
+      .workflow-step { scroll-snap-align: start; }
       .workflow-step:not(:last-child)::after { top: 12px; left: calc(50% + var(--sp-3)); right: calc(-50% + var(--sp-3)); }
       .workflow-step-index { width: 24px; height: 24px; }
       .workflow-step small { display: none; }
-      .workflow-step strong { font-size: 11px; }
+      .workflow-step strong { font-size: 12px; white-space: nowrap; }
       .zone-overview { grid-template-columns: 1fr; }
     }`;
 }

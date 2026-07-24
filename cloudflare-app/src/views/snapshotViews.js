@@ -72,7 +72,7 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
           </label>
           <div class="snapshot-file-summary" data-excel-file-summary hidden></div>
           <div class="alert warning" data-excel-stale-warning hidden>현재 버전보다 오래된 관리 파일입니다. 최신 대장을 다시 내보내 작업하세요. 최종 판정은 서버 검증이 수행합니다.</div>
-          <div class="snapshot-progress" data-excel-progress role="progressbar" aria-label="엑셀 전송 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><span data-excel-progress-bar></span></div>
+          <progress class="snapshot-progress" data-excel-progress data-excel-progress-bar aria-label="엑셀 전송 진행률" max="100" value="0" hidden></progress>
           <p class="muted" data-excel-message aria-live="polite">시스템에서 추출한 관리 파일(_시스템정보 포함)을 권장합니다. 최대 1,000건까지 가능합니다.</p>
           <div class="alert info" data-excel-recovery role="status" hidden></div>
           <fieldset class="snapshot-bootstrap-confirm" data-excel-bootstrap hidden>

@@ -380,7 +380,7 @@ jobs:
             '.id == $id and .annotations["workers/tag"] == $tag and .annotations["workers/message"] == $message' \
             release-evidence/version-after.json
           echo "DEPLOYED_VERSION_ID=$DEPLOYED_VERSION_ID" >> "$GITHUB_ENV"
-      - name: Post-deploy login and read-only search smoke
+      - name: Post-deploy transport, assets, login and read-only search smoke
         id: smoke
         if: steps.deploy_worker.outcome == 'success' && steps.capture_deployed.outcome == 'success'
         continue-on-error: true
@@ -399,6 +399,26 @@ jobs:
           export SMOKE_EXPECTED_WORKER_VERSION="$DEPLOYED_VERSION_ID"
           set -o pipefail
           npm run smoke:release 2>&1 | tee release-evidence/smoke.txt
+          verify_legacy_tls_blocked() {
+            local minimum_flag="$1"
+            local maximum="$2"
+            local status
+            local curl_status
+            set +e
+            status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              "$minimum_flag" --tls-max "$maximum" "$PRODUCTION_URL/login")"
+            curl_status=$?
+            set -e
+            if [ "$curl_status" -eq 0 ]; then
+              test "$status" = "403"
+            else
+              echo "✓ TLS $maximum handshake가 edge에서 거부되었습니다."
+            fi
+          }
+          {
+            verify_legacy_tls_blocked --tlsv1.0 1.0
+            verify_legacy_tls_blocked --tlsv1.1 1.1
+          } 2>&1 | tee -a release-evidence/smoke.txt
       - name: Roll back Worker after release failure
         if: >-
           always() && (steps.deploy_worker.outcome != 'success' ||

@@ -90,6 +90,25 @@ test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한�
   assert.match(css, /@media \(min-width: 1180px\)/);
   assert.doesNotMatch(css, /@media \(min-width: 1181px\)/);
   assert.match(css, /\.command-palette-list a\.is-active/);
+  assert.match(css, /\.floor-rack-search \{ flex: 0 1 auto; width: 100%; max-width: none; \}/);
+  assert.match(css, /input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\):not\(\[type="hidden"\]\), select, textarea \{ min-height: 44px; font-size: 16px; \}/);
+  assert.match(css, /input\[type="checkbox"\], input\[type="radio"\] \{ flex: none; width: 20px; min-width: 20px; min-height: 20px; padding: 0; justify-self: start; \}/);
+  assert.match(css, /\.viewer-result-table\.is-selectable \.viewer-result-row,[\s\S]*grid-template-columns: 1fr/);
+  assert.match(css, /\.viewer-result-row > \.check-col \{ width: 100%; \}/);
+  assert.match(css, /\.viewer-result-row \.mono \.viewer-result-value \{ min-width: 0; white-space: nowrap; overflow-wrap: normal; \}/);
+  assert.match(css, /\.workflow-stepper \{ grid-template-columns: repeat\(5, minmax\(104px, 1fr\)\)/);
+});
+
+test("view 소스는 CSP가 차단하는 style 속성과 동적 CSSOM mutation을 만들지 않는다", () => {
+  const viewsDirectory = new URL("../src/views/", import.meta.url);
+  const files = readdirSync(viewsDirectory, { recursive: true })
+    .filter((name) => String(name).endsWith(".js"));
+
+  for (const name of files) {
+    const source = readFileSync(new URL(String(name).replaceAll("\\", "/"), viewsDirectory), "utf8");
+    assert.doesNotMatch(source, /\sstyle\s*=/i, `${name}에 style 속성이 있습니다.`);
+    assert.doesNotMatch(source, /\.style\./, `${name}에 동적 CSSOM style mutation이 있습니다.`);
+  }
 });
 
 test("DESIGN 토큰 값은 전용 조각에 그대로 고정된다", () => {

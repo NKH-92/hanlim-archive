@@ -61,7 +61,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
    `src/ui/html/escape.js`의 `escapeHtml()`은 외부 참조 없이 실행되어야 한다.
 3. **CSP·CSRF**: 모든 페이지는 `page()`를 거친다. `RenderContext`가 요청별 nonce와 CSRF 값을
    소유하고 `secureHtmlDocument`가 실제 opening tag를 판독해 모든 POST form에 token 하나,
-   모든 inline executable script/style에 nonce 하나를 적용한다. 정규식 보안 후처리를 추가하지 않는다.
+   모든 inline executable script/style에 nonce 하나를 적용한다. `style` 속성과 동적 CSSOM
+   mutation은 사용하지 않고, 동적 도면 값은 nonce가 붙는 `<style>` 규칙으로 렌더링한다.
+   정규식 보안 후처리를 추가하지 않는다.
 4. **정적 UI asset**: 전역 CSS/JS는 `src/views/styles.js`, `clientScript.js`에서 build 시 생성한
    `public/assets/app.css`, `app.js`다. ExcelJS와 OOXML 호환 처리용 JSZip도 build 시
    `public/assets/exceljs.min.js`, `jszip.min.js`로 고정하며 `check:browser`가 다섯 asset의 drift를 차단한다.

@@ -193,8 +193,7 @@ export function bootstrapScript(escapeHtmlSource) {
           var input = document.createElement('textarea');
           input.value = text;
           input.setAttribute('readonly', '');
-          input.style.position = 'fixed';
-          input.style.left = '-9999px';
+          input.className = 'clipboard-proxy';
           document.body.appendChild(input);
           input.select();
           try { document.execCommand('copy'); done(); } catch {}

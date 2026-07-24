@@ -182,7 +182,7 @@ test("server and browser keep the exact-code row fields and key markup", async (
   assert.match(browser.html, /^<div class="viewer-result-table"/);
   assert.match(serverHtml, /href="\/documents\/7" data-doc-click="7">충전 공정 밸리데이션 보고서<\/a>/);
   assert.match(browser.html, /href="\/documents\/7" data-doc-click="7">충전 공정 밸리데이션 보고서<\/a>/);
-  const expectedNumber = '<span class="mono" role="cell" data-label="문서번호 · 개정"><mark>PV</mark>-<mark>2026</mark>-<mark>014</mark> <small>Rev.1</small></span>';
+  const expectedNumber = '<span class="mono" role="cell" data-label="문서번호/개정"><span class="viewer-result-value"><mark>PV</mark>-<mark>2026</mark>-<mark>014</mark> <small>Rev.1</small></span></span>';
   assert.match(serverHtml, new RegExp(expectedNumber));
   assert.match(browser.html, new RegExp(expectedNumber));
   assert.match(serverHtml, /data-label="대분류">PV<\/span>/);

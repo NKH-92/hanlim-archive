@@ -10,6 +10,7 @@ export function baseStyles() {
     .mono { font-family: var(--font-mono); }
     .skip-nav { position: absolute; left: -1000px; top: var(--sp-4); z-index: 1000; padding: var(--sp-2) var(--sp-3); background: var(--gray-900); color: var(--surface); border-radius: var(--r-md); }
     .skip-nav:focus { left: var(--sp-4); }
+    .clipboard-proxy { position: fixed; left: -9999px; }
 
     h1, h2, h3, p { overflow-wrap: anywhere; }
     h1 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.3; letter-spacing: -.01em; }

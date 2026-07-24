@@ -13,8 +13,10 @@ export { MAX_SEARCH_RESULTS, parseSearchQuery } from "../../data/searchData.js";
 export { buildSearchIndexTerms } from "../../data/searchData.js";
 export {
   getSearchOperationalState,
+  processPendingSearchOutboxImmediately,
   processSearchOutbox,
   processSearchOutboxForDocument,
+  processSearchOutboxForDocuments,
   rebuildSearchIndexChunk
 } from "./infrastructure/indexMaintenance.js";
 export const {

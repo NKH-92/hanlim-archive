@@ -95,6 +95,8 @@ Do / Don't
   danger = `--danger-soft` 배경 + `--danger` 텍스트. focus-visible: 2px `--primary` 아웃라인(offset 2px).
 - **입력/셀렉트**: `--surface` 배경 + 1px `--line` 보더 + `--r-md`, 높이 36px. hover 보더 `--gray-300`,
   focus 보더 `--primary` + 3px `--ring` 링. placeholder `--gray-400`.
+- **모바일 터치·입력**: 760px 이하에서는 입력·셀렉트·텍스트영역 글꼴을 16px, 주요 버튼·아이콘 버튼과
+  입력 높이를 44px 이상으로 둔다. iOS Safari 포커스 확대와 작은 터치 목표를 만들지 않는다.
 - **테이블/리스트 행**: 헤더 `--gray-50` 배경 + 12px/600 `--gray-600`, 행 높이 ≥44px,
   행 구분 1px `--line`, hover `--gray-50`. 위치 셀은 `--font-mono` + `--primary` 텍스트.
 - **상태 배지**: pill, 12px/700, soft 배경 + 상태색 텍스트. 보관중=success, 대기=warning, 폐기=중립 회색. `danger`는 폐기 버튼 같은 파괴적 동작에만 쓴다.

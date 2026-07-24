@@ -185,8 +185,8 @@ export function excelSnapshotScript() {
         var bar = document.querySelector('[data-excel-progress-bar]');
         var text = document.querySelector('[data-excel-message]');
         var percent = Math.max(0, Math.min(100, Math.round(done / Math.max(total, 1) * 100)));
-        if (wrap) { wrap.hidden = false; wrap.setAttribute('aria-valuenow', String(percent)); }
-        if (bar) bar.style.width = Math.max(2, percent) + '%';
+        if (wrap) wrap.hidden = false;
+        if (bar) bar.value = percent;
         if (text && message) text.textContent = message;
       }
 

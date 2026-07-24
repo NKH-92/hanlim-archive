@@ -24,7 +24,7 @@ import {
   renderDocumentSnapshotManager
 } from "./snapshotHandlers.js";
 
-export async function routeWorkflowRequest(request, env, session, path) {
+export async function routeWorkflowRequest(request, env, session, path, effects = {}) {
   if (path === "/document-snapshot-exports" && request.method === "POST") {
     return handleCreateDocumentSnapshotExport(env, session);
   }
@@ -40,7 +40,7 @@ export async function routeWorkflowRequest(request, env, session, path) {
   }
 
   const snapshotRoute = matchDocumentSnapshotRoute(path);
-  if (snapshotRoute) return handleDocumentSnapshotRoute(request, env, session, snapshotRoute);
+  if (snapshotRoute) return handleDocumentSnapshotRoute(request, env, session, snapshotRoute, effects);
 
   if (path === "/disposal-batches" && request.method === "GET") {
     return handleDisposalBatches(env, session);
@@ -69,7 +69,7 @@ export async function routeWorkflowRequest(request, env, session, path) {
 
   const importJobRoute = matchDocumentImportJobRoute(path);
   if (importJobRoute) {
-    return handleDocumentImportJobRoute(request, env, session, importJobRoute);
+    return handleDocumentImportJobRoute(request, env, session, importJobRoute, effects);
   }
 
   return null;

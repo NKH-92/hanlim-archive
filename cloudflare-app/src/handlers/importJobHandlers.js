@@ -90,7 +90,7 @@ function buildImportPreview(items, options) {
 }
 
 // routes matcher가 { id, action }을 넘긴다. action 기본값은 details다.
-export async function handleDocumentImportJobRoute(request, env, session, routeInfo) {
+export async function handleDocumentImportJobRoute(request, env, session, routeInfo, effects = {}) {
   const denied = requireManageDocuments(session);
   if (denied) return denied;
   const { id, action = "details" } = routeInfo;
@@ -111,6 +111,16 @@ export async function handleDocumentImportJobRoute(request, env, session, routeI
     } catch (error) {
       logError("import-job.process", error, { jobId: id });
       result = { ok: false, message: "문서 가져오기 처리 중 오류가 발생했습니다." };
+    }
+    if (result.ok && result.createdDocumentId && typeof effects.syncSearchDocument === "function") {
+      try {
+        await effects.syncSearchDocument(result.createdDocumentId);
+      } catch (error) {
+        logError("import-job.search-index-immediate", error, {
+          jobId: id,
+          documentId: result.createdDocumentId
+        });
+      }
     }
     if (request.headers.get("Accept")?.includes("application/json")) {
       return jsonResponse(result, { status: result.ok ? 200 : 409 });

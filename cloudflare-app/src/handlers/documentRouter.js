@@ -78,7 +78,7 @@ export async function routeDocumentRequest(request, env, session, url, path, eff
     if (documentRoute.action === "move" && request.method === "POST") {
       return handleDocumentMove(request, env, session, documentRoute.id);
     }
-    return handleDocumentRoute(request, env, session, documentRoute);
+    return handleDocumentRoute(request, env, session, documentRoute, effects);
   }
 
   return null;
