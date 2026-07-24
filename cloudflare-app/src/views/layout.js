@@ -123,6 +123,7 @@ function header(session) {
           <span class="session-pill">${escapeHtml(session.displayName)} · ${escapeHtml(roleLabel)}</span>
           <a href="/qa" class="nav-sub-link"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>도움말·문의</a>
           <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key"></i>비밀번호</a>
+          <a href="/account/mfa" class="nav-sub-link"><i class="fa-solid fa-shield-halved"></i>2단계 인증</a>
           <form method="post" action="/logout" class="logout-form">
             <button type="submit" class="logout-link"><i class="fa-solid fa-right-from-bracket"></i>로그아웃</button>
           </form>

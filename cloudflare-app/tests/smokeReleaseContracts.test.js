@@ -7,6 +7,7 @@ import {
   runReleaseSmoke,
   verifyReleasePublicSurface
 } from "../scripts/smoke-release.mjs";
+
 import { resolveAuthenticatedRoute } from "../src/app/routeRegistry.js";
 import { PERMISSIONS } from "../src/permissions.js";
 import { adminSettingsPage } from "../src/views/adminViews.js";
@@ -14,6 +15,32 @@ import { createPasswordRecord } from "../src/auth/passwords.js";
 import worker from "../src/index.js";
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 import { sqliteD1 } from "./helpers/sqliteD1.js";
+
+test("release smoke readiness gate rejects a healthy but operationally unready version", async () => {
+  const responses = [
+    new Response(JSON.stringify({ ok: true, workerVersion: "version-1" }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    }),
+    new Response(JSON.stringify({ ok: false, workerVersion: "version-1" }), {
+      status: 503,
+      headers: { "content-type": "application/json" }
+    })
+  ];
+  await assert.rejects(
+    runReleaseSmoke({
+      baseUrl: "https://archive.example",
+      username: "reader@example.com",
+      password: "password",
+      expectedWorkerVersion: "version-1",
+      requireReadiness: true,
+      healthAttempts: 1,
+      allowedHosts: ["archive.example"],
+      fetchImpl: async () => responses.shift()
+    }),
+    /\/readyz smoke/
+  );
+});
 
 test("smoke URL은 credential 사용 전에 host·protocol·path를 거부한다", () => {
   assert.throws(() => resolveSmokeTarget("http://evil.example"), /https만/);
@@ -118,11 +145,11 @@ test("release smoke는 migrated SQLite와 실제 Worker fetch 경로를 종단 �
       INSERT INTO app_users (
         username, display_name, password_salt, password_hash,
         status, role, approved_at, approved_by, must_change_password,
-        security_review_required, session_epoch
-      ) VALUES (?, ?, ?, ?, 'approved', ?, CURRENT_TIMESTAMP, 'test-fixture', 0, 0, 0)
+        security_review_required, session_epoch, can_manage_users
+      ) VALUES (?, ?, ?, ?, 'approved', ?, CURRENT_TIMESTAMP, 'test-fixture', 0, 0, 0, ?)
     `);
-    insert.run("reader@example.com", "읽기 사용자", readerRecord.salt, readerRecord.hash, "User");
-    insert.run("admin@example.com", "독립 관리자", adminRecord.salt, adminRecord.hash, "Admin");
+    insert.run("reader@example.com", "읽기 사용자", readerRecord.salt, readerRecord.hash, "User", 0);
+    insert.run("admin@example.com", "릴리스 관리 사용자", adminRecord.salt, adminRecord.hash, "User", 1);
 
     const env = {
       DB: sqliteD1(database),

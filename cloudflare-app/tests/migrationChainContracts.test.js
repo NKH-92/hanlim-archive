@@ -35,14 +35,18 @@ const CORE_TABLES = [
   "floor_plan_regions",
   "identity_security_remediations",
   "login_throttle",
+  "login_throttle_v2",
   "rack_slots",
   "racks",
   "search_clicks",
+  "search_event_clock",
   "search_index_outbox",
   "search_index_state",
   "search_logs",
   "system_audit_logs",
-  "tags"
+  "tags",
+  "user_mfa",
+  "user_mfa_recovery_codes"
 ].sort();
 
 const IMMUTABILITY_TRIGGERS = [
@@ -80,6 +84,18 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_revision_linked_document_no_delete",
   "trg_revision_linked_identity_no_update",
   "trg_revision_previous_no_restore",
+  "trg_search_clock_category_delete",
+  "trg_search_clock_category_insert",
+  "trg_search_clock_category_update",
+  "trg_search_clock_rack_delete",
+  "trg_search_clock_rack_insert",
+  "trg_search_clock_rack_slot_delete",
+  "trg_search_clock_rack_slot_insert",
+  "trg_search_clock_rack_slot_update",
+  "trg_search_clock_rack_update",
+  "trg_search_clock_tag_delete",
+  "trg_search_clock_tag_insert",
+  "trg_search_clock_tag_update",
   "trg_search_outbox_document_delete",
   "trg_search_outbox_document_insert",
   "trg_search_outbox_document_tag_delete",

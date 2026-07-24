@@ -21,7 +21,10 @@ npm test
 npm run dev
 ```
 
-`.dev.vars`에는 최소 32자의 무작위 `SESSION_SECRET`을 넣고 commit하지 않는다. migration은 로컬에서도 번호 순서대로 전체 적용하며 기존 파일을 수정하지 않는다.
+`.dev.vars`에는 서로 다른 최소 32자의 무작위 `SESSION_SECRET`, `AUTH_HMAC_SECRET`과
+32바이트를 base64url로 인코딩한 `MFA_ENCRYPTION_KEY_V1`을 넣고 commit하지 않는다.
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`로 각 값을
+별도로 생성할 수 있다. migration은 로컬에서도 번호 순서대로 전체 적용하며 기존 파일을 수정하지 않는다.
 
 ## PR 사전 검증
 
@@ -43,16 +46,21 @@ npm run deploy:dry
 `main` 병합 후 production Environment 승인이 있어야 한 SHA에 대해 다음 순서로 진행한다.
 
 1. 같은 SHA를 다시 검증하고 release evidence를 생성한다.
-2. 현재 100% traffic Worker version id와 metadata를 기록하고, 독립 read-only 계정과 독립 Admin으로 실제 로그인·검색·`/admin/settings`를 확인한다.
+2. 현재 100% traffic Worker version id와 metadata를 기록하고, release run 전용 read-only 계정과
+   `can_manage_users`만 가진 일반 User 계정을 무작위 credential로 생성해 실제 로그인·검색·`/admin/settings`를 확인한다.
 3. `/healthz`의 `rollbackCompatibility.sessionEpoch`를 확인한다. 최초 도입 release에서 marker가 없으면 migration 전에 정확한 직전 운영 소스에서 session-epoch 호환 Worker를 만들고, 구 schema와 신규 schema 양쪽 실행 검증과 dry-run을 통과시킨 뒤 **migration 없이 먼저 배포**한다. 이 version을 rollback 대상으로 기록한다.
-4. 운영 D1을 export하고 upgrade readiness를 검사한다. 현재 문서 identity 중복이나 FK 위반이 있어 readiness가 실패해도 먼저 암호화 backup과 checksum을 업로드한 뒤 release를 차단한다.
+4. Core와 Search D1을 모두 export한 사본에 실제 pending migration을 끝까지 replay한다. 두 사본을 각각 age 공개키로 암호화하고 R2에 업로드한 뒤 다시 내려받아 ciphertext checksum을 검증한다. GitHub artifact에는 DB가 아니라 R2 object key·checksum과 replay 결과만 보존한다.
 5. append-only migration을 적용하고 독립 Admin 존재를 다시 확인한다.
-6. release SHA tag·message가 붙은 Worker를 배포하고 새 100% traffic version id를 기록한다.
-7. `/healthz`의 compatibility marker와 `workerVersion`, `/login`, `/signup` 404, 승인된 read-only 검색, 독립 Admin의 `/admin/settings`를 smoke-test한다.
+6. release SHA tag·message가 붙은 immutable Worker version을 upload하고, 이전 version 100%·신규 version
+   0% 배포로 stage한다. public preview URL과 preview alias는 만들지 않는다.
+7. canonical 운영 URL의 모든 요청에 `Cloudflare-Workers-Version-Overrides: worker="<version-id>"`를 붙여
+   신규 version의 `/healthz`, `/readyz`, `workerVersion`, 로그인·검색·사용자 관리 접근을 확인한다.
+   검증된 version id만 100% traffic으로 promote한 뒤 override 없는 운영 URL에서 전송·asset·인증 smoke를 다시 실행한다.
 8. smoke 실패 시 기록한 epoch-aware rollback version으로 되돌리고, 100% traffic version id와 동일한지 확인한 뒤 같은 smoke를 다시 실행한다.
-9. source·migration·backup·deploy·smoke·rollback·version 증거를 release artifact로 보존한다.
+9. 성공·실패와 관계없이 release 전용 계정을 제거하고 source·migration replay·R2 backup receipt·version
+   upload·0% version smoke·promotion·rollback 증거를 release artifact로 보존한다.
 
-backup 업로드 전에 migration을 실행하지 않는다. 최초 compatibility Worker도 migration 전에만 배포하며, 실패하면 원래 Worker version으로 되돌린 뒤 release를 중단한다. 배포와 주간 백업은 `d1-production-maintenance` concurrency group으로 직렬화한다.
+R2 backup 검증 전에 migration을 실행하지 않는다. 최초 compatibility Worker도 migration 전에만 배포하며, 실패하면 원래 Worker version으로 되돌린 뒤 release를 중단한다. 배포와 주간 백업은 `d1-production-maintenance` concurrency group으로 직렬화한다.
 
 ### 최초 session-epoch 호환 release
 
@@ -159,11 +167,13 @@ node scripts/audit-excel-snapshot-data.mjs --db path\to\backup.sqlite --out repo
 2. `wrangler.jsonc`의 `SEARCH_DB` placeholder를 실제 UUID로 바꾸고 GitHub repository/environment variable
    `SEARCH_D1_TARGET_DATABASE_ID`에도 같은 값을 등록한다. placeholder 상태에서는 guarded migrate/deploy가
    fail-closed해야 정상이다.
-3. 계정의 D1 database 슬롯과 Cron Trigger 슬롯을 확인한다. Worker는 5분마다 Search outbox 최대 25건 또는
-   재구축 100건을 처리한다. 개별 문서 등록은 응답 전에 대상 outbox 1건을 먼저 반영하며, Search 장애나
+3. 계정의 D1 database 슬롯과 Cron Trigger 슬롯을 확인한다. Worker는 5분마다 Search outbox를 먼저 최대
+   25건 배출하고 이어서 재구축 100건을 처리한다. processor와 행별 lease는 2분 뒤 만료되어 중단된 실행을
+   다음 Cron이 회수한다. 개별 문서 등록은 응답 전에 대상 outbox 1건을 먼저 반영하며, Search 장애나
    전체 재구축 중에는 outbox를 유지해 이 Cron이 재처리한다. 엑셀 전체 동기화는 기존 청크 경로를 유지한다.
-4. Core D1만 암호화 export backup한다. Search D1은 FTS virtual table 때문에 export 대상으로 삼지 않고
-   Core에서 재구축한다.
+4. 비공개 R2 bucket을 만들고 public development URL을 비활성화한다. `predeploy/`와 `scheduled/` prefix에
+   lifecycle·object lock 정책을 설정한다. Core와 Search D1을 모두 export하며, age private key는 GitHub에
+   올리지 않고 별도 복구 보관소에서 관리한다.
 
 로컬 schema 검증은 두 migration chain을 모두 적용한다.
 
@@ -186,9 +196,13 @@ npm run check:migrations
 
 ### 전환·검색 확인
 
-1. 신규 Core에 `0001~0040`, Search에 `search-migrations/0001`을 적용한다.
+1. 신규 Core에 migration manifest의 전체 chain(`0001~0043`), Search에
+   `search-migrations/0001~0003`을 순서대로 적용한다. Search `0003` 적용 뒤에는 부분 생성된
+   무토큰 shadow generation을 폐기하고 active generation을 유지한 채 재구축이 다시 시작되는 것이 정상이다.
 2. 승인 파일을 bootstrap으로 검증하고 문서 수, identity, FK, 분류·상태·위치·태그 집계와 canonical hash를 대조한다.
-3. Search 재구축 상태가 `ready`, indexed count가 10,000, outbox가 0인지 관리 화면에서 확인한다.
+3. Search 재구축 상태가 `ready`, indexed count가 10,000, outbox가 0인지 관리 화면과 `/readyz`에서
+   확인한다. `building_generation`, `rebuild_token`, `cutover_generation`은 모두 비어 있어야 하고
+   `previous_active_generation`은 직전 정상 generation을 가리켜야 한다.
 4. 새로 추출한 schema v2 XLSX를 무수정 재업로드해 update/create/exclude가 모두 0인지 확인한다.
 5. 정확 문서번호, 일반 검색, 오래된 문서, 초성·한영 자판 표본, cursor `더보기`, Search 장애 fallback을 시험한다.
 6. 병합 전 `npm run verify`, `npm run deploy:dry`, Core backup 복원과 Search 재구축 훈련을 완료한다.
@@ -204,10 +218,10 @@ npm run check:migrations
 | Worker 요청·오류율·CPU | Cloudflare Dashboard의 Worker Metrics | request ID와 최근 배포 확인 |
 | D1 읽기·쓰기·DB 크기 | Cloudflare Dashboard의 D1 Metrics | 대량 작업 중지, 쿼리·인덱스 검토 |
 | Actions 사용량 | GitHub Billing의 Actions | 중복 실행과 불필요한 artifact 정리 |
-| 백업 artifact | GitHub Actions의 D1 Backup | 최근 성공과 암호화 파일·checksum만 존재하는지 확인 |
+| R2 백업 | R2 bucket과 Actions의 receipt | Core·Search object, ciphertext checksum, lifecycle·lock, 복구키 접근 훈련 확인 |
 | 검색 index | 앱 관리 화면 | 경고 기준에서 크기 추적, 상한에서 구조 재검토 |
 
-월 1회 `/healthz`와 검색·상세 표본, 데이터 품질 작업목록, 유지관리자·2단계 인증, API token 최소권한을 함께 점검한다. 엑셀 대장 반영 전후에는 최근 백업·대장 버전·행 수·추가/변경/제외와 감사로그를 확인하고, 폐기 캠페인 전후에는 대상 확정 건수·승인 참조·감사로그·결과 CSV를 대조한다.
+월 1회 `/healthz`·`/readyz`와 검색·상세 표본, 데이터 품질 작업목록, 유지관리자·2단계 인증, API token 최소권한을 함께 점검한다. 엑셀 대장 반영 전후에는 최근 백업·대장 버전·행 수·추가/변경/제외와 감사로그를 확인하고, 폐기 캠페인 전후에는 대상 확정 건수·승인 참조·감사로그·결과 CSV를 대조한다.
 
 ## 문서 작업 공간 호환 계약
 
@@ -222,19 +236,36 @@ npm run check:migrations
 
 저장소 관리자는 GitHub UI에서 PR 승인, CODEOWNERS, required check `required / verify`, direct/force push 금지와 production Environment reviewer를 설정한다. Actions에는 값이 아니라 다음 secret 이름과 최소 scope만 관리한다.
 
-- 배포용 `CLOUDFLARE_API_TOKEN`: 대상 Worker와 D1 변경에 필요한 최소권한
-- 백업용 `CLOUDFLARE_D1_BACKUP_API_TOKEN`: 원격 export에 필요한 대상 D1 Write/Edit 전용, 배포 토큰과 분리
-- `D1_BACKUP_PASSPHRASE`: 32자 이상 백업 전용 무작위 값
-- `SMOKE_USERNAME`, `SMOKE_PASSWORD`: 변경 권한이 없는 승인된 smoke 계정
-- `SMOKE_ADMIN_USERNAME`, `SMOKE_ADMIN_PASSWORD`: 알려진 bootstrap 사용자명과 다른 승인된 독립 Admin 계정
-- `ADMIN_PROVISION_USERNAME`, `ADMIN_PROVISION_DISPLAY_NAME`, `ADMIN_PROVISION_PASSWORD`: 독립 Admin을 최초 1회 생성할 때만 사용하는 production Environment secret. 비밀번호는 16자 이상으로 둔다.
+- `CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN`: 대상 Worker version upload·promotion·rollback 전용
+- `CLOUDFLARE_D1_MIGRATE_API_TOKEN`: Core·Search migration과 release 전용 계정 생성·삭제 전용
+- `CLOUDFLARE_D1_BACKUP_API_TOKEN`: Core·Search export와 지정 R2 bucket object read/write 전용
+- repository/environment variable `R2_BACKUP_BUCKET`: 비공개 운영 백업 bucket 이름
+- repository/environment variable `BACKUP_AGE_RECIPIENT`: 복구 담당자가 별도 보관하는 age private key의 공개 recipient
+- `ADMIN_PROVISION_USERNAME`, `ADMIN_PROVISION_DISPLAY_NAME`, `ADMIN_PROVISION_PASSWORD`: 독립 Admin을 최초 1회 생성할 때만 사용하는 production Environment secret. 시스템 비밀번호 정책에 따라 6자 이상으로 둔다.
+
+Worker 런타임에는 Wrangler의 운영 환경 secret으로 다음 값을 각각 별도 생성해 등록한다.
+
+- `SESSION_SECRET`: 세션과 MFA 로그인 challenge 서명용, 최소 32자
+- `AUTH_HMAC_SECRET`: 로그인 제한 식별자와 복구 코드 digest용, 최소 32자
+- `MFA_ENCRYPTION_KEY_V1`: TOTP seed 암호화용 32바이트 base64url 키
+
+세 값은 서로 재사용하지 않는다. `MFA_ENCRYPTION_KEY_V1`을 분실하면 기존 사용자의 TOTP seed를
+복호화할 수 없으므로 암호화된 R2 백업과 별도로 이중 통제 secret 보관소에 보존한다. 키를 교체할 때는
+기존 `v1` 복호화 지원과 재암호화 migration을 먼저 배포한 뒤 새 쓰기 버전을 전환한다.
 
 최초 session-epoch compatibility release에만 production Environment variable `PRODUCTION_SOURCE_SHA`를 사용한다. 현재 100% traffic Worker의 source provenance로 확인한 40자 Git SHA만 기록하며 secret 값으로 취급하거나 임의의 직전 commit으로 추정하지 않는다.
 
-배포 smoke 계정은 migration으로 승인된 `User`와 모든 변경 권한 `0`을 고정하고, 평문 비밀번호는 저장소·로그·PR에 남기지 않고 production Environment secret으로만 관리한다. CLI의 stdin으로 secret을 등록할 때는 값 뒤에 줄바꿈을 추가하지 않는다.
+배포 smoke 계정은 run마다 무작위 reader와 `can_manage_users`만 가진 일반 User로 생성하고 credential은
+runner 임시 파일에만 둔다. 두 계정의 TTL은 45분이며 workflow는 성공·실패와 관계없이 `always()` cleanup을
+실행한다. 다음 release의 사전 정리와 Cron janitor도 만료 계정을 제거한다. cleanup 실패는 운영 사고로
+취급해 `approved_by = release-smoke:<operation-id>` 계정을 즉시 격리한다.
+
+Admin은 TOTP MFA 활성화 전 `/account/mfa` 외의 업무 경로로 이동할 수 없다. 등록 시작·확인·해제에는
+현재 비밀번호를 다시 입력하며 로그인 throttle이 동일하게 적용된다. 비밀번호 최소 길이는 6자를 유지하고,
+신규 hash는 PBKDF2-SHA256 600,000회 반복을 사용한다. 기존 100,000회 record는 성공 로그인 시 자동 승격한다.
 
 최초 또는 복구 환경에서 독립 Admin이 없으면 production Environment reviewer 승인 후 `Provision Independent Admin` workflow를 한 번 실행한다. 이 workflow는 알려진 bootstrap·smoke 사용자명을 거부하고, 대상 환경·D1 ID를 확인한 뒤 기존 계정을 덮어쓰지 않는 INSERT만 수행한다. 배포 workflow는 migration 전후에 승인된 독립 Admin 존재를 확인하고, 배포 전후 해당 계정으로 `/admin/settings` 접근까지 smoke한다.
 
-운영 migration은 같은 job에서 생성·업로드한 암호화 backup artifact의 ID와 digest, 현재 run ID와 commit SHA, production Environment 승인 context가 모두 일치할 때만 guarded wrapper가 실행한다. raw `wrangler d1 migrations apply`와 unscoped `wrangler deploy`는 운영 절차로 사용하지 않는다.
+운영 migration은 별도 backup job이 업로드한 비민감 receipt artifact의 ID와 digest, 현재 run ID와 commit SHA, production Environment 승인 context가 모두 일치할 때만 guarded wrapper가 실행한다. DB ciphertext는 GitHub artifact에 올리지 않는다. raw `wrangler d1 migrations apply`와 unscoped `wrangler deploy`는 운영 절차로 사용하지 않는다.
 
 secret 값, 기본 비밀번호, 개인 계정 정보는 저장소·로그·issue·PR에 기록하지 않는다. 저장소 visibility, token 회전, 유지관리자 2단계 인증, branch protection은 운영 책임자가 수동으로 확인한다.

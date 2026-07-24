@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "releasedThrough": "0001_search_index.sql",
+  "checksums": {
+    "0001_search_index.sql": "83bdc52be4ae1f5b6b731bdcd5de2d55cb78ec29c863b35a67aef46d8c805d42"
+  }
+}

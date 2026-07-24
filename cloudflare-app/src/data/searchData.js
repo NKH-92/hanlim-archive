@@ -188,6 +188,158 @@ async function getCoreCandidateDocuments(env, candidateIds, where, filterBinds) 
   return result.results ?? [];
 }
 
+function indexedFilterWhere(filters, alias = "d") {
+  const clauses = [];
+  const binds = [];
+  const addInteger = (field, value) => {
+    if (Number.isInteger(value) && value > 0) {
+      clauses.push(`${alias}.${field} = ?`);
+      binds.push(value);
+    }
+  };
+  addInteger("category_id", filters.categoryId);
+  addInteger("zone_number", filters.zoneNumber);
+  addInteger("rack_id", filters.rackId);
+  addInteger("column_number", filters.columnNumber);
+  addInteger("shelf_number", filters.shelfNumber);
+  if (filters.rackFace === "A" || filters.rackFace === "B") {
+    clauses.push(`${alias}.rack_face = ?`);
+    binds.push(filters.rackFace);
+  }
+  if (filters.status === "active" || filters.status === "disposed") {
+    clauses.push(`${alias}.status = ?`);
+    binds.push(filters.status);
+  }
+  if (Number.isInteger(filters.tagId) && filters.tagId > 0) {
+    clauses.push(`EXISTS (
+      SELECT 1
+      FROM json_each(${alias}.tags_json) indexed_tag
+      WHERE CAST(json_extract(indexed_tag.value, '$.id') AS INTEGER) = ?
+    )`);
+    binds.push(filters.tagId);
+  }
+  return {
+    sql: clauses.length ? ` AND ${clauses.join(" AND ")}` : "",
+    binds
+  };
+}
+
+function indexedSearchExpression(query) {
+  const terms = buildSearchIndexTerms(query).slice(0, 12);
+  if (!terms.length) return "";
+  return terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR ");
+}
+
+function indexedSort(sort) {
+  if (sort === "updated") return "d.updated_at DESC, d.document_id DESC";
+  if (sort === "docnum") return "d.document_number, d.revision_number, d.document_id";
+  if (sort === "category") return "d.category_name, d.document_number, d.revision_number, d.document_id";
+  if (sort === "location") {
+    return "d.zone_number, d.rack_code, d.rack_face, d.column_number, d.shelf_number, d.document_id";
+  }
+  return "search_rank, d.document_id";
+}
+
+async function getIndexedViewerPageV2(env, query, filters, offset, pageSize) {
+  if (!env.SEARCH_DB) return null;
+  const expression = indexedSearchExpression(query);
+  if (!expression) return null;
+  try {
+    const state = await env.SEARCH_DB.prepare(`
+      SELECT active_generation, v2_ready, rebuild_status
+      FROM search_runtime_state
+      WHERE id = 1
+    `).first();
+    if (Number(state?.v2_ready || 0) !== 1) return null;
+    const generation = Number(state.active_generation || 0);
+    if (!generation) return null;
+    const filter = indexedFilterWhere(filters);
+    const commonJoin = `
+      FROM search_documents_fts_v2
+      JOIN search_documents_v2 d
+        ON d.generation = CAST(search_documents_fts_v2.generation AS INTEGER)
+       AND d.document_id = CAST(search_documents_fts_v2.document_id AS INTEGER)
+    `;
+    const commonWhere = `
+      WHERE search_documents_fts_v2 MATCH ?
+        AND d.generation = ?
+        ${filter.sql}
+    `;
+    const commonBinds = [expression, generation, ...filter.binds];
+    const [countRow, pageResult, categoryResult, zoneResult, statusResult, tagResult] = await Promise.all([
+      env.SEARCH_DB.prepare(`SELECT COUNT(*) AS count ${commonJoin} ${commonWhere}`).bind(...commonBinds).first(),
+      env.SEARCH_DB.prepare(`
+        SELECT d.document_id, bm25(search_documents_fts_v2) AS search_rank
+        ${commonJoin}
+        ${commonWhere}
+        ORDER BY ${indexedSort(filters.sort)}
+        LIMIT ? OFFSET ?
+      `).bind(...commonBinds, pageSize, offset).all(),
+      env.SEARCH_DB.prepare(`
+        SELECT d.category_id AS value, d.category_name AS label, COUNT(*) AS count
+        ${commonJoin}
+        ${commonWhere}
+        GROUP BY d.category_id, d.category_name
+        ORDER BY count DESC, label
+      `).bind(...commonBinds).all(),
+      env.SEARCH_DB.prepare(`
+        SELECT d.zone_number AS value, CAST(d.zone_number AS TEXT) || '구역' AS label, COUNT(*) AS count
+        ${commonJoin}
+        ${commonWhere}
+        AND d.zone_number > 0
+        GROUP BY d.zone_number
+        ORDER BY count DESC, value
+      `).bind(...commonBinds).all(),
+      env.SEARCH_DB.prepare(`
+        SELECT d.status AS value,
+               CASE d.status WHEN 'disposed' THEN '폐기' ELSE '보관중' END AS label,
+               COUNT(*) AS count
+        ${commonJoin}
+        ${commonWhere}
+        GROUP BY d.status
+        ORDER BY value
+      `).bind(...commonBinds).all(),
+      env.SEARCH_DB.prepare(`
+        SELECT
+          CAST(json_extract(indexed_tag.value, '$.id') AS INTEGER) AS value,
+          json_extract(indexed_tag.value, '$.name') AS label,
+          COUNT(*) AS count
+        ${commonJoin}
+        JOIN json_each(d.tags_json) indexed_tag
+        ${commonWhere}
+        GROUP BY value, label
+        ORDER BY count DESC, label
+      `).bind(...commonBinds).all()
+    ]);
+    const ranked = pageResult.results ?? [];
+    const ids = ranked.map((row) => Number(row.document_id)).filter(Number.isInteger);
+    const { where, binds } = buildDocumentFilterWhere(filters);
+    const coreRows = await getCoreCandidateDocuments(env, ids, where, binds);
+    const byId = new Map(coreRows.map((row) => [Number(row.id), row]));
+    const rankById = new Map(ranked.map((row) => [Number(row.document_id), Number(row.search_rank || 0)]));
+    const documents = ids.map((id) => byId.get(id)).filter(Boolean);
+    for (const document of documents) {
+      const match = scoreDocumentMatch(document, query);
+      document.relevance_score = Math.max(1, Number(match.relevance_score || 0));
+      document.match_reason = match.match_reason || "검색 인덱스 일치";
+      document.search_rank = rankById.get(Number(document.id)) || 0;
+    }
+    return {
+      documents,
+      totalItems: Number(countRow?.count || 0),
+      activeGeneration: generation,
+      facets: {
+        categories: categoryResult.results ?? [],
+        tags: tagResult.results ?? [],
+        zones: zoneResult.results ?? [],
+        statuses: statusResult.results ?? []
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+
 function scoreCandidateDocuments(rows, query, limit, sort, clickHits) {
   const scored = [];
   const queryTokens = searchTokens(query);
@@ -560,6 +712,34 @@ export async function getViewerSearchPayload(env, params = {}) {
       status: 409
     };
   }
+  const offset = cursor ? cursor.offset : Math.max(0, (requestedPage - 1) * pageSize);
+  const indexedPage = await getIndexedViewerPageV2(env, query, filters, offset, pageSize);
+  if (indexedPage) {
+    const nextOffset = offset + indexedPage.documents.length;
+    const hasMore = nextOffset < indexedPage.totalItems;
+    return {
+      ok: true,
+      items: indexedPage.documents.map(documentToViewerItem),
+      nextCursor: hasMore
+        ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset })
+        : null,
+      hasMore,
+      candidateCount: indexedPage.totalItems,
+      indexGeneration: generation,
+      activeIndexGeneration: indexedPage.activeGeneration,
+      fallback: false,
+      pagination: {
+        page: Math.floor(offset / pageSize) + 1,
+        pageSize,
+        totalItems: indexedPage.totalItems,
+        totalPages: Math.max(1, Math.ceil(indexedPage.totalItems / pageSize))
+      },
+      facets: indexedPage.facets,
+      suggestions: filters.status === "disposed"
+        ? []
+        : buildSearchSuggestions(indexedPage.documents, 8)
+    };
+  }
   const { documents: allDocuments, suggestions } = await searchDocumentsWithSuggestions(
     env,
     query,
@@ -567,7 +747,6 @@ export async function getViewerSearchPayload(env, params = {}) {
     filters,
     8
   );
-  const offset = cursor ? cursor.offset : Math.max(0, (requestedPage - 1) * pageSize);
   const items = allDocuments.slice(offset, offset + pageSize);
   const nextOffset = offset + items.length;
   const hasMore = nextOffset < allDocuments.length;

@@ -158,6 +158,7 @@ export async function verifySearchMigrationChain({
   applySchema = true
 } = {}) {
   const manifest = JSON.parse(await readFile(join(migrationsDir, "manifest.json"), "utf8"));
+  const baseline = JSON.parse(await readFile(join(migrationsDir, "released-baseline.json"), "utf8"));
   const names = (await readdir(migrationsDir))
     .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name))
     .sort();
@@ -169,9 +170,20 @@ export async function verifySearchMigrationChain({
   if (JSON.stringify(names) !== JSON.stringify(Object.keys(manifest.checksums || {}))) {
     errors.push("Search D1 migration manifest의 파일 목록이 실제 파일과 다릅니다.");
   }
+  const baselineNames = Object.keys(baseline.checksums || {});
+  if (
+    baseline.version !== 1
+    || baseline.releasedThrough !== baselineNames.at(-1)
+    || JSON.stringify(baselineNames) !== JSON.stringify(names.slice(0, baselineNames.length))
+  ) {
+    errors.push("Search D1 released baseline의 연속 prefix와 releasedThrough가 올바르지 않습니다.");
+  }
   for (const name of names) {
     const checksum = hashMigrationSql(await readFile(join(migrationsDir, name), "utf8"));
     if (checksum !== manifest.checksums?.[name]) errors.push(`${name}: Search D1 checksum 불일치`);
+    if (baseline.checksums?.[name] && checksum !== baseline.checksums[name]) {
+      errors.push(`${name}: Search D1 released baseline checksum 불일치`);
+    }
   }
   if (errors.length || !applySchema) return { ok: errors.length === 0, errors, names };
 
@@ -181,7 +193,14 @@ export async function verifySearchMigrationChain({
     const requiredTables = database.prepare(`
       SELECT name FROM sqlite_master
       WHERE type IN ('table', 'view')
-        AND name IN ('search_documents', 'search_documents_fts', 'search_runtime_state')
+        AND name IN (
+          'search_documents',
+          'search_document_watermarks',
+          'search_documents_fts',
+          'search_documents_fts_v2',
+          'search_documents_v2',
+          'search_runtime_state'
+        )
       ORDER BY name
     `).all().map(({ name }) => name);
     if (JSON.stringify(requiredTables) !== JSON.stringify(manifest.schema.tables)) {

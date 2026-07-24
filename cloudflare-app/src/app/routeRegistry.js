@@ -15,8 +15,11 @@ export const PUBLIC_ROUTES = Object.freeze([
   route("assets.images", "assets", ANY, "/images/:path*", { auth: "public" }),
   route("assets.favicon", "assets", ANY, "/favicon.ico", { auth: "public" }),
   route("health.read", "health", "GET", "/healthz", { auth: "public" }),
+  route("readiness.read", "health", "GET", "/readyz", { auth: "public" }),
   route("session.login.form", "identity", "GET", "/login", { auth: "public" }),
   route("session.login", "identity", "POST", "/login", { auth: "public" }),
+  route("session.mfa-login.form", "identity", "GET", "/login/mfa", { auth: "public" }),
+  route("session.mfa-login", "identity", "POST", "/login/mfa", { auth: "public" }),
   route("session.signup.blocked", "identity", ANY, "/signup", { auth: "public", policy: "always-404" })
 ]);
 
@@ -31,6 +34,10 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("search.click", "search", "POST", "/api/search-click"),
   route("session.password.form", "identity", "GET", "/account/password"),
   route("session.password.change", "identity", "POST", "/account/password"),
+  route("session.mfa.form", "identity", "GET", "/account/mfa"),
+  route("session.mfa.enroll", "identity", "POST", "/account/mfa/enroll"),
+  route("session.mfa.confirm", "identity", "POST", "/account/mfa/confirm"),
+  route("session.mfa.disable", "identity", "POST", "/account/mfa/disable"),
   route("session.logout", "identity", "POST", "/logout"),
   route("session.logout.fallback", "identity", ANY, "/logout", { fallback: true }),
   route("admin.dashboard", "admin", "GET", "/admin", { policy: "any-management-permission" }),
@@ -60,8 +67,8 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("documents.export", "documents", "GET", "/documents/export.csv", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.snapshot.export", "snapshots", "GET", "/api/document-snapshot/export", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.snapshot.export.create", "snapshots", "POST", "/document-snapshot-exports", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
-  route("documents.snapshot.export.rows", "snapshots", "GET", "/document-snapshot-exports/:id/rows", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
-  route("documents.snapshot.export.finalize", "snapshots", "POST", "/document-snapshot-exports/:id/finalize", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("documents.snapshot.export.rows", "snapshots", "GET", "/document-snapshot-exports/:manifestId/rows", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
+  route("documents.snapshot.export.finalize", "snapshots", "POST", "/document-snapshot-exports/:manifestId/finalize", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.import.form", "imports", "GET", "/documents/import", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.new", "documents", "GET", "/documents/new", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.details", "documents", "GET", "/documents/:id"),

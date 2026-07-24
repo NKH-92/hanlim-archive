@@ -1,4 +1,4 @@
-export const PASSWORD_POLICY = Object.freeze({ minLength: 8 });
+export const PASSWORD_POLICY = Object.freeze({ minLength: 6 });
 
 export function validateNewPassword(password, { label = "새 비밀번호" } = {}) {
   const value = String(password ?? "");

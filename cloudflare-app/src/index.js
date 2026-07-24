@@ -1,9 +1,12 @@
 // 엔트리포인트: 공개 경로와 공통 인증·보안 파이프라인만 담당한다.
-import { readSession } from "./auth.js";
+import { cleanupExpiredReleaseSmokePrincipals, cleanupLoginThrottle, readSession } from "./auth.js";
+import { cleanupPendingMfa } from "./auth/mfa.js";
 import { errorPage, notFoundPage } from "./views/authViews.js";
 import { withSecurityHeaders } from "./security.js";
 import { routeAuthenticatedRequest } from "./handlers/authenticatedRouter.js";
 import { handleLogin, handleLogout, renderLogin } from "./handlers/sessionHandlers.js";
+import { handleMfaLogin, renderMfaLogin } from "./handlers/mfaHandlers.js";
+import { handleReadinessCheck } from "./handlers/readinessHandlers.js";
 import { normalizePath } from "./platform/http/routeMatcher.js";
 import { redirect } from "./platform/http/responses.js";
 import { headResponse, servePublicAsset } from "./platform/http/assets.js";
@@ -67,15 +70,18 @@ export default {
   },
   async scheduled(_controller, env, ctx) {
     const requestEnv = createRequestD1Environment(env, { requestId: `cron-${shortRequestId()}` });
-    ctx.waitUntil(runSearchMaintenance(requestEnv));
+    ctx.waitUntil(Promise.all([
+      runSearchMaintenance(requestEnv),
+      runAuthMaintenance(requestEnv)
+    ]));
   }
 };
 
 async function runSearchMaintenance(env) {
   try {
+    const outbox = await processSearchOutbox(env);
     const rebuild = await rebuildSearchIndexChunk(env);
-    if (!rebuild.skipped && !rebuild.completed) return rebuild;
-    return processSearchOutbox(env);
+    return { ok: outbox.ok !== false && rebuild.ok !== false, outbox, rebuild };
   } catch (error) {
     logError("worker.search-maintenance", error);
     throw error;
@@ -117,6 +123,12 @@ async function route(request, env, effects = {}) {
     return headOnly ? headResponse(response) : response;
   }
 
+  // 배포 준비 상태는 양쪽 D1 migration과 Search 파생 인덱스의 동기화까지 확인한다.
+  if (publicRoute?.descriptor.id === "readiness.read") {
+    const response = await handleReadinessCheck(env);
+    return headOnly ? headResponse(response) : response;
+  }
+
   if (request.method === "POST" && !isTrustedPostOrigin(request)) {
     return errorPage("잘못된 요청 출처입니다.", null, 403);
   }
@@ -128,6 +140,15 @@ async function route(request, env, effects = {}) {
 
   if (publicRoute?.descriptor.id === "session.login") {
     return handleLogin(request, env);
+  }
+
+  if (publicRoute?.descriptor.id === "session.mfa-login.form") {
+    const response = await renderMfaLogin(request, env);
+    return headOnly ? headResponse(response) : response;
+  }
+
+  if (publicRoute?.descriptor.id === "session.mfa-login") {
+    return handleMfaLogin(request, env);
   }
 
   if (publicRoute?.descriptor.id === "session.signup.blocked") {
@@ -159,7 +180,28 @@ async function route(request, env, effects = {}) {
     return redirect("/account/password?required=1");
   }
 
+  // 운영 권한을 가진 Admin은 MFA 등록 전 다른 업무 기능에 진입할 수 없다.
+  if (
+    session.mfaPolicyAvailable
+    && session.role === "Admin"
+    && !session.mfaEnabled
+    && !path.startsWith("/account/mfa")
+  ) {
+    return redirect("/account/mfa?required=1");
+  }
+
   return routeAuthenticatedRequest(request, env, session, url, path, effects);
+}
+
+async function runAuthMaintenance(env) {
+  try {
+    await cleanupLoginThrottle(env);
+    await cleanupPendingMfa(env);
+    return cleanupExpiredReleaseSmokePrincipals(env);
+  } catch (error) {
+    logError("worker.auth-maintenance", error);
+    return null;
+  }
 }
 
 async function handleHealthCheck(env) {

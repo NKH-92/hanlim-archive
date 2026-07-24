@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clearLoginFailures, isLoginLocked, LOGIN_THROTTLE_POLICY, recordLoginFailure } from "../src/auth/throttle.js";
+import {
+  clearLoginFailures,
+  isLoginLocked,
+  LOGIN_THROTTLE_POLICY,
+  loginThrottleContext,
+  recordLoginFailure
+} from "../src/auth/throttle.js";
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 
 function sqliteEnv(database) {
@@ -77,6 +83,65 @@ test("login throttle 성공 로그인은 실패 카운터를 제거하고 다른
     await clearLoginFailures(env, "a@hanlim.com");
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM login_throttle WHERE username = ?").get("a@hanlim.com").n, 0);
     assert.equal(database.prepare("SELECT fail_count FROM login_throttle WHERE username = ?").get("b@hanlim.com").fail_count, 1);
+  } finally {
+    database.close();
+  }
+});
+
+test("v2 throttle은 HMAC pair/account/IP/global 4개 bucket을 원문 식별자 없이 기록한다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const env = {
+      ...sqliteEnv(database),
+      AUTH_HMAC_SECRET: "test-auth-hmac-secret-with-at-least-32-characters"
+    };
+    const context = loginThrottleContext(new Request("https://archive.example.com/login", {
+      headers: { "CF-Connecting-IP": "203.0.113.55" }
+    }), "User@Hanlim.com");
+    const now = "2026-07-24 12:00:00";
+    for (let index = 0; index < 5; index += 1) {
+      await recordLoginFailure(env, context, { nowIso: now });
+    }
+    assert.equal(await isLoginLocked(env, context, { nowIso: now }), true);
+    const rows = database.prepare(`
+      SELECT bucket_key, scope, fail_count
+      FROM login_throttle_v2
+      ORDER BY scope
+    `).all();
+    assert.equal(rows.length, 4);
+    assert.deepEqual(rows.map(({ scope }) => scope).sort(), ["account", "global", "ip", "pair"]);
+    assert.ok(rows.every(({ bucket_key }) => !bucket_key.includes("hanlim") && !bucket_key.includes("203.0.113")));
+    assert.equal(rows.find(({ scope }) => scope === "pair").fail_count, 5);
+    await clearLoginFailures(env, context);
+    assert.equal(database.prepare("SELECT COUNT(*) AS n FROM login_throttle_v2 WHERE scope = 'pair'").get().n, 0);
+    assert.equal(database.prepare("SELECT COUNT(*) AS n FROM login_throttle_v2 WHERE scope <> 'pair'").get().n, 2);
+  } finally {
+    database.close();
+  }
+});
+
+test("global 관측 bucket 임계값은 다른 정상 계정을 잠그지 않는다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const env = {
+      ...sqliteEnv(database),
+      AUTH_HMAC_SECRET: "test-auth-hmac-secret-with-at-least-32-characters"
+    };
+    const attacker = loginThrottleContext(new Request("https://archive.example.com/login", {
+      headers: { "CF-Connecting-IP": "203.0.113.55" }
+    }), "attacker@hanlim.com");
+    const legitimate = loginThrottleContext(new Request("https://archive.example.com/login", {
+      headers: { "CF-Connecting-IP": "198.51.100.22" }
+    }), "legitimate@hanlim.com");
+    const now = "2026-07-24 12:00:00";
+    for (let index = 0; index < 300; index += 1) {
+      await recordLoginFailure(env, attacker, { nowIso: now });
+    }
+    assert.equal(
+      database.prepare("SELECT locked_until IS NOT NULL AS locked FROM login_throttle_v2 WHERE scope = 'global'").get().locked,
+      1
+    );
+    assert.equal(await isLoginLocked(env, legitimate, { nowIso: now }), false);
   } finally {
     database.close();
   }

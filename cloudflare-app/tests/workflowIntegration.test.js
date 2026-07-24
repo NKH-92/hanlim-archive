@@ -148,18 +148,11 @@ test("275건 정기폐기는 25건씩 끝까지 처리하고 캠페인 집계와
     throw error;
   }
 
-  const user = database.prepare(`
-    SELECT id, username, display_name, role
-    FROM app_users
-    WHERE status = 'approved'
-    ORDER BY id
-    LIMIT 1
-  `).get();
   const actor = {
-    userId: Number(user.id),
-    username: user.username,
-    displayName: user.display_name,
-    role: user.role,
+    userId: 9_900_001,
+    username: "periodic-disposal-test@hanlim.internal",
+    displayName: "정기폐기 통합 테스트",
+    role: "Admin",
     can_manage_disposals: 1
   };
   const request = new Request("https://archive.example.com/documents/dispose-filtered", {

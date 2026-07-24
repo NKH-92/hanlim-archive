@@ -12,6 +12,7 @@ export { createSearchCore, sharedSearchCore } from "../../searchCore.js";
 export { MAX_SEARCH_RESULTS, parseSearchQuery } from "../../data/searchData.js";
 export { buildSearchIndexTerms } from "../../data/searchData.js";
 export {
+  cleanupRetiredSearchGenerations,
   getSearchOperationalState,
   processPendingSearchOutboxImmediately,
   processSearchOutbox,

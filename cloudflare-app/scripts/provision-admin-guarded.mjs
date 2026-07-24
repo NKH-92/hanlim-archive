@@ -23,7 +23,7 @@ export function preflightAdminProvision({ envName, expectedDatabaseId, username,
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedUsername)) errors.push("ADMIN_PROVISION_USERNAME은 유효한 이메일 형식이어야 합니다.");
   if (DENIED_USERNAMES.has(normalizedUsername)) errors.push("알려진 bootstrap/smoke 사용자명은 Admin provisioning에 사용할 수 없습니다.");
   if (!String(displayName || "").trim()) errors.push("ADMIN_PROVISION_DISPLAY_NAME이 필요합니다.");
-  if (String(password || "").length < 16 || !validateNewPassword(password).ok) errors.push("ADMIN_PROVISION_PASSWORD는 16자 이상이어야 합니다.");
+  if (!validateNewPassword(password).ok) errors.push("ADMIN_PROVISION_PASSWORD는 6자 이상이어야 합니다.");
   const expectedConfirmation = `PROVISION:${envName}:${expectedDatabaseId}`;
   if (String(confirmation || "") !== expectedConfirmation) errors.push("ADMIN_PROVISION_CONFIRM이 대상 환경·DB와 일치하지 않습니다.");
   return errors.length

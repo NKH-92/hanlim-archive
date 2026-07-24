@@ -1,10 +1,11 @@
 name: D1 Backup
 
-# 위치 DB(hanlim-archive) 전체를 주 1회 SQL 덤프로 내보내 아티팩트로 보존한다.
+# Core·Search D1 전체를 주 1회 SQL 덤프로 내보내 age 암호화 후 비공개 R2에 보존한다.
 # Cloudflare Time Travel(30일)로는 막지 못하는 계정 삭제·DB 손상·30일 초과·외부 감사 보존을 대비한다.
-# 등록이 필요한 시크릿(리포지토리 Settings > Secrets and variables > Actions):
-#   - CLOUDFLARE_D1_BACKUP_API_TOKEN : 대상 계정의 Account > D1 > Edit(Write) 전용 토큰(원격 export 요구 권한, 배포 토큰과 분리)
-#   - D1_BACKUP_PASSPHRASE : 백업 전용 32자 이상 무작위 암호(배포 변수와 분리)
+# 등록이 필요한 secret/variable(리포지토리 Settings > Secrets and variables > Actions):
+#   - CLOUDFLARE_D1_BACKUP_API_TOKEN : 두 D1 export와 지정 R2 object read/write 전용 토큰
+#   - R2_BACKUP_BUCKET : 비공개 백업 bucket
+#   - BACKUP_AGE_RECIPIENT : GitHub 밖에서 보관하는 복구 private key의 public recipient
 # 계정 ID는 비밀정보가 아니므로 아래 env에 직접 적어 둔다.
 on:
   schedule:
@@ -26,6 +27,16 @@ jobs:
     defaults:
       run:
         working-directory: cloudflare-app
+    env:
+      CLOUDFLARE_ACCOUNT_ID: e2b9c1d94dc8f0f6e349bfbfb36cfa30
+      D1_BACKUP_ENV: production
+      D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
+      SEARCH_D1_TARGET_DATABASE_ID: ${{ vars.SEARCH_D1_TARGET_DATABASE_ID }}
+      R2_BACKUP_BUCKET: ${{ vars.R2_BACKUP_BUCKET }}
+      R2_BACKUP_PREFIX: scheduled
+      BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+      BACKUP_RECEIPT_PATH: ${{ github.workspace }}/cloudflare-app/backup-evidence/backup-receipt.json
+      BACKUP_REPLAY_REPORT_PATH: ${{ github.workspace }}/cloudflare-app/backup-evidence/migration-replay.json
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -34,47 +45,22 @@ jobs:
           cache: npm
           cache-dependency-path: cloudflare-app/package-lock.json
       - run: npm ci
-      - name: Export D1 database
+      - name: Install age encryption tool
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes age
+          age --version
+      - name: Export, replay, encrypt, and upload both D1 databases to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: e2b9c1d94dc8f0f6e349bfbfb36cfa30
-          D1_BACKUP_PASSPHRASE: ${{ secrets.D1_BACKUP_PASSPHRASE }}
-        run: |
-          set +x
-          set -euo pipefail
-          umask 077
-          : "${D1_BACKUP_PASSPHRASE:?D1_BACKUP_PASSPHRASE secret is required}"
-          if [ "${#D1_BACKUP_PASSPHRASE}" -lt 32 ]; then
-            echo "D1_BACKUP_PASSPHRASE must be at least 32 characters."
-            exit 1
-          fi
-          STAMP="$(date -u +%Y%m%d-%H%M%S)"
-          echo "STAMP=${STAMP}" >> "$GITHUB_ENV"
-          RAW_SQL="$RUNNER_TEMP/d1-export.sql"
-          GZIP_SQL="$RUNNER_TEMP/d1-export.sql.gz"
-          ARTIFACT_DIR="$GITHUB_WORKSPACE/cloudflare-app/backup-artifact"
-          ENCRYPTED="$ARTIFACT_DIR/hanlim-archive-${STAMP}.sql.gz.enc"
-          CHECKSUM="$ENCRYPTED.sha256"
-          mkdir -p "$ARTIFACT_DIR"
-          cleanup() {
-            command -v shred >/dev/null 2>&1 && shred -u "$RAW_SQL" "$GZIP_SQL" 2>/dev/null || rm -f "$RAW_SQL" "$GZIP_SQL"
-          }
-          trap cleanup EXIT
-          if ! npx wrangler d1 export hanlim-archive --remote --env production --output "$RAW_SQL" >"$RUNNER_TEMP/d1-export.log" 2>&1; then
-            echo "D1 export failed. Raw SQL and its path will not be printed."
-            exit 1
-          fi
-          gzip -c "$RAW_SQL" > "$GZIP_SQL"
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
-            -in "$GZIP_SQL" -out "$ENCRYPTED" -pass env:D1_BACKUP_PASSPHRASE
-          (cd "$ARTIFACT_DIR" && sha256sum "$(basename "$ENCRYPTED")" > "$(basename "$CHECKSUM")")
-          echo "Encrypted backup and checksum created."
-      - name: Upload backup artifact
+        run: npm run backup:d1:r2
+      - name: Upload non-sensitive backup receipt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: d1-backup-${{ env.STAMP }}
+          name: d1-backup-receipt-${{ github.run_id }}
           path: |
-            cloudflare-app/backup-artifact/*.enc
-            cloudflare-app/backup-artifact/*.sha256
+            cloudflare-app/backup-evidence/backup-receipt.json
+            cloudflare-app/backup-evidence/migration-replay.json
           if-no-files-found: error
-          retention-days: 35
+          retention-days: 90

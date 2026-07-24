@@ -1,22 +1,34 @@
 import { base64UrlToBytes, bytesToBase64Url, constantTimeEqual } from "../platform/crypto/encoding.js";
 import { validateNewPassword } from "../domains/identity/index.js";
 
-const PASSWORD_ITERATIONS = 100000;
+const LEGACY_PASSWORD_ITERATIONS = 100000;
+const CURRENT_PASSWORD_ITERATIONS = 600000;
+const PASSWORD_HASH_PREFIX = "pbkdf2-sha256";
+export const MAX_PASSWORD_INPUT_BYTES = 1024;
 
 export async function createPasswordRecord(password) {
+  assertPasswordInputBounded(password);
   const saltBytes = crypto.getRandomValues(new Uint8Array(16));
   const salt = bytesToBase64Url(saltBytes);
-  const hash = await hashPassword(password, salt);
+  const digest = await hashPassword(password, salt, CURRENT_PASSWORD_ITERATIONS);
+  const hash = `${PASSWORD_HASH_PREFIX}$${CURRENT_PASSWORD_ITERATIONS}$${digest}`;
 
   return { salt, hash };
 }
 
 export async function verifyPassword(password, salt, expectedHash) {
-  const actualHash = await hashPassword(password, salt);
-  return constantTimeEqual(actualHash, expectedHash);
+  if (!isPasswordInputBounded(password)) return false;
+  const record = parsePasswordHash(expectedHash);
+  const actualHash = await hashPassword(password, salt, record.iterations);
+  return constantTimeEqual(actualHash, record.digest);
 }
 
-async function hashPassword(password, salt) {
+export function passwordRecordNeedsUpgrade(expectedHash) {
+  const record = parsePasswordHash(expectedHash);
+  return record.legacy || record.iterations < CURRENT_PASSWORD_ITERATIONS;
+}
+
+async function hashPassword(password, salt, iterations) {
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(password),
@@ -29,13 +41,34 @@ async function hashPassword(password, salt) {
       name: "PBKDF2",
       hash: "SHA-256",
       salt: base64UrlToBytes(salt),
-      iterations: PASSWORD_ITERATIONS
+      iterations
     },
     keyMaterial,
     256
   );
 
   return bytesToBase64Url(new Uint8Array(bits));
+}
+
+function parsePasswordHash(expectedHash) {
+  const value = String(expectedHash ?? "");
+  const match = value.match(/^pbkdf2-sha256\$(\d+)\$([A-Za-z0-9_-]+)$/);
+  if (!match) {
+    return { digest: value, iterations: LEGACY_PASSWORD_ITERATIONS, legacy: true };
+  }
+  const iterations = Number(match[1]);
+  if (!Number.isInteger(iterations) || iterations < LEGACY_PASSWORD_ITERATIONS || iterations > 2_000_000) {
+    return { digest: "", iterations: CURRENT_PASSWORD_ITERATIONS, legacy: false };
+  }
+  return { digest: match[2], iterations, legacy: false };
+}
+
+export function isPasswordInputBounded(password) {
+  return new TextEncoder().encode(String(password ?? "")).byteLength <= MAX_PASSWORD_INPUT_BYTES;
+}
+
+function assertPasswordInputBounded(password) {
+  if (!isPasswordInputBounded(password)) throw new RangeError("Password input is too large.");
 }
 
 export async function changeUserPassword(env, username, currentPassword, newPassword) {

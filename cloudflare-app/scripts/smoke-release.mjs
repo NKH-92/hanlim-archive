@@ -85,7 +85,10 @@ export async function runReleaseSmoke({
   adminPassword = "",
   requireAdmin = false,
   requireSessionEpochCompatibility = false,
+  requireReadiness = false,
   expectedWorkerVersion = "",
+  workerVersionOverrideName = "",
+  workerVersionOverrideId = "",
   verifyPublicSurface = false,
   healthAttempts = HEALTH_ATTEMPTS,
   healthRetryMs = HEALTH_RETRY_MS,
@@ -101,20 +104,37 @@ export async function runReleaseSmoke({
   }
 
   const origin = target.origin;
+  const smokeFetch = versionOverrideFetch(fetchImpl, {
+    workerName: workerVersionOverrideName,
+    versionId: workerVersionOverrideId
+  });
   const retryPolicy = resolveRetryPolicy({ healthAttempts, healthRetryMs });
   let health;
   let healthBody = null;
+  let readiness = null;
+  let readinessBody = null;
   let healthOk = false;
   for (let attempt = 1; attempt <= retryPolicy.healthAttempts; attempt += 1) {
-    health = await fetchImpl(`${origin}/healthz`, { redirect: "manual" });
+    health = await smokeFetch(`${origin}/healthz`, { redirect: "manual" });
     if (health.status === 200) {
       healthBody = await health.clone().json().catch(() => null);
       const compatibilityReady = !requireSessionEpochCompatibility
         || healthBody?.rollbackCompatibility?.sessionEpoch === 1;
       const versionReady = !expectedWorkerVersion || healthBody?.workerVersion === expectedWorkerVersion;
       if (healthBody?.ok && compatibilityReady && versionReady) {
-        healthOk = true;
-        break;
+        if (requireReadiness) {
+          readiness = await smokeFetch(`${origin}/readyz`, { redirect: "manual" });
+          readinessBody = await readiness.clone().json().catch(() => null);
+          const readinessVersionReady = !expectedWorkerVersion
+            || readinessBody?.workerVersion === expectedWorkerVersion;
+          if (readiness.status === 200 && readinessBody?.ok && readinessVersionReady) {
+            healthOk = true;
+            break;
+          }
+        } else {
+          healthOk = true;
+          break;
+        }
       }
     }
     if (attempt < retryPolicy.healthAttempts) await waitImpl(retryPolicy.healthRetryMs);
@@ -127,11 +147,19 @@ export async function runReleaseSmoke({
   ) {
     throw new Error("현재 Worker는 session-epoch rollback 호환성을 선언하지 않습니다. 호환 Worker를 먼저 배포하세요.");
   }
-  if (!healthOk && expectedWorkerVersion && healthBody?.ok) {
+  if (
+    !healthOk
+    && expectedWorkerVersion
+    && healthBody?.ok
+    && healthBody?.workerVersion !== expectedWorkerVersion
+  ) {
     const observedWorkerVersion = String(healthBody?.workerVersion || "none");
     throw new Error(
       `Worker version smoke 실패(expected=${expectedWorkerVersion}, observed=${observedWorkerVersion}, attempts=${retryPolicy.healthAttempts})`
     );
+  }
+  if (!healthOk && requireReadiness && healthBody?.ok) {
+    throw new Error(`/readyz smoke 실패(status=${readiness?.status ?? "none"})`);
   }
   if (!healthOk) throw new Error(`/healthz smoke 실패(status=${health?.status ?? "none"})`);
   if (requireSessionEpochCompatibility && healthBody?.rollbackCompatibility?.sessionEpoch !== 1) {
@@ -140,18 +168,25 @@ export async function runReleaseSmoke({
 
   let publicSurface = null;
   if (verifyPublicSurface) {
-    publicSurface = await verifyReleasePublicSurface({ target, fetchImpl });
+    publicSurface = await verifyReleasePublicSurface({ target, fetchImpl: smokeFetch });
   }
 
-  const login = await fetchImpl(`${origin}/login`, { redirect: "manual" });
+  const login = await smokeFetch(`${origin}/login`, { redirect: "manual" });
   if (login.status !== 200 || !(await login.text()).includes('name="username"')) throw new Error("/login smoke 실패");
 
-  const signup = await fetchImpl(`${origin}/signup`, { redirect: "manual" });
+  const signup = await smokeFetch(`${origin}/signup`, { redirect: "manual" });
   if (signup.status !== 404) throw new Error("/signup 404 계약 실패");
 
-  const cookie = await authenticateSmokeUser({ origin, username, password, returnUrl: "/app?q=release-smoke", label: "smoke 계정", fetchImpl });
+  const cookie = await authenticateSmokeUser({
+    origin,
+    username,
+    password,
+    returnUrl: "/app?q=release-smoke",
+    label: "smoke 계정",
+    fetchImpl: smokeFetch
+  });
 
-  const search = await fetchImpl(`${origin}/app?q=release-smoke`, {
+  const search = await smokeFetch(`${origin}/app?q=release-smoke`, {
     headers: { Cookie: cookie },
     redirect: "manual"
   });
@@ -159,6 +194,7 @@ export async function runReleaseSmoke({
   if (search.status !== 200 || !html.includes("data-viewer-app")) throw new Error("인증 read-only 검색 smoke 실패");
 
   const summary = { health: health.status, login: login.status, signup: signup.status, search: search.status, origin };
+  if (requireReadiness) summary.readiness = readiness.status;
   if (publicSurface) {
     summary.httpRedirect = publicSurface.httpRedirect;
     summary.assets = publicSurface.assets;
@@ -172,9 +208,9 @@ export async function runReleaseSmoke({
       password: adminPassword,
       returnUrl: ADMIN_SMOKE_PATH,
       label: "관리자 smoke 계정",
-      fetchImpl
+      fetchImpl: smokeFetch
     });
-    const adminResponse = await fetchImpl(`${origin}${ADMIN_SMOKE_PATH}`, {
+    const adminResponse = await smokeFetch(`${origin}${ADMIN_SMOKE_PATH}`, {
       headers: { Cookie: adminCookie },
       redirect: "manual"
     });
@@ -186,6 +222,23 @@ export async function runReleaseSmoke({
   }
 
   return Object.freeze(summary);
+}
+
+function versionOverrideFetch(fetchImpl, { workerName, versionId }) {
+  const name = String(workerName || "").trim();
+  const id = String(versionId || "").trim();
+  if (!name && !id) return fetchImpl;
+  if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(name)) {
+    throw new Error("SMOKE_WORKER_VERSION_OVERRIDE_NAME 형식이 올바르지 않습니다.");
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error("SMOKE_WORKER_VERSION_OVERRIDE_ID 형식이 올바르지 않습니다.");
+  }
+  return (input, init = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set("Cloudflare-Workers-Version-Overrides", `${name}="${id}"`);
+    return fetchImpl(input, { ...init, headers });
+  };
 }
 
 export async function verifyReleasePublicSurface({ target, fetchImpl = fetch }) {
@@ -277,7 +330,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     adminPassword: process.env.SMOKE_ADMIN_PASSWORD,
     requireAdmin: process.env.SMOKE_REQUIRE_ADMIN === "1",
     requireSessionEpochCompatibility: process.env.SMOKE_REQUIRE_SESSION_EPOCH_COMPAT === "1",
+    requireReadiness: process.env.SMOKE_REQUIRE_READINESS === "1",
     expectedWorkerVersion: process.env.SMOKE_EXPECTED_WORKER_VERSION || "",
+    workerVersionOverrideName: process.env.SMOKE_WORKER_VERSION_OVERRIDE_NAME || "",
+    workerVersionOverrideId: process.env.SMOKE_WORKER_VERSION_OVERRIDE_ID || "",
     verifyPublicSurface: process.env.SMOKE_VERIFY_PUBLIC_SURFACE === "1",
     healthAttempts: process.env.SMOKE_HEALTH_ATTEMPTS || HEALTH_ATTEMPTS,
     healthRetryMs: process.env.SMOKE_HEALTH_RETRY_MS || HEALTH_RETRY_MS
