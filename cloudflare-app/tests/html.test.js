@@ -435,6 +435,31 @@ test("document workspace exposes permission-scoped selection actions and five de
   assert.match(html, /data-column="revision-date" hidden>제·개정일/);
 });
 
+test("rack filter chip clears dependent face, column, and shelf filters", async () => {
+  const html = await dashboardPage({
+    session: { username: "viewer", displayName: "Viewer", role: "User", csrfToken: "csrf-token-123" },
+    query: "slot",
+    viewerSearch: {
+      items: [],
+      pagination: { page: 1, pageSize: 30, totalItems: 0, totalPages: 1 }
+    },
+    categories: [{ id: 2, name: "QA" }],
+    tags: [],
+    filters: {
+      categoryId: 2,
+      rackId: 5,
+      rackFace: "A",
+      columnNumber: 2,
+      shelfNumber: 3,
+      status: "active",
+      sort: "location"
+    }
+  }).text();
+  const chipNav = html.match(/<nav class="active-filter-chips"[\s\S]*?<\/nav>/)?.[0] || "";
+
+  assert.match(chipNav, /href="\/app\?q=slot&category=2&status=active&sort=location"/);
+});
+
 test("floor plan page keeps the map separate from search and opens rack results for every user", async () => {
   const html = await floorPlanPage({
     session: { username: "viewer", displayName: "조회자", role: "User", csrfToken: "csrf-token-123" },
