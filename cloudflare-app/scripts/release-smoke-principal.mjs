@@ -39,6 +39,19 @@ function resultCount(payload, field) {
   return Number(row?.[field]);
 }
 
+function parseWranglerJson(output) {
+  const text = String(output || "");
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] !== "[" && text[index] !== "{") continue;
+    try {
+      return JSON.parse(text.slice(index));
+    } catch {
+      // Wrangler may print progress text before the final JSON payload.
+    }
+  }
+  throw new SyntaxError("Wrangler output does not contain a valid JSON payload.");
+}
+
 export function preflightSmokePrincipal({ action, environment = process.env } = {}) {
   const envName = environment.D1_PROVISION_ENV || environment.CLOUDFLARE_ENV;
   const target = preflightDeploy({
@@ -157,11 +170,17 @@ export async function runSmokePrincipal({
     if (cleaned.error || cleaned.status !== 0) {
       return { ok: false, remoteStateUnknown: true, errors: ["Release smoke principal cleanup failed."] };
     }
-    const remaining = resultCount(JSON.parse(cleaned.stdout || "[]"), "remaining");
+    let payload;
+    try {
+      payload = parseWranglerJson(cleaned.stdout);
+    } catch {
+      return { ok: false, remoteStateUnknown: true, errors: ["Release smoke cleanup response is invalid."] };
+    }
+    const remaining = resultCount(payload, "remaining");
     if (remaining !== 0) {
       return { ok: false, remoteStateUnknown: true, errors: ["Release smoke principals remain after cleanup."] };
     }
-    return { ok: true, action, removed: resultCount(JSON.parse(cleaned.stdout || "[]"), "removed") };
+    return { ok: true, action, removed: resultCount(payload, "removed") };
   }
 
   const precleaned = executeSql({
@@ -207,7 +226,14 @@ export async function runSmokePrincipal({
     if (provisioned.error || provisioned.status !== 0) {
       return { ok: false, errors: ["Release smoke principal provisioning failed."] };
     }
-    const count = resultCount(JSON.parse(provisioned.stdout || "[]"), "provisioned");
+    let payload;
+    try {
+      payload = parseWranglerJson(provisioned.stdout);
+    } catch {
+      await runSmokePrincipal({ action: "cleanup", environment, spawn, execPath });
+      return { ok: false, errors: ["Release smoke principal response is invalid."] };
+    }
+    const count = resultCount(payload, "provisioned");
     if (count !== 2) {
       await runSmokePrincipal({ action: "cleanup", environment, spawn, execPath });
       return { ok: false, errors: ["Release smoke principal verification failed."] };
