@@ -158,7 +158,8 @@ node scripts/audit-excel-snapshot-data.mjs --db path\to\backup.sqlite --out repo
    `SEARCH_D1_TARGET_DATABASE_ID`에도 같은 값을 등록한다. placeholder 상태에서는 guarded migrate/deploy가
    fail-closed해야 정상이다.
 3. 계정의 D1 database 슬롯과 Cron Trigger 슬롯을 확인한다. Worker는 5분마다 Search outbox 최대 25건 또는
-   재구축 100건을 처리한다.
+   재구축 100건을 처리한다. 개별 문서 등록은 응답 전에 대상 outbox 1건을 먼저 반영하며, Search 장애나
+   전체 재구축 중에는 outbox를 유지해 이 Cron이 재처리한다. 엑셀 전체 동기화는 기존 청크 경로를 유지한다.
 4. Core D1만 암호화 export backup한다. Search D1은 FTS virtual table 때문에 export 대상으로 삼지 않고
    Core에서 재구축한다.
 

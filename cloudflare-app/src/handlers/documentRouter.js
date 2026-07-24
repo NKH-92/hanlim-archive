@@ -16,7 +16,7 @@ import { handleDocumentMove, renderDocumentMove } from "./movementHandlers.js";
 import { requireManageDisposals, requireManageDocuments } from "./permissionGuards.js";
 import { redirect } from "../platform/http/responses.js";
 
-export async function routeDocumentRequest(request, env, session, url, path) {
+export async function routeDocumentRequest(request, env, session, url, path, effects = {}) {
   if (path === "/api/documents/duplicate" && request.method === "GET") {
     return requireManageDocuments(session) ?? handleDuplicateDocumentCheck(
       env,
@@ -66,7 +66,7 @@ export async function routeDocumentRequest(request, env, session, url, path) {
   }
 
   if (path === "/documents" && request.method === "POST") {
-    return requireManageDocuments(session) ?? handleCreateDocument(request, env, session);
+    return requireManageDocuments(session) ?? handleCreateDocument(request, env, session, effects);
   }
 
   const documentRoute = matchDocumentRoute(path);

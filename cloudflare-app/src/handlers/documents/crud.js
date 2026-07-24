@@ -29,6 +29,7 @@ import {
 import { accessDeniedPage, errorPage, notFoundPage } from "../../views/authViews.js";
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
 import { jsonResponse, redirect } from "../../platform/http/responses.js";
+import { logError } from "../../platform/observability/logger.js";
 import { clean } from "../../shared/text/normalize.js";
 import { requireManageDisposals, requireManageDocuments } from "../permissionGuards.js";
 
@@ -54,7 +55,7 @@ export async function handleDuplicateDocumentCheck(env, documentNumber, revision
   return jsonResponse(await findDuplicateDocument(env, documentNumber, revisionNumber, excludeId));
 }
 
-export async function handleCreateDocument(request, env, session) {
+export async function handleCreateDocument(request, env, session, effects = {}) {
   const form = await request.formData();
   const values = valuesFromDocumentForm(form);
   values.returnTo = safeDocumentReturn(form.get("returnTo"));
@@ -69,6 +70,14 @@ export async function handleCreateDocument(request, env, session) {
 
   try {
     const id = await createDocument(env, values, session, session.role);
+    if (typeof effects.syncSearchDocument === "function") {
+      try {
+        await effects.syncSearchDocument(id);
+      } catch (error) {
+        // Core 문서 등록은 확정된 상태다. 검색 갱신 실패는 outbox에 남겨 Cron이 재처리한다.
+        logError("documents.search-index-immediate", error, { documentId: id });
+      }
+    }
     return redirect(values.returnTo ? withToast(values.returnTo, "document-created") : `/documents/${id}?toast=created`);
   } catch (error) {
     if (isDocumentCapacityError(error)) {

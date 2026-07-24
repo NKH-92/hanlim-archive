@@ -37,7 +37,7 @@ import {
 } from "./viewerHandlers.js";
 import { routeWorkflowRequest } from "./workflowRouter.js";
 
-export async function routeAuthenticatedRequest(request, env, session, url, path) {
+export async function routeAuthenticatedRequest(request, env, session, url, path, effects = {}) {
   // compatibility dispatcher는 공개 동작을 유지하되 registry에 없는 route는 실행하지 않는다.
   if (!resolveAuthenticatedRoute(path, request.method)) return notFoundPage(session);
 
@@ -133,7 +133,7 @@ export async function routeAuthenticatedRequest(request, env, session, url, path
   const workflowResponse = await routeWorkflowRequest(request, env, session, path);
   if (workflowResponse) return workflowResponse;
 
-  const documentResponse = await routeDocumentRequest(request, env, session, url, path);
+  const documentResponse = await routeDocumentRequest(request, env, session, url, path, effects);
   if (documentResponse) return documentResponse;
 
   const masterResponse = await routeMasterRequest(request, env, session, url, path);
