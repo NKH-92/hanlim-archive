@@ -56,15 +56,37 @@ export function bulkCommandScript() {
       var commandPalette = document.querySelector('[data-command-palette]');
       var commandInput = document.querySelector('[data-command-input]');
       var commandItems = Array.prototype.slice.call(document.querySelectorAll('[data-command-item]'));
+      var commandActiveIndex = -1;
+      var commandPreviousFocus = null;
+      var visibleCommands = function () {
+        return commandItems.filter(function (item) { return !item.hidden; });
+      };
+      var setActiveCommand = function (index) {
+        var visible = visibleCommands();
+        commandItems.forEach(function (item) {
+          item.classList.remove('is-active');
+          item.removeAttribute('aria-current');
+        });
+        if (!visible.length) {
+          commandActiveIndex = -1;
+          return;
+        }
+        commandActiveIndex = Math.max(0, Math.min(index, visible.length - 1));
+        visible[commandActiveIndex].classList.add('is-active');
+        visible[commandActiveIndex].setAttribute('aria-current', 'true');
+        visible[commandActiveIndex].scrollIntoView({ block: 'nearest' });
+      };
       var filterCommands = function () {
         var query = (commandInput ? commandInput.value : '').trim().toLocaleLowerCase('ko-KR');
         commandItems.forEach(function (item) {
           var label = (item.getAttribute('data-command-label') || item.textContent || '').toLocaleLowerCase('ko-KR');
           item.hidden = Boolean(query && label.indexOf(query) === -1);
         });
+        setActiveCommand(0);
       };
       var openCommands = function () {
         if (!commandPalette || typeof commandPalette.showModal !== 'function') return;
+        commandPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         if (!commandPalette.open) commandPalette.showModal();
         if (commandInput) {
           commandInput.value = '';
@@ -78,7 +100,42 @@ export function bulkCommandScript() {
       document.querySelectorAll('[data-command-close]').forEach(function (button) {
         button.addEventListener('click', function () { if (commandPalette && commandPalette.open) commandPalette.close(); });
       });
-      if (commandInput) commandInput.addEventListener('input', filterCommands);
+      if (commandPalette) {
+        commandPalette.addEventListener('close', function () {
+          commandActiveIndex = -1;
+          commandItems.forEach(function (item) {
+            item.classList.remove('is-active');
+            item.removeAttribute('aria-current');
+          });
+          if (commandPreviousFocus && document.contains(commandPreviousFocus)) commandPreviousFocus.focus();
+          commandPreviousFocus = null;
+        });
+      }
+      if (commandInput) {
+        commandInput.addEventListener('input', filterCommands);
+        commandInput.addEventListener('keydown', function (event) {
+          var visible = visibleCommands();
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setActiveCommand(commandActiveIndex + 1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setActiveCommand(commandActiveIndex <= 0 ? visible.length - 1 : commandActiveIndex - 1);
+          } else if (event.key === 'Home') {
+            event.preventDefault();
+            setActiveCommand(0);
+          } else if (event.key === 'End') {
+            event.preventDefault();
+            setActiveCommand(visible.length - 1);
+          } else if (event.key === 'Enter' && visible.length) {
+            event.preventDefault();
+            visible[Math.max(0, commandActiveIndex)].click();
+          } else if (event.key === 'Escape' && commandPalette && commandPalette.open) {
+            event.preventDefault();
+            commandPalette.close();
+          }
+        });
+      }
       document.addEventListener('keydown', function (event) {
         if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase('en-US') === 'k') {
           event.preventDefault();

@@ -17,8 +17,8 @@ export function documentResults(documents, opts = {}) {
           <th>문서명</th>
           <th>문서번호</th>
           <th>개정번호</th>
-          <th>제/개정일</th>
-          <th>폐기 예정 년도</th>
+          <th>제·개정일</th>
+          <th>폐기 예정 연도</th>
           <th class="loc-col">보관 위치</th>
         </tr></thead>
         <tbody>${documents.map((doc) => documentRow(doc, opts)).join("")}</tbody>
@@ -38,8 +38,8 @@ function documentRow(doc, opts = {}) {
       </td>
       <td class="mono-cell" data-label="문서번호">${highlight(doc.document_number, opts.query || "")}</td>
       <td class="revision-cell" data-label="개정번호">${escapeHtml(doc.revision_number)}</td>
-      <td data-label="제/개정일">${escapeHtml(doc.revision_date || "미입력")}</td>
-      <td data-label="폐기 예정 년도">${escapeHtml(doc.disposal_due_year ?? "미입력")}</td>
+      <td data-label="제·개정일">${escapeHtml(doc.revision_date || "미입력")}</td>
+      <td data-label="폐기 예정 연도">${escapeHtml(doc.disposal_due_year ?? "미입력")}</td>
       <td class="loc-cell" data-label="보관 위치" title="${escapeHtml(locationLabel(doc))}">
         <span class="loc-cell-main">${doc.zone_number ? `${doc.zone_number}구역 ` : ""}${escapeHtml(rackFaceLabel(doc) || doc.rack_code)}</span>
         <small class="loc-cell-sub">${escapeHtml(doc.column_number)}열 ${escapeHtml(doc.shelf_number)}선반</small>

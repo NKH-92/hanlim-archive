@@ -131,7 +131,7 @@ export function floorPlanPage({ session, floorPlan = [] }) {
         <h1>문서고 도면</h1>
         <p>구역과 랙의 실제 배치를 확인하고, 랙을 선택해 해당 위치의 문서를 검색합니다.</p>
       </div>
-      <div class="button-group"><button type="button" class="button secondary" data-print><i class="fa-solid fa-download" aria-hidden="true"></i>도면 인쇄</button><a class="button action-button" href="/app"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>위치 검색</a></div>
+      <div class="button-group"><button type="button" class="button secondary" data-print><i class="fa-solid fa-print" aria-hidden="true"></i>도면 인쇄</button><a class="button action-button" href="/app"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>위치 검색</a></div>
     </section>
     <section class="operation-hero floor-plan-hero" aria-label="문서고 운영 요약">
       <div><p class="hero-kicker">Archive floor control</p><h2>현재 ${floorPlan.length}개 구역 · ${rackCount}개 랙을 운영 중입니다.</h2><p>선택한 랙에서 보관중 문서 목록으로 바로 이동할 수 있습니다.</p></div>

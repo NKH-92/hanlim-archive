@@ -121,7 +121,7 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(historyMain, /QA-APP-2026-041/);
   assert.match(historyMain, /href="\/disposal-batches\/4">DSP-2026-0004<\/a>/);
   assert.match(historyMain, />폐기 이력 보기<\/a>/);
-  assert.match(historyMain, />문서검색으로 이동<\/a>/);
+  assert.match(historyMain, />문서로 이동<\/a>/);
   assert.doesNotMatch(historyMain, /data-bulk-item|data-bulk-bar/);
 });
 
@@ -226,7 +226,7 @@ test("document form groups metadata, previews values, and progressively enhances
   }).text();
   assert.match(informationHtml, /<h1>정보 수정<\/h1>/);
   assert.match(informationHtml, /개정번호[\s\S]*Rev\.3/);
-  assert.match(informationHtml, /제\/개정일[\s\S]*2026-05-14/);
+  assert.match(informationHtml, /제·개정일[\s\S]*2026-05-14/);
   assert.doesNotMatch(informationHtml, /name="revisionNumber"|name="revisionDate"|name="rackSlotId"|name="rackFace"/);
 
   const revisionHtml = await documentRevisionPage({
@@ -378,7 +378,7 @@ test("dashboard home mode uses a search-first operational hero without a floor p
   assert.match(html, /data-search-home/);
   assert.match(html, /data-viewer-form/);
   assert.match(main, /search-home-hero/);
-  assert.match(main, /찾고 싶은 문서를/);
+  assert.match(main, /문서를 빠르게 찾으세요/);
   assert.match(html, /검색어를 입력하면 보관중 문서를 바로 찾습니다/);
   assert.match(html, /aria-label="빠른 분류"/);
   assert.doesNotMatch(main, /home-floor-plan|문서고 도면|data-rack-code/);

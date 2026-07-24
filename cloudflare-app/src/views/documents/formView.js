@@ -62,9 +62,9 @@ export function documentFormPage({
           <legend>보존 정보</legend>
           <div class="form-grid two-column">
             ${isInformationEdit
-              ? lockedField("제/개정일", formValue(values, "revisionDate", "revision_date") || "미입력")
-              : textField("revisionDate", "제/개정일", formValue(values, "revisionDate", "revision_date"), normalizedValidation, { required: true, type: "date" })}
-            ${textField("disposalDueYear", "폐기 예정 년도", formValue(values, "disposalDueYear", "disposal_due_year"), normalizedValidation, { required: true, type: "number", extra: 'min="1900" max="9999" step="1"' })}
+              ? lockedField("제·개정일", formValue(values, "revisionDate", "revision_date") || "미입력")
+              : textField("revisionDate", "제·개정일", formValue(values, "revisionDate", "revision_date"), normalizedValidation, { required: true, type: "date" })}
+            ${textField("disposalDueYear", "폐기 예정 연도", formValue(values, "disposalDueYear", "disposal_due_year"), normalizedValidation, { required: true, type: "number", extra: 'min="1900" max="9999" step="1"' })}
           </div>
         </fieldset>
 
@@ -95,7 +95,7 @@ export function documentFormPage({
           <div><dt>개정번호</dt><dd data-summary="revisionNumber">${isInformationEdit ? escapeHtml(formValue(values, "revisionNumber", "revision_number")) : "-"}</dd></div>
           <div><dt>문서명</dt><dd data-summary="documentName">-</dd></div>
           <div><dt>대분류</dt><dd data-summary="categoryId">-</dd></div>
-          <div><dt>제/개정일</dt><dd data-summary="revisionDate">${isInformationEdit ? escapeHtml(formValue(values, "revisionDate", "revision_date") || "미입력") : "-"}</dd></div>
+          <div><dt>제·개정일</dt><dd data-summary="revisionDate">${isInformationEdit ? escapeHtml(formValue(values, "revisionDate", "revision_date") || "미입력") : "-"}</dd></div>
           <div><dt>폐기 예정</dt><dd data-summary="disposalDueYear">-</dd></div>
           ${showLocation ? `<div><dt>보관 위치</dt><dd class="mono" data-summary="location">-</dd></div>` : ""}
         </dl>

@@ -1,4 +1,4 @@
-// 문서 세트 화면.
+// 준비 문서 세트 화면.
 
 import { hasPermission, PERMISSIONS } from "../permissions.js";
 import { locationLabel } from "../domains/racks/index.js";
@@ -8,9 +8,9 @@ import { alertDanger, alertWarning, emptyState, metric, page, sectionHeader, sta
 
 export function setsPage({ session, sets }) {
   const canManage = hasPermission(session, PERMISSIONS.MANAGE_SETS);
-  return page("문서 세트", `
+  return page("준비 문서 세트", `
     <section class="page-head">
-      <h1>문서 세트</h1>
+      <h1>준비 문서 세트</h1>
       <div class="button-group">
         ${canManage ? `<a class="button" href="/sets/new">세트 만들기</a>` : ""}
       </div>
