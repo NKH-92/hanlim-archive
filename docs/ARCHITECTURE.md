@@ -104,9 +104,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     수정도 다른 ETag를 만든다.
 18. **CSV 수식 비활성화**: 모든 CSV writer는 선행 공백·제어문자 뒤의 `=`, `+`, `-`, `@`까지 검사해
     스프레드시트 수식으로 실행되지 않도록 apostrophe를 붙인 뒤 RFC 4180 quoting을 적용한다.
-19. **rollback 호환성**: 신규 migration을 적용하기 전에 현재 rollback 대상 Worker가 신규 schema에서 인증과
-    핵심 쓰기 불변식을 지키는지 검증한다. `session_epoch` 최초 도입은 exact pre-release source로 만든
-    epoch-aware compatibility Worker를 migration 없이 먼저 배포한 경우에만 진행한다.
+19. **rollback 호환성**: migration은 이전 Worker와 함께 동작하는 additive 변경을 먼저 적용한다.
+    배포 전 현재 100% traffic Worker를 rollback 대상으로 기록하고, migration 전후 인증과 핵심 쓰기
+    불변식을 확인한다. 비호환 schema 제거는 별도 release로 분리한다.
 20. **10,000건 용량 경계**: 현재 대장은 11,000건부터 운영 경고, 12,000건에서 DB trigger와 application
     guard가 신규 등록·재포함·엑셀 반영을 함께 차단한다. 전체 membership은 1,000행, 실제 변경행은 50행씩
     전송하며 일상 변경 영향은 1,000건을 넘길 수 없다.
@@ -132,9 +132,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     현재 session epoch, 등록 만료를 mutation batch 안에서 다시 확인한다. release smoke 계정은 45분 TTL과
     필요한 단일 권한만 가지며 다음 release와 Cron janitor가 누수를 제거한다.
 24. **운영 version 격리**: 기본 Wrangler 환경은 운영 Worker·D1을 가리키지 않고 preview URL을 만들지 않는다.
-    운영 version은 immutable upload 후 이전 version 100%·신규 version 0%로 stage한다. smoke는 공개 preview
-    hostname 대신 canonical 운영 URL에 Cloudflare Worker version override header를 사용하고, 성공한 version만
-    100% traffic으로 promote한다.
+    배포 전에 현재 100% traffic version을 기록하고 guarded deploy로 production에 직접 배포한다. canonical
+    운영 URL smoke가 실패하면 기록한 version으로 rollback하고 다시 검증한다.
 
 ## 데이터 무결성 계약
 

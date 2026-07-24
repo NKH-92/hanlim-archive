@@ -7,18 +7,39 @@ import { fileURLToPath } from "node:url";
 import { preflightRemoteMigrate } from "../scripts/migrate-remote-guarded.mjs";
 import { preflightDeploy, runWranglerCaptured, runWranglerDeploy } from "../scripts/deploy-guarded.mjs";
 import { verifyReleasedBaselineAgainstBase } from "../scripts/check-released-baseline-history.mjs";
-import { applyExactTransforms, COMPATIBILITY_FILES } from "../scripts/apply-session-epoch-compat.mjs";
 
 // Synthetic UUID: contract tests must not duplicate a real production D1 identifier.
 const TEST_PRODUCTION_ID = "00000000-0000-4000-8000-000000000001";
 const TEST_SEARCH_ID = "00000000-0000-4000-8000-000000000002";
 const RELEASE_SHA = "a".repeat(40);
-const BACKUP_DIGEST = "b".repeat(64);
+const CORE_BOOKMARK = `00000001-00000002-00000003-${"a".repeat(32)}`;
+const SEARCH_BOOKMARK = `00000004-00000005-00000006-${"b".repeat(32)}`;
+
+function recoveryEvidence(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    environment: "production",
+    runId: "987654321",
+    releaseSha: RELEASE_SHA,
+    databases: {
+      core: {
+        name: "hanlim-archive",
+        databaseId: TEST_PRODUCTION_ID,
+        bookmark: CORE_BOOKMARK
+      },
+      search: {
+        name: "hanlim-archive-search-10k",
+        databaseId: TEST_SEARCH_ID,
+        bookmark: SEARCH_BOOKMARK
+      }
+    },
+    ...overrides
+  };
+}
 
 function migrationEvidence(overrides = {}) {
   return {
-    backupEvidenceId: "123456",
-    backupEvidenceDigest: BACKUP_DIGEST,
+    recoveryEvidence: recoveryEvidence(),
     runId: "987654321",
     releaseSha: RELEASE_SHA,
     approvalContext: `github-environment:production:987654321:${RELEASE_SHA}`,
@@ -84,25 +105,33 @@ test("remote migrate는 env database_id 불일치·placeholder·누락 승인을
   assert.equal(preflightRemoteMigrate({
     envName: "production",
     expectedDatabaseId: TEST_PRODUCTION_ID,
-    ...migrationEvidence({ backupEvidenceId: "invented-evidence", backupEvidenceDigest: "not-a-digest" }),
-    config
+    expectedSearchDatabaseId: TEST_SEARCH_ID,
+    ...migrationEvidence({
+      recoveryEvidence: recoveryEvidence({
+        releaseSha: "b".repeat(40)
+      })
+    }),
+    config: searchConfig()
   }).ok, false);
 
   const ok = preflightRemoteMigrate({
     envName: "production",
     expectedDatabaseId: TEST_PRODUCTION_ID,
+    expectedSearchDatabaseId: TEST_SEARCH_ID,
     ...migrationEvidence(),
     dryRun: true,
-    config
+    config: searchConfig()
   });
   assert.equal(ok.ok, true);
   assert.equal(ok.configuredId, TEST_PRODUCTION_ID);
-  assert.equal(ok.backupEvidenceDigest, BACKUP_DIGEST);
+  assert.equal(ok.recoveryBookmarks.core, CORE_BOOKMARK);
+  assert.equal(ok.recoveryBookmarks.search, SEARCH_BOOKMARK);
   assert.equal(preflightRemoteMigrate({
     envName: "production",
     expectedDatabaseId: TEST_PRODUCTION_ID,
+    expectedSearchDatabaseId: TEST_SEARCH_ID,
     ...migrationEvidence({ approvalContext: "approval-token-16+" }),
-    config
+    config: searchConfig()
   }).ok, false);
 });
 
@@ -325,22 +354,6 @@ test("released-baseline history gate rejects coordinated SQL and baseline edits"
   delete truncated.checksums["0002_more.sql"];
   truncated.releasedThrough = "0001_initial.sql";
   assert.equal(verifyReleasedBaselineAgainstBase({ currentBaseline: truncated, baseMigrations }).ok, false);
-});
-
-test("compatibility transform는 고정된 최소 파일과 exact-once context만 허용한다", () => {
-  assert.deepEqual(COMPATIBILITY_FILES, [
-    "src/auth/users.js",
-    "src/auth/session.js",
-    "src/auth/passwords.js",
-    "src/handlers/sessionHandlers.js",
-    "src/handlers/adminHandlers.js",
-    "src/index.js",
-    "wrangler.jsonc"
-  ]);
-  const transforms = [{ file: "probe.js", before: "before", after: "after" }];
-  assert.equal(applyExactTransforms("const value = 'before';\n", transforms, "probe.js"), "const value = 'after';\n");
-  assert.throws(() => applyExactTransforms("const value = 'missing';\n", transforms, "probe.js"), /exactly once/);
-  assert.throws(() => applyExactTransforms("before before", transforms, "probe.js"), /exactly once/);
 });
 
 test("migration checksum은 CRLF를 LF로 정규화한다", async () => {

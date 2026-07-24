@@ -1,64 +1,65 @@
-# D1 백업·복구 절차
+# D1 복구 절차
 
-운영 백업은 `.github/workflows/d1-backup.yml`이 매주 생성한다. Core와 Search D1 export는 각각 gzip 후 age X25519 recipient로 암호화해 비공개 R2에 올린다. GitHub artifact에는 DB ciphertext가 아니라 R2 object key·SHA-256 checksum·migration replay 결과만 포함한다.
+운영 데이터는 Cloudflare D1 Time Travel을 복구 수단으로 사용한다. 별도 R2 또는 SQL export 백업은
+무료티어 운영 범위에 포함하지 않는다. Workers Free의 Time Travel 보존 기간은 7일이므로 사고 발견 즉시
+복구 가능 시점을 확인한다.
 
-## 준비
+## 배포 전 복구 지점
 
-- GitHub Actions secret `CLOUDFLARE_D1_BACKUP_API_TOKEN`에는 대상 Core·Search D1 export와 지정 R2 bucket object read/write에 필요한 권한만 허용한다. 배포·migration 토큰과 공유하지 않는다.
-- GitHub variable `R2_BACKUP_BUCKET`과 `BACKUP_AGE_RECIPIENT`를 등록한다. age private key는 GitHub에 등록하지 않고 이중 통제 복구 보관소에서 관리한다.
-- R2 development URL과 custom public domain을 비활성화하고, `predeploy/`·`scheduled/` prefix에 승인된 lifecycle·object lock을 설정한다.
-- D1 전체 export 중에는 데이터베이스의 다른 요청이 차단될 수 있으므로 정기 백업은 저사용 시간에 실행하고, 수동 백업은 점검창을 공지한 뒤 실행한다.
-- 백업과 운영 배포는 Actions의 `d1-production-maintenance` 동시성 그룹으로 직렬화하며 백업 작업은 30분 후 자동 종료한다.
-- 복구 작업은 운영 DB와 분리된 로컬 임시 디렉터리에서 수행한다.
-- Windows에서는 `age`, gzip, `sha256sum`을 제공하는 Git Bash 또는 WSL 사용을 권장한다.
+`Deploy Production` workflow는 migration 전에 Core와 Search D1의 현재 bookmark를 각각 조회한다.
+`release-evidence/d1-recovery.json`에는 다음 비민감 정보만 기록한다.
 
-## 로컬 복구 훈련
+- release SHA와 GitHub run ID
+- 환경 이름
+- Core·Search database 이름과 ID
+- 각 database의 Time Travel bookmark
 
-1. GitHub Actions의 `D1 Backup` receipt에서 승인 대상 R2 object key와 ciphertext SHA-256을 확인한 뒤 격리된 디렉터리로 Core·Search object를 내려받는다.
-2. 각 object의 `sha256sum`이 receipt와 같은지 확인한다.
-3. 격리된 복구 단말에서 age identity 파일을 지정해 복호화한다. identity 값은 셸 기록에 직접 입력하지 않는다.
-   ```bash
-   age --decrypt --identity /secure/recovery/hanlim-backup.agekey \
-     --output core-restore.sql.gz core-RELEASE_SHA-CHECKSUM.sql.gz.age
-   age --decrypt --identity /secure/recovery/hanlim-backup.agekey \
-     --output search-restore.sql.gz search-RELEASE_SHA-CHECKSUM.sql.gz.age
-   ```
-4. 두 파일을 `gzip -dc`로 압축 해제한다.
-5. `cloudflare-app/`에서 비어 있는 격리 persistence 디렉터리를 만들고 그 로컬 D1에만 복구한다. 기존 개발용 `.wrangler` 상태를 재사용하지 않는다.
-   ```bash
-   RESTORE_STATE="$(mktemp -d)"
-   npx wrangler d1 execute hanlim-archive --local \
-     --persist-to "$RESTORE_STATE" --file ../restore.sql
-   ```
-6. 같은 격리 경로에서 다음 표의 건수를 백업 시점 기대값과 비교한다.
-   ```sql
-   SELECT 'documents', COUNT(*) FROM documents
-   UNION ALL SELECT 'racks', COUNT(*) FROM racks
-   UNION ALL SELECT 'app_users', COUNT(*) FROM app_users
-   UNION ALL SELECT 'document_audit_logs', COUNT(*) FROM document_audit_logs
-   UNION ALL SELECT 'system_audit_logs', COUNT(*) FROM system_audit_logs;
-   ```
-   ```bash
-   npx wrangler d1 execute hanlim-archive --local --persist-to "$RESTORE_STATE" \
-     --command "SELECT 'documents', COUNT(*) FROM documents UNION ALL SELECT 'racks', COUNT(*) FROM racks UNION ALL SELECT 'app_users', COUNT(*) FROM app_users UNION ALL SELECT 'document_audit_logs', COUNT(*) FROM document_audit_logs UNION ALL SELECT 'system_audit_logs', COUNT(*) FROM system_audit_logs;"
-   ```
-7. `npm run dev -- --persist-to "$RESTORE_STATE"`로 격리 DB를 연결한 뒤 문서번호 검색, 문서 상세, 랙 격자, 최근 감사이력을 표본 확인한다.
-8. 원격 복구가 승인되면 작업 직전 `D1 Backup`을 수동 실행해 추가 백업을 만든다. 원격 실행 명령은 두 명이 대상 DB와 파일을 교차 확인한 뒤 수행한다.
-9. 복구 후 `/healthz`가 200인지, 검색·상세 화면이 정상인지 확인하고 복구 일시·작업자·검증 건수를 감사 기록에 남긴다.
+guarded migration은 이 파일이 현재 run, SHA, environment와 두 D1 ID에 정확히 일치할 때만 실행된다.
+복구 지점 artifact는 8일간 남지만 실제 복구 가능 기간은 Cloudflare의 7일 보존 기간을 따른다.
 
-복구가 끝나면 원문 `restore.sql`, 압축 해제 파일, `$RESTORE_STATE` 격리 디렉터리와 셸 기록을 안전하게 삭제하고 암호 환경변수를 해제한다.
+## 사고 판단
 
-## 운영 사고 복구
+1. 쓰기 변경과 추가 배포를 중지한다.
+2. 애플리케이션 오류인지 데이터 손상 또는 비호환 schema인지 구분한다.
+3. 애플리케이션 문제이고 DB schema가 호환되면 이전 100% traffic Worker version으로 rollback한다.
+4. 데이터 복구가 필요하면 Core와 Search 중 영향받은 DB, 손상 시각, 목표 시점, 예상 데이터 손실 범위를 기록한다.
+5. production Environment 승인권자에게 복구 대상 DB와 bookmark 또는 timestamp를 확인받는다.
 
-이 절차는 데이터 손상 사고에서만 사용한다. 운영 D1에 직접 덮어쓰지 않고 격리 DB에서 먼저 검증한다.
+D1 restore는 대상 DB의 현재 상태를 되돌리는 파괴적 작업이다. 자동화된 배포 workflow에서 실행하지 않는다.
 
-1. incident 책임자와 복구 승인자를 지정하고 쓰기 변경을 중지한다.
-2. 대상 release SHA, 손상 시각, Time Travel 가능 시점, pre-deploy·주간 R2 object와 receipt를 기록한다.
-3. 암호화 파일의 checksum을 검증하고 age identity는 승인된 격리 복구 단말에서만 사용한다.
-4. 새 격리 D1에 복원한 뒤 migration manifest, `PRAGMA foreign_key_check`, 핵심 행 수를 확인한다.
-5. 복구 대상 Worker를 격리 DB에 연결해 health, login, read-only 검색과 감사 이력을 검증한다.
-6. 누락 범위와 예상 중단 시간을 승인자에게 제출하고 Time Travel 또는 검증된 backup 중 손실이 가장 적은 안을 승인받는다.
-7. 운영 복구 직전 현재 상태도 별도 backup으로 보존한다.
-8. 복구 후 Worker version, migration 상태, health/login/search, 감사·문서 건수를 다시 확인한다.
+## 복구 가능 시점 확인
 
-원시 dump와 복호화 파일은 보존 정책에 따라 안전하게 파기한다. incident 기록에는 SHA, backup checksum, 승인자, 명령 결과와 검증 결과만 남긴다. 실제 원격 복구 명령은 Cloudflare의 당시 공식 절차를 확인한 뒤 수행한다.
+`cloudflare-app/`에서 최소 권한 D1 token을 사용해 읽기 전용으로 확인한다.
+
+```powershell
+npx wrangler d1 time-travel info hanlim-archive --env production --json
+npx wrangler d1 time-travel info hanlim-archive-search-10k --env production --json
+```
+
+배포 직전 상태로 복구할 때는 해당 release artifact의 bookmark를 사용한다. 특정 장애 시각으로 복구할 때는
+Cloudflare가 반환하는 보존 범위 안인지 먼저 확인한다. 7일을 넘긴 시점은 현재 무료티어 절차로 복구할 수 없다.
+
+## 승인된 원격 복구
+
+한 번에 하나의 D1만 복구하고 각 단계 결과를 확인한다.
+
+```powershell
+npx wrangler d1 time-travel restore hanlim-archive --env production --bookmark "<CORE_BOOKMARK>"
+npx wrangler d1 time-travel restore hanlim-archive-search-10k --env production --bookmark "<SEARCH_BOOKMARK>"
+```
+
+두 DB가 모두 영향을 받은 경우 Core를 먼저 복구하고 Search를 복구한다. Search만 손상된 경우 Core는
+건드리지 않고 Search를 복구하거나 파생 인덱스를 재구축한다. 명령 실행 직전 database 이름, ID, bookmark,
+승인 기록을 다시 대조한다.
+
+## 복구 후 검증
+
+1. Core와 Search migration 상태가 예상 시점과 일치하는지 확인한다.
+2. `/healthz`와 `/readyz`가 200인지 확인한다.
+3. 승인 계정 로그인, 문서 검색·상세, 랙 위치와 최근 감사이력을 표본 확인한다.
+4. 독립 Admin의 `/admin/settings` 접근과 사용자 관리 marker를 확인한다.
+5. Search outbox와 rebuild 상태를 확인하고 필요하면 재구축한다.
+6. incident 기록에 release SHA, Worker version, 복구 DB·bookmark, 승인자, 명령 결과와 검증 결과를 남긴다.
+
+7일보다 긴 복구 보존이 실제 업무 요건이 되면 그 시점에 유료 D1 또는 별도 외부 백업의 비용·암호화·복구
+훈련을 별도 승인한다. 현재 운영에는 사용하지 않는다.

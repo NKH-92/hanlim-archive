@@ -127,8 +127,7 @@ src/shared/
 | `cloudflare-app/scripts/` | 검증, browser asset build, 배포·migration guard |
 | `cloudflare-app/tests/` | Node.js 계약·회귀·통합 테스트 |
 | `.github/workflows/ci.yml` | PR 및 `main` 검증 |
-| `.github/workflows/deploy.yml` | 승인된 운영 백업·migration·Worker 배포·smoke·rollback |
-| `.github/workflows/d1-backup.yml` | 암호화 D1 정기 백업 |
+| `.github/workflows/deploy.yml` | 승인된 D1 복구 지점·migration·Worker 배포·smoke·rollback |
 | `docs/` | 아키텍처, 디자인, 권한, 운영과 복구 절차 |
 
 `public/assets/app.css`, `app.js`, `search-core.js`, `exceljs.min.js`, `jszip.min.js`는 배포 자산입니다.
@@ -218,30 +217,29 @@ PR과 `main`의 변경은 CI에서 다음 항목을 검사합니다.
 다음 순서로 처리됩니다.
 
 1. release source 재검증과 migration evidence 생성
-2. 현재 Worker와 독립 Admin 확인
-3. 암호화 D1 backup 생성·업로드
-4. 운영 데이터 upgrade readiness 확인
+2. 현재 100% traffic Worker와 독립 Admin 확인
+3. Core·Search D1 Time Travel 복구 지점 기록
+4. 현재 운영 로그인·검색 smoke
 5. append-only migration 적용
-6. immutable Worker version upload 후 이전 version 100%·신규 version 0%로 stage
-7. 운영 URL에 version override를 붙여 신규 version의 로그인, 검색, 사용자 관리와 `/healthz` smoke
-8. 검증된 version만 100%로 승격하고 운영 URL smoke 재확인
-9. 실패 시 기록된 이전 Worker version으로 rollback
-10. 배포·backup·smoke·rollback evidence 보존
+6. Worker를 production에 직접 배포
+7. 운영 URL의 readiness·asset·로그인·검색·사용자 관리 smoke
+8. 실패 시 기록된 이전 Worker version으로 rollback
+9. 복구 지점·배포·smoke·rollback evidence 보존
 
 README와 `docs/**`처럼 실행 코드에 영향을 주지 않는 변경만 병합하면 운영 배포는 실행하지 않습니다.
 로컬에서 원격 migration 또는 production 배포를 실행하지 않습니다.
 
-## 백업과 장애 대응
+## 복구와 장애 대응
 
-- 운영 migration 전에 같은 실행에서 생성한 암호화 D1 backup이 반드시 존재해야 합니다.
+- 운영 migration 전에 같은 실행에서 생성한 Core·Search D1 Time Travel bookmark가 반드시 존재해야 합니다.
 - Worker 오류이면서 migration이 호환되면 기록된 정확한 이전 Worker version으로 rollback합니다.
 - 데이터 손상이나 비호환 schema 문제는 Worker rollback만으로 완료하지 않고 복구 절차를 시작합니다.
-- backup artifact, checksum, release SHA와 Worker version을 운영 증거로 보존합니다.
+- 복구 bookmark, release SHA와 Worker version을 운영 증거로 보존합니다.
 
 상세 절차:
 
 - [배포 및 운영 절차](./docs/OPERATIONS.md)
-- [D1 백업·복구 절차](./docs/BACKUP_RESTORE.md)
+- [D1 복구 절차](./docs/BACKUP_RESTORE.md)
 
 ## 문서
 

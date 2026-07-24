@@ -9,6 +9,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
+import { validateD1RecoveryEvidence } from "./capture-d1-recovery.mjs";
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function required(name) {
@@ -57,8 +59,8 @@ export function preflightRemoteMigrate({
   envName = process.env.D1_MIGRATE_ENV,
   expectedDatabaseId = process.env.D1_TARGET_DATABASE_ID,
   expectedSearchDatabaseId = process.env.SEARCH_D1_TARGET_DATABASE_ID,
-  backupEvidenceId = process.env.D1_BACKUP_EVIDENCE_ID,
-  backupEvidenceDigest = process.env.D1_BACKUP_EVIDENCE_DIGEST,
+  recoveryEvidencePath = process.env.D1_RECOVERY_EVIDENCE_PATH,
+  recoveryEvidence,
   runId = process.env.GITHUB_RUN_ID,
   releaseSha = process.env.GITHUB_SHA,
   approvalContext = process.env.D1_MIGRATE_APPROVAL_CONTEXT,
@@ -70,12 +72,6 @@ export function preflightRemoteMigrate({
     errors.push("D1_MIGRATE_ENV는 staging 또는 production만 허용합니다.");
   }
   if (!expectedDatabaseId) errors.push("D1_TARGET_DATABASE_ID가 필요합니다.");
-  if (!/^\d+$/.test(String(backupEvidenceId || "")) || Number(backupEvidenceId) < 1) {
-    errors.push("D1_BACKUP_EVIDENCE_ID는 현재 GitHub Actions backup artifact ID여야 합니다.");
-  }
-  if (!/^[a-f0-9]{64}$/i.test(String(backupEvidenceDigest || ""))) {
-    errors.push("D1_BACKUP_EVIDENCE_DIGEST는 업로드된 backup artifact의 SHA-256이어야 합니다.");
-  }
   if (!/^\d+$/.test(String(runId || ""))) {
     errors.push("GITHUB_RUN_ID가 필요합니다.");
   }
@@ -135,14 +131,39 @@ export function preflightRemoteMigrate({
     }
   }
 
+  let parsedRecoveryEvidence = recoveryEvidence;
+  if (!parsedRecoveryEvidence) {
+    if (!String(recoveryEvidencePath || "").trim()) {
+      return { ok: false, errors: ["D1_RECOVERY_EVIDENCE_PATH가 필요합니다."], dryRun: true };
+    }
+    try {
+      parsedRecoveryEvidence = JSON.parse(readFileSync(resolve(recoveryEvidencePath), "utf8"));
+    } catch {
+      return { ok: false, errors: ["D1 Time Travel 복구 증빙을 읽을 수 없습니다."], dryRun: true };
+    }
+  }
+  const recoveryValidation = validateD1RecoveryEvidence(parsedRecoveryEvidence, {
+    envName,
+    coreDatabaseId: configuredId,
+    searchDatabaseId: configuredSearchId,
+    releaseSha,
+    runId
+  });
+  if (!recoveryValidation.ok) {
+    return { ok: false, errors: recoveryValidation.errors, dryRun: true };
+  }
+
   return {
     ok: true,
     envName,
     expectedDatabaseId,
     configuredId,
     configuredSearchId,
-    backupEvidenceId: String(backupEvidenceId),
-    backupEvidenceDigest: String(backupEvidenceDigest).toLowerCase(),
+    recoveryEvidencePath: String(recoveryEvidencePath || ""),
+    recoveryBookmarks: {
+      core: parsedRecoveryEvidence.databases.core.bookmark,
+      search: parsedRecoveryEvidence.databases.search.bookmark
+    },
     runId: String(runId),
     releaseSha: String(releaseSha).toLowerCase(),
     dryRun,
@@ -154,8 +175,7 @@ const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(res
 if (isMain) {
   const envName = required("D1_MIGRATE_ENV");
   const expectedDatabaseId = required("D1_TARGET_DATABASE_ID");
-  required("D1_BACKUP_EVIDENCE_ID");
-  required("D1_BACKUP_EVIDENCE_DIGEST");
+  required("D1_RECOVERY_EVIDENCE_PATH");
   required("GITHUB_RUN_ID");
   required("GITHUB_SHA");
   required("D1_MIGRATE_APPROVAL_CONTEXT");
@@ -178,8 +198,8 @@ if (isMain) {
     env: result.envName,
     databaseId: result.expectedDatabaseId,
     configuredDatabaseId: result.configuredId,
-    backupEvidenceId: result.backupEvidenceId,
-    backupEvidenceDigest: result.backupEvidenceDigest,
+    recoveryEvidencePath: result.recoveryEvidencePath,
+    recoveryBookmarks: result.recoveryBookmarks,
     runId: result.runId,
     releaseSha: result.releaseSha,
     dryRun: result.dryRun,
