@@ -84,6 +84,15 @@ export function responsivePrintStyles() {
       .form-grid.two-column { grid-template-columns: 1fr; }
       .location-picker-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .location-picker-steps label:last-child { grid-column: 1 / -1; }
+      .location-selection-preview { grid-template-columns: 1fr auto; }
+      .location-selection-preview a { grid-column: 1 / -1; }
+      .sticky-save-bar { bottom: calc(64px + env(safe-area-inset-bottom)); }
+      .floor-plan-tools { align-items: stretch; flex-direction: column; }
+      .floor-rack-search { width: 100%; max-width: none; }
+      .floor-plan-tools .button-group, .floor-plan-tools .button { width: 100%; }
+      .floor-rack-inspector { position: fixed; inset: auto 0 0; z-index: 160; display: none; max-height: min(72vh, 560px); overflow-y: auto; margin: 0; padding: var(--sp-5) var(--sp-5) calc(var(--sp-5) + env(safe-area-inset-bottom)); border: 1px solid var(--line); border-radius: var(--r-xl) var(--r-xl) 0 0; background: var(--surface); box-shadow: var(--shadow-2); }
+      .floor-rack-inspector.is-open { display: grid; }
+      .floor-rack-inspector-close { display: inline-grid; }
       .head-actions, .document-toolbar { width: 100%; }
       .document-toolbar > * { flex: 1 1 150px; min-width: 0; }
       .search-box { grid-template-columns: auto minmax(0, 1fr); }
@@ -91,6 +100,8 @@ export function responsivePrintStyles() {
       .filter-row, .viewer-filter-row, .disposal-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .master-row, .master-form, .admin-link-grid, .set-add-grid { grid-template-columns: 1fr; }
       .snapshot-intro { grid-template-columns: 1fr; }
+      .snapshot-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .snapshot-context-grid > div:nth-child(2) { border-right: 0; }
       .snapshot-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .snapshot-apply-row { flex-direction: column; align-items: stretch; }
       .doc-row { grid-template-columns: 1fr; gap: var(--sp-2); align-items: start; padding: var(--sp-3) var(--sp-2); }

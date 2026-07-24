@@ -57,7 +57,7 @@ export function workspaceInteractionScript() {
         }
         var row = target?.closest('[data-document-row]');
         if (!row || target.closest('a, button, input, select, textarea, label')) return;
-        if (window.matchMedia?.('(min-width: 1181px)').matches && workspacePreview) {
+        if (window.matchMedia?.('(min-width: 1180px)').matches && workspacePreview) {
           fillPreview(row);
           return;
         }

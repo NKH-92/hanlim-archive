@@ -25,6 +25,10 @@ export function buildFloorPlanLayout(racks, regions = DEFAULT_FLOOR_PLAN_REGIONS
       heightPct: clampPercent(region.height_pct, 30),
       racks: zoneRacks.map((rack, index) => ({
         id: Number(rack.id), code: clean(rack.code), rackNumber: Number(rack.rack_number || 0),
+        name: clean(rack.name),
+        description: clean(rack.description),
+        columnCount: Number(rack.column_count || 0),
+        shelfCount: Number(rack.shelf_count || 0),
         documentCount: Number(rack.active_document_count || rack.document_count || 0),
         isSingleSided: readBoolean(rack.is_single_sided), leftPct: clampPercent(slotWidth * (index + 0.5), 50), topPct: 50, widthPct: barWidthPct
       }))

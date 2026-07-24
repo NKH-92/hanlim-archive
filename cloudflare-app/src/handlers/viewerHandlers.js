@@ -25,19 +25,6 @@ export async function handleDashboard(request, env, session) {
     ? await getEditableSetsForWorkspace(env)
     : [];
 
-  // 검색어와 필터가 없으면 검색 입력부터 시작하는 빈 검색 셸을 그린다.
-  if (!query && !search.hasExplicitFilter) {
-    return dashboardPage({
-      session,
-      mode: "home",
-      query: "",
-      categories,
-      tags,
-      filters,
-      editableSets
-    });
-  }
-
   const viewerSearch = await getViewerSearchPayload(env, {
       q: parsed.text,
       category: filters.categoryId,
@@ -55,10 +42,11 @@ export async function handleDashboard(request, env, session) {
 
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
   const didYouMean = await resolveSearchOutcome(env, search, totalItems);
+  const isHome = !query && !search.hasExplicitFilter;
 
   return dashboardPage({
     session,
-    mode: "results",
+    mode: isHome ? "home" : "results",
     query,
     parsedQuery: parsed,
     viewerSearch: filters.status === "disposed" ? { ...viewerSearch, suggestions: [] } : viewerSearch,

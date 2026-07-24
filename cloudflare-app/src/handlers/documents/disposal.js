@@ -6,6 +6,7 @@ import {
   freezeDisposalBatch,
   getDisposalBatch,
   getDisposalHistoryPage,
+  listDisposalBatches,
   processDisposalBatch,
   startDisposalBatch
 } from "../../domains/disposal/index.js";
@@ -26,24 +27,27 @@ import { readBoolean } from "../../shared/coercion.js";
 export async function handleDisposalWorkspace(request, env, session) {
   const params = new URL(request.url).searchParams;
   const filters = { ...parseDisposalFilters(params), query: clean(params.get("q")) };
-  const tab = params.get("tab") === "history" ? "history" : "targets";
+  const requestedTab = clean(params.get("tab"));
+  const tab = requestedTab === "history" || requestedTab === "documents" ? requestedTab : "active";
   const page = Math.max(1, Number(params.get("page")) || 1);
   const feedback = feedbackFromParams(params);
   return renderDisposalWorkspace(env, session, filters, feedback, { tab, page });
 }
 
-async function renderDisposalWorkspace(env, session, filters, feedback = null, { tab = "targets", page = 1 } = {}) {
-  const historyPromise = tab === "history"
+async function renderDisposalWorkspace(env, session, filters, feedback = null, { tab = "active", page = 1 } = {}) {
+  const historyPromise = tab === "documents"
     ? getDisposalHistoryPage(env, { query: filters.query, page })
     : Promise.resolve({ items: [], pagination: { page: 1, totalPages: 1, totalItems: 0 } });
-  const [{ categories }, racks, years, candidates, history] = await Promise.all([
+  const campaignsPromise = tab === "history" ? listDisposalBatches(env) : Promise.resolve([]);
+  const [{ categories }, racks, years, candidates, history, campaigns] = await Promise.all([
     loadDocumentFormOptions(env, { activeOnly: true, includeSlots: false }),
     getRackSummaries(env),
     getDisposalDueYears(env),
-    tab === "targets"
+    tab === "active"
       ? getDisposalCandidates(env, filters, FREE_TIER_BUDGET.disposalProcessChunkSize + 1)
       : Promise.resolve([]),
-    historyPromise
+    historyPromise,
+    campaignsPromise
   ]);
   return disposalWorkspacePage({
     session,
@@ -55,6 +59,7 @@ async function renderDisposalWorkspace(env, session, filters, feedback = null, {
     capped: candidates.length > FREE_TIER_BUDGET.disposalProcessChunkSize,
     legacyLimit: FREE_TIER_BUDGET.disposalProcessChunkSize,
     history: history.items,
+    campaigns,
     pagination: history.pagination,
     tab,
     feedback

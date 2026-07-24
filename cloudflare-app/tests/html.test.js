@@ -73,10 +73,10 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(html, /bulk-select-all-text">현재 목록 전체 선택<\/span>/);
   assert.match(APP_STYLES, /\.doc-table\.is-bulk-selectable thead \{ display: block; \}/);
   assert.match(html, /data-bulk-item/);
-  assert.match(html, />폐기 대상<\/a>/);
-  assert.match(html, />문서별 폐기 이력<\/a>/);
-  assert.match(html, /href="\/disposal-batches\/new">정기폐기<\/a>/);
-  assert.match(html, /href="\/disposal-batches">캠페인 이력<\/a>/);
+  assert.match(html, />진행 중<\/a>/);
+  assert.match(html, />캠페인 이력<\/a>/);
+  assert.match(html, />문서 이력<\/a>/);
+  assert.match(html, /href="\/disposal-batches\/new">정기폐기 시작<\/a>/);
   assert.match(html, /action="\/documents\/disposal\/process"/);
   assert.match(html, /id="disposal-review-modal"/);
   assert.match(html, /data-bulk-summary/);
@@ -95,7 +95,7 @@ test("disposal workspace renders target/history tabs and a review-first disposal
 
   const historyHtml = await disposalWorkspacePage({
     session: { username: "admin", displayName: "관리자", role: "Admin", csrfToken: "csrf-token-123" },
-    tab: "history",
+    tab: "documents",
     history: [{
       id: 9,
       document_id: 7,
@@ -123,6 +123,24 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(historyMain, />폐기 이력 보기<\/a>/);
   assert.match(historyMain, />문서로 이동<\/a>/);
   assert.doesNotMatch(historyMain, /data-bulk-item|data-bulk-bar/);
+
+  const campaignHtml = await disposalWorkspacePage({
+    session: { username: "admin", displayName: "관리자", role: "Admin", csrfToken: "csrf-token-123" },
+    tab: "history",
+    campaigns: [{
+      id: 4,
+      batch_code: "DSP-2026-0004",
+      title: "2026년 정기폐기",
+      status: "frozen",
+      disposal_reason: "보존기간 만료",
+      target_count: 7,
+      completed_count: 0,
+      created_by_name: "관리자",
+      created_at: "2026-07-18"
+    }]
+  }).text();
+  assert.match(campaignHtml, /DSP-2026-0004/);
+  assert.match(campaignHtml, /대상 확정/);
 });
 
 test("copy controls use delegated events for dynamically rendered search results", async () => {
@@ -207,6 +225,11 @@ test("document form groups metadata, previews values, and progressively enhances
   assert.match(html, /wrap\('선반'/);
   assert.match(html, /field-locationZone/);
   assert.match(html, /field-locationFace/);
+  assert.match(html, /data-tag-search/);
+  assert.match(html, /data-form-completion/);
+  assert.match(html, /data-location-selection-count/);
+  assert.match(html, /같은 위치 문서 보기/);
+  assert.match(html, /beforeunload/);
   assert.match(html, /\/api\/documents\/duplicate/);
   assert.ok(html.indexOf("var current = ++requestId;") < html.indexOf("if (!number || !revision || !notice)"));
   for (const script of [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1])) {
@@ -379,7 +402,9 @@ test("dashboard home mode uses a search-first operational hero without a floor p
   assert.match(html, /data-viewer-form/);
   assert.match(main, /search-home-hero/);
   assert.match(main, /문서를 빠르게 찾으세요/);
-  assert.match(html, /검색어를 입력하면 보관중 문서를 바로 찾습니다/);
+  assert.match(html, /최근 등록·수정 문서/);
+  assert.match(html, /data-viewer-app>/);
+  assert.doesNotMatch(html, /data-viewer-app hidden/);
   assert.match(html, /aria-label="빠른 분류"/);
   assert.doesNotMatch(main, /home-floor-plan|문서고 도면|data-rack-code/);
   assert.doesNotMatch(html, /자주 찾는 문서/, "자주 찾는 문서 기능은 제거되었다");
@@ -455,8 +480,22 @@ test("floor plan page keeps the map separate from search and opens rack results 
   assert.match(main, /<h1>문서고 도면<\/h1>/);
   assert.match(main, /src="\/images\/Archive\.png"/);
   assert.match(main, /data-rack-code="1-03"/);
+  assert.match(main, /data-floor-rack-search/);
+  assert.match(main, /data-floor-plan-fit/);
+  assert.match(main, /data-rack-inspector/);
+  assert.match(main, /1면 · 0열 · 0단|data-rack-inspector-structure/);
   assert.match(main, /href="\/app\?rack=3&amp;status=active&amp;sort=location"/);
+  assert.doesNotMatch(main, /<a[^>]*data-rack-inspector-edit/);
   assert.doesNotMatch(main, /href="\/app\?q=1-03/);
+
+  const adminHtml = await floorPlanPage({
+    session: { username: "admin", displayName: "관리자", role: "Admin", csrfToken: "csrf-token-123" },
+    floorPlan: [{
+      key: "zone-1", label: "1구역", zoneNumber: 1, topPct: 3, leftPct: 4, widthPct: 48, heightPct: 38,
+      racks: [{ id: 3, code: "1-03", rackNumber: 3, documentCount: 2, isSingleSided: false, columnCount: 7, shelfCount: 6, leftPct: 50, widthPct: 4 }]
+    }]
+  }).text();
+  assert.match(adminHtml, /<a[^>]*data-rack-inspector-edit[^>]*href="\/racks"/);
 });
 
 test("admin navigation exposes permission-scoped work routes", async () => {

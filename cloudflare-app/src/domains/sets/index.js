@@ -5,7 +5,7 @@ const service = createSetService(repository);
 export const {
   getDocumentSets, getDocumentSet, getDocumentSetDocuments, upsertDocumentSet,
   deleteDocumentSet, addDocumentsToSet, removeDocumentFromSet, getDocumentSetLogs,
-  setDocumentSetLock
+  setDocumentSetLock, cloneDocumentSet
 } = service;
 export { actorDisplayName, isSetLocked } from "./domain/policy.js";
 export { setRowToReadModel } from "./web/presenters.js";

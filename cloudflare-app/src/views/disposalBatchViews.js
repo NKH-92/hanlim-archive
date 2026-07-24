@@ -3,7 +3,7 @@ import { alertDanger, option, page } from "./layout.js";
 
 const STATUS_LABELS = Object.freeze({
   draft: "초안",
-  frozen: "대상 동결",
+  frozen: "대상 확정",
   processing: "처리 중",
   completed: "완료",
   cancelled: "취소",
@@ -74,7 +74,7 @@ export function periodicDisposalPage({
 
   return page("정기폐기 캠페인", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/documents/disposal">문서 폐기</a><span>/</span><span>정기폐기</span></nav><h1>정기폐기 캠페인</h1><p class="muted">폐기 예정 연도와 대분류로 찾은 전체 문서를 한 캠페인으로 동결하고 일괄 처리합니다.</p></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/documents/disposal">문서 폐기</a><span>/</span><span>정기폐기</span></nav><h1>정기폐기 캠페인</h1><p class="muted">폐기 예정 연도와 대분류로 찾은 전체 문서를 한 캠페인 대상으로 확정하고 일괄 처리합니다.</p></div>
       <div class="button-group"><a class="button secondary" href="/disposal-batches">캠페인 이력</a><a class="button secondary" href="/documents/disposal">돌아가기</a></div>
     </section>
     ${error ? alertDanger(error) : ""}
@@ -92,7 +92,7 @@ export function periodicDisposalPage({
       <section class="panel results-panel">
         <div class="section-title"><h2>전체 선택 결과</h2><span class="count-badge">전체 ${number(targetCount)}건 선택됨</span></div>
         ${overLimit ? `<div class="alert warning">대상이 안전 상한 ${number(maxTargetCount)}건을 초과합니다. 연도 또는 대분류 조건을 더 좁혀 주세요.</div>` : ""}
-        ${targetCount > preview.length ? `<div class="alert">검토 편의를 위해 앞의 ${number(preview.length)}건만 표시합니다. 실제 캠페인에는 조건과 일치하는 전체 ${number(targetCount)}건이 동결됩니다.</div>` : ""}
+        ${targetCount > preview.length ? `<div class="alert">검토 편의를 위해 앞의 ${number(preview.length)}건만 표시합니다. 실제 캠페인에는 조건과 일치하는 전체 ${number(targetCount)}건이 대상으로 확정됩니다.</div>` : ""}
         <div class="table-wrap"><table class="doc-table">
           <thead><tr><th class="check-col"><input type="checkbox" checked disabled aria-label="필터 결과 전체 선택됨"></th><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th></tr></thead>
           <tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없습니다.</td></tr>`}</tbody>
@@ -114,7 +114,7 @@ export function periodicDisposalPage({
                 <h2 id="periodic-disposal-confirm-title">정기폐기 최종 확인</h2>
                 <p class="muted">${escapeHtml(criteriaLabel)} 조건의 현재 보관중 문서 전체를 폐기합니다.</p>
                 <p class="disposal-count-confirmation">총 폐기 문서 수가 <strong>${number(targetCount)}건</strong>이 맞습니까?</p>
-                <p class="danger-text">확인하면 대상이 캠페인으로 동결되고 전체 처리가 자동으로 시작됩니다. 문서별 감사이력과 캠페인 집계이력은 모두 보존됩니다.</p>
+                <p class="danger-text">확인하면 캠페인 대상이 확정되고 전체 처리가 자동으로 시작됩니다. 문서별 감사이력과 캠페인 집계이력은 모두 보존됩니다.</p>
                 <div class="modal-actions">
                   <button type="button" class="button secondary" data-close-modal>취소</button>
                   <button type="submit" class="danger-button" name="confirmDisposal" value="1">예, ${number(targetCount)}건 전체 폐기합니다</button>
@@ -155,7 +155,7 @@ export function disposalBatchFormPage({
   `).join("");
   return page(title, `
     <section class="page-head">
-      <div><h1>${title}</h1><p class="muted">최소 한 조건을 지정하고 미리보기 후 대상을 동결합니다.</p></div>
+      <div><h1>${title}</h1><p class="muted">최소 한 조건을 지정하고 미리보기 후 대상을 확정합니다.</p></div>
       <a class="button secondary" href="${batch ? `/disposal-batches/${batch.id}` : "/disposal-batches"}">돌아가기</a>
     </section>
     <section class="panel narrow">
@@ -179,7 +179,7 @@ export function disposalBatchFormPage({
     ${batch ? `
       <section class="panel results-panel">
         <div class="section-title"><h2>현재 조건 미리보기</h2><span class="count-badge">전체 ${number(previewCount)}건</span></div>
-        ${capped ? `<div class="alert">앞의 ${number(preview.length)}건만 표시합니다. 동결 시 조건에 맞는 전체 ${number(previewCount)}건을 다시 확인합니다.</div>` : ""}
+        ${capped ? `<div class="alert">앞의 ${number(preview.length)}건만 표시합니다. 대상 확정 시 조건에 맞는 전체 ${number(previewCount)}건을 다시 확인합니다.</div>` : ""}
         <div class="table-wrap"><table class="doc-table">
           <thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th><th>최근 수정</th></tr></thead>
           <tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없습니다.</td></tr>`}</tbody>
@@ -216,7 +216,7 @@ export function disposalBatchDetailPage({
       <td data-label="개정">${escapeHtml(item.revision_number_snapshot)}</td>
       <td data-label="문서명">${escapeHtml(item.document_name_snapshot)}</td>
       <td data-label="대분류">${escapeHtml(item.category_snapshot || "-")}</td>
-      <td class="location-cell" data-label="동결 위치">${escapeHtml(item.location_snapshot || "-")}</td>
+      <td class="location-cell" data-label="확정 위치">${escapeHtml(item.location_snapshot || "-")}</td>
       <td data-label="폐기연도">${escapeHtml(item.disposal_due_year_snapshot ?? "-")}</td>
       <td data-label="결과">${statusLabel(item.status)}</td>
       <td data-label="사유">${escapeHtml(item.exclusion_reason || item.result_message || "-")}</td>
@@ -240,10 +240,10 @@ export function disposalBatchDetailPage({
       ${detail("승인 참조", batch.approval_reference || "-")}
       ${detail("조건", criteriaText(batch.criteria, batch.category_name))}
       ${detail("생성", `${batch.created_by_name} / ${batch.created_at}`)}
-      ${detail("동결", batch.frozen_at ? `${batch.frozen_by_name} / ${batch.frozen_at}` : "-")}
+      ${detail("대상 확정", batch.frozen_at ? `${batch.frozen_by_name} / ${batch.frozen_at}` : "-")}
       ${detail("완료", batch.completed_at ? `${batch.completed_by_name} / ${batch.completed_at}` : "-")}
     </section>
-    ${batch.status === "draft" ? `<section class="panel results-panel" aria-labelledby="disposal-preview-title"><div class="section-title"><h2 id="disposal-preview-title">최신 대상 미리보기</h2><span class="count-badge">전체 ${number(previewCount)}건</span></div>${previewCapped ? `<div class="alert">앞의 ${number(preview.length)}건만 표시합니다. 동결 시 전체 ${number(previewCount)}건을 스냅샷으로 고정합니다.</div>` : ""}<div class="table-wrap"><table class="doc-table"><thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th><th>최근 수정</th></tr></thead><tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없습니다.</td></tr>`}</tbody></table></div></section>` : ""}
+    ${batch.status === "draft" ? `<section class="panel results-panel" aria-labelledby="disposal-preview-title"><div class="section-title"><h2 id="disposal-preview-title">최신 대상 미리보기</h2><span class="count-badge">전체 ${number(previewCount)}건</span></div>${previewCapped ? `<div class="alert">앞의 ${number(preview.length)}건만 표시합니다. 대상 확정 시 전체 ${number(previewCount)}건을 스냅샷으로 고정합니다.</div>` : ""}<div class="table-wrap"><table class="doc-table"><thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th><th>최근 수정</th></tr></thead><tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없습니다.</td></tr>`}</tbody></table></div></section>` : ""}
     <section class="panel">
       <div class="metric-grid" data-disposal-progress>
         ${metric("대상", batch.target_count, "target_count")}
@@ -258,14 +258,14 @@ export function disposalBatchDetailPage({
     </section>
     <section class="panel results-panel">
       <div class="section-title">
-        <h2>동결 문서</h2><span class="count-badge">${number(items.length)} / ${number(itemStatusCount(batch, itemStatus))}건 표시</span>
+        <h2>확정 문서</h2><span class="count-badge">${number(items.length)} / ${number(itemStatusCount(batch, itemStatus))}건 표시</span>
       </div>
       ${items.length < itemStatusCount(batch, itemStatus) ? `<div class="alert">화면에는 앞의 ${number(items.length)}건만 표시합니다. 전체 결과는 상단 집계와 CSV에서 확인할 수 있습니다.</div>` : ""}
       <nav class="filter-row" aria-label="항목 상태 필터">
         ${["", "pending", "excluded", "completed", "changed", "failed"].map((status) => `<a class="button secondary sm" href="/disposal-batches/${batch.id}${status ? `?status=${status}` : ""}" ${status === itemStatus ? `aria-current="page"` : ""}>${status ? STATUS_LABELS[status] : "전체"}</a>`).join("")}
       </nav>
       <div class="table-wrap"><table class="doc-table">
-        <thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>동결 위치</th><th>폐기연도</th><th>결과</th><th>사유</th><th>동작</th></tr></thead>
+        <thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>확정 위치</th><th>폐기연도</th><th>결과</th><th>사유</th><th>동작</th></tr></thead>
         <tbody>${itemRows || `<tr><td colspan="9" class="empty">해당 상태의 문서가 없습니다.</td></tr>`}</tbody>
       </table></div>
     </section>
@@ -281,14 +281,14 @@ function batchActions(batch, previewCount = 0) {
         <input type="hidden" name="expectedUpdatedAt" value="${escapeHtml(batch.updated_at)}">
         <label>미리보기 대상 건수 재확인<input type="number" name="confirmedTargetCount" required min="${previewCount}" max="${previewCount}" inputmode="numeric"></label>
         <label class="checkbox"><input type="checkbox" name="confirmPreview" value="1" required> 최신 미리보기 ${number(previewCount)}건과 조건을 확인했습니다.</label>
-        <button type="submit" class="button" ${!previewCount ? "disabled" : ""}>전체 대상 동결</button>
+        <button type="submit" class="button" ${!previewCount ? "disabled" : ""}>전체 대상 확정</button>
       </form>
       <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="아직 폐기된 문서는 없습니다. 이 캠페인 초안을 취소할까요?"><button type="submit" class="danger-button">취소</button></form>
     </div>`;
   }
   if (batch.status === "frozen") {
     return `<div class="button-group">
-      <form method="post" action="/disposal-batches/${batch.id}/start" class="stack"><label>동결 대상 건수 재확인<input type="number" name="confirmedTargetCount" required min="${Number(batch.target_count || 0)}" max="${Number(batch.target_count || 0)}" inputmode="numeric"></label><label class="checkbox"><input type="checkbox" name="confirmStart" value="1" required> 동결 대상 ${number(batch.target_count)}건을 확인했으며 폐기 처리를 시작합니다.</label><button type="submit" class="danger-button">폐기 처리 시작</button></form>
+      <form method="post" action="/disposal-batches/${batch.id}/start" class="stack"><label>확정 대상 건수 재확인<input type="number" name="confirmedTargetCount" required min="${Number(batch.target_count || 0)}" max="${Number(batch.target_count || 0)}" inputmode="numeric"></label><label class="checkbox"><input type="checkbox" name="confirmStart" value="1" required> 확정 대상 ${number(batch.target_count)}건을 확인했으며 폐기 처리를 시작합니다.</label><button type="submit" class="danger-button">폐기 처리 시작</button></form>
       <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="아직 처리되지 않은 항목만 취소되며 이미 완료된 폐기 결과는 유지됩니다. 캠페인을 취소할까요?"><button type="submit" class="danger-button">취소</button></form>
     </div>`;
   }

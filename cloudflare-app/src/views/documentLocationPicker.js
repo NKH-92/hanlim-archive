@@ -163,9 +163,12 @@ export function locationPicker(slots, selectedRackSlotId, error = "") {
           const label = slot.label || `${slot.zone_number}구역 / ${slot.rack_number}번 랙 / ${slot.column_number}열 / ${slot.shelf_number}선반`;
           const data = [
             `data-zone="${escapeHtml(String(slot.zone_number ?? ""))}"`,
+            `data-rack-id="${escapeHtml(String(slot.rack_id ?? ""))}"`,
             `data-rack-number="${escapeHtml(String(slot.rack_number ?? ""))}"`,
             `data-column="${escapeHtml(String(slot.column_number ?? ""))}"`,
             `data-shelf="${escapeHtml(String(slot.shelf_number ?? ""))}"`,
+            `data-active-a="${escapeHtml(String(slot.active_count_a ?? 0))}"`,
+            `data-active-b="${escapeHtml(String(slot.active_count_b ?? 0))}"`,
             `data-single-sided="${readBoolean(slot.is_single_sided) ? "1" : "0"}"`
           ].join(" ");
           return `<option value="${escapeHtml(String(slot.id))}" ${data}${selected}>${escapeHtml(label)}</option>`;

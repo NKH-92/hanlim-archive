@@ -31,8 +31,11 @@ export function dashboardPage({
     categories: categories.map((item) => ({ id: Number(item.id), name: String(item.name || "") })),
     tags: tags.map((item) => ({ id: Number(item.id), name: String(item.name || "") }))
   });
+  const documents = viewerSearch.items || [];
+  const suggestions = viewerSearch.suggestions || [];
+  const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
 
-  // 홈 모드: 운영 히어로 안에서 검색 입력이 첫 포커스 작업이 되도록 한다.
+  // 홈 모드: 검색을 먼저 두되 서버가 기본 30행을 함께 제공한다.
   if (mode === "home") {
     return page("문서", `
       <section class="search-home" data-search-home>
@@ -44,16 +47,23 @@ export function dashboardPage({
           ${viewerSearchForm({ query: "", suggestions: [], categories, tags, filters, home: true })}
           <div class="quick-row viewer-recents" data-recent-searches></div>
         </section>
-        <p class="search-live-status" data-search-live aria-live="polite">검색어를 입력하면 보관중 문서를 바로 찾습니다.</p>
+        <p class="search-live-status" data-search-live aria-live="polite">${totalItems ? `최근 등록·수정 문서 ${totalItems}건을 표시합니다.` : "보관 중인 문서가 없습니다."}</p>
         <div data-home-extras>${homeQuickLinks(categories)}</div>
 
-        <section class="viewer-workspace is-home" data-viewer-app hidden>
+        <section class="viewer-workspace is-home" data-viewer-app>
           <article class="panel results-panel" aria-labelledby="viewer-results-title" data-viewer-results aria-live="polite">
-            <div class="section-title">
-              <h2 id="viewer-results-title" data-results-title>검색 결과</h2>
-              <span class="count-badge" data-results-count>0건</span>
+            <div class="section-title viewer-results-heading">
+              <h2 id="viewer-results-title" data-results-title>최근 등록·수정 문서</h2>
+              <div class="viewer-result-tools">
+                ${capabilities.canManageSets || capabilities.canManageDisposals ? `<label class="bulk-select-all-label"><input type="checkbox" data-bulk-select-all> 현재 목록 선택</label>` : ""}
+                ${columnSettings()}
+                <span class="count-badge" data-results-count>${totalItems}건</span>
+              </div>
             </div>
-            <div data-results-body></div>
+            <div data-results-body>
+              ${viewerDocumentResults(documents, "", capabilities)}
+              ${viewerPagination(viewerSearch.pagination, { query: "", filters })}
+            </div>
           </article>
           ${workspacePreview()}
           ${workspaceBulkActions({ capabilities, editableSets, returnTo: "/app" })}
@@ -66,10 +76,6 @@ export function dashboardPage({
   }
 
   // 검색 모드: 고정 열의 행 목록만 보여 주어 비교와 스캔을 우선한다.
-  const documents = viewerSearch.items || [];
-  const suggestions = viewerSearch.suggestions || [];
-  const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
-
   return page("문서", `
     <section class="search-band page-head search-workspace-head" aria-labelledby="viewer-title">
       <div>

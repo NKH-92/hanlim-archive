@@ -158,13 +158,18 @@ export async function getSlotOptions(env) {
       rs.slot_code,
       rs.column_number,
       rs.shelf_number,
+      r.id AS rack_id,
       r.code,
       r.zone_number,
       r.rack_number,
-      r.is_single_sided
+      r.is_single_sided,
+      SUM(CASE WHEN d.status = 'active' AND d.sync_state = 'current' AND d.rack_face = 'A' THEN 1 ELSE 0 END) AS active_count_a,
+      SUM(CASE WHEN d.status = 'active' AND d.sync_state = 'current' AND d.rack_face = 'B' THEN 1 ELSE 0 END) AS active_count_b
     FROM rack_slots rs
     JOIN racks r ON r.id = rs.rack_id
+    LEFT JOIN documents d ON d.rack_slot_id = rs.id
     WHERE rs.is_active = 1 AND r.is_active = 1
+    GROUP BY rs.id, r.id
     ORDER BY r.zone_number, r.rack_number, rs.column_number, rs.shelf_number
   `).all();
 

@@ -6,7 +6,6 @@ import {
   getDisposalBatch,
   getDisposalBatchExportRows,
   getDisposalBatchItems,
-  listDisposalBatches,
   normalizeDisposalCriteria,
   previewDisposalCandidates,
   processDisposalBatch,
@@ -19,7 +18,6 @@ import { getRackSummaries } from "../domains/racks/index.js";
 import {
   disposalBatchDetailPage,
   disposalBatchFormPage,
-  disposalBatchListPage,
   periodicDisposalPage
 } from "../views/disposalBatchViews.js";
 import { FREE_TIER_BUDGET } from "../config.js";
@@ -33,7 +31,7 @@ import { csvDownloadResponse } from "./responseHelpers.js";
 export async function handleDisposalBatches(env, session) {
   const denied = requireManageDisposals(session);
   if (denied) return denied;
-  return disposalBatchListPage({ session, batches: await listDisposalBatches(env) });
+  return redirect("/documents/disposal?tab=history");
 }
 
 export async function renderNewDisposalBatch(request, env, session, values = {}, error = "") {

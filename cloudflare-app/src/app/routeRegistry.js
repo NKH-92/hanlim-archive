@@ -81,6 +81,8 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("sets.export", "sets", "GET", "/sets/:id/export"),
   route("sets.export.csv", "sets", "GET", "/sets/:id/export.csv"),
   route("sets.edit.form", "sets", "GET", "/sets/:id/edit", { permission: PERMISSIONS.MANAGE_SETS }),
+  route("sets.clone.form", "sets", "GET", "/sets/:id/clone", { permission: PERMISSIONS.MANAGE_SETS }),
+  route("sets.clone", "sets", "POST", "/sets/:id/clone", { permission: PERMISSIONS.MANAGE_SETS }),
   ...["edit", "delete", "add", "remove", "lock", "unlock"].map((action) => route(`sets.${action}`, "sets", "POST", `/sets/:id/${action}`, { permission: PERMISSIONS.MANAGE_SETS })),
   route("racks.list", "racks", "GET", "/racks", { permission: PERMISSIONS.MANAGE_MASTERS }),
   route("racks.create", "racks", "POST", "/racks", { permission: PERMISSIONS.MANAGE_MASTERS }),

@@ -108,8 +108,12 @@ test("dashboard status selector defaults to active and supports disposed or all"
     headers: { Cookie: homeCookie }
   }), homeEnv);
   const homeHtml = await homeResponse.text();
+  const homeSearch = authoritativeDocumentSearch(homeEnv.state.calls);
+  assert.ok(homeSearch, "초기 /app도 서버에서 기본 문서 목록을 읽어야 한다");
+  assert.ok(homeSearch.args.includes(30), "초기 문서 목록은 30행 단위를 사용해야 한다");
   assert.match(homeHtml, /<option value="active" selected>보관중 문서<\/option>/);
   assert.match(homeHtml, /<option value="updated" selected>최신순<\/option>/);
+  assert.match(homeHtml, /충전 공정 밸리데이션 보고서/);
 
   const defaultEnv = dashboardSearchEnv();
   const defaultCookie = await createSessionCookie(user, defaultEnv, false);

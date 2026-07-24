@@ -59,28 +59,34 @@ export function disposalWorkspacePage({
   capped = false,
   legacyLimit = 10,
   history = [],
+  campaigns = [],
   pagination = { page: 1, totalPages: 1, totalItems: 0 },
-  tab = "targets",
+  tab = "active",
   feedback = null
 }) {
   const targetCount = Number(pagination.totalItems || documents.length || 0);
-  return page("문서 폐기", `
+  return page("폐기 관리", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 폐기</span></nav><h1>문서 폐기</h1><p class="muted">소량 문서는 개별 선택하고, 정기폐기는 필터 결과 전체를 한 캠페인으로 처리합니다.</p></div>
-      <div class="button-group"><a class="button" href="/disposal-batches/new">정기폐기</a><a class="button secondary" href="/disposal-batches">캠페인 이력</a><a class="button secondary" href="/documents/disposal?tab=history">문서별 이력</a></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서</a><span>/</span><span>폐기 관리</span></nav><h1>폐기 관리</h1><p class="muted">소량 문서는 개별 선택하고, 정기폐기는 필터 결과 전체를 한 캠페인으로 처리합니다.</p></div>
+      <div class="button-group"><a class="button" href="/disposal-batches/new">정기폐기 시작</a></div>
     </section>
-    <section class="operation-hero disposal-hero" aria-label="폐기 작업 요약">
-      <div><p class="hero-kicker">Controlled disposal</p><h2>폐기 가능한 원본 ${targetCount.toLocaleString("ko-KR")}부</h2><p>문서 한 건은 원본 한 부입니다. 실제 원본을 고르고 수량이 맞는지 마지막으로 확인하세요.</p></div>
-      <div class="hero-stat"><strong>${targetCount.toLocaleString("ko-KR")}</strong><span>선택 가능 원본</span></div>
-    </section>
+    ${tab === "active" ? `
+      <section class="panel disposal-safety-panel" aria-label="폐기 작업 주의">
+        <div><strong>폐기는 원본 단위로 처리됩니다.</strong><p>현재 조건에서 ${targetCount.toLocaleString("ko-KR")}건을 확인할 수 있습니다. 실제 원본과 정확한 건수·사유를 마지막으로 대조하세요.</p></div>
+        <span class="status disposed">복구 권한 필요</span>
+      </section>
+    ` : ""}
     ${disposalFeedback(feedback)}
     <nav class="workspace-tabs" aria-label="폐기 작업 화면">
-      <a href="${escapeHtml(disposalListUrl(filters))}" ${tab === "targets" ? `aria-current="page"` : ""}>폐기 대상</a>
-      <a href="/documents/disposal?tab=history" ${tab === "history" ? `aria-current="page"` : ""}>문서별 폐기 이력</a>
+      <a href="${escapeHtml(disposalListUrl(filters))}" ${tab === "active" ? `aria-current="page"` : ""}>진행 중</a>
+      <a href="/documents/disposal?tab=history" ${tab === "history" ? `aria-current="page"` : ""}>캠페인 이력</a>
+      <a href="/documents/disposal?tab=documents" ${tab === "documents" ? `aria-current="page"` : ""}>문서 이력</a>
     </nav>
     ${tab === "history"
-      ? disposalHistoryView(history, pagination, filters)
-      : disposalTargetsView({ documents, categories, racks, years, filters, capped, limit: legacyLimit })}
+      ? disposalCampaignHistoryView(campaigns)
+      : tab === "documents"
+        ? disposalHistoryView(history, pagination, filters)
+        : disposalTargetsView({ documents, categories, racks, years, filters, capped, limit: legacyLimit })}
   `, session);
 }
 
@@ -124,10 +130,10 @@ function disposalHistoryView(history, pagination, filters) {
   return `
     <section class="panel">
       <form method="get" action="/documents/disposal" class="filter-row">
-        <input type="hidden" name="tab" value="history">
+        <input type="hidden" name="tab" value="documents">
         <label class="search-input"><span class="sr-only">폐기 이력 검색</span><input type="search" name="q" value="${query}" placeholder="문서명, 문서번호, 개정번호"></label>
         <button type="submit" class="button">검색</button>
-        <a class="button secondary" href="/documents/disposal?tab=history">초기화</a>
+        <a class="button secondary" href="/documents/disposal?tab=documents">초기화</a>
       </form>
     </section>
     <section class="panel results-panel">
@@ -143,7 +149,7 @@ function disposalHistoryView(history, pagination, filters) {
 function historyPagination(pagination, query) {
   if ((pagination.totalPages || 1) <= 1) return "";
   const url = (pageNumber) => {
-    const params = new URLSearchParams({ tab: "history", page: String(pageNumber) });
+    const params = new URLSearchParams({ tab: "documents", page: String(pageNumber) });
     if (query) params.set("q", query);
     return `/documents/disposal?${params}`;
   };
@@ -152,4 +158,31 @@ function historyPagination(pagination, query) {
     <span>${pagination.page} / ${pagination.totalPages}</span>
     ${pagination.page >= pagination.totalPages ? `<span class="button secondary sm disabled" aria-disabled="true">다음</span>` : `<a class="button secondary sm" href="${escapeHtml(url(pagination.page + 1))}">다음</a>`}
   </nav>`;
+}
+
+function disposalCampaignHistoryView(campaigns) {
+  const labels = {
+    draft: "초안",
+    frozen: "대상 확정",
+    processing: "처리 중",
+    completed: "완료",
+    cancelled: "취소"
+  };
+  const rows = campaigns.map((batch) => `
+    <tr>
+      <td class="mono" data-label="캠페인 번호"><a href="/disposal-batches/${Number(batch.id)}">${escapeHtml(batch.batch_code)}</a></td>
+      <td data-label="제목"><strong>${escapeHtml(batch.title)}</strong></td>
+      <td data-label="상태"><span class="status ${batch.status === "completed" ? "active" : batch.status === "cancelled" ? "disposed" : "pending"}">${escapeHtml(labels[batch.status] || batch.status)}</span></td>
+      <td data-label="폐기 사유">${escapeHtml(batch.disposal_reason || "-")}</td>
+      <td data-label="승인 참조">${escapeHtml(batch.approval_reference || "-")}</td>
+      <td data-label="대상 / 완료">${Number(batch.target_count || 0).toLocaleString("ko-KR")} / ${Number(batch.completed_count || 0).toLocaleString("ko-KR")}</td>
+      <td data-label="담당 / 일시">${escapeHtml(batch.completed_by_name || batch.created_by_name || "-")}<small>${escapeHtml(batch.completed_at || batch.created_at || "-")}</small></td>
+    </tr>`).join("");
+  return `<section class="panel results-panel">
+    <div class="section-title"><h2>캠페인 이력</h2><span class="count-badge">${campaigns.length}건</span></div>
+    <div class="table-wrap"><table class="doc-table">
+      <thead><tr><th>캠페인 번호</th><th>제목</th><th>상태</th><th>폐기 사유</th><th>승인 참조</th><th>대상 / 완료</th><th>담당 / 일시</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="7" class="empty">등록된 폐기 캠페인이 없습니다.</td></tr>`}</tbody>
+    </table></div>
+  </section>`;
 }

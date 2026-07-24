@@ -86,7 +86,7 @@ export function experienceStyles() {
     .ledger-method-note { padding: var(--sp-3); border-radius: var(--r-md); background: var(--gray-50); color: var(--gray-600); }
     .ledger-method-card > .button { margin-top: auto; }
     .snapshot-upload-panel { grid-template-columns: minmax(0, 1fr); scroll-margin-top: var(--sp-4); }
-    .workflow-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-bottom: var(--sp-4); padding: var(--sp-4) var(--sp-5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    .workflow-stepper { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; margin-bottom: var(--sp-4); padding: var(--sp-4) var(--sp-5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
     .workflow-step { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--sp-2); align-items: center; min-width: 0; }
     .workflow-step:not(:last-child)::after { content: ""; position: absolute; top: 14px; left: 38px; right: var(--sp-2); height: 1px; background: var(--line); }
     .workflow-step-index { position: relative; z-index: 1; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: var(--gray-100); color: var(--gray-500); font-size: 12px; font-weight: 800; }
@@ -218,7 +218,7 @@ export function experienceStyles() {
       .floor-plan-hero, .workflow-hero, .admin-hero, .disposal-hero { align-items: flex-start; padding: var(--sp-5) var(--sp-4); }
       .hero-stat { min-width: 96px; padding: var(--sp-3); }
       .hero-stat strong { font-size: 22px; }
-      .workflow-stepper { grid-template-columns: repeat(4, minmax(64px, 1fr)); overflow-x: auto; padding: var(--sp-3); }
+      .workflow-stepper { grid-template-columns: repeat(5, minmax(64px, 1fr)); overflow-x: auto; padding: var(--sp-3); }
       .workflow-step { grid-template-columns: 24px; justify-items: center; text-align: center; }
       .workflow-step:not(:last-child)::after { top: 12px; left: calc(50% + var(--sp-3)); right: calc(-50% + var(--sp-3)); }
       .workflow-step-index { width: 24px; height: 24px; }

@@ -1,4 +1,4 @@
-import { PERMISSION_LABELS } from "../permissions.js";
+import { hasPermission, PERMISSIONS, PERMISSION_LABELS } from "../permissions.js";
 import { escapeHtml } from "../ui/html/escape.js";
 import { alertDanger, page } from "./layout.js";
 
@@ -30,6 +30,8 @@ const FLAG_LABELS = Object.freeze({
 });
 
 export function documentSnapshotPage({ session, state, snapshots = [], error = "", applyMode = "admin-only" }) {
+  const canApply = hasPermission(session, PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS)
+    && (applyMode !== "admin-only" || session.role === "Admin");
   const rows = snapshots.map((snapshot) => `
     <tr>
       <td class="mono" data-label="작업 번호"><a href="/document-snapshots/${Number(snapshot.id)}">${escapeHtml(snapshot.snapshot_code)}</a></td>
@@ -49,9 +51,11 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
       <button type="button" class="button secondary" data-excel-export><i class="fa-solid fa-file-excel"></i> 현재 대장 엑셀 추출</button>
     </section>
     ${error ? alertDanger(error) : ""}
-    <section class="operation-hero workflow-hero" aria-label="현재 문서대장 버전">
-      <div><p class="hero-kicker">Safe snapshot sync</p><h2>현재 대장 버전 ${number(state.currentVersion)}</h2><p>${escapeHtml(state.updatedAt || "초기 상태")} 기준 · 검증과 변경 검토가 끝나기 전에는 문서가 바뀌지 않습니다.</p></div>
-      <div class="hero-stat"><strong>V${number(state.currentVersion)}</strong><span>현재 버전</span></div>
+    <section class="panel snapshot-context-grid" aria-label="엑셀 동기화 기준과 권한">
+      <div><span>현재 대장 버전</span><strong>V${number(state.currentVersion)}</strong><small>${escapeHtml(state.updatedAt || "초기 상태")} 기준</small></div>
+      <div><span>선택 파일 기준 버전</span><strong data-excel-base-version>선택 전</strong><small data-excel-latest>최신 여부 확인 전</small></div>
+      <div><span>내보낸 시각</span><strong data-excel-exported-at>선택 전</strong><small>관리 파일의 시스템 정보</small></div>
+      <div><span>내 권한</span><strong>검증 가능 · ${canApply ? "적용 가능" : "적용 권한 없음"}</strong><small>서버가 최종 적용 권한을 다시 확인합니다.</small></div>
     </section>
     ${workflowStepper(1)}
     <section id="excel-full-sync" class="panel snapshot-intro snapshot-upload-panel" data-excel-snapshot data-current-version="${Number(state.currentVersion)}" data-current-snapshot-id="${Number(state.currentSnapshotId || 0)}" data-apply-mode="${escapeHtml(applyMode)}">
@@ -67,6 +71,7 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
             <input type="file" name="excelFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
           </label>
           <div class="snapshot-file-summary" data-excel-file-summary hidden></div>
+          <div class="alert warning" data-excel-stale-warning hidden>현재 버전보다 오래된 관리 파일입니다. 최신 대장을 다시 내보내 작업하세요. 최종 판정은 서버 검증이 수행합니다.</div>
           <div class="snapshot-progress" data-excel-progress role="progressbar" aria-label="엑셀 전송 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><span data-excel-progress-bar></span></div>
           <p class="muted" data-excel-message aria-live="polite">시스템에서 추출한 관리 파일(_시스템정보 포함)을 권장합니다. 최대 1,000건까지 가능합니다.</p>
           <div class="alert info" data-excel-recovery role="status" hidden></div>
@@ -385,17 +390,18 @@ function snapshotStatus(status) {
 }
 
 function snapshotStep(status) {
-  if (status === "completed" || status === "applying") return 4;
-  if (status === "ready") return 3;
-  return 2;
+  if (status === "completed" || status === "applying") return 5;
+  if (status === "ready") return 4;
+  return 3;
 }
 
 function workflowStepper(currentStep = 1) {
   const steps = [
-    ["파일 선택", "엑셀 원본 확인"],
-    ["구조 검증", "열·버전·행 검사"],
+    ["최신 대장 내보내기", "현재 버전 확보"],
+    ["업로드", "파일과 사유 입력"],
+    ["구조·데이터 검증", "열·버전·행 검사"],
     ["변경 검토", "추가·변경·제외"],
-    ["리스트 반영", "승인 후 원자 반영"]
+    ["승인·적용", "권한 확인 후 원자 반영"]
   ];
   return `<ol class="workflow-stepper" aria-label="엑셀 대장 동기화 단계">${steps.map(([label, caption], index) => {
     const step = index + 1;
