@@ -1223,6 +1223,17 @@
           return params;
         };
 
+        var syncWorkspaceReturnTo = function () {
+          var params = searchParams('');
+          params.delete('limit');
+          if (!viewerInput.value.trim()) params.delete('q');
+          var query = params.toString();
+          var returnTo = '/app' + (query ? '?' + query : '');
+          document.querySelectorAll('[data-workspace-return-to]').forEach(function (input) {
+            input.value = returnTo;
+          });
+        };
+
         var resultRow = function (item, query) {
           var location = item.location || {};
           var disposed = item.status === 'disposed';
@@ -1312,9 +1323,11 @@
 
         viewerInput.addEventListener('input', function () {
           clearTimeout(renderTimer);
+          syncWorkspaceReturnTo();
           if (!viewerInput.value.trim()) { restoreInitial(); return; }
           renderTimer = setTimeout(function () { requestSearch('', false); }, 180);
         });
+        viewerForm.addEventListener?.('change', syncWorkspaceReturnTo);
         resultsBody?.addEventListener?.('click', function (event) {
           var target = event.target instanceof Element ? event.target : null;
           if (target?.closest('[data-search-retry]')) { requestSearch('', false); return; }

@@ -109,6 +109,11 @@ test("즉시 검색 DOM 교체는 화면에 남은 선택만 일괄 작업 상�
   assert.match(script, /viewerApp\.hidden = false/);
   assert.doesNotMatch(script, /viewerApp\.hidden = true/);
   assert.match(script, /syncBulk\(\);/);
+  assert.match(script, /var syncWorkspaceReturnTo = function \(\)/);
+  assert.match(script, /params\.delete\('limit'\)/);
+  assert.match(script, /document\.querySelectorAll\('\[data-workspace-return-to\]'\)/);
+  assert.match(script, /input\.value = returnTo/);
+  assert.match(script, /viewerForm\.addEventListener\?\.\('change', syncWorkspaceReturnTo\)/);
 });
 
 test("라우트가 생산하는 전역 토스트 키는 모두 표시 문구를 가진다", () => {

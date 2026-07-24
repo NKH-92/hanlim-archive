@@ -460,6 +460,7 @@ test("document workspace exposes permission-scoped selection actions and five de
   assert.match(html, /data-column-toggle="revision-date"/);
   assert.match(html, /<span>문서번호 · 개정<\/span>/);
   assert.match(html, /data-column="revision-date" hidden>제·개정일/);
+  assert.equal((html.match(/data-workspace-return-to/g) || []).length, 2);
 });
 
 test("rack filter chip clears dependent face, column, and shelf filters", async () => {

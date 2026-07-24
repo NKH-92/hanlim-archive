@@ -207,7 +207,7 @@ function workspaceBulkActions({ capabilities, editableSets = [], returnTo }) {
     <label><span class="sr-only">추가할 준비 문서 세트</span><select name="setTarget" required data-set-target><option value="">세트 선택</option>${editableSets.map((set) => `<option value="${Number(set.id)}" data-version="${Number(set.row_version || 0)}">${escapeHtml(set.name)}</option>`).join("")}</select></label>
     <input type="hidden" name="documentIds" data-bulk-ids>
     <input type="hidden" name="expectedRowVersion" data-set-version>
-    <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+    <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" data-workspace-return-to>
     <button type="submit" class="button secondary sm">세트에 추가</button>
   </form>` : "";
   const disposalButton = capabilities.canManageDisposals
@@ -221,7 +221,7 @@ function workspaceBulkActions({ capabilities, editableSets = [], returnTo }) {
       <ol class="disposal-review-list" data-bulk-summary></ol>
       <input type="hidden" name="ids" data-bulk-ids>
       <input type="hidden" name="confirmedTargetCount" value="0" data-bulk-confirm-count-input>
-      <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+      <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" data-workspace-return-to>
       <label>폐기 사유 <em>*</em><textarea name="reason" rows="3" required></textarea></label>
       <label>승인 문서 참조<input name="approvalReference"></label>
       <div class="modal-actions"><button type="button" class="button secondary" data-close-modal>취소</button><button type="submit" class="danger-button" name="confirmDisposal" value="1" data-bulk-confirm-button disabled>예, 폐기합니다</button></div>
