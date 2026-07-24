@@ -230,6 +230,13 @@ function indexedSearchExpression(query) {
   return terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR ");
 }
 
+function indexedLiteralSearchExpression(query) {
+  const terms = [...new Set(normalizeSearchText(query).match(/[\p{L}\p{N}]+/gu) ?? [])].slice(0, 8);
+  // 한 글자 위치 검색("1-1" 등)은 FTS token 일치가 지나치게 넓으므로 기존 퍼지 경로로 보낸다.
+  if (!terms.length || terms.some((term) => term.length < 2)) return "";
+  return terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" AND ");
+}
+
 function indexedSort(sort) {
   if (sort === "updated") return "d.updated_at DESC, d.document_id DESC";
   if (sort === "docnum") return "d.document_number, d.revision_number, d.document_id";
@@ -242,8 +249,9 @@ function indexedSort(sort) {
 
 async function getIndexedViewerPageV2(env, query, filters, offset, pageSize) {
   if (!env.SEARCH_DB) return null;
-  const expression = indexedSearchExpression(query);
-  if (!expression) return null;
+  const literalExpression = indexedLiteralSearchExpression(query);
+  const fuzzyExpression = indexedSearchExpression(query);
+  if (!fuzzyExpression) return null;
   try {
     const state = await env.SEARCH_DB.prepare(`
       SELECT active_generation, v2_ready, rebuild_status
@@ -254,6 +262,35 @@ async function getIndexedViewerPageV2(env, query, filters, offset, pageSize) {
     const generation = Number(state.active_generation || 0);
     if (!generation) return null;
     const filter = indexedFilterWhere(filters);
+    // 정확히 입력된 token들이 모두 있는 결과를 먼저 사용한다. 2·3글자 n-gram OR 후보는
+    // 실제 관련성 점수로 거르는 기존 제한 후보 경로에 맡겨 무관한 청크 문서가 섞이지 않게 한다.
+    const literalMatch = literalExpression
+      ? await env.SEARCH_DB.prepare(`
+        SELECT 1
+        FROM search_documents_fts_v2
+        JOIN search_documents_v2 d
+          ON d.generation = CAST(search_documents_fts_v2.generation AS INTEGER)
+         AND d.document_id = CAST(search_documents_fts_v2.document_id AS INTEGER)
+        WHERE search_documents_fts_v2 MATCH ?
+          AND d.generation = ?
+          ${filter.sql}
+        LIMIT 1
+      `).bind(literalExpression, generation, ...filter.binds).first()
+      : null;
+    if (!literalMatch) {
+      return getFuzzyIndexedViewerPageV2(
+        env,
+        query,
+        filters,
+        generation,
+        filter,
+        fuzzyExpression,
+        offset,
+        pageSize
+      );
+    }
+
+    const expression = literalExpression;
     const commonJoin = `
       FROM search_documents_fts_v2
       JOIN search_documents_v2 d
@@ -320,12 +357,12 @@ async function getIndexedViewerPageV2(env, query, filters, offset, pageSize) {
     const documents = ids.map((id) => byId.get(id)).filter(Boolean);
     for (const document of documents) {
       const match = scoreDocumentMatch(document, query);
-      document.relevance_score = Math.max(1, Number(match.relevance_score || 0));
-      document.match_reason = match.match_reason || "검색 인덱스 일치";
+      document.relevance_score = Number(match.relevance_score || 0);
+      document.match_reason = match.match_reason;
       document.search_rank = rankById.get(Number(document.id)) || 0;
     }
     return {
-      documents,
+      documents: documents.filter((document) => document.relevance_score > 0),
       totalItems: Number(countRow?.count || 0),
       activeGeneration: generation,
       facets: {
@@ -338,6 +375,55 @@ async function getIndexedViewerPageV2(env, query, filters, offset, pageSize) {
   } catch {
     return null;
   }
+}
+
+async function getFuzzyIndexedViewerPageV2(
+  env,
+  query,
+  filters,
+  generation,
+  filter,
+  expression,
+  offset,
+  pageSize
+) {
+  const ranked = await env.SEARCH_DB.prepare(`
+    SELECT d.document_id, bm25(search_documents_fts_v2) AS search_rank
+    FROM search_documents_fts_v2
+    JOIN search_documents_v2 d
+      ON d.generation = CAST(search_documents_fts_v2.generation AS INTEGER)
+     AND d.document_id = CAST(search_documents_fts_v2.document_id AS INTEGER)
+    WHERE search_documents_fts_v2 MATCH ?
+      AND d.generation = ?
+      ${filter.sql}
+    ORDER BY search_rank, d.document_id
+    LIMIT ?
+  `).bind(
+    expression,
+    generation,
+    ...filter.binds,
+    FREE_TIER_BUDGET.searchCandidateMaxItems
+  ).all();
+  const ids = (ranked.results ?? [])
+    .map((row) => Number(row.document_id))
+    .filter(Number.isInteger);
+  if (!ids.length) return null;
+
+  const { where, binds } = buildDocumentFilterWhere(filters);
+  const coreRows = await getCoreCandidateDocuments(env, ids, where, binds);
+  const documents = scoreCandidateDocuments(
+    coreRows,
+    query,
+    FREE_TIER_BUDGET.searchCandidateMaxItems,
+    filters.sort,
+    await getSearchClickHits(env, query)
+  );
+  return {
+    documents: documents.slice(offset, offset + pageSize),
+    totalItems: documents.length,
+    activeGeneration: generation,
+    facets: buildViewerFacets(documents)
+  };
 }
 
 function scoreCandidateDocuments(rows, query, limit, sort, clickHits) {
@@ -629,6 +715,44 @@ function facetMapToItems(map) {
   });
 }
 
+async function getExactDocumentNamePage(env, query, filters, offset, pageSize) {
+  const { where, binds } = buildDocumentFilterWhere(filters);
+  const exactWhere = `${where} AND d.document_name = ? COLLATE NOCASE`;
+  const countRow = await env.DB.prepare(`
+    SELECT COUNT(DISTINCT d.id) AS count
+    ${DOCUMENT_BASE_JOINS}
+    ${exactWhere}
+  `).bind(...binds, query).first();
+  const totalItems = Number(countRow?.count || 0);
+  if (!totalItems) return null;
+
+  const result = await env.DB.prepare(`
+    SELECT
+      d.id,
+      ${DOCUMENT_CORE_COLUMNS}
+      d.updated_at,
+      ${DOCUMENT_LOCATION_COLUMNS}
+      r.column_count,
+      r.shelf_count,
+      rs.column_number,
+      rs.shelf_number,
+      rs.slot_code,
+      ${DOCUMENT_TAG_CONCAT}
+    ${DOCUMENT_BASE_JOINS}
+    ${DOCUMENT_TAG_JOINS}
+    ${exactWhere}
+    GROUP BY d.id
+    ORDER BY d.revision_number DESC, d.id DESC
+    LIMIT ? OFFSET ?
+  `).bind(...binds, query, pageSize, offset).all();
+  const documents = result.results ?? [];
+  for (const document of documents) {
+    document.relevance_score = 1000;
+    document.match_reason = "문서명 정확히 일치";
+  }
+  return { documents, totalItems };
+}
+
 export function buildViewerFacets(documents) {
   const categories = new Map();
   const tags = new Map();
@@ -713,6 +837,32 @@ export async function getViewerSearchPayload(env, params = {}) {
     };
   }
   const offset = cursor ? cursor.offset : Math.max(0, (requestedPage - 1) * pageSize);
+  const exactNamePage = await getExactDocumentNamePage(env, query, filters, offset, pageSize);
+  if (exactNamePage) {
+    const nextOffset = offset + exactNamePage.documents.length;
+    const hasMore = nextOffset < exactNamePage.totalItems;
+    return {
+      ok: true,
+      items: exactNamePage.documents.map(documentToViewerItem),
+      nextCursor: hasMore
+        ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset })
+        : null,
+      hasMore,
+      candidateCount: exactNamePage.totalItems,
+      indexGeneration: generation,
+      fallback: false,
+      pagination: {
+        page: Math.floor(offset / pageSize) + 1,
+        pageSize,
+        totalItems: exactNamePage.totalItems,
+        totalPages: Math.max(1, Math.ceil(exactNamePage.totalItems / pageSize))
+      },
+      facets: buildViewerFacets(exactNamePage.documents),
+      suggestions: filters.status === "disposed"
+        ? []
+        : buildSearchSuggestions(exactNamePage.documents, 8)
+    };
+  }
   const indexedPage = await getIndexedViewerPageV2(env, query, filters, offset, pageSize);
   if (indexedPage) {
     const nextOffset = offset + indexedPage.documents.length;
