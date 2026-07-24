@@ -37,11 +37,12 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
     "Enforce production release from main",
     "Verify independent administrator before migration",
     "Capture Core and Search D1 Time Travel recovery points",
-    "Provision release-scoped smoke principals",
-    "Verify current production before migration",
+    "Verify current Worker compatibility before migration",
     "Upload pre-mutation recovery and migration evidence",
     "Apply D1 migrations",
     "Verify independent administrator after migration",
+    "Provision release-scoped smoke principals",
+    "Verify rollback Worker against migrated schema",
     "Deploy Worker directly to production",
     "Capture deployed Worker version",
     "Post-deploy transport, login and read-only search smoke",
@@ -81,7 +82,7 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
   assert.match(deploy, /npm run recovery:d1:time-travel/);
   assert.ok(deploy.indexOf("d1-recovery.json") < deploy.indexOf("Apply D1 migrations"));
   assert.match(deploy, /SMOKE_REQUIRE_READINESS: "1"/);
-  assert.match(deploy, /Remove release-scoped smoke principals[\s\S]*if: always\(\) && steps\.provision_smoke\.outcome == 'success'/);
+  assert.match(deploy, /Remove release-scoped smoke principals[\s\S]*if: always\(\) && steps\.provision_smoke\.outcome != 'skipped'/);
   assert.match(deploy, /if \[ "\$GITHUB_REF" != "refs\/heads\/main" \]/);
   assert.match(deploy, /Verify released migrations against release base[\s\S]*check-released-baseline-history\.mjs --base-ref "\$RELEASED_BASE_SHA"/);
   assert.match(deploy, /PRODUCTION_URL: https:\/\/hanlim-archive\.skarhkdgus7\.workers\.dev[\s\S]*SMOKE_ALLOWED_HOSTS: hanlim-archive\.skarhkdgus7\.workers\.dev/);
@@ -102,9 +103,9 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
     assert.ok(!deploy.includes(removed), removed);
   }
 
-  const preMigrationSmoke = deploy.slice(
-    deploy.indexOf("Verify current production before migration"),
-    deploy.indexOf("Upload pre-mutation recovery and migration evidence")
+  const rollbackWorkerSmoke = deploy.slice(
+    deploy.indexOf("Verify rollback Worker against migrated schema"),
+    deploy.indexOf("Deploy Worker directly to production")
   );
   for (const envName of [
     "SMOKE_BASE_URL",
@@ -114,9 +115,13 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
     "SMOKE_ADMIN_PASSWORD",
     "SMOKE_REQUIRE_ADMIN"
   ]) {
-    assert.ok(preMigrationSmoke.includes(envName), envName);
+    assert.ok(rollbackWorkerSmoke.includes(envName), envName);
   }
-  assert.match(preMigrationSmoke, /npm run smoke:release 2>&1 \| tee release-evidence\/pre-migration-smoke\.txt/);
+  assert.match(rollbackWorkerSmoke, /npm run smoke:release 2>&1 \| tee release-evidence\/pre-deploy-smoke\.txt/);
+  assert.match(
+    deploy,
+    /Verify current Worker compatibility before migration[\s\S]*pre-migration-health\.json[\s\S]*rollbackCompatibility\.sessionEpoch == 1/
+  );
 });
 
 test("Cloudflare token은 필요한 step에만 있고 D1 복구 증빙에는 데이터 사본이 없다", () => {

@@ -47,15 +47,16 @@ npm run deploy:dry
 
 1. 같은 SHA를 다시 검증하고 release evidence를 생성한다.
 2. 현재 100% traffic Worker version id와 metadata를 rollback 대상으로 기록한다.
-3. 독립 Admin 존재를 확인하고, release run 전용 read-only 계정과 `can_manage_users`만 가진 일반 User 계정을
-   무작위 credential로 생성해 현재 Worker의 로그인·검색·`/admin/settings`를 확인한다.
+3. 독립 Admin 존재와 현재 Worker의 health·version·session-epoch 호환 marker를 확인한다.
 4. Core와 Search D1의 현재 Time Travel bookmark를 각각 기록하고 release SHA·run ID·database ID와 함께
    pre-mutation artifact로 보존한다.
 5. append-only migration을 적용하고 독립 Admin 존재를 다시 확인한다.
-6. release SHA tag·message를 붙여 Worker를 production에 직접 배포한다.
-7. `/healthz`, `/readyz`, Worker version, 전송·asset·로그인·검색·사용자 관리 smoke를 실행한다.
-8. Worker 배포 또는 smoke 실패 시 기록한 이전 100% traffic version으로 되돌리고 같은 인증 smoke를 실행한다.
-9. 성공·실패와 관계없이 release 전용 계정을 제거하고 복구 지점·migration·배포·smoke·rollback 증거를
+6. 신규 schema가 적용된 뒤 release run 전용 read-only 계정과 `can_manage_users`만 가진 일반 User 계정을
+   무작위 credential로 생성하고, 이전 Worker에서 실제 로그인·검색·`/admin/settings`를 확인한다.
+7. release SHA tag·message를 붙여 Worker를 production에 직접 배포한다.
+8. `/healthz`, `/readyz`, Worker version, 전송·asset·로그인·검색·사용자 관리 smoke를 실행한다.
+9. Worker 배포 또는 smoke 실패 시 기록한 이전 100% traffic version으로 되돌리고 같은 인증 smoke를 실행한다.
+10. 성공·실패와 관계없이 release 전용 계정을 제거하고 복구 지점·migration·배포·smoke·rollback 증거를
    release artifact로 보존한다.
 
 배포는 `d1-production-maintenance` concurrency group에서 직렬화한다. D1 Time Travel 복구는 데이터 변경을
