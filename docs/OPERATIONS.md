@@ -262,4 +262,7 @@ commit SHA와 production Environment 승인 context가 모두 일치할 때만 g
 GitHub artifact에는 DB 데이터가 아니라 bookmark와 release metadata만 올린다. raw
 `wrangler d1 migrations apply`와 unscoped `wrangler deploy`는 운영 절차로 사용하지 않는다.
 
+정적 자산 Worker 우회, `asset-only`/`runtime-only`/`database` 배포 경로와 Search D1 전환 보류
+기준은 [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)을 따른다.
+
 secret 값, 기본 비밀번호, 개인 계정 정보는 저장소·로그·issue·PR에 기록하지 않는다. 저장소 visibility, token 회전, 유지관리자 접근권한, branch protection은 운영 책임자가 수동으로 확인한다.

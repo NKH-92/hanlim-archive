@@ -78,7 +78,16 @@ test("운영 공개면 smoke는 HTTPS 전환과 asset MIME·304 재검증을 함
       }
       return new Response("asset", {
         status: 200,
-        headers: { "Content-Type": contentTypes.get(url.pathname) }
+        headers: {
+          "Content-Type": contentTypes.get(url.pathname),
+          "Cache-Control": "public, max-age=0, must-revalidate",
+          "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Referrer-Policy": "same-origin",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "X-Robots-Tag": "noindex, nofollow"
+        }
       });
     }
   });
@@ -90,6 +99,30 @@ test("운영 공개면 smoke는 HTTPS 전환과 asset MIME·304 재검증을 함
     "/images/hanlim-pharm-logo.svg": 200
   });
   assert.equal(calls.length, 7);
+});
+
+test("asset-only release smoke는 임시 계정 없이 공개면과 배포 version을 검증한다", async () => {
+  const responses = [
+    new Response(JSON.stringify({ ok: true, workerVersion: "version-assets" }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    }),
+    new Response('<form><input name="username"></form>', { status: 200 }),
+    new Response("not found", { status: 404 })
+  ];
+  const result = await runReleaseSmoke({
+    baseUrl: "https://archive.example",
+    publicOnly: true,
+    expectedWorkerVersion: "version-assets",
+    allowedHosts: ["archive.example"],
+    fetchImpl: async () => responses.shift()
+  });
+
+  assert.equal(result.health, 200);
+  assert.equal(result.login, 200);
+  assert.equal(result.signup, 404);
+  assert.equal(result.workerVersion, "version-assets");
+  assert.equal("search" in result, false);
 });
 
 test("관리자 smoke는 route registry의 사용자 관리 GET 계약을 사용한다", () => {

@@ -9,6 +9,7 @@ const remediateMainAdmin = await readFile(new URL("../../.github/workflows/remed
 const owners = await readFile(new URL("../../.github/CODEOWNERS", import.meta.url), "utf8");
 const smokeRelease = await readFile(new URL("../scripts/smoke-release.mjs", import.meta.url), "utf8");
 const wrangler = await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
+const assetHeaders = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
 test("PR required CI는 verify, audit, Worker dry-run과 증빙 보존을 강제한다", () => {
@@ -31,6 +32,13 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
   );
   assert.match(deploy, /workflow_dispatch: \{\}/);
   assert.doesNotMatch(deploy.slice(0, deploy.indexOf("permissions:")), /docs\/\*\*|README\.md/);
+  assert.match(deploy, /name: Classify release scope[\s\S]*id: classify_release/);
+  assert.match(deploy, /if \[ "\$GITHUB_EVENT_NAME" = "workflow_dispatch" \]; then[\s\S]*RELEASE_BASE_SHA="\$GITHUB_SHA"/);
+  assert.match(deploy, /classify-release\.mjs --base "\$RELEASE_BASE_SHA" --head "\$GITHUB_SHA"/);
+  assert.match(deploy, /D1_RECOVERY_SCOPE: \$\{\{ steps\.classify_release\.outputs\.recovery_scope \}\}/);
+  assert.match(deploy, /Apply D1 migrations\s+if: steps\.classify_release\.outputs\.release_class == 'database'/);
+  assert.match(deploy, /Provision release-scoped smoke principals[\s\S]*if: steps\.classify_release\.outputs\.release_class != 'asset-only'/);
+  assert.match(deploy, /SMOKE_PUBLIC_ONLY: \$\{\{ steps\.classify_release\.outputs\.release_class == 'asset-only'/);
 
   const markers = [
     "name: approved free-tier production release",
@@ -86,7 +94,8 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
   assert.match(deploy, /if \[ "\$GITHUB_REF" != "refs\/heads\/main" \]/);
   assert.match(deploy, /Verify released migrations against release base[\s\S]*check-released-baseline-history\.mjs --base-ref "\$RELEASED_BASE_SHA"/);
   assert.match(deploy, /PRODUCTION_URL: https:\/\/hanlim-archive\.skarhkdgus7\.workers\.dev[\s\S]*SMOKE_ALLOWED_HOSTS: hanlim-archive\.skarhkdgus7\.workers\.dev/);
-  assert.ok((deploy.match(/SMOKE_REQUIRE_ADMIN: "1"/g)?.length || 0) >= 3);
+  assert.ok((deploy.match(/SMOKE_REQUIRE_ADMIN: "1"/g)?.length || 0) >= 1);
+  assert.ok((deploy.match(/SMOKE_REQUIRE_ADMIN: \$\{\{ steps\.classify_release/g)?.length || 0) >= 2);
   assert.ok((deploy.match(/SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"/g)?.length || 0) >= 3);
   assert.ok((deploy.match(/npm run smoke:release/g)?.length || 0) >= 3);
   for (const removed of [
@@ -151,6 +160,22 @@ test("기본 Wrangler 환경은 운영 Worker와 D1을 직접 가리키지 않�
     wrangler,
     /"production": \{[\s\S]*"name": "hanlim-archive"[\s\S]*"workers_dev": true[\s\S]*"preview_urls": false/
   );
+  assert.match(
+    wrangler,
+    /"run_worker_first": \["\/\*", "!\/assets\/\*", "!\/images\/\*", "!\/favicon\.ico"\]/
+  );
+  for (const path of ["/assets/*", "/images/*", "/favicon.ico"]) {
+    assert.ok(assetHeaders.includes(path), path);
+  }
+  for (const header of [
+    "Content-Security-Policy",
+    "Strict-Transport-Security",
+    "X-Content-Type-Options",
+    "X-Frame-Options",
+    "X-Robots-Tag"
+  ]) {
+    assert.ok(assetHeaders.includes(header), header);
+  }
 });
 
 test("증빙을 tee로 보존하는 CI와 배포 단계는 원 명령의 실패를 전파한다", () => {

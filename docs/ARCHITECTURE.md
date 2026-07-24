@@ -43,7 +43,7 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 | `src/domains/identity/` | Actor, 사용자 상태, 비밀번호 policy, capability, 사용자 command/query |
 | `src/domains/masters/` | 대분류·태그 query/command/view |
 | `src/domains/racks/` | 랙 규격, 면·열 방향, 도면 geometry, slot, query/command |
-| `src/domains/search/` | 검색 repository/service/presenter와 browser/server 공통 공개 API |
+| `src/domains/search/` | 검색 repository/presenter, 고수준 동기화·유지보수 계약, browser/server 공통 공개 API |
 | `src/domains/sets/` | 세트 query/command, 잠금, 이력, presenter |
 | `src/domains/audit/` | 시스템 감사 INSERT, filter query, audit presenter |
 | `src/domains/dataQuality/` | 품질 issue catalog, 상세 query, 작업목록 view |
@@ -179,6 +179,9 @@ npm test
 npm run verify
 npx wrangler deploy --dry-run
 ```
+
+무료 티어 최적화의 정적 자산 경계, 배포 분류, Core/Search D1 전환 게이트는
+[무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)을 따른다.
 
 `main` 푸시는 GitHub Actions가 운영 migration과 배포를 수행하므로 로컬 작업에서는 명시적 요청 없이
 push, 원격 migration, production deploy를 실행하지 않는다.
