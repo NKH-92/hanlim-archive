@@ -126,6 +126,11 @@ function insertSql({ actor, reader, admin, readerRecord, adminRecord }) {
       datetime(CURRENT_TIMESTAMP, '+45 minutes'),
       0, 0, 0, 0, 0, 1, 0, 0, CURRENT_TIMESTAMP
     );
+  `;
+}
+
+function verificationSql(actor) {
+  return `
     SELECT COUNT(*) AS provisioned
     FROM app_users
     WHERE approved_by = ${sqlText(actor)} AND status = 'approved';
@@ -226,9 +231,20 @@ export async function runSmokePrincipal({
     if (provisioned.error || provisioned.status !== 0) {
       return { ok: false, errors: ["Release smoke principal provisioning failed."] };
     }
+    const verified = executeSql({
+      envName: checked.envName,
+      sql: verificationSql(actor),
+      environment,
+      spawn,
+      execPath
+    });
+    if (verified.error || verified.status !== 0) {
+      await runSmokePrincipal({ action: "cleanup", environment, spawn, execPath });
+      return { ok: false, errors: ["Release smoke principal verification failed."] };
+    }
     let payload;
     try {
-      payload = parseWranglerJson(provisioned.stdout);
+      payload = parseWranglerJson(verified.stdout);
     } catch {
       await runSmokePrincipal({ action: "cleanup", environment, spawn, execPath });
       return { ok: false, errors: ["Release smoke principal response is invalid."] };
