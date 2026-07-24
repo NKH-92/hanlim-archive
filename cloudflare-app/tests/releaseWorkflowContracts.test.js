@@ -124,11 +124,10 @@ test("Cloudflare token은 필요한 step에만 있고 D1 복구 증빙에는 데
   const deployStepsStart = deploy.indexOf("\n    steps:", deployJobStart);
   const deployJobEnvironment = deploy.slice(deployJobStart, deployStepsStart);
   assert.doesNotMatch(deployJobEnvironment, /CLOUDFLARE_API_TOKEN/);
-  assert.match(deploy, /CLOUDFLARE_D1_MIGRATE_API_TOKEN/);
-  assert.match(deploy, /CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN/);
+  assert.ok((deploy.match(/secrets\.CLOUDFLARE_API_TOKEN/g)?.length || 0) >= 2);
   assert.doesNotMatch(
     deploy,
-    /secrets\.CLOUDFLARE_API_TOKEN|CLOUDFLARE_D1_BACKUP_API_TOKEN|D1_BACKUP_PASSPHRASE|secrets\.SMOKE_/
+    /CLOUDFLARE_D1_BACKUP_API_TOKEN|CLOUDFLARE_D1_MIGRATE_API_TOKEN|CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN|D1_BACKUP_PASSPHRASE|secrets\.SMOKE_/
   );
   assert.match(deploy, /d1-recovery\.json[\s\S]*migration-manifest\.json/);
   assert.doesNotMatch(deploy, /release-backup\/|\*\.sql|\*\.enc|\*\.age/);
