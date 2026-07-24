@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
-import { createPasswordRecord } from "../src/auth/passwords.js";
+import { createReleaseSmokeCompatibilityPasswordRecord } from "../src/auth/passwords.js";
 import { preflightDeploy, runWranglerCaptured } from "./deploy-guarded.mjs";
 
 const APP_ROOT = path.resolve(import.meta.dirname, "..");
@@ -203,8 +203,8 @@ export async function runSmokePrincipal({
     admin: { username: names.admin, password: randomBytes(24).toString("base64url") }
   };
   const [readerRecord, adminRecord] = await Promise.all([
-    createPasswordRecord(credentials.reader.password),
-    createPasswordRecord(credentials.admin.password)
+    createReleaseSmokeCompatibilityPasswordRecord(credentials.reader.password),
+    createReleaseSmokeCompatibilityPasswordRecord(credentials.admin.password)
   ]);
   const directory = mkdtempSync(path.join(tmpdir(), "hanlim-release-smoke-"));
   try {
