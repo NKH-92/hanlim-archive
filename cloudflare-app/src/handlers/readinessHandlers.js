@@ -1,7 +1,7 @@
 import { getSearchOperationalState } from "../domains/search/index.js";
 import { logError } from "../platform/observability/logger.js";
 
-const EXPECTED_CORE_MIGRATION = "0043_release_identity_and_search_leases.sql";
+const EXPECTED_CORE_MIGRATION = "0044_remove_application_mfa.sql";
 const EXPECTED_SEARCH_MIGRATION = "0003_rebuild_barriers_and_watermarks.sql";
 const JSON_HEADERS = Object.freeze({
   "Content-Type": "application/json; charset=utf-8",

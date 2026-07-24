@@ -43,7 +43,8 @@
     "0040_ten_thousand_operational_transition.sql": "d384398d935b218d7c312ea97ff2fd7a462a0730907dba7b24720131dfed207e",
     "0041_identity_mfa_and_login_throttle.sql": "6720de71c724d64760795ccd3fb3009cefbba035993c8ccadd9a6863db2f2974",
     "0042_search_event_source_version.sql": "dd10bc4d17556a7604dc51973c5b1f60cec1a5d3a850f021fe98faf3720f55f5",
-    "0043_release_identity_and_search_leases.sql": "4f7a51c8fab91c82411e30edbe695918d3eb82b2b49f338d24776d7793b35e32"
+    "0043_release_identity_and_search_leases.sql": "4f7a51c8fab91c82411e30edbe695918d3eb82b2b49f338d24776d7793b35e32",
+    "0044_remove_application_mfa.sql": "5b5c480077065889b1ccde4531f0641e67d8d211bd9d2e63f4c655220898cf75"
   },
   "schema": {
     "tables": [

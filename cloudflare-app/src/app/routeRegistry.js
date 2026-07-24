@@ -18,8 +18,6 @@ export const PUBLIC_ROUTES = Object.freeze([
   route("readiness.read", "health", "GET", "/readyz", { auth: "public" }),
   route("session.login.form", "identity", "GET", "/login", { auth: "public" }),
   route("session.login", "identity", "POST", "/login", { auth: "public" }),
-  route("session.mfa-login.form", "identity", "GET", "/login/mfa", { auth: "public" }),
-  route("session.mfa-login", "identity", "POST", "/login/mfa", { auth: "public" }),
   route("session.signup.blocked", "identity", ANY, "/signup", { auth: "public", policy: "always-404" })
 ]);
 
@@ -34,10 +32,6 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("search.click", "search", "POST", "/api/search-click"),
   route("session.password.form", "identity", "GET", "/account/password"),
   route("session.password.change", "identity", "POST", "/account/password"),
-  route("session.mfa.form", "identity", "GET", "/account/mfa"),
-  route("session.mfa.enroll", "identity", "POST", "/account/mfa/enroll"),
-  route("session.mfa.confirm", "identity", "POST", "/account/mfa/confirm"),
-  route("session.mfa.disable", "identity", "POST", "/account/mfa/disable"),
   route("session.logout", "identity", "POST", "/logout"),
   route("session.logout.fallback", "identity", ANY, "/logout", { fallback: true }),
   route("admin.dashboard", "admin", "GET", "/admin", { policy: "any-management-permission" }),

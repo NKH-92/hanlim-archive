@@ -4,7 +4,7 @@ import test from "node:test";
 import worker from "../src/index.js";
 
 const ORIGIN = "https://archive.example.com";
-const CORE_MIGRATION = "0043_release_identity_and_search_leases.sql";
+const CORE_MIGRATION = "0044_remove_application_mfa.sql";
 const SEARCH_MIGRATION = "0003_rebuild_barriers_and_watermarks.sql";
 
 test("/readyz는 Core·Search migration과 검색 운영 상태가 모두 준비되면 버전 포함 200을 반환한다", async () => {
