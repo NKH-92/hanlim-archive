@@ -232,12 +232,12 @@ function workspaceBulkActions({ capabilities, editableSets = [], returnTo }) {
 
 function activeFilterChips({ query, filters = {}, categories = [], tags = [] }) {
   const chips = [];
-  const add = (label, key, emptyValue = 0) => chips.push(`<a class="chip active" href="${viewerUrl({ query, filters, patch: { [key]: emptyValue } })}">${escapeHtml(label)} <span aria-hidden="true">×</span></a>`);
-  if (filters.categoryId) add(categories.find((item) => Number(item.id) === Number(filters.categoryId))?.name || "대분류", "categoryId");
-  if (filters.tagId) add(tags.find((item) => Number(item.id) === Number(filters.tagId))?.name || "태그", "tagId");
-  if (filters.zoneNumber) add(`${filters.zoneNumber}구역`, "zoneNumber");
-  if (filters.rackId) add(`랙 ${filters.rackId}`, "rackId");
-  if (filters.status && filters.status !== "active") add(filters.status === "disposed" ? "폐기" : "전체 상태", "status", "active");
+  const add = (label, patch) => chips.push(`<a class="chip active" href="${viewerUrl({ query, filters, patch })}">${escapeHtml(label)} <span aria-hidden="true">×</span></a>`);
+  if (filters.categoryId) add(categories.find((item) => Number(item.id) === Number(filters.categoryId))?.name || "대분류", { categoryId: 0 });
+  if (filters.tagId) add(tags.find((item) => Number(item.id) === Number(filters.tagId))?.name || "태그", { tagId: 0 });
+  if (filters.zoneNumber) add(`${filters.zoneNumber}구역`, { zoneNumber: 0 });
+  if (filters.rackId) add(`랙 ${filters.rackId}`, { rackId: 0, rackFace: "", columnNumber: 0, shelfNumber: 0 });
+  if (filters.status && filters.status !== "active") add(filters.status === "disposed" ? "폐기" : "전체 상태", { status: "active" });
   return chips.length ? `<nav class="active-filter-chips" aria-label="적용된 필터">${chips.join("")}</nav>` : "";
 }
 
