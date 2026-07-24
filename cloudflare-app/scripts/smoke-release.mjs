@@ -254,11 +254,19 @@ export async function verifyReleasePublicSurface({ target, fetchImpl = fetch }) 
         throw new Error(`정적 asset 보안 header smoke 실패(path=${contract.path}, header=${header})`);
       }
     }
+    const etag = response.headers.get("ETag");
+    if (!etag) {
+      throw new Error(`정적 asset ETag smoke 실패(path=${contract.path})`);
+    }
     const revalidated = await fetchImpl(`${target.origin}${contract.path}`, {
-      headers: { "If-None-Match": "*" },
+      headers: { "If-None-Match": etag },
       redirect: "manual"
     });
-    if (revalidated.status !== 304) {
+    const revalidatedType = String(revalidated.headers.get("Content-Type") || "").toLowerCase();
+    const stableFullResponse = revalidated.status === 200
+      && revalidated.headers.get("ETag") === etag
+      && revalidatedType.startsWith(contract.contentType);
+    if (revalidated.status !== 304 && !stableFullResponse) {
       throw new Error(`정적 asset 재검증 smoke 실패(path=${contract.path}, status=${revalidated.status})`);
     }
     assets[contract.path] = response.status;
