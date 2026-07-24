@@ -29,7 +29,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
   }
   const dataLinks = [];
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
-    dataLinks.push(["/documents/import", "fa-file-excel", "리스트 동기화", "엑셀 전체 동기화·검증·인쇄용 추출"]);
+    dataLinks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화", "엑셀 전체 동기화·검증·인쇄용 추출"]);
     dataLinks.push(["/documents/new", "fa-file-circle-plus", "문서 추가", "신규 문서를 현재 리스트에 즉시 등록"]);
     dataLinks.push(["/admin/data-quality", "fa-list-check", "데이터 품질", "문제 문서 작업 목록"]);
   }

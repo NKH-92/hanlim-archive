@@ -10,7 +10,7 @@ export function disposalFeedback(feedback) {
   if (feedback.type === "warning") return alertWarning(feedback.message);
   if (feedback.type === "success") return `<div class="alert success disposal-complete" role="status">
     <strong>${escapeHtml(feedback.message)}</strong>
-    <div class="disposal-complete-actions"><a class="button secondary sm" href="/documents/disposal?tab=history">폐기 이력 보기</a><a class="button secondary sm" href="/app">문서검색으로 이동</a></div>
+    <div class="disposal-complete-actions"><a class="button secondary sm" href="/documents/disposal?tab=history">폐기 이력 보기</a><a class="button secondary sm" href="/app">문서로 이동</a></div>
   </div>`;
   return alertDanger(feedback.message);
 }
@@ -61,7 +61,7 @@ export function documentToolbar(session) {
   const actions = [];
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
     actions.push(`<a class="button secondary" href="/documents/export.csv"><i class="fa-solid fa-download" aria-hidden="true"></i>CSV 내보내기</a>`);
-    actions.push(`<a class="button secondary" href="/documents/import"><i class="fa-solid fa-file-excel" aria-hidden="true"></i>리스트 동기화</a>`);
+    actions.push(`<a class="button secondary" href="/documents/import"><i class="fa-solid fa-file-excel" aria-hidden="true"></i>엑셀 대장 동기화</a>`);
     actions.push(`<a class="button action-button" href="/documents/new"><i class="fa-solid fa-plus" aria-hidden="true"></i>문서 추가</a>`);
   }
   return actions.length ? `<div class="button-group document-toolbar">${actions.join("")}</div>` : "";

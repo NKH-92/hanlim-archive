@@ -59,7 +59,7 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
           ${detailRow("문서번호", document.document_number, true)}
           ${detailRow("개정번호", document.revision_number)}
           ${detailRow("문서명", document.document_name)}
-          ${detailRow("제/개정일", document.revision_date || "미입력")}
+          ${detailRow("제·개정일", document.revision_date || "미입력")}
           ${detailRow("대분류", document.category_name || "-")}
           ${detailRow("태그", tags.length ? tags.map((tag) => tag.name).join(", ") : "-")}
         </dl>
@@ -67,7 +67,7 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
       <article class="panel detail-section">
         <h2>보존 정보</h2>
         <dl>
-          ${detailRow("폐기 예정 년도", document.disposal_due_year ? `${document.disposal_due_year}년` : "미입력")}
+          ${detailRow("폐기 예정 연도", document.disposal_due_year ? `${document.disposal_due_year}년` : "미입력")}
           ${detailRow("문서 상태", document.status === "active" ? "보관중" : "폐기")}
           ${detailRow("대장 포함 상태", isExcluded ? "현재 대장 제외" : "현재 대장 포함")}
           ${detailRow("비고", document.note || "-")}

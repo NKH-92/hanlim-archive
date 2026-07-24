@@ -10,7 +10,7 @@ export function searchStyles() {
     .filter-details summary i { font-size: .85em; }
     .filter-details[open] summary { margin-bottom: var(--sp-2); color: var(--gray-700); }
     .filter-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 var(--sp-1); border-radius: 999px; background: var(--primary); color: var(--surface); font-size: 11px; font-weight: 700; }
-    .viewer-filter-row { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)) auto; gap: var(--sp-2); align-items: center; }
+    .viewer-filter-row { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)) auto; gap: var(--sp-2); align-items: center; }
     .quick-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--gray-500); font-weight: 600; font-size: 12.5px; }
     .viewer-recents:empty { display: none; }
     .quick-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--gray-500); font-weight: 600; font-size: 12.5px; }
@@ -57,7 +57,7 @@ export function searchStyles() {
     .picker-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2); margin-top: var(--sp-2); }
     .button-group { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
 
-    .metric-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); margin-bottom: var(--sp-4); }
+    .metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); margin-bottom: var(--sp-4); }
     .metric-card { padding: var(--sp-4) var(--sp-5); display: grid; gap: var(--sp-1); }
     .metric-card + .metric-card { border-left: 1px solid var(--line); }
     .metric-card span { color: var(--gray-500); font-size: 12px; font-weight: 600; }

@@ -41,7 +41,7 @@ export function documentRevisionPage({ session, document, values = {}, validatio
           <legend>신규 개정 정보</legend>
           <div class="form-grid two-column">
             ${field("revisionNumber", "새 개정번호", revisionNumber, fieldErrors, "text")}
-            ${field("revisionDate", "새 제/개정일", revisionDate, fieldErrors, "date")}
+            ${field("revisionDate", "새 제·개정일", revisionDate, fieldErrors, "date")}
           </div>
         </fieldset>
 

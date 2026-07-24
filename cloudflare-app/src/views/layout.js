@@ -199,6 +199,7 @@ export function filterSelectRow({ categories, tags, filters, viewer = false, for
     return `<div class="viewer-filter-row">
           <label>문서 상태<select name="status"${formAttribute}>${option("active", "보관중 문서", filters.status || "active")}${option("disposed", "폐기 문서", filters.status || "active")}${option("all", "전체", filters.status || "active")}</select></label>
           <label>대분류<select name="category"${formAttribute}><option value="">전체</option>${categories.map((c) => option(c.id, c.name, filters.categoryId)).join("")}</select></label>
+          <label>태그<select name="tag"${formAttribute}><option value="">전체</option>${tags.map((tag) => option(tag.id, tag.name, filters.tagId)).join("")}</select></label>
           <label>보관 위치<select name="zone"${formAttribute}><option value="">전체</option>${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}</select></label>
           <label>정렬<select name="sort"${formAttribute}>${option("relevance", "정확도순", filters.sort || "relevance")}${sortOptions}</select></label>
           <a class="button secondary sm" href="/app">초기화</a>

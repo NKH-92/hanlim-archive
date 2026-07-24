@@ -288,15 +288,37 @@
       var commandPalette = document.querySelector('[data-command-palette]');
       var commandInput = document.querySelector('[data-command-input]');
       var commandItems = Array.prototype.slice.call(document.querySelectorAll('[data-command-item]'));
+      var commandActiveIndex = -1;
+      var commandPreviousFocus = null;
+      var visibleCommands = function () {
+        return commandItems.filter(function (item) { return !item.hidden; });
+      };
+      var setActiveCommand = function (index) {
+        var visible = visibleCommands();
+        commandItems.forEach(function (item) {
+          item.classList.remove('is-active');
+          item.removeAttribute('aria-current');
+        });
+        if (!visible.length) {
+          commandActiveIndex = -1;
+          return;
+        }
+        commandActiveIndex = Math.max(0, Math.min(index, visible.length - 1));
+        visible[commandActiveIndex].classList.add('is-active');
+        visible[commandActiveIndex].setAttribute('aria-current', 'true');
+        visible[commandActiveIndex].scrollIntoView({ block: 'nearest' });
+      };
       var filterCommands = function () {
         var query = (commandInput ? commandInput.value : '').trim().toLocaleLowerCase('ko-KR');
         commandItems.forEach(function (item) {
           var label = (item.getAttribute('data-command-label') || item.textContent || '').toLocaleLowerCase('ko-KR');
           item.hidden = Boolean(query && label.indexOf(query) === -1);
         });
+        setActiveCommand(0);
       };
       var openCommands = function () {
         if (!commandPalette || typeof commandPalette.showModal !== 'function') return;
+        commandPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         if (!commandPalette.open) commandPalette.showModal();
         if (commandInput) {
           commandInput.value = '';
@@ -310,7 +332,42 @@
       document.querySelectorAll('[data-command-close]').forEach(function (button) {
         button.addEventListener('click', function () { if (commandPalette && commandPalette.open) commandPalette.close(); });
       });
-      if (commandInput) commandInput.addEventListener('input', filterCommands);
+      if (commandPalette) {
+        commandPalette.addEventListener('close', function () {
+          commandActiveIndex = -1;
+          commandItems.forEach(function (item) {
+            item.classList.remove('is-active');
+            item.removeAttribute('aria-current');
+          });
+          if (commandPreviousFocus && document.contains(commandPreviousFocus)) commandPreviousFocus.focus();
+          commandPreviousFocus = null;
+        });
+      }
+      if (commandInput) {
+        commandInput.addEventListener('input', filterCommands);
+        commandInput.addEventListener('keydown', function (event) {
+          var visible = visibleCommands();
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setActiveCommand(commandActiveIndex + 1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setActiveCommand(commandActiveIndex <= 0 ? visible.length - 1 : commandActiveIndex - 1);
+          } else if (event.key === 'Home') {
+            event.preventDefault();
+            setActiveCommand(0);
+          } else if (event.key === 'End') {
+            event.preventDefault();
+            setActiveCommand(visible.length - 1);
+          } else if (event.key === 'Enter' && visible.length) {
+            event.preventDefault();
+            visible[Math.max(0, commandActiveIndex)].click();
+          } else if (event.key === 'Escape' && commandPalette && commandPalette.open) {
+            event.preventDefault();
+            commandPalette.close();
+          }
+        });
+      }
       document.addEventListener('keydown', function (event) {
         if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase('en-US') === 'k') {
           event.preventDefault();
@@ -1026,20 +1083,7 @@
       var toastKey = new URLSearchParams(location.search).get('toast');
       if (toastKey) {
         var toastParams = new URLSearchParams(location.search);
-        var toastMessages = {
-          created: '문서가 등록되었습니다.',
-          updated: '문서 정보가 수정되었습니다.',
-          disposed: '폐기 처리되었습니다.',
-          restored: '폐기가 해제되었습니다.',
-          deleted: '문서가 완전 삭제되었습니다.',
-          saved: '저장되었습니다.',
-          'bulk-disposed': '선택한 문서를 폐기 처리했습니다.',
-          approved: '가입 요청을 승인했습니다.',
-          rejected: '가입 요청을 거절했습니다.',
-          'permissions-saved': '사용자 권한을 저장했습니다.',
-          'password-reset': '임시 비밀번호를 설정했습니다. 다음 로그인에서 비밀번호 변경이 강제됩니다.',
-          error: '요청을 처리하지 못했습니다. 입력값을 확인하세요.'
-        };
+        var toastMessages = {"created":"문서가 등록되었습니다.","document-created":"문서가 등록되어 세트에 추가되었습니다.","updated":"문서 정보가 수정되었습니다.","revised":"새 개정 문서가 등록되었습니다.","moved":"문서 위치가 이동되었습니다.","disposed":"폐기 처리되었습니다.","restored":"폐기가 해제되었습니다.","deleted":"문서가 완전 삭제되었습니다.","saved":"저장되었습니다.","bulk-disposed":"선택한 문서를 폐기 처리했습니다.","approved":"가입 요청을 승인했습니다.","rejected":"가입 요청을 거절했습니다.","enabled":"사용자 계정을 활성화했습니다.","disabled":"사용자 계정을 비활성화했습니다.","permissions-saved":"사용자 권한을 저장했습니다.","password-reset":"임시 비밀번호를 설정했습니다. 다음 로그인에서 비밀번호 변경이 강제됩니다.","password-changed":"비밀번호가 변경되었습니다.","set-locked":"준비 문서 세트를 잠갔습니다.","set-unlocked":"준비 문서 세트의 잠금을 해제했습니다.","error":"요청을 처리하지 못했습니다. 입력값을 확인하세요."};
         var toastMessage = toastMessages[toastKey];
         if (toastKey === 'bulk-disposed') {
           var disposedCount = Number(toastParams.get('disposed') || 0);

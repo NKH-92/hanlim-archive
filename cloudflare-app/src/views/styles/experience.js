@@ -13,14 +13,14 @@ export function experienceStyles() {
     .operation-hero::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px); background-size: var(--sp-8) var(--sp-8); pointer-events: none; }
     .operation-hero > * { position: relative; z-index: 1; }
 
-    .search-home-hero { min-height: 300px; align-content: center; justify-items: stretch; padding: var(--sp-8); background: var(--hero-bg); color: var(--surface); border-radius: var(--r-lg); text-align: left; overflow: hidden; position: relative; }
+    .search-home-hero { min-height: 160px; align-content: center; justify-items: stretch; padding: var(--sp-5) var(--sp-6); background: var(--hero-bg); color: var(--surface); border-radius: var(--r-lg); text-align: left; overflow: hidden; position: relative; }
     .search-home-hero::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px); background-size: var(--sp-8) var(--sp-8); pointer-events: none; }
     .search-home-copy, .search-home-hero .viewer-search-form, .search-home-hero .viewer-recents { position: relative; z-index: 1; width: min(760px, 100%); }
     .viewer-search-form.is-home .filter-details { display: none; }
     .search-home-copy { display: grid; gap: var(--sp-2); }
-    .search-home-copy h1 { color: var(--surface); font-size: clamp(26px, 3vw, 38px); line-height: 1.2; }
+    .search-home-copy h1 { color: var(--surface); font-size: clamp(22px, 2.4vw, 30px); line-height: 1.2; }
     .search-home-copy .search-home-sub { color: rgba(255, 255, 255, .82); max-width: 560px; }
-    .search-home-hero .search-box { margin-top: var(--sp-4); padding: var(--sp-2); border: 0; background: var(--surface); box-shadow: var(--shadow-1); }
+    .search-home-hero .search-box { margin-top: var(--sp-2); padding: var(--sp-1); border: 0; background: var(--surface); box-shadow: var(--shadow-1); }
     .search-home-hero .search-box button { min-height: 44px; background: var(--action); color: var(--action-ink); }
     .search-home-hero .search-box button:hover { background: var(--action-strong); }
     .search-home-hero .viewer-recents { color: rgba(255, 255, 255, .82); }
@@ -33,6 +33,8 @@ export function experienceStyles() {
     .search-band.operation-hero .search-box { border: 0; }
     .search-band.operation-hero .search-box button { background: var(--action); color: var(--action-ink); }
     .search-band.operation-hero .search-box button:hover { background: var(--action-strong); }
+    .search-workspace-head { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(440px, 1.4fr); align-items: end; }
+    .search-workspace-head .viewer-search-form { min-width: 0; }
     .search-results-controls { margin-top: calc(-1 * var(--sp-2)); }
     .mobile-search-filter-button { display: none; }
     .mobile-filter-dialog { width: min(520px, calc(100% - var(--sp-8))); padding: 0; border: 1px solid var(--line); border-radius: var(--r-lg); color: var(--gray-900); background: var(--surface); box-shadow: var(--shadow-2); }
@@ -142,6 +144,7 @@ export function experienceStyles() {
 
     @media (max-width: 1180px) {
       .search-band.operation-hero { grid-template-columns: 1fr; }
+      .search-workspace-head { grid-template-columns: 1fr; }
       .floor-plan-layout { grid-template-columns: 1fr; }
       .zone-overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .zone-overview a { border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-3); }

@@ -35,8 +35,7 @@ export function dashboardPage({
       <section class="search-home" data-search-home>
         <section class="search-home-hero" aria-labelledby="viewer-title">
           <div class="search-home-copy">
-            <p class="hero-kicker">Hanlim archive search</p>
-            <h1 id="viewer-title">찾고 싶은 문서를<br>한 번에 찾아보세요.</h1>
+            <h1 id="viewer-title">문서를 빠르게 찾으세요.</h1>
             <p class="search-home-sub">문서명, 문서번호, 대분류 또는 보관 위치를 입력하면 가장 가까운 결과부터 보여드립니다.</p>
           </div>
           ${viewerSearchForm({ query: "", suggestions: [], categories, tags, filters, home: true })}
@@ -67,10 +66,9 @@ export function dashboardPage({
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
 
   return page("문서 검색", `
-    <section class="search-band operation-hero" aria-labelledby="viewer-title">
+    <section class="search-band page-head search-workspace-head" aria-labelledby="viewer-title">
       <div>
-        <p class="hero-kicker">Smart document search</p>
-        <h1 id="viewer-title">${query ? `“${escapeHtml(query)}” 검색 결과` : "문서 검색"}</h1>
+        <h1 id="viewer-title">${query ? `“${escapeHtml(query)}” 검색 결과` : "문서"}</h1>
         <p class="page-sub">문서명과 문서번호를 함께 해석해 위치를 빠르게 비교합니다.</p>
       </div>
       ${viewerSearchForm({ query, suggestions, categories, tags, filters, showFilters: false, formId: "viewer-search-form" })}

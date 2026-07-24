@@ -81,7 +81,7 @@ export function workflowStyles() {
     .command-palette-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
     .command-palette-list { display: grid; gap: var(--sp-1); max-height: 420px; overflow-y: auto; margin-top: var(--sp-3); }
     .command-palette-list a { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); border-radius: var(--r-md); color: var(--gray-700); text-decoration: none; font-weight: 600; }
-    .command-palette-list a:hover, .command-palette-list a:focus { background: var(--primary-soft); color: var(--primary); outline: 0; }
+    .command-palette-list a:hover, .command-palette-list a:focus, .command-palette-list a.is-active { background: var(--primary-soft); color: var(--primary); outline: 0; }
     .command-palette-list a[hidden] { display: none; }
     .command-palette > .muted { margin: var(--sp-3) 0 0; }
     .danger-text { color: var(--danger); font-size: 13px; margin: 0; }
