@@ -98,25 +98,18 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run recovery:d1:time-travel
-      - name: Provision release-scoped smoke principals
-        id: provision_smoke
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          D1_PROVISION_ENV: production
-        run: npm run smoke:principal -- --action provision
-      - name: Verify current production before migration
-        env:
-          SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_REQUIRE_ADMIN: "1"
-          SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
+      - name: Verify current Worker compatibility before migration
         run: |
-          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
-          export SMOKE_EXPECTED_WORKER_VERSION="$PREVIOUS_VERSION_ID"
-          set -o pipefail
-          npm run smoke:release 2>&1 | tee release-evidence/pre-migration-smoke.txt
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 "$PRODUCTION_URL/healthz" \
+            > release-evidence/pre-migration-health.json
+          jq -e --arg version "$PREVIOUS_VERSION_ID" \
+            '.ok == true and .workerVersion == $version and .rollbackCompatibility.sessionEpoch == 1' \
+            release-evidence/pre-migration-health.json
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            "$PRODUCTION_URL/login")" = "200"
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            "$PRODUCTION_URL/signup")" = "404"
       - name: Upload pre-mutation recovery and migration evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -140,6 +133,25 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           D1_ADMIN_CHECK_PHASE: post-migration
         run: npm run admin:check:remote
+      - name: Provision release-scoped smoke principals
+        id: provision_smoke
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          D1_PROVISION_ENV: production
+        run: npm run smoke:principal -- --action provision
+      - name: Verify rollback Worker against migrated schema
+        env:
+          SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
+          SMOKE_REQUIRE_ADMIN: "1"
+          SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
+        run: |
+          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_EXPECTED_WORKER_VERSION="$PREVIOUS_VERSION_ID"
+          set -o pipefail
+          npm run smoke:release 2>&1 | tee release-evidence/pre-deploy-smoke.txt
       - name: Deploy Worker directly to production
         id: deploy_worker
         continue-on-error: true
@@ -233,7 +245,7 @@ jobs:
           steps.capture_deployed.outcome == 'failure' || steps.smoke.outcome == 'failure')
         run: exit 1
       - name: Remove release-scoped smoke principals
-        if: always() && steps.provision_smoke.outcome == 'success'
+        if: always() && steps.provision_smoke.outcome != 'skipped'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           D1_PROVISION_ENV: production
