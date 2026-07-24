@@ -143,22 +143,7 @@ test("legacy PBKDF2 100000회 record는 정상 로그인 시 현재 work factor�
   const database = await createMigratedDatabase();
   try {
     const password = "legacy-password-2026";
-    const saltBytes = new Uint8Array(16).fill(7);
-    const salt = Buffer.from(saltBytes).toString("base64url");
-    const material = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(password),
-      "PBKDF2",
-      false,
-      ["deriveBits"]
-    );
-    const digest = await crypto.subtle.deriveBits({
-      name: "PBKDF2",
-      hash: "SHA-256",
-      salt: saltBytes,
-      iterations: 100000
-    }, material, 256);
-    const legacyHash = Buffer.from(digest).toString("base64url");
+    const { salt, hash: legacyHash } = await legacyPasswordRecord(password, 7);
     database.prepare(`
       INSERT INTO app_users (
         username, display_name, password_salt, password_hash,
@@ -181,6 +166,62 @@ test("legacy PBKDF2 100000회 record는 정상 로그인 시 현재 work factor�
     database.close();
   }
 });
+
+test("release smoke 계정은 Worker rollback 호환성을 위해 TTL 동안 legacy hash를 유지한다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const password = "release-smoke-password";
+    const { salt, hash: legacyHash } = await legacyPasswordRecord(password, 8);
+    database.prepare(`
+      INSERT INTO app_users (
+        username, display_name, password_salt, password_hash,
+        status, role, approved_at, approved_by, must_change_password, expires_at
+      ) VALUES (?, ?, ?, ?, 'approved', 'User', CURRENT_TIMESTAMP, ?, 0,
+        datetime(CURRENT_TIMESTAMP, '+45 minutes'))
+    `).run(
+      "release-reader-test@hanlim.internal",
+      "Release smoke",
+      salt,
+      legacyHash,
+      "release-smoke:test"
+    );
+
+    const user = await validateUser(
+      { DB: sqliteD1(database) },
+      "release-reader-test@hanlim.internal",
+      password
+    );
+    assert.equal(user.username, "release-reader-test@hanlim.internal");
+    assert.equal(
+      database.prepare("SELECT password_hash FROM app_users WHERE username = ?")
+        .get("release-reader-test@hanlim.internal").password_hash,
+      legacyHash
+    );
+  } finally {
+    database.close();
+  }
+});
+
+async function legacyPasswordRecord(password, saltByte) {
+  const saltBytes = new Uint8Array(16).fill(saltByte);
+  const material = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const digest = await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    hash: "SHA-256",
+    salt: saltBytes,
+    iterations: 100000
+  }, material, 256);
+  return {
+    salt: Buffer.from(saltBytes).toString("base64url"),
+    hash: Buffer.from(digest).toString("base64url")
+  };
+}
 
 test("만료된 release smoke 계정만 cron janitor가 제거한다", async () => {
   const database = await createMigratedDatabase();
