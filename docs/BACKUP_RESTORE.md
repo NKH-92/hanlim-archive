@@ -1,28 +1,29 @@
 # D1 백업·복구 절차
 
-운영 백업은 `.github/workflows/d1-backup.yml`이 매주 생성한다. 아티팩트에는 AES-256-CBC(PBKDF2 200,000회)로 암호화한 `*.sql.gz.enc`와 SHA-256 체크섬만 포함되며 원문 SQL은 업로드하지 않는다.
+운영 백업은 `.github/workflows/d1-backup.yml`이 매주 생성한다. Core와 Search D1 export는 각각 gzip 후 age X25519 recipient로 암호화해 비공개 R2에 올린다. GitHub artifact에는 DB ciphertext가 아니라 R2 object key·SHA-256 checksum·migration replay 결과만 포함한다.
 
 ## 준비
 
-- GitHub Actions secret `CLOUDFLARE_D1_BACKUP_API_TOKEN`에는 대상 계정의 `Account > D1 > Edit`(API 표기 `Write`)만 허용한 백업 전용 토큰을 등록한다. Cloudflare 원격 export API가 쓰기 권한을 요구하므로 `Read` 토큰으로는 백업이 실패하며, 이 토큰은 배포 토큰과 공유하지 않는다.
-- GitHub Actions secret `D1_BACKUP_PASSPHRASE`에는 32자 이상 무작위 암호를 비밀관리 절차로 등록한다. 채팅·이슈·로그에 적지 않는다.
+- GitHub Actions secret `CLOUDFLARE_D1_BACKUP_API_TOKEN`에는 대상 Core·Search D1 export와 지정 R2 bucket object read/write에 필요한 권한만 허용한다. 배포·migration 토큰과 공유하지 않는다.
+- GitHub variable `R2_BACKUP_BUCKET`과 `BACKUP_AGE_RECIPIENT`를 등록한다. age private key는 GitHub에 등록하지 않고 이중 통제 복구 보관소에서 관리한다.
+- R2 development URL과 custom public domain을 비활성화하고, `predeploy/`·`scheduled/` prefix에 승인된 lifecycle·object lock을 설정한다.
 - D1 전체 export 중에는 데이터베이스의 다른 요청이 차단될 수 있으므로 정기 백업은 저사용 시간에 실행하고, 수동 백업은 점검창을 공지한 뒤 실행한다.
 - 백업과 운영 배포는 Actions의 `d1-production-maintenance` 동시성 그룹으로 직렬화하며 백업 작업은 30분 후 자동 종료한다.
 - 복구 작업은 운영 DB와 분리된 로컬 임시 디렉터리에서 수행한다.
-- Windows에서는 OpenSSL, gzip, `sha256sum`을 제공하는 Git Bash 또는 WSL 사용을 권장한다.
+- Windows에서는 `age`, gzip, `sha256sum`을 제공하는 Git Bash 또는 WSL 사용을 권장한다.
 
 ## 로컬 복구 훈련
 
-1. GitHub Actions의 `D1 Backup` 실행에서 아티팩트를 내려받아 격리된 디렉터리에 푼다.
-2. `sha256sum -c hanlim-archive-*.sha256`가 `OK`인지 확인한다.
-3. 암호를 환경변수로만 입력한다.
+1. GitHub Actions의 `D1 Backup` receipt에서 승인 대상 R2 object key와 ciphertext SHA-256을 확인한 뒤 격리된 디렉터리로 Core·Search object를 내려받는다.
+2. 각 object의 `sha256sum`이 receipt와 같은지 확인한다.
+3. 격리된 복구 단말에서 age identity 파일을 지정해 복호화한다. identity 값은 셸 기록에 직접 입력하지 않는다.
    ```bash
-   read -s D1_BACKUP_PASSPHRASE && export D1_BACKUP_PASSPHRASE
-   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-     -in hanlim-archive-YYYYMMDD-HHMMSS.sql.gz.enc \
-     -out restore.sql.gz -pass env:D1_BACKUP_PASSPHRASE
+   age --decrypt --identity /secure/recovery/hanlim-backup.agekey \
+     --output core-restore.sql.gz core-RELEASE_SHA-CHECKSUM.sql.gz.age
+   age --decrypt --identity /secure/recovery/hanlim-backup.agekey \
+     --output search-restore.sql.gz search-RELEASE_SHA-CHECKSUM.sql.gz.age
    ```
-4. `gzip -dc restore.sql.gz > restore.sql`로 압축을 해제한다.
+4. 두 파일을 `gzip -dc`로 압축 해제한다.
 5. `cloudflare-app/`에서 비어 있는 격리 persistence 디렉터리를 만들고 그 로컬 D1에만 복구한다. 기존 개발용 `.wrangler` 상태를 재사용하지 않는다.
    ```bash
    RESTORE_STATE="$(mktemp -d)"
@@ -52,8 +53,8 @@
 이 절차는 데이터 손상 사고에서만 사용한다. 운영 D1에 직접 덮어쓰지 않고 격리 DB에서 먼저 검증한다.
 
 1. incident 책임자와 복구 승인자를 지정하고 쓰기 변경을 중지한다.
-2. 대상 release SHA, 손상 시각, Time Travel 가능 시점, pre-deploy·주간 backup artifact를 기록한다.
-3. 암호화 파일의 checksum을 검증하고 passphrase는 환경변수로만 주입한다.
+2. 대상 release SHA, 손상 시각, Time Travel 가능 시점, pre-deploy·주간 R2 object와 receipt를 기록한다.
+3. 암호화 파일의 checksum을 검증하고 age identity는 승인된 격리 복구 단말에서만 사용한다.
 4. 새 격리 D1에 복원한 뒤 migration manifest, `PRAGMA foreign_key_check`, 핵심 행 수를 확인한다.
 5. 복구 대상 Worker를 격리 DB에 연결해 health, login, read-only 검색과 감사 이력을 검증한다.
 6. 누락 범위와 예상 중단 시간을 승인자에게 제출하고 Time Travel 또는 검증된 backup 중 손실이 가장 적은 안을 승인받는다.

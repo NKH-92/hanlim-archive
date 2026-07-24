@@ -26,6 +26,15 @@ test("matcher와 named URL builder는 정적 route를 동적 parameter보다 우
   assert.equal(resolvePublicRoute("/assets/app.css", "GET").descriptor.id, "assets.generated");
   assert.equal(resolvePublicRoute("/images/floor/zone1.svg", "GET").descriptor.id, "assets.images");
   assert.equal(urlFor("documents.edit", { id: 42 }, { returnTo: "/sets/1" }), "/documents/42/edit?returnTo=%2Fsets%2F1");
+  const manifestId = "EXP-123e4567-e89b-12d3-a456-426614174000";
+  assert.deepEqual(
+    resolveAuthenticatedRoute(`/document-snapshot-exports/${manifestId}/rows`, "GET").params,
+    { manifestId }
+  );
+  assert.equal(
+    urlFor("documents.snapshot.export.finalize", { manifestId }),
+    `/document-snapshot-exports/${manifestId}/finalize`
+  );
 });
 
 test("registry는 404와 method mismatch 405를 구분하되 compatibility router는 기존 404를 유지할 수 있다", () => {

@@ -87,6 +87,7 @@ test("Admin provisioning은 알려진 계정·약한 비밀번호·대상 불일
   const valid = preflightAdminProvision(base);
   assert.equal(valid.ok, true);
   assert.doesNotMatch(JSON.stringify(valid), /a-strong-password-2026/);
+  assert.equal(preflightAdminProvision({ ...base, password: "a1b2c3" }).ok, true);
   assert.equal(preflightAdminProvision({ ...base, username: "nkh92@hanlim.com" }).ok, false);
   assert.equal(preflightAdminProvision({ ...base, password: "short" }).ok, false);
   assert.equal(preflightAdminProvision({ ...base, confirmation: "PROVISION:production:wrong" }).ok, false);

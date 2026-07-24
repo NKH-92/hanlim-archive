@@ -57,6 +57,7 @@ test("공개 GET 경로의 HEAD와 OPTIONS는 본문 없이 정상 method 계약
     { path: "/healthz", method: "HEAD", status: 200, allow: null },
     { path: "/login", method: "HEAD", status: 200, allow: null },
     { path: "/healthz", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" },
+    { path: "/readyz", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" },
     { path: "/login", method: "OPTIONS", status: 204, allow: "GET, HEAD, POST, OPTIONS" },
     { path: "/assets/app.css", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" }
   ];

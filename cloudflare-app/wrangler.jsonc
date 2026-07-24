@@ -1,9 +1,10 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "hanlim-archive",
+  "name": "hanlim-archive-local",
   "main": "src/index.js",
   "compatibility_date": "2026-04-13",
-  "workers_dev": true,
+  "workers_dev": false,
+  "preview_urls": false,
   // 무료 한도 내 구조화 로그 수집(Workers Logs). logError()가 남기는 JSON 로그를 대시보드/Tail에서 조회.
   "observability": {
     "enabled": true
@@ -22,14 +23,14 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "hanlim-archive",
-      "database_id": "1262ca00-b431-490c-aad2-539d77d4f73f",
+      "database_name": "hanlim-archive-local",
+      "database_id": "00000000-0000-0000-0000-000000000001",
       "migrations_dir": "migrations"
     },
     {
       "binding": "SEARCH_DB",
-      "database_name": "hanlim-archive-search-10k",
-      "database_id": "e9dc4469-30ca-47c7-ad01-6aa9aea0b3ac",
+      "database_name": "hanlim-archive-search-local",
+      "database_id": "00000000-0000-0000-0000-000000000002",
       "migrations_dir": "search-migrations"
     }
   ],
@@ -64,6 +65,8 @@
     },
     "production": {
       "name": "hanlim-archive",
+      "workers_dev": true,
+      "preview_urls": false,
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       },

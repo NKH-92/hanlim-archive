@@ -14,6 +14,9 @@
 
 공개 회원가입은 제공하지 않습니다. 승인된 계정만 로그인할 수 있으며 초기 비밀번호 또는 관리자가 초기화한
 임시 비밀번호로 로그인한 사용자는 새 비밀번호를 설정하기 전까지 업무 화면에 접근할 수 없습니다.
+비밀번호는 사내 정책에 따라 최소 6자이며, 새로 저장하는 PBKDF2-SHA256 hash는 600,000회 반복을 사용합니다.
+기존 100,000회 hash는 정상 로그인 시 자동으로 현재 형식으로 승격됩니다. Admin은 TOTP 2단계 인증을
+등록하기 전에는 계정 보안 화면 외의 업무 화면에 접근할 수 없습니다.
 
 ## 주요 업무 흐름
 
@@ -60,6 +63,7 @@
 - Admin과 일반 User를 구분하고 일반 User는 `can_*` 권한을 매 요청 DB에서 다시 확인합니다.
 - 사용자 승인, 사용중지, 재활성화, 권한 변경과 비밀번호 초기화는 감사로그에 남습니다.
 - 로그아웃, 비밀번호 변경, 사용중지와 재활성화 시 `session_epoch`를 증가시켜 복사된 세션도 무효화합니다.
+- MFA 등록·해제는 현재 비밀번호와 현재 session epoch를 다시 확인하고, 등록 만료와 동시 요청을 원자적으로 차단합니다.
 - 비밀번호 또는 hash는 감사로그, 저장소, Actions 로그에 기록하지 않습니다.
 - 기준정보, 문서, 이동, 세트, 폐기와 대량 작업의 이력을 추적할 수 있습니다.
 
@@ -155,8 +159,9 @@ Bash에서는 `Copy-Item` 대신 다음 명령을 사용합니다.
 cp .dev.vars.example .dev.vars
 ```
 
-`.dev.vars`의 `SESSION_SECRET`을 최소 32자의 무작위 값으로 교체합니다. `.dev.vars`와 실제 운영 secret은
-commit하지 않습니다. 로컬 기본 주소는 Wrangler가 출력하는 URL을 사용합니다.
+`.dev.vars`의 `SESSION_SECRET`, `AUTH_HMAC_SECRET`을 서로 다른 최소 32자의 무작위 값으로,
+`MFA_ENCRYPTION_KEY_V1`을 base64url 인코딩한 32바이트 키로 교체합니다. `.dev.vars`와 실제 운영
+secret은 commit하지 않습니다. 로컬 기본 주소는 Wrangler가 출력하는 URL을 사용합니다.
 
 ## 주요 명령어
 
@@ -217,10 +222,11 @@ PR과 `main`의 변경은 CI에서 다음 항목을 검사합니다.
 3. 암호화 D1 backup 생성·업로드
 4. 운영 데이터 upgrade readiness 확인
 5. append-only migration 적용
-6. Worker 배포와 정확한 version 확인
-7. 로그인, 검색, Admin과 `/healthz` smoke
-8. 실패 시 기록된 이전 Worker version으로 rollback
-9. 배포·backup·smoke·rollback evidence 보존
+6. immutable Worker version upload 후 이전 version 100%·신규 version 0%로 stage
+7. 운영 URL에 version override를 붙여 신규 version의 로그인, 검색, 사용자 관리와 `/healthz` smoke
+8. 검증된 version만 100%로 승격하고 운영 URL smoke 재확인
+9. 실패 시 기록된 이전 Worker version으로 rollback
+10. 배포·backup·smoke·rollback evidence 보존
 
 README와 `docs/**`처럼 실행 코드에 영향을 주지 않는 변경만 병합하면 운영 배포는 실행하지 않습니다.
 로컬에서 원격 migration 또는 production 배포를 실행하지 않습니다.

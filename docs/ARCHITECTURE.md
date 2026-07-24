@@ -115,7 +115,26 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     감사정보를 저장하지 않는다. 검색 후보는 최대 200개 ID이며 Core에서 현재 상태·필터를 재검증한 뒤
     최대 30건과 opaque cursor만 응답한다. 개별 문서 등록은 Core transaction 확정 뒤 별도 요청 예산으로
     해당 문서의 outbox만 즉시 반영한다. Search 반영 실패나 전체 재구축 중에는 outbox를 남겨 Cron이
-    재처리하며, Core 등록 성공을 되돌리지 않는다.
+    재처리하며, Core 등록 성공을 되돌리지 않는다. Shadow rebuild는 물리 generation과 Core content
+    generation을 분리하고 Core `search_event_clock`에서 발급한 영구 단조 source version을 문서별
+    watermark·삭제 tombstone으로 기록한다. 따라서 outbox 행이 처리 후 다시 만들어져 자체 event version이
+    1로 돌아가더라도 순서가 역전되지 않으며, 재구축이 먼저 읽은
+    오래된 문서가 최신 outbox 결과를 덮어쓰거나 삭제 문서를 되살릴 수 없다. Cutover는 rebuild token,
+    cursor CAS, Core generation·outbox fence를 모두 통과한 뒤에만 active generation을 교체하며 직전
+    active generation을 명시적으로 보존해 rollback 대상으로 사용한다.
+22. **검색 유지보수 lease**: Cron은 outbox를 먼저 배출한 뒤 rebuild를 진행한다. outbox processor와 각
+    event는 만료 가능한 owner lease를 사용하고 완료 시 event version과 owner를 함께 비교한다. 실패 전에
+    Search 쓰기가 시작되지 않은 transient 오류와 stale event는 장기 backoff를 만들지 않는다. generation
+    정리는 실행 시점의 active·previous·building generation을 다시 조회해 진행 중 rebuild를 삭제하지 않는다.
+23. **인증 재검증과 임시 계정 수명**: 비밀번호 최소 길이는 6자이며 신규 PBKDF2-SHA256 record는 600,000회
+    반복을 사용한다. legacy 100,000회 record는 성공한 로그인에서 CAS 방식으로 승격한다. Admin은 MFA가
+    활성화되기 전 `/account/mfa` 외의 인증 업무 경로에 진입할 수 없다. MFA 등록·확인·해제는 현재 비밀번호,
+    현재 session epoch, 등록 만료를 mutation batch 안에서 다시 확인한다. release smoke 계정은 45분 TTL과
+    필요한 단일 권한만 가지며 다음 release와 Cron janitor가 누수를 제거한다.
+24. **운영 version 격리**: 기본 Wrangler 환경은 운영 Worker·D1을 가리키지 않고 preview URL을 만들지 않는다.
+    운영 version은 immutable upload 후 이전 version 100%·신규 version 0%로 stage한다. smoke는 공개 preview
+    hostname 대신 canonical 운영 URL에 Cloudflare Worker version override header를 사용하고, 성공한 version만
+    100% traffic으로 promote한다.
 
 ## 데이터 무결성 계약
 

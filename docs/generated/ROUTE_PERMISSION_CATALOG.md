@@ -10,8 +10,11 @@
 | `assets.images` | `*` | `/images/:path*` | public | public |
 | `assets.favicon` | `*` | `/favicon.ico` | public | public |
 | `health.read` | `GET` | `/healthz` | public | public |
+| `readiness.read` | `GET` | `/readyz` | public | public |
 | `session.login.form` | `GET` | `/login` | public | public |
 | `session.login` | `POST` | `/login` | public | public |
+| `session.mfa-login.form` | `GET` | `/login/mfa` | public | public |
+| `session.mfa-login` | `POST` | `/login/mfa` | public | public |
 | `session.signup.blocked` | `*` | `/signup` | public | policy:always-404 |
 | `home.redirect` | `GET` | `/` | required | authenticated |
 | `search.home` | `GET` | `/app` | required | authenticated |
@@ -23,6 +26,10 @@
 | `search.click` | `POST` | `/api/search-click` | required | authenticated |
 | `session.password.form` | `GET` | `/account/password` | required | authenticated |
 | `session.password.change` | `POST` | `/account/password` | required | authenticated |
+| `session.mfa.form` | `GET` | `/account/mfa` | required | authenticated |
+| `session.mfa.enroll` | `POST` | `/account/mfa/enroll` | required | authenticated |
+| `session.mfa.confirm` | `POST` | `/account/mfa/confirm` | required | authenticated |
+| `session.mfa.disable` | `POST` | `/account/mfa/disable` | required | authenticated |
 | `session.logout` | `POST` | `/logout` | required | authenticated |
 | `session.logout.fallback` | `*` | `/logout` | required | authenticated |
 | `admin.dashboard` | `GET` | `/admin` | required | policy:any-management-permission |
@@ -49,8 +56,8 @@
 | `documents.export` | `GET` | `/documents/export.csv` | required | `can_manage_documents` |
 | `documents.snapshot.export` | `GET` | `/api/document-snapshot/export` | required | `can_manage_documents` |
 | `documents.snapshot.export.create` | `POST` | `/document-snapshot-exports` | required | `can_manage_documents` |
-| `documents.snapshot.export.rows` | `GET` | `/document-snapshot-exports/:id/rows` | required | `can_manage_documents` |
-| `documents.snapshot.export.finalize` | `POST` | `/document-snapshot-exports/:id/finalize` | required | `can_manage_documents` |
+| `documents.snapshot.export.rows` | `GET` | `/document-snapshot-exports/:manifestId/rows` | required | `can_manage_documents` |
+| `documents.snapshot.export.finalize` | `POST` | `/document-snapshot-exports/:manifestId/finalize` | required | `can_manage_documents` |
 | `documents.import.form` | `GET` | `/documents/import` | required | `can_manage_documents` |
 | `documents.new` | `GET` | `/documents/new` | required | `can_manage_documents` |
 | `documents.details` | `GET` | `/documents/:id` | required | authenticated |
@@ -133,10 +140,10 @@
 | `can_manage_users` | `admin.settings`, `admin.user.permissions.form`, `admin.user.permissions`, `admin.user.password-reset.form`, `admin.user.password-reset`, `admin.user.approve`, `admin.user.reject`, `admin.user.disable`, `admin.user.enable` |
 | `can_move_documents` | `documents.move.form`, `documents.move` |
 | `can_view_audit` | `admin.search-report`, `admin.audit` |
-| authenticated | `home.redirect`, `search.home`, `floor-plan.read`, `qa.read`, `search.suggestions`, `search.viewer`, `search.index`, `search.click`, `session.password.form`, `session.password.change`, `session.logout`, `session.logout.fallback`, `documents.list`, `documents.details`, `sets.list`, `sets.details`, `sets.export`, `sets.export.csv` |
+| authenticated | `home.redirect`, `search.home`, `floor-plan.read`, `qa.read`, `search.suggestions`, `search.viewer`, `search.index`, `search.click`, `session.password.form`, `session.password.change`, `session.mfa.form`, `session.mfa.enroll`, `session.mfa.confirm`, `session.mfa.disable`, `session.logout`, `session.logout.fallback`, `documents.list`, `documents.details`, `sets.list`, `sets.details`, `sets.export`, `sets.export.csv` |
 | policy:admin-only | `documents.restore` |
 | policy:allOf:can_manage_documents+can_apply_document_snapshots | `snapshots.apply` |
 | policy:always-404 | `session.signup.blocked` |
 | policy:any-management-permission | `admin.dashboard` |
 | policy:move-or-audit | `admin.movements` |
-| public | `assets.generated`, `assets.images`, `assets.favicon`, `health.read`, `session.login.form`, `session.login` |
+| public | `assets.generated`, `assets.images`, `assets.favicon`, `health.read`, `readiness.read`, `session.login.form`, `session.login`, `session.mfa-login.form`, `session.mfa-login` |

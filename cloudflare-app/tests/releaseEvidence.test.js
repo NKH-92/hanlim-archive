@@ -15,10 +15,11 @@ test("release evidence는 migration checksum과 schema manifest를 보존한다"
   const searchManifest = JSON.parse(await readFile(path.join(target, "search-migration-manifest.json"), "utf8"));
 
   assert.equal(evidence.sourceRevision, "abc123");
-  assert.equal(evidence.migrationCount, 40);
-  assert.equal(Object.keys(manifest.checksums).length, 40);
-  assert.equal(evidence.searchMigrationCount, 1);
-  assert.equal(Object.keys(searchManifest.checksums).length, 1);
+  assert.equal(evidence.migrationCount, 43);
+  assert.equal(Object.keys(manifest.checksums).length, 43);
+  assert.equal(evidence.searchMigrationCount, 3);
+  assert.equal(Object.keys(searchManifest.checksums).length, 3);
+  assert.ok(searchManifest.schema.tables.includes("search_document_watermarks"));
   assert.ok(manifest.schema.tables.includes("documents"));
   assert.match(evidence.migrationManifestSha256, /^[a-f0-9]{64}$/);
   assert.match(evidence.searchMigrationManifestSha256, /^[a-f0-9]{64}$/);
@@ -64,6 +65,40 @@ test("release smoke 로그인 실패는 상태 코드와 Cloudflare Ray를 남�
     }),
     /smoke 계정 로그인 실패\(status=500, cf-ray=test-ray\)/
   );
+});
+
+test("zero-traffic smoke는 모든 요청을 지정 Worker version override에 고정한다", async () => {
+  const calls = [];
+  const versionId = "12345678-1234-1234-1234-123456789abc";
+  const responses = [
+    new Response('{"ok":true}', { status: 200, headers: { "Content-Type": "application/json" } }),
+    new Response('<input name="username">', { status: 200 }),
+    new Response("not found", { status: 404 }),
+    new Response(null, {
+      status: 302,
+      headers: { Location: "/app", "Set-Cookie": "hanlim_session=token; Path=/" }
+    }),
+    new Response('<main data-viewer-app></main>', { status: 200 })
+  ];
+  await runReleaseSmoke({
+    baseUrl: "https://archive.example.com",
+    username: "smoke@example.com",
+    password: "secret-value",
+    workerVersionOverrideName: "hanlim-archive",
+    workerVersionOverrideId: versionId,
+    allowedHosts: ["archive.example.com"],
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      return responses.shift();
+    }
+  });
+
+  for (const call of calls) {
+    assert.equal(
+      new Headers(call.options.headers).get("Cloudflare-Workers-Version-Overrides"),
+      `hanlim-archive="${versionId}"`
+    );
+  }
 });
 
 test("release smoke는 Worker 배포 전파 중 health 실패를 재시도한다", async () => {

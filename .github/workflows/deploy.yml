@@ -16,8 +16,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  backup:
+    name: encrypted D1 backup and migration replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production-backup
+    defaults:
+      run:
+        working-directory: cloudflare-app
+    env:
+      CLOUDFLARE_ACCOUNT_ID: e2b9c1d94dc8f0f6e349bfbfb36cfa30
+      D1_BACKUP_ENV: production
+      D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
+      SEARCH_D1_TARGET_DATABASE_ID: ${{ vars.SEARCH_D1_TARGET_DATABASE_ID }}
+      R2_BACKUP_BUCKET: ${{ vars.R2_BACKUP_BUCKET }}
+      R2_BACKUP_PREFIX: predeploy
+      BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+      BACKUP_RECEIPT_PATH: ${{ github.workspace }}/cloudflare-app/release-evidence/backup-receipt.json
+      BACKUP_REPLAY_REPORT_PATH: ${{ github.workspace }}/cloudflare-app/release-evidence/migration-replay.json
+    outputs:
+      artifact-id: ${{ steps.receipt.outputs.artifact-id }}
+      artifact-digest: ${{ steps.receipt.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cloudflare-app/package-lock.json
+      - run: npm ci
+      - name: Install age encryption tool
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes age
+          age --version
+      - name: Export, replay pending migrations, encrypt, and upload both D1 databases
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_API_TOKEN }}
+        run: npm run backup:d1:r2
+      - name: Upload non-sensitive backup receipt
+        id: receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backup-receipt-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            cloudflare-app/release-evidence/backup-receipt.json
+            cloudflare-app/release-evidence/migration-replay.json
+          if-no-files-found: error
+          retention-days: 90
+
   deploy:
     name: approved production release
+    needs: backup
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment:
@@ -28,7 +82,6 @@ jobs:
         working-directory: cloudflare-app
     env:
       CLOUDFLARE_ACCOUNT_ID: e2b9c1d94dc8f0f6e349bfbfb36cfa30
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ENV: production
       D1_MIGRATE_ENV: production
       D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
@@ -37,6 +90,9 @@ jobs:
       SMOKE_ALLOWED_HOSTS: hanlim-archive.skarhkdgus7.workers.dev
       WORKER_VERSION_TAG: release-${{ github.sha }}
       WORKER_VERSION_MESSAGE: release-sha:${{ github.sha }}
+      WORKER_VERSION_OUTPUT_PATH: ${{ runner.temp }}/worker-version.json
+      RELEASE_SMOKE_OPERATION_ID: release-${{ github.run_id }}-${{ github.sha }}
+      RELEASE_SMOKE_CREDENTIAL_PATH: ${{ runner.temp }}/release-smoke-credentials.json
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -83,6 +139,8 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Capture current Worker version
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
         run: |
           npx wrangler deployments status --env production --json > release-evidence/deployment-before.json
           jq -e '([.versions[] | select(.percentage == 100)] | length) == 1' release-evidence/deployment-before.json
@@ -93,17 +151,23 @@ jobs:
           echo "ORIGINAL_VERSION_ID=$ORIGINAL_VERSION_ID" >> "$GITHUB_ENV"
       - name: Verify independent administrator before migration
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATE_API_TOKEN }}
           D1_ADMIN_CHECK_PHASE: pre-migration
         run: npm run admin:check:remote
+      - name: Provision release-scoped smoke principals
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATE_API_TOKEN }}
+          D1_PROVISION_ENV: production
+        run: npm run smoke:principal -- --action provision
       - name: Verify independent administrator login before migration
         env:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
-          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
-          SMOKE_ADMIN_USERNAME: ${{ secrets.SMOKE_ADMIN_USERNAME }}
-          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
           SMOKE_REQUIRE_ADMIN: "1"
         run: |
+          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
           set -o pipefail
           npm run smoke:release 2>&1 | tee release-evidence/pre-migration-admin-smoke.txt
       - name: Detect session-epoch rollback compatibility
@@ -111,13 +175,13 @@ jobs:
         continue-on-error: true
         env:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
-          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
-          SMOKE_ADMIN_USERNAME: ${{ secrets.SMOKE_ADMIN_USERNAME }}
-          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
           SMOKE_REQUIRE_ADMIN: "1"
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
         run: |
+          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
           set -o pipefail
           npm run smoke:release 2>&1 | tee release-evidence/rollback-compatibility-before.txt
       - name: Prepare and verify session-epoch compatibility Worker
@@ -125,6 +189,7 @@ jobs:
         if: steps.rollback_compat.outcome == 'failure'
         continue-on-error: true
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
           COMPAT_BASE_SHA: ${{ github.event.before }}
           APPROVED_LIVE_SOURCE_SHA: ${{ vars.PRODUCTION_SOURCE_SHA }}
         run: |
@@ -206,6 +271,7 @@ jobs:
         if: steps.rollback_compat.outcome == 'failure' && steps.compat_prepare.outcome == 'success'
         continue-on-error: true
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
           WORKER_VERSION_TAG: compat-${{ github.event.before }}
           WORKER_VERSION_MESSAGE: session-epoch-compat-base:${{ github.event.before }} release:${{ github.sha }}
         run: |
@@ -219,13 +285,13 @@ jobs:
         continue-on-error: true
         env:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
-          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
-          SMOKE_ADMIN_USERNAME: ${{ secrets.SMOKE_ADMIN_USERNAME }}
-          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
           SMOKE_REQUIRE_ADMIN: "1"
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
         run: |
+          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
           set -o pipefail
           npm run smoke:release 2>&1 | tee release-evidence/session-epoch-compat-smoke.txt
       - name: Capture compatible rollback Worker version
@@ -233,6 +299,7 @@ jobs:
         if: steps.rollback_compat.outcome == 'failure' && steps.compat_smoke.outcome == 'success'
         continue-on-error: true
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
           WORKER_VERSION_TAG: compat-${{ github.event.before }}
           WORKER_VERSION_MESSAGE: session-epoch-compat-base:${{ github.event.before }} release:${{ github.sha }}
         run: |
@@ -256,13 +323,14 @@ jobs:
           always() && steps.rollback_compat.outcome == 'failure' &&
           (steps.compat_deploy.outcome == 'failure' || steps.compat_smoke.outcome == 'failure' || steps.compat_capture.outcome == 'failure')
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
-          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
-          SMOKE_ADMIN_USERNAME: ${{ secrets.SMOKE_ADMIN_USERNAME }}
-          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
           SMOKE_REQUIRE_ADMIN: "1"
         run: |
+          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
           set -o pipefail
           npx wrangler rollback "$ORIGINAL_VERSION_ID" --env production --yes \
             --message "Rollback failed session-epoch compatibility bootstrap for $GITHUB_SHA" 2>&1 \
@@ -284,70 +352,40 @@ jobs:
       - name: Enforce epoch-aware rollback target before database mutation
         env:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
-          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
-          SMOKE_ADMIN_USERNAME: ${{ secrets.SMOKE_ADMIN_USERNAME }}
-          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
           SMOKE_REQUIRE_ADMIN: "1"
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
         run: |
           test -n "$PREVIOUS_VERSION_ID"
+          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
           export SMOKE_EXPECTED_WORKER_VERSION="$PREVIOUS_VERSION_ID"
           set -o pipefail
           npm run smoke:release 2>&1 | tee release-evidence/rollback-target-smoke.txt
-      - name: Create encrypted pre-deploy D1 backup
-        env:
-          D1_BACKUP_PASSPHRASE: ${{ secrets.D1_BACKUP_PASSPHRASE }}
-        run: |
-          set +x
-          set -euo pipefail
-          umask 077
-          : "${D1_BACKUP_PASSPHRASE:?production environment secret is required}"
-          if [ "${#D1_BACKUP_PASSPHRASE}" -lt 32 ]; then
-            echo "D1_BACKUP_PASSPHRASE must be at least 32 characters."
-            exit 1
-          fi
-          STAMP="$(date -u +%Y%m%d-%H%M%S)"
-          echo "BACKUP_STAMP=$STAMP" >> "$GITHUB_ENV"
-          RAW_SQL="$RUNNER_TEMP/pre-deploy.sql"
-          GZIP_SQL="$RUNNER_TEMP/pre-deploy.sql.gz"
-          BACKUP_DIR="$GITHUB_WORKSPACE/cloudflare-app/release-backup"
-          ENCRYPTED="$BACKUP_DIR/hanlim-archive-${GITHUB_SHA}-${STAMP}.sql.gz.enc"
-          mkdir -p "$BACKUP_DIR"
-          cleanup() {
-            command -v shred >/dev/null 2>&1 && shred -u "$RAW_SQL" "$GZIP_SQL" 2>/dev/null || rm -f "$RAW_SQL" "$GZIP_SQL"
-          }
-          trap cleanup EXIT
-          npx wrangler d1 export hanlim-archive --remote --env production --output "$RAW_SQL" > "$RUNNER_TEMP/d1-export.log" 2>&1
-          UPGRADE_READINESS_STATUS=0
-          node scripts/check-upgrade-readiness.mjs \
-            --sql-export "$RAW_SQL" \
-            --out "$GITHUB_WORKSPACE/cloudflare-app/release-evidence/upgrade-readiness.json" \
-            || UPGRADE_READINESS_STATUS=$?
-          echo "UPGRADE_READINESS_STATUS=$UPGRADE_READINESS_STATUS" >> "$GITHUB_ENV"
-          gzip -c "$RAW_SQL" > "$GZIP_SQL"
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
-            -in "$GZIP_SQL" -out "$ENCRYPTED" -pass env:D1_BACKUP_PASSPHRASE
-          (cd "$BACKUP_DIR" && sha256sum "$(basename "$ENCRYPTED")" > "$(basename "$ENCRYPTED").sha256")
-          echo "Encrypted pre-deploy backup created."
-      - name: Upload pre-deploy backup
-        id: backup_upload
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Download verified R2 backup receipt
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: pre-deploy-d1-${{ github.sha }}-${{ env.BACKUP_STAMP }}
-          path: cloudflare-app/release-backup/
-          if-no-files-found: error
-          retention-days: 90
-      - name: Enforce production upgrade data preconditions
+          name: backup-receipt-${{ github.sha }}-${{ github.run_id }}
+          path: cloudflare-app/release-evidence/backup
+      - name: Enforce backup and migration replay receipt
         run: |
-          if [ "${UPGRADE_READINESS_STATUS:-1}" != "0" ]; then
-            cat release-evidence/upgrade-readiness.json
-            exit 1
-          fi
+          set -euo pipefail
+          jq -e --arg sha "$GITHUB_SHA" \
+            '.schemaVersion == 1 and .releaseSha == $sha and .encryption == "age-x25519" and
+             (.objects | length) == 2 and
+             ([.objects[].database] | sort) == ["core", "search"] and
+             ([.objects[].ciphertextSha256 | test("^[a-f0-9]{64}$")] | all)' \
+            release-evidence/backup/backup-receipt.json
+          jq -e '.ok == true and
+            (.databases.core.pendingReplayed | type) == "array" and
+            (.databases.search.pendingReplayed | type) == "array"' \
+            release-evidence/backup/migration-replay.json
       - name: Apply D1 migrations
         env:
-          D1_BACKUP_EVIDENCE_ID: ${{ steps.backup_upload.outputs.artifact-id }}
-          D1_BACKUP_EVIDENCE_DIGEST: ${{ steps.backup_upload.outputs.artifact-digest }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATE_API_TOKEN }}
+          D1_BACKUP_EVIDENCE_ID: ${{ needs.backup.outputs.artifact-id }}
+          D1_BACKUP_EVIDENCE_DIGEST: ${{ needs.backup.outputs.artifact-digest }}
           D1_MIGRATE_APPROVAL_CONTEXT: github-environment:production:${{ github.run_id }}:${{ github.sha }}
           D1_MIGRATE_DRY_RUN: "0"
         run: |
@@ -355,23 +393,65 @@ jobs:
           npm run db:migrate:remote 2>&1 | tee release-evidence/migration-apply.txt
       - name: Verify independent administrator after migration
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATE_API_TOKEN }}
           D1_ADMIN_CHECK_PHASE: post-migration
         run: npm run admin:check:remote
-      - name: Deploy Worker
+      - name: Upload and stage immutable Worker version at zero traffic
         id: deploy_worker
         continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
         run: |
           set -o pipefail
-          node scripts/deploy-guarded.mjs 2>&1 | tee release-evidence/deploy.txt
+          npm run release:worker-version -- --action upload 2>&1 | tee release-evidence/version-upload.txt
+          DEPLOYED_VERSION_ID="$(jq -r .versionId "$WORKER_VERSION_OUTPUT_PATH")"
+          test -n "$DEPLOYED_VERSION_ID"
+          test -n "$PREVIOUS_VERSION_ID"
+          export WORKER_VERSION_ID="$DEPLOYED_VERSION_ID"
+          export WORKER_PREVIOUS_VERSION_ID="$PREVIOUS_VERSION_ID"
+          npm run release:worker-version -- --action stage 2>&1 | tee release-evidence/version-stage.txt
+          echo "DEPLOYED_VERSION_ID=$DEPLOYED_VERSION_ID" >> "$GITHUB_ENV"
+      - name: Smoke zero-traffic Worker version through canonical production route
+        id: version_smoke
+        if: steps.deploy_worker.outcome == 'success'
+        continue-on-error: true
+        env:
+          SMOKE_REQUIRE_ADMIN: "1"
+          SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
+          SMOKE_REQUIRE_READINESS: "1"
+          SMOKE_WORKER_VERSION_OVERRIDE_NAME: hanlim-archive
+        run: |
+          export SMOKE_BASE_URL="$PRODUCTION_URL"
+          export SMOKE_WORKER_VERSION_OVERRIDE_ID="$DEPLOYED_VERSION_ID"
+          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_EXPECTED_WORKER_VERSION="$DEPLOYED_VERSION_ID"
+          set -o pipefail
+          npm run smoke:release 2>&1 | tee release-evidence/version-override-smoke.txt
+      - name: Promote verified Worker version to 100 percent production traffic
+        id: promote_worker
+        if: steps.version_smoke.outcome == 'success'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
+          WORKER_VERSION_ID: ${{ env.DEPLOYED_VERSION_ID }}
+        run: |
+          set -o pipefail
+          npm run release:worker-version -- --action promote 2>&1 | tee release-evidence/version-promote.txt
       - name: Capture deployed Worker version
         id: capture_deployed
+        if: steps.promote_worker.outcome == 'success'
         continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
         run: |
           npx wrangler versions list --env production --json > release-evidence/versions-after.json
           npx wrangler deployments status --env production --json > release-evidence/deployment-after.json
           jq -e '([.versions[] | select(.percentage == 100)] | length) == 1' release-evidence/deployment-after.json
-          DEPLOYED_VERSION_ID="$(jq -r '.versions[] | select(.percentage == 100) | .version_id' release-evidence/deployment-after.json)"
-          test -n "$DEPLOYED_VERSION_ID"
+          ACTIVE_VERSION_ID="$(jq -r '.versions[] | select(.percentage == 100) | .version_id' release-evidence/deployment-after.json)"
+          test "$ACTIVE_VERSION_ID" = "$DEPLOYED_VERSION_ID"
           test "$DEPLOYED_VERSION_ID" != "$PREVIOUS_VERSION_ID"
           npx wrangler versions view "$DEPLOYED_VERSION_ID" --env production --json \
             > release-evidence/version-after.json
@@ -379,24 +459,24 @@ jobs:
             --arg message "$WORKER_VERSION_MESSAGE" \
             '.id == $id and .annotations["workers/tag"] == $tag and .annotations["workers/message"] == $message' \
             release-evidence/version-after.json
-          echo "DEPLOYED_VERSION_ID=$DEPLOYED_VERSION_ID" >> "$GITHUB_ENV"
       - name: Post-deploy transport, assets, login and read-only search smoke
         id: smoke
         if: steps.deploy_worker.outcome == 'success' && steps.capture_deployed.outcome == 'success'
         continue-on-error: true
         env:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
-          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
-          SMOKE_ADMIN_USERNAME: ${{ secrets.SMOKE_ADMIN_USERNAME }}
-          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
           SMOKE_REQUIRE_ADMIN: "1"
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
+          SMOKE_REQUIRE_READINESS: "1"
           SMOKE_VERIFY_PUBLIC_SURFACE: "1"
           # Worker 배포 상태가 100%여도 workers.dev edge 전파에는 시간이 더 걸릴 수 있다.
           SMOKE_HEALTH_ATTEMPTS: "60"
           SMOKE_HEALTH_RETRY_MS: "2000"
         run: |
+          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
           export SMOKE_EXPECTED_WORKER_VERSION="$DEPLOYED_VERSION_ID"
           set -o pipefail
           npm run smoke:release 2>&1 | tee release-evidence/smoke.txt
@@ -423,18 +503,20 @@ jobs:
       - name: Roll back Worker after release failure
         if: >-
           always() && (steps.deploy_worker.outcome == 'failure' ||
+          steps.version_smoke.outcome == 'failure' || steps.promote_worker.outcome == 'failure' ||
           steps.capture_deployed.outcome == 'failure' || steps.smoke.outcome == 'failure')
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_DEPLOY_API_TOKEN }}
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
-          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
-          SMOKE_ADMIN_USERNAME: ${{ secrets.SMOKE_ADMIN_USERNAME }}
-          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
           SMOKE_REQUIRE_ADMIN: "1"
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
         run: |
           set -euo pipefail
           test -n "$PREVIOUS_VERSION_ID"
+          export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
+          export SMOKE_ADMIN_PASSWORD="$(jq -r .admin.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
           CURRENT_VERSION_ID=""
           if npx wrangler deployments status --env production --json \
               > release-evidence/deployment-failed-release-before-rollback.json \
@@ -466,8 +548,15 @@ jobs:
       - name: Mark failed release
         if: >-
           always() && (steps.deploy_worker.outcome == 'failure' ||
+          steps.version_smoke.outcome == 'failure' || steps.promote_worker.outcome == 'failure' ||
           steps.capture_deployed.outcome == 'failure' || steps.smoke.outcome == 'failure')
         run: exit 1
+      - name: Remove release-scoped smoke principals
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATE_API_TOKEN }}
+          D1_PROVISION_ENV: production
+        run: npm run smoke:principal -- --action cleanup
       - name: Upload release evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createPasswordRecord, createSessionCookie, readSession, validateUser } from "../src/auth.js";
+import {
+  cleanupExpiredReleaseSmokePrincipals,
+  createPasswordRecord,
+  createSessionCookie,
+  readSession,
+  validateUser
+} from "../src/auth.js";
+import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
+import { sqliteD1 } from "./helpers/sqliteD1.js";
 
 const SESSION_SECRET = "0123456789abcdef0123456789abcdef";
 
@@ -128,6 +136,93 @@ test("validateUser는 미등록·비승인 계정에도 동일한 password verif
   for (const [, salt, hash] of calls) {
     assert.ok(salt);
     assert.ok(hash);
+  }
+});
+
+test("legacy PBKDF2 100000회 record는 정상 로그인 시 현재 work factor로 승격된다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const password = "legacy-password-2026";
+    const saltBytes = new Uint8Array(16).fill(7);
+    const salt = Buffer.from(saltBytes).toString("base64url");
+    const material = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+    const digest = await crypto.subtle.deriveBits({
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: saltBytes,
+      iterations: 100000
+    }, material, 256);
+    const legacyHash = Buffer.from(digest).toString("base64url");
+    database.prepare(`
+      INSERT INTO app_users (
+        username, display_name, password_salt, password_hash,
+        status, role, approved_at, approved_by, must_change_password
+      ) VALUES (?, ?, ?, ?, 'approved', 'User', CURRENT_TIMESTAMP, 'test', 0)
+    `).run("legacy-hash@example.com", "Legacy hash", salt, legacyHash);
+
+    const user = await validateUser(
+      { DB: sqliteD1(database) },
+      "legacy-hash@example.com",
+      password
+    );
+    assert.equal(user.username, "legacy-hash@example.com");
+    const upgraded = database.prepare(`
+      SELECT password_hash FROM app_users WHERE username = ?
+    `).get("legacy-hash@example.com").password_hash;
+    assert.match(upgraded, /^pbkdf2-sha256\$600000\$/);
+    assert.notEqual(upgraded, legacyHash);
+  } finally {
+    database.close();
+  }
+});
+
+test("만료된 release smoke 계정만 cron janitor가 제거한다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    database.exec(`
+      INSERT INTO app_users (
+        username, display_name, password_salt, password_hash,
+        status, role, approved_at, approved_by, expires_at
+      ) VALUES
+        ('expired-smoke@hanlim.internal', 'Expired smoke', 'salt', 'hash',
+         'approved', 'User', CURRENT_TIMESTAMP, 'release-smoke:expired',
+         datetime(CURRENT_TIMESTAMP, '-1 minute')),
+        ('live-smoke@hanlim.internal', 'Live smoke', 'salt', 'hash',
+         'approved', 'User', CURRENT_TIMESTAMP, 'release-smoke:live',
+         datetime(CURRENT_TIMESTAMP, '+30 minutes')),
+        ('ordinary-expired@hanlim.internal', 'Ordinary expired', 'salt', 'hash',
+         'approved', 'User', CURRENT_TIMESTAMP, 'operator',
+         datetime(CURRENT_TIMESTAMP, '-1 minute'));
+      INSERT INTO login_throttle (username, fail_count)
+      VALUES ('expired-smoke@hanlim.internal', 2), ('live-smoke@hanlim.internal', 1);
+    `);
+
+    assert.deepEqual(
+      await cleanupExpiredReleaseSmokePrincipals({ DB: sqliteD1(database) }),
+      { ok: true }
+    );
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM app_users WHERE username = ?")
+        .get("expired-smoke@hanlim.internal").count,
+      0
+    );
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM app_users WHERE username IN (?, ?)")
+        .get("live-smoke@hanlim.internal", "ordinary-expired@hanlim.internal").count,
+      2
+    );
+    assert.deepEqual(
+      database.prepare("SELECT username FROM login_throttle ORDER BY username").all().map((row) => row.username),
+      ["live-smoke@hanlim.internal"]
+    );
+  } finally {
+    database.close();
   }
 });
 
