@@ -54,7 +54,7 @@ test("smoke URL은 credential 사용 전에 host·protocol·path를 거부한다
   assert.equal(resolveSmokeTarget("http://127.0.0.1:8787").hostname, "127.0.0.1");
 });
 
-test("운영 공개면 smoke는 HTTPS 전환과 asset MIME·304 재검증을 함께 확인한다", async () => {
+test("운영 공개면 smoke는 HTTPS 전환과 asset MIME·ETag 재검증을 함께 확인한다", async () => {
   const target = resolveSmokeTarget("https://archive.example", { allowedHosts: ["archive.example"] });
   const calls = [];
   const contentTypes = new Map([
@@ -73,13 +73,20 @@ test("운영 공개면 smoke는 HTTPS 전환과 asset MIME·304 재검증을 함
           headers: { Location: "https://archive.example/login" }
         });
       }
-      if (new Headers(init.headers).get("If-None-Match") === "*") {
-        return new Response(null, { status: 304 });
+      if (new Headers(init.headers).get("If-None-Match") === '"asset-etag"') {
+        return new Response("asset", {
+          status: 200,
+          headers: {
+            "Content-Type": contentTypes.get(url.pathname),
+            ETag: '"asset-etag"'
+          }
+        });
       }
       return new Response("asset", {
         status: 200,
         headers: {
           "Content-Type": contentTypes.get(url.pathname),
+          ETag: '"asset-etag"',
           "Cache-Control": "public, max-age=0, must-revalidate",
           "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
           "Cross-Origin-Opener-Policy": "same-origin",
