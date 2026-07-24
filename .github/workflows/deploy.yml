@@ -36,8 +36,8 @@ jobs:
       BACKUP_RECEIPT_PATH: ${{ github.workspace }}/cloudflare-app/release-evidence/backup-receipt.json
       BACKUP_REPLAY_REPORT_PATH: ${{ github.workspace }}/cloudflare-app/release-evidence/migration-replay.json
     outputs:
-      artifact-id: ${{ steps.receipt.outputs.artifact-id }}
-      artifact-digest: ${{ steps.receipt.outputs.artifact-digest }}
+      artifact_id: ${{ steps.receipt.outputs['artifact-id'] }}
+      artifact_digest: ${{ steps.receipt.outputs['artifact-digest'] }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -90,13 +90,15 @@ jobs:
       SMOKE_ALLOWED_HOSTS: hanlim-archive.skarhkdgus7.workers.dev
       WORKER_VERSION_TAG: release-${{ github.sha }}
       WORKER_VERSION_MESSAGE: release-sha:${{ github.sha }}
-      WORKER_VERSION_OUTPUT_PATH: ${{ runner.temp }}/worker-version.json
       RELEASE_SMOKE_OPERATION_ID: release-${{ github.run_id }}-${{ github.sha }}
-      RELEASE_SMOKE_CREDENTIAL_PATH: ${{ runner.temp }}/release-smoke-credentials.json
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+      - name: Initialize release-scoped temporary paths
+        run: |
+          echo "WORKER_VERSION_OUTPUT_PATH=$RUNNER_TEMP/worker-version.json" >> "$GITHUB_ENV"
+          echo "RELEASE_SMOKE_CREDENTIAL_PATH=$RUNNER_TEMP/release-smoke-credentials.json" >> "$GITHUB_ENV"
       - name: Enforce production release from main
         run: |
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
@@ -384,8 +386,8 @@ jobs:
       - name: Apply D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_MIGRATE_API_TOKEN }}
-          D1_BACKUP_EVIDENCE_ID: ${{ needs.backup.outputs.artifact-id }}
-          D1_BACKUP_EVIDENCE_DIGEST: ${{ needs.backup.outputs.artifact-digest }}
+          D1_BACKUP_EVIDENCE_ID: ${{ needs.backup.outputs.artifact_id }}
+          D1_BACKUP_EVIDENCE_DIGEST: ${{ needs.backup.outputs.artifact_digest }}
           D1_MIGRATE_APPROVAL_CONTEXT: github-environment:production:${{ github.run_id }}:${{ github.sha }}
           D1_MIGRATE_DRY_RUN: "0"
         run: |

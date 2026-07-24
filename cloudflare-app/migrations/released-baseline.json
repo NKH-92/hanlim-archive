@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "releasedThrough": "0040_ten_thousand_operational_transition.sql",
+  "releasedThrough": "0043_release_identity_and_search_leases.sql",
   "checksums": {
     "0001_initial.sql": "78e8a85c74054df41e11d2f3ceaf259ebe78b37db9333cfeedbbdf01d92ccdca",
     "0002_app_users.sql": "a47068f668577b71e2f484362205c73a7a9774b6a2a5fba5bba35ad37bf550e7",
@@ -41,7 +41,10 @@
     "0037_document_revision_rollback_guards.sql": "733dbfbc741924eb67429c38d11902ed8d3f75e679e651e622fc9d69860954c6",
     "0038_metadata_occ.sql": "02cf1ec5679c89ce9c687415cfd86750c53c58f25300c4b59a4c5960e6fd291f",
     "0039_identity_security_remediation.sql": "563cfcbd8838a711000c399175e75f5a01f44b34c916b526aff1aeb5a77ddfc5",
-    "0040_ten_thousand_operational_transition.sql": "d384398d935b218d7c312ea97ff2fd7a462a0730907dba7b24720131dfed207e"
+    "0040_ten_thousand_operational_transition.sql": "d384398d935b218d7c312ea97ff2fd7a462a0730907dba7b24720131dfed207e",
+    "0041_identity_mfa_and_login_throttle.sql": "6720de71c724d64760795ccd3fb3009cefbba035993c8ccadd9a6863db2f2974",
+    "0042_search_event_source_version.sql": "dd10bc4d17556a7604dc51973c5b1f60cec1a5d3a850f021fe98faf3720f55f5",
+    "0043_release_identity_and_search_leases.sql": "4f7a51c8fab91c82411e30edbe695918d3eb82b2b49f338d24776d7793b35e32"
   },
   "schema": {
     "tables": [
@@ -74,14 +77,18 @@
       "floor_plan_regions",
       "identity_security_remediations",
       "login_throttle",
+      "login_throttle_v2",
       "rack_slots",
       "racks",
       "search_clicks",
+      "search_event_clock",
       "search_index_outbox",
       "search_index_state",
       "search_logs",
       "system_audit_logs",
-      "tags"
+      "tags",
+      "user_mfa",
+      "user_mfa_recovery_codes"
     ],
     "triggers": [
       "trg_category_row_version_compat",
@@ -118,6 +125,18 @@
       "trg_revision_linked_document_no_delete",
       "trg_revision_linked_identity_no_update",
       "trg_revision_previous_no_restore",
+      "trg_search_clock_category_delete",
+      "trg_search_clock_category_insert",
+      "trg_search_clock_category_update",
+      "trg_search_clock_rack_delete",
+      "trg_search_clock_rack_insert",
+      "trg_search_clock_rack_slot_delete",
+      "trg_search_clock_rack_slot_insert",
+      "trg_search_clock_rack_slot_update",
+      "trg_search_clock_rack_update",
+      "trg_search_clock_tag_delete",
+      "trg_search_clock_tag_insert",
+      "trg_search_clock_tag_update",
       "trg_search_outbox_document_delete",
       "trg_search_outbox_document_insert",
       "trg_search_outbox_document_tag_delete",
