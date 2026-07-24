@@ -60,8 +60,7 @@ test("/readyz는 검색 재구축·outbox·세대 불일치 상태를 503으로 
     { rebuildStatus: "building" },
     { pendingOutboxCount: 1 },
     { searchGeneration: 7 },
-    { searchIndexedDocumentCount: 1 },
-    { v2Ready: 0 }
+    { searchIndexedDocumentCount: 1 }
   ]) {
     await context.test(JSON.stringify(options), async () => {
       const response = await worker.fetch(new Request(`${ORIGIN}/readyz`), readyEnv(options));
@@ -72,6 +71,18 @@ test("/readyz는 검색 재구축·outbox·세대 불일치 상태를 503으로 
       assert.equal(body.checks.searchOperational, false);
     });
   }
+});
+
+test("/readyz는 일치하는 기존 검색 인덱스를 v2 백그라운드 전환 중에도 준비 상태로 인정한다", async () => {
+  const response = await worker.fetch(
+    new Request(`${ORIGIN}/readyz`),
+    readyEnv({ v2Ready: 0 })
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.checks.searchOperational, true);
 });
 
 test("/readyz는 binding 오류를 노출하지 않고 workerVersion만 포함한 503을 반환한다", async () => {
