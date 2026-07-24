@@ -111,7 +111,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 21. **Core/Search 분리**: `DB`는 문서·사용자·감사·권한의 유일한 권위 저장소이고 `SEARCH_DB`는
     `search-migrations/`로 관리하는 재구축 가능 파생 인덱스다. Search D1에는 `storage_code`, 사용자,
     감사정보를 저장하지 않는다. 검색 후보는 최대 200개 ID이며 Core에서 현재 상태·필터를 재검증한 뒤
-    최대 30건과 opaque cursor만 응답한다.
+    최대 30건과 opaque cursor만 응답한다. 개별 문서 등록은 Core transaction 확정 뒤 별도 요청 예산으로
+    해당 문서의 outbox만 즉시 반영한다. Search 반영 실패나 전체 재구축 중에는 outbox를 남겨 Cron이
+    재처리하며, Core 등록 성공을 되돌리지 않는다.
 
 ## 데이터 무결성 계약
 

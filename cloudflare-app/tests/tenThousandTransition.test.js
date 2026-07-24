@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import { loadDocumentFormOptions } from "../src/domains/documents/index.js";
+import worker from "../src/index.js";
+import { createSessionCookie } from "../src/auth.js";
+import { createDocument, loadDocumentFormOptions } from "../src/domains/documents/index.js";
 import {
   createDocumentSnapshotExport,
   createDocumentSnapshot,
@@ -15,12 +17,15 @@ import {
 import {
   getViewerSearchPayload,
   processSearchOutbox,
+  processSearchOutboxForDocument,
   rebuildSearchIndexChunk
 } from "../src/domains/search/index.js";
 import { FREE_TIER_BUDGET } from "../src/freeTierBudget.js";
 import { actorFixture } from "./helpers/fixtures.js";
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 import { sqliteD1 } from "./helpers/sqliteD1.js";
+
+const SESSION_SECRET = "immediate-search-test-secret-at-least-32-characters";
 
 test("10,000건 운영 정책은 11,000 경고와 12,000 하드 상한을 고정한다", () => {
   assert.equal(FREE_TIER_BUDGET.documentCapacityWarningCount, 11000);
@@ -187,3 +192,138 @@ test("Search D1 rebuild, 30건 cursor 계약, stale generation, outbox 동기화
     searchDatabase.close();
   }
 });
+
+test("개별 문서 outbox는 등록 직후 대상 문서만 Search D1에 반영한다", async () => {
+  const coreDatabase = await createMigratedDatabase();
+  const searchDatabase = new DatabaseSync(":memory:");
+  searchDatabase.exec(await readFile(new URL("../search-migrations/0001_search_index.sql", import.meta.url), "utf8"));
+  const env = { DB: sqliteD1(coreDatabase), SEARCH_DB: sqliteD1(searchDatabase) };
+  try {
+    await rebuildSearchIndexChunk(env);
+    await rebuildSearchIndexChunk(env);
+
+    const source = coreDatabase.prepare(`
+      SELECT category_id, rack_slot_id, rack_face
+      FROM documents
+      ORDER BY id
+      LIMIT 1
+    `).get();
+    const tag = coreDatabase.prepare("SELECT id, name FROM tags WHERE is_active = 1 ORDER BY id LIMIT 1").get();
+    const createdId = await createDocument(env, {
+      categoryId: source.category_id,
+      documentNumber: "IMM-2026-001",
+      revisionNumber: "Rev.0",
+      revisionDate: "2026-07-24",
+      disposalDueYear: "2031",
+      documentName: "즉시 검색 신규 문서",
+      note: "",
+      rackSlotId: source.rack_slot_id,
+      rackFace: source.rack_face,
+      tagIds: [tag.id]
+    }, actorFixture());
+
+    assert.equal(coreDatabase.prepare("SELECT COUNT(*) AS count FROM search_index_outbox").get().count, 1);
+    coreDatabase.prepare("UPDATE search_index_state SET rebuild_required = 1 WHERE id = 1").run();
+    const deferred = await processSearchOutboxForDocument(env, createdId);
+    assert.equal(deferred.skipped, true);
+    assert.equal(coreDatabase.prepare("SELECT COUNT(*) AS count FROM search_index_outbox").get().count, 1);
+    coreDatabase.prepare("UPDATE search_index_state SET rebuild_required = 0 WHERE id = 1").run();
+
+    const synced = await processSearchOutboxForDocument(env, createdId);
+    assert.equal(synced.ok, true);
+    assert.equal(synced.processed, 1);
+    assert.equal(coreDatabase.prepare("SELECT COUNT(*) AS count FROM search_index_outbox").get().count, 0);
+
+    const search = await getViewerSearchPayload(env, { q: "즉시 검색", limit: 30 });
+    assert.ok(search.items.some((item) => item.documentNumber === "IMM-2026-001"));
+    const tagSearch = await getViewerSearchPayload(env, { q: tag.name, limit: 30 });
+    assert.ok(tagSearch.items.some((item) => item.documentNumber === "IMM-2026-001"));
+  } finally {
+    coreDatabase.close();
+    searchDatabase.close();
+  }
+});
+
+test("개별 문서 등록 응답 직후 문서명과 태그를 실제 검색 API에서 찾을 수 있다", async () => {
+  const coreDatabase = await createMigratedDatabase();
+  const searchDatabase = new DatabaseSync(":memory:");
+  searchDatabase.exec(await readFile(new URL("../search-migrations/0001_search_index.sql", import.meta.url), "utf8"));
+  const env = {
+    DB: sqliteD1(coreDatabase),
+    SEARCH_DB: sqliteD1(searchDatabase),
+    SESSION_SECRET
+  };
+  try {
+    await rebuildSearchIndexChunk(env);
+    await rebuildSearchIndexChunk(env);
+
+    coreDatabase.prepare(`
+      INSERT INTO app_users (
+        username, display_name, password_salt, password_hash,
+        status, role, approved_at, approved_by, must_change_password,
+        security_review_required, session_epoch
+      )
+      VALUES (?, ?, ?, ?, 'approved', 'Admin', CURRENT_TIMESTAMP, 'test-fixture', 0, 0, 0)
+    `).run("immediate-search-admin@example.com", "즉시 검색 관리자", "s".repeat(32), "h".repeat(64));
+    const session = {
+      username: "immediate-search-admin@example.com",
+      displayName: "즉시 검색 관리자",
+      role: "Admin"
+    };
+    const cookie = await createSessionCookie(session, env, false);
+    const csrfToken = csrfFromCookie(cookie);
+    const source = coreDatabase.prepare(`
+      SELECT category_id, rack_slot_id, rack_face
+      FROM documents
+      ORDER BY id
+      LIMIT 1
+    `).get();
+    const tag = coreDatabase.prepare("SELECT id, name FROM tags WHERE is_active = 1 ORDER BY id LIMIT 1").get();
+    const body = new URLSearchParams({
+      csrf_token: csrfToken,
+      categoryId: String(source.category_id),
+      documentNumber: "IMM-WORKER-2026-001",
+      revisionNumber: "Rev.0",
+      revisionDate: "2026-07-24",
+      disposalDueYear: "2031",
+      documentName: "응답 직후 검색 문서",
+      rackSlotId: String(source.rack_slot_id),
+      rackFace: source.rack_face,
+      note: ""
+    });
+    body.append("tagIds", String(tag.id));
+
+    const created = await worker.fetch(new Request("https://archive.example.com/documents", {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        Origin: "https://archive.example.com"
+      },
+      body
+    }), env);
+    assert.equal(created.status, 302);
+
+    const byName = await worker.fetch(new Request(
+      "https://archive.example.com/api/viewer/search?q=" + encodeURIComponent("응답 직후 검색"),
+      { headers: { Cookie: cookie, Accept: "application/json" } }
+    ), env);
+    const namePayload = await byName.json();
+    assert.ok(namePayload.items.some((item) => item.documentNumber === "IMM-WORKER-2026-001"));
+
+    const byTag = await worker.fetch(new Request(
+      "https://archive.example.com/api/viewer/search?q=" + encodeURIComponent(tag.name),
+      { headers: { Cookie: cookie, Accept: "application/json" } }
+    ), env);
+    const tagPayload = await byTag.json();
+    assert.ok(tagPayload.items.some((item) => item.documentNumber === "IMM-WORKER-2026-001"));
+  } finally {
+    coreDatabase.close();
+    searchDatabase.close();
+  }
+});
+
+function csrfFromCookie(cookie) {
+  const value = cookie.match(/hanlim_session=([^;]+)/)[1];
+  const [payload] = value.split(".", 1);
+  return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")).csrfToken;
+}

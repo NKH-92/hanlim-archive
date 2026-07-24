@@ -11,15 +11,25 @@ import { isValidCsrfToken } from "./platform/security/csrf.js";
 import { isTrustedPostOrigin } from "./platform/security/origin.js";
 import { resolveAuthenticatedRoute, resolvePublicRoute } from "./app/routeRegistry.js";
 import { createRequestD1Environment } from "./platform/d1/requestGateway.js";
-import { processSearchOutbox, rebuildSearchIndexChunk } from "./domains/search/index.js";
+import {
+  processSearchOutbox,
+  processSearchOutboxForDocument,
+  rebuildSearchIndexChunk
+} from "./domains/search/index.js";
 
 export default {
   async fetch(request, env) {
     const reqId = shortRequestId();
     const requestEnv = createRequestD1Environment(env, { requestId: reqId });
+    const effects = {
+      async syncSearchDocument(documentId) {
+        const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search` });
+        return processSearchOutboxForDocument(searchEnv, documentId);
+      }
+    };
     let response;
     try {
-      response = await route(request, requestEnv);
+      response = await route(request, requestEnv, effects);
     } catch (error) {
       // 미처리 예외: 원시 오류 메시지를 사용자에게 노출하지 않는다(정보 노출 방지).
       // 상관용 짧은 reqId만 사용자에게 주고, 전체 오류는 서버 로그에만 남긴다.
@@ -61,7 +71,7 @@ function shortRequestId() {
   }
 }
 
-async function route(request, env) {
+async function route(request, env, effects = {}) {
   const url = new URL(request.url);
   const path = normalizePath(url.pathname);
   const publicRoute = resolvePublicRoute(path, request.method);
@@ -115,7 +125,7 @@ async function route(request, env) {
     return redirect("/account/password?required=1");
   }
 
-  return routeAuthenticatedRequest(request, env, session, url, path);
+  return routeAuthenticatedRequest(request, env, session, url, path, effects);
 }
 
 async function handleHealthCheck(env) {

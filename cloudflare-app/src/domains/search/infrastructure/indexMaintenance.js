@@ -10,17 +10,28 @@ import { BatchPlan } from "../../../platform/d1/batchPlan.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 
 export async function processSearchOutbox(env, {
-  limit = FREE_TIER_BUDGET.searchOutboxCronChunkSize
+  limit = FREE_TIER_BUDGET.searchOutboxCronChunkSize,
+  documentId = 0
 } = {}) {
   if (!env.SEARCH_DB) return { ok: false, skipped: true, reason: "SEARCH_DB binding이 없습니다." };
   const safeLimit = Math.max(1, Math.min(Number(limit) || 1, FREE_TIER_BUDGET.searchOutboxCronChunkSize));
-  const outboxResult = await env.DB.prepare(`
+  const safeDocumentId = Number(documentId);
+  const targetDocument = Number.isInteger(safeDocumentId) && safeDocumentId > 0;
+  const outboxStatement = targetDocument
+    ? env.DB.prepare(`
+      SELECT document_id, operation, event_version
+      FROM search_index_outbox
+      WHERE document_id = ? AND available_at <= CURRENT_TIMESTAMP
+      LIMIT 1
+    `).bind(safeDocumentId)
+    : env.DB.prepare(`
     SELECT document_id, operation, event_version
     FROM search_index_outbox
     WHERE available_at <= CURRENT_TIMESTAMP
     ORDER BY available_at, updated_at, document_id
     LIMIT ?
-  `).bind(safeLimit).all();
+  `).bind(safeLimit);
+  const outboxResult = await outboxStatement.all();
   const outbox = outboxResult.results ?? [];
   if (!outbox.length) return { ok: true, processed: 0 };
 
@@ -29,6 +40,14 @@ export async function processSearchOutbox(env, {
     readSearchDocuments(env, ids),
     getCoreSearchState(env)
   ]);
+  if (state.rebuildRequired) {
+    return {
+      ok: false,
+      skipped: true,
+      processed: 0,
+      reason: "검색 인덱스 전체 재구축 중에는 개별 변경을 outbox에 유지합니다."
+    };
+  }
   const nextGeneration = state.generation + 1;
   try {
     const indexedCount = await writeSearchDocuments(env.SEARCH_DB, ids, documents, nextGeneration);
@@ -38,6 +57,14 @@ export async function processSearchOutbox(env, {
     await markSearchOutboxFailure(env, outbox, error).catch(() => {});
     throw error;
   }
+}
+
+export function processSearchOutboxForDocument(env, documentId) {
+  const id = Number(documentId);
+  if (!Number.isInteger(id) || id < 1) {
+    return Promise.resolve({ ok: false, skipped: true, processed: 0, reason: "유효한 문서 ID가 필요합니다." });
+  }
+  return processSearchOutbox(env, { limit: 1, documentId: id });
 }
 
 export async function rebuildSearchIndexChunk(env, {

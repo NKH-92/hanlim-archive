@@ -14,6 +14,7 @@ export { buildSearchIndexTerms } from "../../data/searchData.js";
 export {
   getSearchOperationalState,
   processSearchOutbox,
+  processSearchOutboxForDocument,
   rebuildSearchIndexChunk
 } from "./infrastructure/indexMaintenance.js";
 export const {
