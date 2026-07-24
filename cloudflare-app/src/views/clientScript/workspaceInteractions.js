@@ -80,11 +80,11 @@ export function workspaceInteractionScript() {
         if (event.key === 'ArrowDown' && rows[index + 1]) {
           event.preventDefault();
           rows[index + 1].focus();
-          fillPreview(rows[index + 1]);
+          if (window.matchMedia?.('(min-width: 1180px)').matches) fillPreview(rows[index + 1]);
         } else if (event.key === 'ArrowUp' && rows[index - 1]) {
           event.preventDefault();
           rows[index - 1].focus();
-          fillPreview(rows[index - 1]);
+          if (window.matchMedia?.('(min-width: 1180px)').matches) fillPreview(rows[index - 1]);
         } else if (event.key === 'Enter' && row.dataset.documentUrl) {
           event.preventDefault();
           location.assign(row.dataset.documentUrl);

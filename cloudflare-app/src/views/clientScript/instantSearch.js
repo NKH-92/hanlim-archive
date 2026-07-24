@@ -22,15 +22,30 @@ export function instantSearchScript() {
         var currentCursor = '';
         var currentItems = [];
 
+        var replaceResults = function (html, preserveSelection) {
+          var selectedIds = preserveSelection
+            ? new Set(Array.from(document.querySelectorAll('[data-bulk-item]:checked')).map(function (item) { return item.value; }))
+            : new Set();
+          if (resultsBody) {
+            resultsBody.innerHTML = html;
+            if (selectedIds.size) {
+              resultsBody.querySelectorAll('[data-bulk-item]').forEach(function (item) {
+                item.checked = selectedIds.has(item.value);
+              });
+            }
+          }
+          syncBulk();
+        };
+
         var restoreInitial = function () {
           if (activeRequest) activeRequest.abort();
           currentCursor = ''; currentItems = [];
-          if (resultsBody) resultsBody.innerHTML = initialResults.body;
+          replaceResults(initialResults.body, false);
           if (resultsTitle) resultsTitle.textContent = initialResults.title;
           if (resultsCount) resultsCount.textContent = initialResults.count;
           if (searchLive) searchLive.textContent = '검색어를 입력하면 보관중 문서를 바로 찾습니다.';
           if (homeExtras) homeExtras.hidden = false;
-          if (viewerApp.classList.contains('is-home')) viewerApp.hidden = true;
+          if (viewerApp.classList.contains('is-home')) viewerApp.hidden = false;
         };
 
         var formValue = function (name) {
@@ -84,7 +99,7 @@ export function instantSearchScript() {
           if (payload.fallback) {
             html = '<div class="alert warning" role="status">검색 인덱스 점검 중입니다. 결과가 제한될 수 있습니다.</div>' + html;
           }
-          if (resultsBody) resultsBody.innerHTML = html;
+          replaceResults(html, append);
           if (resultsTitle) resultsTitle.textContent = '"' + query + '" 검색 결과';
           if (resultsCount) resultsCount.textContent = Number(payload.candidateCount || currentItems.length).toLocaleString('ko-KR') + '건';
           if (searchLive) searchLive.textContent = currentItems.length ? currentItems.length + '건을 표시했습니다.' : '검색 결과가 없습니다.';
@@ -101,7 +116,8 @@ export function instantSearchScript() {
 
         var renderError = function (message) {
           var params = searchParams('');
-          if (resultsBody) resultsBody.innerHTML = '<div class="alert danger" role="alert">' + escapeHtmlClient(message || '검색을 처리하지 못했습니다.') + '</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">검색 화면에서 계속</a></div>';
+          var html = '<div class="alert danger" role="alert">' + escapeHtmlClient(message || '검색을 처리하지 못했습니다.') + '</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">검색 화면에서 계속</a></div>';
+          replaceResults(html, false);
           if (resultsTitle) resultsTitle.textContent = '검색을 계속할 수 없습니다';
           if (resultsCount) resultsCount.textContent = '-';
           if (searchLive) searchLive.textContent = '검색 요청을 처리하지 못했습니다.';

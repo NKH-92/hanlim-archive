@@ -273,7 +273,7 @@ test("document form groups metadata, previews values, and progressively enhances
     validation: {
       fieldErrors: {
         documentNumber: "문서번호를 입력하세요.",
-        disposalDueYear: "폐기 예정 년도를 입력하세요."
+        disposalDueYear: "폐기 예정 연도를 입력하세요."
       },
       formErrors: []
     }
@@ -444,7 +444,8 @@ test("document workspace exposes permission-scoped selection actions and five de
     categories: [],
     tags: [],
     filters: { status: "active", sort: "relevance" },
-    editableSets: [{ id: 4, name: "감사 준비", row_version: 8 }]
+    editableSets: [{ id: 4, name: "감사 준비", row_version: 8 }],
+    selectedDocumentIds: [7]
   });
   const html = await response.text();
 
@@ -452,6 +453,7 @@ test("document workspace exposes permission-scoped selection actions and five de
   assert.match(html, /data-set-selection-form/);
   assert.match(html, /action="\/sets\/0\/add"/);
   assert.match(html, /name="documentIds" data-bulk-ids/);
+  assert.match(html, /value="7"[^>]*data-bulk-item[^>]*checked/);
   assert.match(html, /data-disposal-limit="10"/);
   assert.match(html, /action="\/documents\/disposal\/process"/);
   assert.match(html, /data-document-preview/);
@@ -527,7 +529,8 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   assert.match(nav, /href="\/admin"[^>]*>[\s\S]*?확인할 일/);
 
   assert.match(html, /<h1>운영 관리<\/h1>/);
-  assert.match(html, /class="operation-hero admin-hero"/);
+  assert.match(html, /class="panel admin-status-panel is-attention"/);
+  assert.doesNotMatch(html, /Archive operations|operation-hero admin-hero/);
   assert.match(html, /class="panel admin-tile" href="\/admin\/settings"/);
   assert.match(html, /href="\/racks"/);
   assert.match(html, /href="\/racks\/configure"/);

@@ -83,7 +83,7 @@ export function setClonePage({ session, set, documentCount = 0, values = {}, err
   `, session);
 }
 
-export function setDetailsPage({ session, set, documents, racks, logs = [], addQuery = "", addCandidates = null, selectedCandidateIds = [], addResult = null, error = "", printedAt = new Date() }) {
+export function setDetailsPage({ session, set, documents, racks, logs = [], addQuery = "", addCandidates = null, selectedCandidateIds = [], preserveAddSelection = false, addResult = null, error = "", printedAt = new Date() }) {
   const canManage = hasPermission(session, PERMISSIONS.MANAGE_SETS);
   const isLocked = Number(set.is_locked) === 1;
   const disposedCount = documents.filter((doc) => doc.status !== "active").length;
@@ -125,7 +125,7 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
       ${archiveMap(racks, hits)}
     </section>` : ""}
     ${canManage ? setLockControls(set, isLocked) : ""}
-    ${canManage && !isLocked ? setAdminTools(set, addQuery, addCandidates, selectedCandidateIds) : ""}
+    ${canManage && (!isLocked || preserveAddSelection) ? setAdminTools(set, addQuery, addCandidates, selectedCandidateIds, { readOnly: isLocked }) : ""}
     ${logs.length ? `<section class="panel">
       ${sectionHeader("세트 변경 이력", `${logs.length}건`)}
       ${timeline(logs, renderSetLog, "변경 이력이 없습니다.")}
@@ -204,7 +204,17 @@ function setPrintFooter() {
   return `<section class="print-only set-print-signatures"><div>작성자 서명 <span></span></div><div>검토자 서명 <span></span></div></section><div class="print-only set-print-page">페이지 <span></span></div>`;
 }
 
-function setAdminTools(set, addQuery, addCandidates, selectedCandidateIds = []) {
+function setAdminTools(set, addQuery, addCandidates, selectedCandidateIds = [], { readOnly = false } = {}) {
+  if (readOnly) {
+    return `
+      <section class="panel set-admin-tools" data-preserved-set-selection>
+        ${sectionHeader("문서 추가 요청", "잠금 경합")}
+        ${alertWarning("세트가 잠겨 추가 작업은 중단됐지만 검색 조건과 선택 문서는 보존했습니다.")}
+        <label>보존된 검색 조건<input value="${escapeHtml(addQuery)}" readonly></label>
+        ${addCandidates ? setCandidateList(set, addQuery, addCandidates, selectedCandidateIds, { readOnly: true }) : ""}
+      </section>
+    `;
+  }
   return `
     <section class="panel set-admin-tools">
       ${sectionHeader("문서 추가", "관리자")}
@@ -236,18 +246,19 @@ function setAdminTools(set, addQuery, addCandidates, selectedCandidateIds = []) 
   `;
 }
 
-function setCandidateList(set, addQuery, candidates, selectedCandidateIds = []) {
+function setCandidateList(set, addQuery, candidates, selectedCandidateIds = [], { readOnly = false } = {}) {
   if (!candidates.length) {
     return `<p class="muted">검색 결과가 없습니다.</p>`;
   }
 
   const selected = new Set(selectedCandidateIds.map(Number));
-  return `<form method="post" action="/sets/${set.id}/add" class="stack">
+  const tag = readOnly ? "div" : "form";
+  return `<${tag}${readOnly ? "" : ` method="post" action="/sets/${set.id}/add"`} class="stack">
     <input type="hidden" name="add-q" value="${escapeHtml(addQuery)}">
     <input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}">
     <div class="set-candidate-list">${candidates.map((doc) => `
       <label class="set-candidate ${doc.status !== "active" ? "is-disposed" : ""}">
-        <input type="checkbox" name="documentIds" value="${Number(doc.id)}" ${doc.inSet ? "disabled" : ""} ${selected.has(Number(doc.id)) ? "checked" : ""}>
+        <input type="checkbox" name="documentIds" value="${Number(doc.id)}" ${(doc.inSet || readOnly) ? "disabled" : ""} ${selected.has(Number(doc.id)) ? "checked" : ""}>
         <span>
           <strong>${escapeHtml(doc.document_name)}</strong> ${statusBadge(doc.status)}
           <small>${escapeHtml(doc.document_number)} · ${escapeHtml(doc.revision_number)} · ${escapeHtml(locationLabel(doc))}</small>
@@ -255,8 +266,8 @@ function setCandidateList(set, addQuery, candidates, selectedCandidateIds = []) 
         ${doc.inSet ? `<span class="muted">이미 포함됨</span>` : ""}
       </label>
     `).join("")}</div>
-    <button type="submit" class="button">선택 문서 추가 (최대 200건)</button>
-  </form>`;
+    ${readOnly ? "" : `<button type="submit" class="button">선택 문서 추가 (최대 200건)</button>`}
+  </${tag}>`;
 }
 
 function setFilterOption(value, label, selected) {

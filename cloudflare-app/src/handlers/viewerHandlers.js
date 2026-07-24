@@ -20,6 +20,7 @@ export async function handleDashboard(request, env, session) {
   const url = new URL(request.url);
   const search = await resolveSearchRequest(env, url);
   const { query, page, categories, tags, parsed, filters } = search;
+  const selectedDocumentIds = parseSelectedDocumentIds(url.searchParams.get("selected"));
   const capabilities = capabilitiesFromSession(session);
   const editableSets = capabilities.canManageSets
     ? await getEditableSetsForWorkspace(env)
@@ -54,8 +55,16 @@ export async function handleDashboard(request, env, session) {
     tags,
     filters,
     didYouMean,
-    editableSets
+    editableSets,
+    selectedDocumentIds
   });
+}
+
+function parseSelectedDocumentIds(value) {
+  return [...new Set(clean(value).split(",")
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0))]
+    .slice(0, 200);
 }
 
 async function getEditableSetsForWorkspace(env) {

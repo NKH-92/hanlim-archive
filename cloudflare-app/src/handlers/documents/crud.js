@@ -284,7 +284,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo) {
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
-    return redirect("/documents?toast=deleted");
+    return redirect("/app?toast=deleted");
   }
 
   return notFoundPage(session);

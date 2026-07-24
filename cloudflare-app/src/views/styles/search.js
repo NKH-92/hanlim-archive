@@ -48,7 +48,7 @@ export function searchStyles() {
     .narrow { max-width: 640px; margin-inline: auto; }
     .content-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, .8fr); gap: var(--sp-4); align-items: start; }
     .viewer-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
-    @media (min-width: 1181px) {
+    @media (min-width: 1180px) {
       .viewer-workspace:has(.viewer-preview:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
       .viewer-preview { position: sticky; top: var(--sp-4); }
     }

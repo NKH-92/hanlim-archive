@@ -19,8 +19,8 @@ export function validateDocumentRevisionInput(values, source = null) {
     fieldErrors.revisionNumber = "현재 개정번호와 다른 번호를 입력하세요.";
   }
 
-  if (!revisionDate) fieldErrors.revisionDate = "새 제/개정일을 입력하세요.";
-  else if (!isValidIsoDate(revisionDate)) fieldErrors.revisionDate = "올바른 제/개정일을 입력하세요.";
+  if (!revisionDate) fieldErrors.revisionDate = "새 제·개정일을 입력하세요.";
+  else if (!isValidIsoDate(revisionDate)) fieldErrors.revisionDate = "올바른 제·개정일을 입력하세요.";
 
   if (values?.confirmReplacement !== "1") {
     formErrors.push("동일 바인더의 이전 개정본이 자동 폐기되는 것에 동의해야 합니다.");

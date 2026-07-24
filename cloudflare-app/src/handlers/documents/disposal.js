@@ -155,6 +155,15 @@ export async function handleBulkDispose(request, env, session) {
     });
   }
 
+  const confirmedTargetCount = Number(form.get("confirmedTargetCount"));
+  if (
+    !readBoolean(form.get("confirmDisposal"))
+    || !Number.isInteger(confirmedTargetCount)
+    || confirmedTargetCount !== ids.length
+  ) {
+    return errorPage(`현재 선택한 폐기 대상은 ${ids.length}건입니다. 정확한 건수를 다시 확인해 주세요.`, session, 409);
+  }
+
   const result = await disposeInChunks(env, ids, session, reason);
 
   if (result.failures.length) {

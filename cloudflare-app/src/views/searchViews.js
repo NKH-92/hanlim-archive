@@ -24,6 +24,7 @@ export function dashboardPage({
   parsedQuery = null,
   didYouMean = [],
   editableSets = [],
+  selectedDocumentIds = [],
   mode = "results"
 }) {
   const capabilities = capabilitiesFromSession(session);
@@ -61,7 +62,7 @@ export function dashboardPage({
               </div>
             </div>
             <div data-results-body>
-              ${viewerDocumentResults(documents, "", capabilities)}
+              ${viewerDocumentResults(documents, "", capabilities, selectedDocumentIds)}
               ${viewerPagination(viewerSearch.pagination, { query: "", filters })}
             </div>
           </article>
@@ -107,7 +108,7 @@ export function dashboardPage({
           </div>
         </div>
         <div data-results-body>
-          ${viewerDocumentResults(documents, query, capabilities)}
+          ${viewerDocumentResults(documents, query, capabilities, selectedDocumentIds)}
           ${!documents.length && didYouMean.length ? didYouMeanView(didYouMean) : ""}
           ${viewerPagination(viewerSearch.pagination, { query, filters })}
         </div>
@@ -158,23 +159,24 @@ function homeQuickLinks(categories = []) {
   return `<nav class="search-home-filter quick-filter-row" aria-label="빠른 분류"><span>빠른 분류</span>${categoryLinks}</nav>`;
 }
 
-function viewerDocumentResults(documents, query, capabilities = {}) {
+function viewerDocumentResults(documents, query, capabilities = {}, selectedDocumentIds = []) {
   if (!documents.length) {
     return emptyResult("조건에 맞는 문서가 없습니다.");
   }
   const selectable = capabilities.canManageSets || capabilities.canManageDisposals;
+  const selected = new Set(selectedDocumentIds.map(Number));
   return `<div class="viewer-result-table ${selectable ? "is-selectable" : ""}" role="table" aria-label="문서 검색 결과">
     <div class="viewer-result-header" role="row">${selectable ? `<span class="check-col"><span class="sr-only">선택</span></span>` : ""}<span>문서명</span><span>문서번호 · 개정</span><span>대분류</span><span>보관 위치</span><span>상태</span><span class="optional-column" data-column="revision-date" hidden>제·개정일</span></div>
-    <div class="viewer-result-list" role="rowgroup">${documents.map((document) => viewerDocumentCard(document, query, selectable)).join("")}</div>
+    <div class="viewer-result-list" role="rowgroup">${documents.map((document) => viewerDocumentCard(document, query, selectable, selected.has(Number(document.id)))).join("")}</div>
   </div>`;
 }
 
-function viewerDocumentCard(document, query = "", selectable = false) {
+function viewerDocumentCard(document, query = "", selectable = false, selected = false) {
   const location = document.location || {};
   const locationText = location.label || "위치 미지정";
   return `
     <article class="viewer-result-row ${selectable ? "is-selectable" : ""} ${document.status !== "active" ? "is-disposed" : ""}" role="row" tabindex="0" data-document-row data-document-url="/documents/${document.id}" data-document-name="${escapeHtml(document.documentName || "문서명 없음")}" data-document-number="${escapeHtml(document.documentNumber || "")}" data-document-revision="${escapeHtml(document.revisionNumber || "-")}" data-document-category="${escapeHtml(document.categoryName || "-")}" data-document-location="${escapeHtml(locationText)}" data-document-status="${document.status === "active" ? "보관중" : "폐기"}">
-      ${selectable ? `<span class="check-col" role="cell" data-label="선택"><input type="checkbox" value="${Number(document.id)}" data-bulk-item aria-label="${escapeHtml(document.documentName || document.documentNumber)} 선택"></span>` : ""}
+      ${selectable ? `<span class="check-col" role="cell" data-label="선택"><input type="checkbox" value="${Number(document.id)}" data-bulk-item aria-label="${escapeHtml(document.documentName || document.documentNumber)} 선택"${selected ? " checked" : ""}></span>` : ""}
       <span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/${document.id}" data-doc-click="${document.id}">${highlight(document.documentName || "문서명 없음", query)}</a></span>
       <span class="mono" role="cell" data-label="문서번호 · 개정">${highlight(document.documentNumber, query)} <small>${escapeHtml(document.revisionNumber || "-")}</small></span>
       <span role="cell" data-label="대분류">${escapeHtml(document.categoryName || "-")}</span>

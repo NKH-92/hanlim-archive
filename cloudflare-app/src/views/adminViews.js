@@ -52,9 +52,9 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
     <section class="page-head">
       <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>운영 관리</span></nav><h1>운영 관리</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 확인합니다.</p></div>
     </section>
-    <section class="operation-hero admin-hero" aria-label="운영 상태 요약">
-      <div class="admin-hero-copy"><p class="hero-kicker">Archive operations</p><h2>${attentionCount ? `오늘 확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있습니다.` : "문서고 운영 상태가 안정적입니다."}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 인덱스 ${Number(searchIndex.documentCount || 0).toLocaleString("ko-KR")}건` : ""}</p>${heroAction}</div>
-      <div class="hero-stat"><strong>${attentionCount.toLocaleString("ko-KR")}</strong><span>확인 필요</span></div>
+    <section class="panel admin-status-panel ${attentionCount ? "is-attention" : "is-stable"}" aria-label="운영 상태 요약">
+      <div class="admin-status-copy"><h2>${attentionCount ? `오늘 확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있습니다.` : "문서고 운영 상태가 안정적입니다."}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 인덱스 ${Number(searchIndex.documentCount || 0).toLocaleString("ko-KR")}건` : ""}</p>${heroAction}</div>
+      <div class="admin-status-count"><strong>${attentionCount.toLocaleString("ko-KR")}</strong><span>확인 필요</span></div>
     </section>
     ${quality ? dataQualityPanel(quality) : ""}
     ${capacity ? capacityPanel(capacity) : ""}

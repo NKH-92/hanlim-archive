@@ -252,6 +252,60 @@ test("미등록 세트 문서 연결은 문서번호와 안전한 복귀 경로�
   assert.match(html, /name="returnTo" value="\/sets\/9"/);
 });
 
+test("세트 잠금 경합은 상세와 문서 작업 공간의 검색·선택 상태를 보존한다", async (context) => {
+  const database = await createMigratedDatabase();
+  context.after(() => database.close());
+  const setId = Number(database.prepare(`
+    INSERT INTO document_sets (
+      name, description, created_by, is_locked, locked_at,
+      locked_by_user_id, locked_by_name, lock_reason
+    )
+    VALUES ('잠금 경합 세트', '선택 보존 검증', '통합 테스트', 1, CURRENT_TIMESTAMP, 88, '다른 담당자', '검토 중')
+    RETURNING id
+  `).get().id);
+  const document = database.prepare(`
+    SELECT id, document_number
+    FROM documents
+    ORDER BY id
+    LIMIT 1
+  `).get();
+  const env = { DB: sqliteD1(database) };
+  const session = {
+    userId: 77,
+    username: "set-manager@hanlim.test",
+    displayName: "세트 담당자",
+    role: "Admin",
+    csrfToken: "set-route-csrf"
+  };
+  const form = {
+    "add-q": String(document.document_number),
+    documentIds: String(document.id),
+    expectedRowVersion: "1"
+  };
+
+  const detailsResponse = await handleSetRoute(new Request(`https://archive.example.com/sets/${setId}/add`, {
+    method: "POST",
+    body: new URLSearchParams(form)
+  }), env, session, { id: setId, action: "add" });
+  const detailsHtml = await detailsResponse.text();
+  assert.equal(detailsResponse.status, 200);
+  assert.match(detailsHtml, /data-preserved-set-selection/);
+  assert.match(detailsHtml, new RegExp(`value="${document.id}"[^>]*disabled[^>]*checked`));
+  assert.match(detailsHtml, new RegExp(`value="${document.document_number}" readonly`));
+
+  const workspaceResponse = await handleSetRoute(new Request(`https://archive.example.com/sets/${setId}/add`, {
+    method: "POST",
+    body: new URLSearchParams({ ...form, returnTo: "/app?q=SOP&status=active" })
+  }), env, session, { id: setId, action: "add" });
+  const location = new URL(workspaceResponse.headers.get("Location"), "https://archive.example.com");
+  assert.equal(workspaceResponse.status, 302);
+  assert.equal(location.pathname, "/app");
+  assert.equal(location.searchParams.get("q"), "SOP");
+  assert.equal(location.searchParams.get("status"), "active");
+  assert.equal(location.searchParams.get("selected"), String(document.id));
+  assert.equal(location.searchParams.get("toast"), "error");
+});
+
 test("세트 추가와 복제 HTTP 경로는 버전 검사를 거쳐 잠기지 않은 복제본을 만든다", async (context) => {
   const database = await createMigratedDatabase();
   context.after(() => database.close());
