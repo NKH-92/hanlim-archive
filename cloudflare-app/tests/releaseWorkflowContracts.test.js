@@ -86,6 +86,11 @@ test("production deploy는 승인, 백업, migration, deploy, smoke, rollback �
   );
   assert.doesNotMatch(deploy, /\.outputs\.[A-Za-z0-9_]+-[A-Za-z0-9_-]+/);
   assert.match(deploy, /D1_MIGRATE_APPROVAL_CONTEXT: github-environment:production:\$\{\{ github\.run_id \}\}:\$\{\{ github\.sha \}\}/);
+  assert.doesNotMatch(deploy.slice(deploy.indexOf("\n  deploy:"), deploy.indexOf("\n    steps:", deploy.indexOf("\n  deploy:"))), /\$\{\{\s*runner\./);
+  assert.match(
+    deploy,
+    /Initialize release-scoped temporary paths[\s\S]*WORKER_VERSION_OUTPUT_PATH=\$RUNNER_TEMP\/worker-version\.json[\s\S]*RELEASE_SMOKE_CREDENTIAL_PATH=\$RUNNER_TEMP\/release-smoke-credentials\.json/
+  );
   assert.match(deploy, /npm run backup:d1:r2/);
   assert.match(deploy, /migration-replay\.json[\s\S]*pendingReplayed[\s\S]*Apply D1 migrations/);
   assert.doesNotMatch(deploy, /D1_BACKUP_PASSPHRASE|secrets\.SMOKE_/);

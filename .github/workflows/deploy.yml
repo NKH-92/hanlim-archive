@@ -90,13 +90,15 @@ jobs:
       SMOKE_ALLOWED_HOSTS: hanlim-archive.skarhkdgus7.workers.dev
       WORKER_VERSION_TAG: release-${{ github.sha }}
       WORKER_VERSION_MESSAGE: release-sha:${{ github.sha }}
-      WORKER_VERSION_OUTPUT_PATH: ${{ runner.temp }}/worker-version.json
       RELEASE_SMOKE_OPERATION_ID: release-${{ github.run_id }}-${{ github.sha }}
-      RELEASE_SMOKE_CREDENTIAL_PATH: ${{ runner.temp }}/release-smoke-credentials.json
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+      - name: Initialize release-scoped temporary paths
+        run: |
+          echo "WORKER_VERSION_OUTPUT_PATH=$RUNNER_TEMP/worker-version.json" >> "$GITHUB_ENV"
+          echo "RELEASE_SMOKE_CREDENTIAL_PATH=$RUNNER_TEMP/release-smoke-credentials.json" >> "$GITHUB_ENV"
       - name: Enforce production release from main
         run: |
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
