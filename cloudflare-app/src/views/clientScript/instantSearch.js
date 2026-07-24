@@ -11,6 +11,7 @@ export function instantSearchScript() {
         var resultsCount = document.querySelector('[data-results-count]');
         var searchLive = document.querySelector('[data-search-live]');
         var homeExtras = document.querySelector('[data-home-extras]');
+        var workspaceSelectable = Boolean(document.querySelector('[data-document-selection]'));
         var initialResults = {
           body: resultsBody ? resultsBody.innerHTML : '',
           title: resultsTitle ? resultsTitle.textContent : '',
@@ -50,14 +51,19 @@ export function instantSearchScript() {
         var resultRow = function (item, query) {
           var location = item.location || {};
           var disposed = item.status === 'disposed';
-          return '<article class="viewer-result-row' + (disposed ? ' is-disposed' : '') + '" role="row">' +
-            '<span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/' + Number(item.id) + '" data-doc-click="' + Number(item.id) + '">' + window.SearchCore.highlightHtml(item.documentName || '문서명 없음', query, escapeHtmlClient) + '</a></span>' +
-            '<span class="mono" role="cell" data-label="문서번호">' + window.SearchCore.highlightHtml(item.documentNumber || '', query, escapeHtmlClient) + '</span>' +
-            '<span role="cell" data-label="개정">' + escapeHtmlClient(item.revisionNumber || '-') + '</span>' +
-            '<span role="cell" data-label="제·개정일">' + escapeHtmlClient(item.revisionDate || '-') + '</span>' +
-            '<span role="cell" data-label="대분류">' + escapeHtmlClient(item.categoryName || '-') + '</span>' +
-            '<span class="viewer-result-location" role="cell" data-label="보관 위치">' + escapeHtmlClient(location.label || '위치 미지정') + '</span>' +
+          var itemName = item.documentName || '문서명 없음';
+          var itemNumber = item.documentNumber || '';
+          var itemRevision = item.revisionNumber || '-';
+          var itemCategory = item.categoryName || '-';
+          var itemLocation = location.label || '위치 미지정';
+          return '<article class="viewer-result-row' + (workspaceSelectable ? ' is-selectable' : '') + (disposed ? ' is-disposed' : '') + '" role="row" tabindex="0" data-document-row data-document-url="/documents/' + Number(item.id) + '" data-document-name="' + escapeHtmlClient(itemName) + '" data-document-number="' + escapeHtmlClient(itemNumber) + '" data-document-revision="' + escapeHtmlClient(itemRevision) + '" data-document-category="' + escapeHtmlClient(itemCategory) + '" data-document-location="' + escapeHtmlClient(itemLocation) + '" data-document-status="' + (disposed ? '폐기' : '보관중') + '">' +
+            (workspaceSelectable ? '<span class="check-col" role="cell" data-label="선택"><input type="checkbox" value="' + Number(item.id) + '" data-bulk-item aria-label="' + escapeHtmlClient(itemName) + ' 선택"></span>' : '') +
+            '<span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/' + Number(item.id) + '" data-doc-click="' + Number(item.id) + '">' + window.SearchCore.highlightHtml(itemName, query, escapeHtmlClient) + '</a></span>' +
+            '<span class="mono" role="cell" data-label="문서번호 · 개정">' + window.SearchCore.highlightHtml(itemNumber, query, escapeHtmlClient) + ' <small>' + escapeHtmlClient(itemRevision) + '</small></span>' +
+            '<span role="cell" data-label="대분류">' + escapeHtmlClient(itemCategory) + '</span>' +
+            '<span class="viewer-result-location" role="cell" data-label="보관 위치">' + escapeHtmlClient(itemLocation) + '</span>' +
             '<span role="cell" data-label="상태"><span class="status ' + (disposed ? 'disposed' : 'active') + '">' + (disposed ? '폐기' : '보관중') + '</span></span>' +
+            '<span class="optional-column" data-column="revision-date" role="cell" data-label="제·개정일" hidden>' + escapeHtmlClient(item.revisionDate || '-') + '</span>' +
             '</article>';
         };
 
@@ -65,13 +71,13 @@ export function instantSearchScript() {
           var query = viewerInput.value.trim();
           currentItems = append ? currentItems.concat(payload.items || []) : (payload.items || []);
           currentCursor = payload.nextCursor || '';
-          var html = '<div class="viewer-result-table" role="table" aria-label="문서 검색 결과">' +
-            '<div class="viewer-result-header" role="row"><span>문서명</span><span>문서번호</span><span>개정</span><span>제·개정일</span><span>대분류</span><span>보관 위치</span><span>상태</span></div>' +
+          var html = '<div class="viewer-result-table' + (workspaceSelectable ? ' is-selectable' : '') + '" role="table" aria-label="문서 검색 결과">' +
+            '<div class="viewer-result-header" role="row">' + (workspaceSelectable ? '<span class="check-col"><span class="sr-only">선택</span></span>' : '') + '<span>문서명</span><span>문서번호 · 개정</span><span>대분류</span><span>보관 위치</span><span>상태</span><span class="optional-column" data-column="revision-date" hidden>제·개정일</span></div>' +
             '<div class="viewer-result-list" role="rowgroup">' +
             currentItems.map(function (item) { return resultRow(item, query); }).join('') +
             '</div></div>';
           if (!currentItems.length) {
-            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/documents">전체 문서 보기</a><a class="button secondary sm" href="/app">검색 초기화</a></div></div>';
+            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/app">전체 문서 보기</a><a class="button secondary sm" href="/app">검색 초기화</a></div></div>';
           } else if (payload.hasMore && currentCursor) {
             html += '<nav class="pagination"><button type="button" class="button secondary sm" data-search-more>더보기</button></nav>';
           }
@@ -84,6 +90,13 @@ export function instantSearchScript() {
           if (searchLive) searchLive.textContent = currentItems.length ? currentItems.length + '건을 표시했습니다.' : '검색 결과가 없습니다.';
           if (homeExtras) homeExtras.hidden = true;
           viewerApp.hidden = false;
+          var revisionToggle = document.querySelector('[data-column-toggle="revision-date"]');
+          document.querySelectorAll('[data-column="revision-date"]').forEach(function (cell) {
+            cell.hidden = !revisionToggle?.checked;
+          });
+          document.querySelectorAll('.viewer-result-table').forEach(function (table) {
+            table.classList.toggle('show-revision-date', Boolean(revisionToggle?.checked));
+          });
         };
 
         var renderError = function (message) {

@@ -6,7 +6,6 @@ import {
   handleDuplicateDocumentCheck,
   handleDocumentExport,
   handleDocumentRoute,
-  handleDocuments,
   handleDisposalWorkspace,
   handleFilteredDispose,
   handleSelectedDisposal,
@@ -15,6 +14,7 @@ import {
 import { handleDocumentSnapshotExport, renderDocumentSnapshotManager } from "./snapshotHandlers.js";
 import { handleDocumentMove, renderDocumentMove } from "./movementHandlers.js";
 import { requireManageDisposals, requireManageDocuments } from "./permissionGuards.js";
+import { redirect } from "../platform/http/responses.js";
 
 export async function routeDocumentRequest(request, env, session, url, path) {
   if (path === "/api/documents/duplicate" && request.method === "GET") {
@@ -27,7 +27,7 @@ export async function routeDocumentRequest(request, env, session, url, path) {
   }
 
   if (path === "/documents" && request.method === "GET") {
-    return handleDocuments(request, env, session);
+    return redirect(`/app${url.search}`);
   }
 
   if (path === "/documents/disposal" && request.method === "GET") {

@@ -8,6 +8,7 @@ import { excelSnapshotScript } from "./clientScript/excelSnapshots.js";
 import { instantSearchScript } from "./clientScript/instantSearch.js";
 import { navigationFeedbackScript } from "./clientScript/navigationFeedback.js";
 import { suggestionScript } from "./clientScript/suggestions.js";
+import { workspaceInteractionScript } from "./clientScript/workspaceInteractions.js";
 
 // 검색 코어는 build 단계에서 독립 browser ESM asset으로 생성한다.
 export function searchCoreScript() {
@@ -26,6 +27,7 @@ export function clientScript() {
     documentDetailScript(),
     navigationFeedbackScript(),
     instantSearchScript(),
+    workspaceInteractionScript(),
     "    });",
     "  "
   ].join("\n");

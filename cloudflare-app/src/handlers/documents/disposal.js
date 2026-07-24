@@ -63,7 +63,8 @@ async function renderDisposalWorkspace(env, session, filters, feedback = null, {
 
 export async function handleSelectedDisposal(request, env, session) {
   const form = await request.formData();
-  const ids = clean(form.get("ids")).split(",").map(Number);
+  const ids = [...new Set(clean(form.get("ids")).split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  const returnTo = safeSelectedDisposalReturn(form.get("returnTo"));
   const filters = {
     ...parseDisposalFilters({
       categoryId: form.get("categoryId"),
@@ -72,6 +73,13 @@ export async function handleSelectedDisposal(request, env, session) {
     }),
     query: clean(form.get("q"))
   };
+  if (!ids.length || ids.length > FREE_TIER_BUDGET.legacyBulkDisposeMaxItems) {
+    if (returnTo) return redirect(withToast(returnTo, "error"));
+    return renderDisposalWorkspace(env, session, filters, {
+      type: "error",
+      message: `선택 폐기는 한 번에 ${FREE_TIER_BUDGET.legacyBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`
+    });
+  }
   let created;
   try {
     created = await createSelectedDisposalBatch(env, {
@@ -83,12 +91,14 @@ export async function handleSelectedDisposal(request, env, session) {
     }, session);
   } catch (error) {
     console.error("selected disposal batch failed", error);
+    if (returnTo) return redirect(withToast(returnTo, "error"));
     return renderDisposalWorkspace(env, session, filters, {
       type: "error",
       message: "선택 문서 상태가 변경되었습니다. 목록을 새로고침한 뒤 다시 시도해 주세요."
     });
   }
   if (!created.ok) {
+    if (returnTo) return redirect(withToast(returnTo, "error"));
     return renderDisposalWorkspace(env, session, filters, { type: "error", message: created.message });
   }
   const started = await startDisposalBatch(env, created.id, session, {
@@ -100,6 +110,7 @@ export async function handleSelectedDisposal(request, env, session) {
   if (!processed.ok) return errorPage(processed.message, session, 409);
   const completed = Number(processed.batch?.completed_count || 0);
   const skipped = Number(processed.batch?.changed_count || 0) + Number(processed.batch?.failed_count || 0);
+  if (returnTo) return redirect(withToast(returnTo, "bulk-disposed", { disposed: completed, skipped }));
   return redirect(`/documents/disposal?tab=history&toast=bulk-disposed&disposed=${completed}&skipped=${skipped}`);
 }
 
@@ -229,6 +240,18 @@ function safeDisposalReturn(value) {
       : "/documents/disposal";
   } catch {
     return "/documents/disposal";
+  }
+}
+
+function safeSelectedDisposalReturn(value) {
+  const path = clean(value);
+  try {
+    const url = new URL(path, "https://archive.local");
+    return url.origin === "https://archive.local" && url.pathname === "/app"
+      ? `${url.pathname}${url.search}`
+      : "";
+  } catch {
+    return "";
   }
 }
 

@@ -47,7 +47,7 @@ export function rackDetailsPage({ session, rack, documents, grid = [], selectedF
     </section>
     <section class="locator-hero">
       <div><strong class="mono">${escapeHtml(rack.code)}</strong><span>${readBoolean(rack.is_single_sided) ? `단면 ${rack.rack_number}` : `양면 ${rack.rack_number}-1 / ${rack.rack_number}-2`} · 면당 ${rack.column_count || 7}열 × ${rack.shelf_count || 6}선반 = ${(rack.column_count || 7) * (rack.shelf_count || 6)}칸 · 문서 ${documents.length}건</span></div>
-      <a class="button secondary" href="/documents?rack=${rack.id}&face=${face}&status=active&sort=location">이 면의 문서 보기</a>
+      <a class="button secondary" href="/app?rack=${rack.id}&face=${face}&status=active&sort=location">이 면의 문서 보기</a>
     </section>
     ${rackGridView({ rack, grid, face, selectedColumn, selectedShelf })}
     <section class="panel">${documentResults(faceDocuments, { emptyMessage: "이 면에 등록된 문서가 없습니다." })}</section>
@@ -71,7 +71,7 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
       const active = Number(row.active_count || 0);
       const disposed = Number(row.disposed_count || 0);
       const selected = column === selectedColumn && shelf === selectedShelf;
-      const base = `/documents?rack=${rack.id}&face=${face}&column=${column}&shelf=${shelf}&sort=location`;
+      const base = `/app?rack=${rack.id}&face=${face}&column=${column}&shelf=${shelf}&sort=location`;
       cells.push(`
         <div class="rack-cell${selected ? " is-selected" : ""}${active + disposed === 0 ? " is-empty" : ""}" role="gridcell">
           <a href="${base}&status=active" aria-label="${column}열 ${shelf}선반 보관중 ${active}건">

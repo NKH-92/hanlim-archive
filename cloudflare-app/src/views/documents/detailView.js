@@ -175,7 +175,7 @@ function renderDocumentFloorPlan(document, floorPlan = []) {
           ${zoneFloorPlanView(region, { hitCode: document.rack_code, hitFace: document.rack_face, interactive: false, spotlight: true })}
         </div>
         <p class="muted">현재 핀이 이 문서가 보관된 ${single ? `단면 랙입니다. ${orientation.description}` : `${escapeHtml(rackLabel)} 면(양면 랙의 ${document.rack_face === "B" ? "우측" : "좌측"})입니다. 1열은 통로 안쪽인 ${orientation.originLabel}에서 시작합니다.`}</p>
-        ${rack ? `<a class="button secondary sm rack-result-link" href="/documents?rack=${Number(rack.id)}&amp;status=active&amp;sort=location">이 랙의 보관중 문서 보기</a>` : ""}
+        ${rack ? `<a class="button secondary sm rack-result-link" href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location">이 랙의 보관중 문서 보기</a>` : ""}
       </div>
     </section>
   `;

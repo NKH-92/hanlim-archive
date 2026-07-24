@@ -50,55 +50,60 @@ export function page(title, body, session, status = 200) {
 
 function header(session) {
   const capabilities = capabilitiesFromSession(session);
-  const primaryLinks = [
-    ["/app", "fa-magnifying-glass", "문서검색"],
-    ["/floor-plan", "fa-location-dot", "문서고 도면"],
-    ["/sets", "fa-layer-group", "문서 세트"]
+  const documentLinks = [
+    ["/app", "fa-file-lines", "문서"],
+    ["/floor-plan", "fa-location-dot", "보관 위치"],
+    ["/sets", "fa-layer-group", "준비 문서 세트"]
   ];
+  const workLinks = [];
   if (capabilities.canManageDocuments) {
-    primaryLinks.push(["/documents", "fa-file-lines", "문서 관리"]);
-    primaryLinks.push(["/documents/import", "fa-file-excel", "리스트 동기화"]);
-    primaryLinks.push(["/documents/new", "fa-file-circle-plus", "문서 추가"]);
+    workLinks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화"]);
   }
   if (capabilities.canManageDisposals) {
-    primaryLinks.push(["/documents/disposal", "fa-box-archive", "문서폐기"]);
+    workLinks.push(["/documents/disposal", "fa-box-archive", "폐기 관리"]);
   }
 
-  const settingsLinks = [];
+  const masterLinks = [];
   if (capabilities.canManageMasters) {
-    settingsLinks.push(["/racks", "fa-table-cells-large", "랙·보관 위치"]);
-    settingsLinks.push(["/categories", "fa-list-check", "대분류"]);
-    settingsLinks.push(["/tags", "fa-tags", "태그"]);
+    masterLinks.push(["/racks", "fa-table-cells-large", "랙·보관 위치"]);
+    masterLinks.push(["/categories", "fa-list-check", "대분류"]);
+    masterLinks.push(["/tags", "fa-tags", "태그"]);
+  }
+  const operationLinks = [];
+  if (capabilities.canOpenManagement) {
+    operationLinks.push(["/admin", "fa-list-check", "확인할 일"]);
   }
   if (capabilities.canManageUsers) {
-    settingsLinks.push(["/admin/settings", "fa-users-gear", "사용자·권한"]);
+    operationLinks.push(["/admin/settings", "fa-users-gear", "사용자·권한"]);
   }
+  const evidenceLinks = [];
   if (capabilities.canViewAudit) {
-    settingsLinks.push(["/admin/audit", "fa-list-check", "감사 이력"]);
+    evidenceLinks.push(["/admin/audit", "fa-clock-rotate-left", "감사 이력"]);
+    evidenceLinks.push(["/admin/search-report", "fa-chart-line", "검색 리포트"]);
   }
   if (capabilities.canViewMovements) {
-    settingsLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
+    evidenceLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
   }
-  if (capabilities.canOpenManagement) {
-    settingsLinks.push(["/admin", "fa-gear", "운영 관리"]);
-  }
-  const navigationLinks = primaryLinks
-    .map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item"><i class="fa-solid ${icon}" aria-hidden="true"></i>${text}</a>`)
-    .join("");
-  const settingsNavigation = settingsLinks.map(([href, icon, text]) => `<a href="${href}" class="nav-sub-link"><i class="fa-solid ${icon}"></i>${escapeHtml(text)}</a>`).join("");
-  const mobilePaths = capabilities.canManageDocuments && capabilities.canManageDisposals
-    ? ["/app", "/floor-plan", "/documents", "/documents/new", "/documents/disposal"]
-    : capabilities.canManageDocuments
-      ? ["/app", "/floor-plan", "/documents", "/documents/import", "/documents/new"]
-      : capabilities.canManageDisposals
-        ? ["/app", "/floor-plan", "/documents/disposal"]
-        : ["/app", "/floor-plan"];
-  const mobileTabs = primaryLinks
-    .filter(([href]) => mobilePaths.includes(href))
-    .map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}"></i><span>${text}</span></a>`)
-    .join("");
+  const navLink = ([href, icon, text], sub = false) =>
+    `<a href="${href}" class="${sub ? "nav-sub-link" : "archive-nav-item"}"><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(text)}</a>`;
+  const navGroup = (label, links, extras = "") => links.length || extras
+    ? `<section class="nav-group" aria-label="${escapeHtml(label)}"><strong class="nav-group-label">${escapeHtml(label)}</strong>${links.map((link) => navLink(link)).join("")}${extras}</section>`
+    : "";
+  const nestedGroup = (label, icon, links) => links.length
+    ? `<details class="nav-settings"><summary><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(label)}</summary><div>${links.map((link) => navLink(link, true)).join("")}</div></details>`
+    : "";
+  const operationExtras = `${nestedGroup("기준정보", "fa-database", masterLinks)}${nestedGroup("이력·증적", "fa-folder-tree", evidenceLinks)}`;
+  const allLinks = [
+    ...documentLinks,
+    ...workLinks,
+    ...operationLinks,
+    ...masterLinks,
+    ...evidenceLinks,
+    ...(capabilities.canManageDocuments ? [["/documents/new", "fa-file-circle-plus", "문서 등록"]] : [])
+  ];
+  const mobileTabs = `${documentLinks.map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${text === "준비 문서 세트" ? "세트" : text === "보관 위치" ? "위치" : text}</span></a>`).join("")}<button type="button" class="archive-nav-item mobile-tab" data-mobile-more aria-controls="primary-navigation" aria-expanded="false"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>더보기</span></button>`;
   const utilityLinks = [["/qa", "fa-circle-info", "도움말·문의"]];
-  const commandLinks = [...primaryLinks, ...settingsLinks, ...utilityLinks].map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
+  const commandLinks = [...allLinks, ...utilityLinks].map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
   const roleLabel = session.role === "Admin"
     ? PERMISSION_PRESETS.system_admin.label
     : PERMISSION_PRESETS[matchingPermissionPreset(session)].label;
@@ -110,11 +115,10 @@ function header(session) {
       <button type="button" class="hamburger" aria-label="메뉴 열기" aria-controls="primary-navigation" aria-expanded="false" data-hamburger><span></span><span></span><span></span></button>
       <nav id="primary-navigation" aria-label="주 메뉴" data-nav-menu>
         <button type="button" class="drawer-close" data-drawer-close aria-label="메뉴 닫기">×</button>
-        ${navigationLinks}
-        ${settingsNavigation ? `<details class="nav-settings">
-          <summary><i class="fa-solid fa-gear"></i>관리자 설정</summary>
-          <div>${settingsNavigation}</div>
-        </details>` : ""}
+        ${navGroup("문서", documentLinks)}
+        ${navGroup("업무", workLinks)}
+        ${navGroup("운영", operationLinks, operationExtras)}
+        ${capabilities.canManageDocuments ? `<a class="button action-button nav-create-document" href="/documents/new"><i class="fa-solid fa-plus" aria-hidden="true"></i>문서 등록</a>` : ""}
         <div class="nav-user">
           <span class="session-pill">${escapeHtml(session.displayName)} · ${escapeHtml(roleLabel)}</span>
           <a href="/qa" class="nav-sub-link"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>도움말·문의</a>
@@ -130,7 +134,7 @@ function header(session) {
         <label class="sr-only" for="command-filter">메뉴 검색</label>
         <input id="command-filter" type="search" placeholder="이동할 메뉴를 입력하세요" autocomplete="off" data-command-input>
         <div class="command-palette-list" data-command-list>${commandLinks}</div>
-        <p class="muted">Ctrl+K로 열기 · Esc로 닫기</p>
+        <p class="muted">Ctrl+K로 열기 · 방향키로 이동 · Enter로 실행</p>
       </dialog>
     </header>
     <nav class="mobile-tabs" aria-label="주요 메뉴">${mobileTabs}</nav>
@@ -162,7 +166,7 @@ export function emptyResult(message, query = "") {
     <div class="empty-state">
       <i class="fa-regular fa-folder-open"></i>
       <p>${escapeHtml(message)}</p>
-      ${query ? `<div class="empty-actions"><a class="button secondary sm" href="/documents">전체 문서 보기</a><a class="button secondary sm" href="/app">대분류로 찾기</a></div>` : ""}
+      ${query ? `<div class="empty-actions"><a class="button secondary sm" href="/app">전체 문서 보기</a><a class="button secondary sm" href="/app">대분류로 찾기</a></div>` : ""}
     </div>
   `;
 }
