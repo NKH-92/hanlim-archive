@@ -98,6 +98,11 @@ npm run deploy:dry
 9. Worker 배포 또는 smoke 실패 시 기록한 이전 100% traffic version으로 되돌리고 같은 인증 smoke를 실행한다.
 10. 성공·실패와 관계없이 release 전용 계정을 제거하고 복구 지점·migration·배포·smoke·rollback 증거를
    release artifact로 보존한다.
+11. migration이 포함된 release였다면 다음 PR에서 `migrations/released-baseline.json`을 이번에 배포한
+   migration까지 전진시킨다. `checksums`에 항목을 추가하고 `releasedThrough`와 `schema`를
+   `manifest.json`의 값과 맞춘다. 과거 migration SQL과 기존 checksum은 바꾸지 않는다.
+   이 전진을 빼먹으면 `check-released-baseline-history.mjs`가 "released baseline must retain every
+   migration from the trusted base"로 이후 **모든 PR**의 `required / verify`를 fail-closed한다.
 
 배포는 `d1-production-maintenance` concurrency group에서 직렬화한다. D1 Time Travel 복구는 데이터 변경을
 되돌리는 파괴적 작업이므로 자동 rollback하지 않고 [D1 복구 절차](./BACKUP_RESTORE.md)에 따라 별도 승인한다.

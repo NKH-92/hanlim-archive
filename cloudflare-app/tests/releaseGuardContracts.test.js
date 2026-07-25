@@ -234,7 +234,7 @@ test("migration released-baseline은 과거 SQL 변조·checksum 동시변조·�
     await cp(new URL("released-baseline.json", source), join(dir, "released-baseline.json"));
 
     const baseline = JSON.parse(await readFile(join(dir, "released-baseline.json"), "utf8"));
-    assert.equal(Object.keys(baseline.checksums).at(-1), "0046_app_user_team.sql");
+    assert.equal(Object.keys(baseline.checksums).at(-1), "0048_core_search_projection.sql");
     const first = Object.keys(baseline.checksums)[0];
 
     assert.equal((await verifyMigrationChain({ migrationsDir: dir, applySchema: false })).ok, true);
