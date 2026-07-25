@@ -90,6 +90,9 @@ npm run deploy:dry
 5. append-only migration을 적용하고 독립 Admin 존재를 다시 확인한다.
 6. 신규 schema가 적용된 뒤 release run 전용 read-only 계정과 `can_manage_users`만 가진 일반 User 계정을
    무작위 credential로 생성하고, 이전 Worker에서 실제 로그인·검색·`/admin/settings`를 확인한다.
+   `/readyz`는 각 Worker version이 스스로 정의하는 판정이므로 rollback 대상에는 요구하지 않는다. 판정 기준을
+   바꾸는 release에서는 이전 version의 readiness가 구조적으로 만족될 수 없기 때문이다. readiness는 8단계의
+   배포 후 smoke에서 이번에 배포한 version에만 요구한다.
 7. release SHA tag·message를 붙여 Worker를 production에 직접 배포한다.
 8. `/healthz`, `/readyz`, Worker version, 전송·asset·로그인·검색·사용자 관리 smoke를 실행한다.
 9. Worker 배포 또는 smoke 실패 시 기록한 이전 100% traffic version으로 되돌리고 같은 인증 smoke를 실행한다.

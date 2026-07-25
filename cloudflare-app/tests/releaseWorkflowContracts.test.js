@@ -127,6 +127,16 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
     assert.ok(rollbackWorkerSmoke.includes(envName), envName);
   }
   assert.match(rollbackWorkerSmoke, /npm run smoke:release 2>&1 \| tee release-evidence\/pre-deploy-smoke\.txt/);
+  // readiness는 각 Worker version이 스스로 정의하므로 rollback 대상에는 요구하지 않고
+  // 이번에 배포하는 version에만 요구한다.
+  assert.match(rollbackWorkerSmoke, /SMOKE_REQUIRE_READINESS: "0"/);
+  assert.match(
+    deploy.slice(
+      deploy.indexOf("Post-deploy transport, login and read-only search smoke"),
+      deploy.indexOf("Roll back Worker after release failure")
+    ),
+    /SMOKE_REQUIRE_READINESS: "1"/
+  );
   assert.match(
     deploy,
     /Verify current Worker compatibility before migration[\s\S]*pre-migration-health\.json[\s\S]*rollbackCompatibility\.sessionEpoch == 1/
