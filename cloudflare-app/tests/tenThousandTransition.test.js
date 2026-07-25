@@ -22,6 +22,8 @@ test("10,000건 운영 정책은 11,000 경고와 12,000 하드 상한을 고정
   assert.equal(FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems, 1000);
   assert.equal(FREE_TIER_BUDGET.searchCandidateMaxItems, 200);
   assert.equal(FREE_TIER_BUDGET.searchResponseMaxItems, 30);
+  assert.equal(FREE_TIER_BUDGET.searchRebuildChunkSize, 10);
+  assert.equal(FREE_TIER_BUDGET.initialLoadDailyRowsWrittenStop, 85000);
 });
 
 test("용량 trigger는 하드 상한의 다음 current 문서를 원자 차단한다", async () => {

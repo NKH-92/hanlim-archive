@@ -13,6 +13,8 @@ export function createD1Gateway(database, {
 } = {}) {
   if (!database || typeof database.batch !== "function") throw new TypeError("D1 database binding이 필요합니다.");
   let statementCount = 0;
+  let rowsRead = 0;
+  let rowsWritten = 0;
   const sharedBudget = requestBudget || { statementCount: 0 };
 
   function ensureRequestBudget(additional) {
@@ -35,14 +37,19 @@ export function createD1Gateway(database, {
     ensureRequestBudget(1);
     const startedAt = performance.now();
     consume(1);
+    let result;
     try {
-      return await statement[method](...args);
+      result = await statement[method](...args);
+      return result;
     } finally {
-      record(kind, 1, startedAt);
+      record(kind, 1, startedAt, null, result);
     }
   }
 
-  function record(kind, count, startedAt, planId = null) {
+  function record(kind, count, startedAt, planId = null, results = null) {
+    const usage = d1Usage(results);
+    rowsRead += usage.rowsRead;
+    rowsWritten += usage.rowsWritten;
     const metric = Object.freeze({
       requestId,
       kind,
@@ -50,6 +57,10 @@ export function createD1Gateway(database, {
       statements: count,
       bindingStatements: statementCount,
       totalStatements: sharedBudget.statementCount,
+      rowsRead: usage.rowsRead,
+      rowsWritten: usage.rowsWritten,
+      bindingRowsRead: rowsRead,
+      bindingRowsWritten: rowsWritten,
       durationMs: performance.now() - startedAt
     });
     if (onMetrics) onMetrics(metric);
@@ -70,8 +81,9 @@ export function createD1Gateway(database, {
       ensureRequestBudget(execution.statements.length);
       const startedAt = performance.now();
       consume(execution.statements.length);
+      let results;
       try {
-        const results = await database.batch(execution.statements.map(unwrapStatement));
+        results = await database.batch(execution.statements.map(unwrapStatement));
         // prepare가 없는 test double만 post-batch 검사로 보완한다.
         if (!prepare) {
           for (const [index, step] of (execution.metadata.steps || []).entries()) {
@@ -89,7 +101,7 @@ export function createD1Gateway(database, {
         }
         throw error;
       } finally {
-        record("batch", execution.statements.length, startedAt, execution.metadata.id);
+        record("batch", execution.statements.length, startedAt, execution.metadata.id, results);
       }
     },
     async rawBatch(statements) {
@@ -97,19 +109,37 @@ export function createD1Gateway(database, {
       ensureRequestBudget(statements.length);
       const startedAt = performance.now();
       consume(statements.length);
+      let results;
       try {
-        return await database.batch(statements);
+        results = await database.batch(statements);
+        return results;
       } finally {
-        record("raw-batch", statements.length, startedAt);
+        record("raw-batch", statements.length, startedAt, null, results);
       }
     },
     metrics() {
       return Object.freeze({
         statementCount,
-        totalStatementCount: sharedBudget.statementCount
+        totalStatementCount: sharedBudget.statementCount,
+        rowsRead,
+        rowsWritten
       });
     }
   });
+}
+
+function d1Usage(results) {
+  const list = Array.isArray(results) ? results : results ? [results] : [];
+  let rowsRead = 0;
+  let rowsWritten = 0;
+  for (const result of list) {
+    const meta = result?.meta;
+    const read = Number(meta?.rows_read ?? meta?.rowsRead ?? 0);
+    const written = Number(meta?.rows_written ?? meta?.rowsWritten ?? 0);
+    if (Number.isFinite(read) && read > 0) rowsRead += read;
+    if (Number.isFinite(written) && written > 0) rowsWritten += written;
+  }
+  return { rowsRead, rowsWritten };
 }
 
 export class D1ExpectedChangeError extends Error {

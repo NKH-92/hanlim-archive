@@ -59,7 +59,28 @@ test("300건 엑셀 한 파일을 현재 대장으로 반영하고 다음 파일
       "pending"
     );
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM search_projection_dirty").get().count, 0);
-    assert.ok(database.prepare("SELECT generation FROM search_index_state WHERE id = 1").get().generation > 1);
+    const projectionGeneration = database.prepare("SELECT generation FROM search_projection_state WHERE id = 1").get().generation;
+    assert.ok(projectionGeneration > 1);
+    assert.equal(
+      projectionGeneration,
+      database.prepare("SELECT generation FROM search_index_state WHERE id = 1").get().generation,
+      "expand 기간에는 rollback Worker용 generation과 함께 증가한다"
+    );
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM document_audit_logs WHERE action = 'excel_sync_create'").get().count,
+      0,
+      "초기 승인 대장은 300개의 가상 등록 행위를 만들지 않고 snapshot provenance로 남긴다"
+    );
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM disposal_logs WHERE snapshot_code = ?").get(first.snapshot.snapshot_code).count,
+      0,
+      "bootstrap 파일의 기존 폐기 상태를 시스템 폐기 행위로 기록하지 않는다"
+    );
+    assert.deepEqual(
+      database.prepare("SELECT storage_code FROM documents ORDER BY storage_code").all().map((row) => row.storage_code),
+      Array.from({ length: 300 }, (_, index) => `ARC-${String(index + 1).padStart(6, "0")}`),
+      "bootstrap은 임시 SNP 코드 후 전체 UPDATE 없이 최종 내부 코드를 바로 기록한다"
+    );
 
     const exported = await getDocumentSnapshotExport(env);
     assert.equal(exported.documents.length, 300);
@@ -124,7 +145,11 @@ test("300건 엑셀 한 파일을 현재 대장으로 반영하고 다음 파일
     assert.equal(secondApplied.ok, true, secondApplied.message);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 299);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 1);
-    assert.match(database.prepare("SELECT document_name FROM documents WHERE sync_state = 'current' ORDER BY id LIMIT 1").get().document_name, /변경$/);
+    assert.match(
+      database.prepare("SELECT document_name FROM documents WHERE excel_row_key = ? AND sync_state = 'current'")
+        .get(exported.documents[0].rowKey).document_name,
+      /변경$/
+    );
 
     const state = await getDocumentSyncState(env);
     assert.ok(state.currentVersion > exported.baseVersion);

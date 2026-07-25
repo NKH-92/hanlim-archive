@@ -33,6 +33,9 @@ test("로그인과 최초 비밀번호 변경 화면은 등록 이메일·보안
 
   const password = await htmlPage(passwordPage({ session: admin, required: true }), "비밀번호 변경");
   assert.match(password, /최초 로그인입니다/);
+  assert.match(password, /<dialog[^>]+id="required-password-change"[^>]+open[^>]+data-auto-open-modal[^>]+data-forced-modal/);
+  assert.match(password, /첫 로그인 비밀번호 변경/);
+  assert.doesNotMatch(password, /data-close-modal/);
   assertPostForm(password, "/account/password", ["currentPassword", "newPassword", "confirmPassword"]);
 });
 

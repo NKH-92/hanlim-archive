@@ -143,6 +143,16 @@
         });
       });
 
+      document.querySelectorAll('[data-auto-open-modal]').forEach(function (modal) {
+        if (modal.hasAttribute('data-forced-modal')) {
+          modal.addEventListener('cancel', function (event) { event.preventDefault(); });
+        }
+        if (typeof modal.showModal === 'function') {
+          // open 속성은 스크립트 실패 시에도 폼이 보이게 하는 fallback이다. 정상 브라우저에서는 top layer modal로 승격한다.
+          if (modal.open) modal.close();
+          modal.showModal();
+        }
+      });
       document.querySelectorAll('[data-open-modal]').forEach(function (button) {
         button.addEventListener('click', function () {
           var modal = document.getElementById(button.dataset.openModal);
@@ -825,7 +835,9 @@
               backupConfirmed: backupConfirmed
             });
             showRecovery(created.id);
-            if (excelCachedParsed.schemaVersion >= 2) {
+            // 최초 bootstrap은 모든 행을 실제 source row로 staging하므로 동일 10,000행 membership을
+            // 한 번 더 저장할 이유가 없다. managed v2만 unchanged 행 복원을 위해 membership을 보낸다.
+            if (excelCachedParsed.schemaVersion >= 2 && excelCachedParsed.mode !== 'bootstrap') {
               for (var membershipIndex = 0; membershipIndex < excelCachedParsed.rows.length; membershipIndex += excelSnapshotMembershipChunkSize) {
                 var membershipChunk = excelCachedParsed.rows.slice(membershipIndex, membershipIndex + excelSnapshotMembershipChunkSize).map(function (entry) {
                   return {

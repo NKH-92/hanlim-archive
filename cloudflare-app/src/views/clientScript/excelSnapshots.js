@@ -326,7 +326,9 @@ export function excelSnapshotScript() {
               backupConfirmed: backupConfirmed
             });
             showRecovery(created.id);
-            if (excelCachedParsed.schemaVersion >= 2) {
+            // 최초 bootstrap은 모든 행을 실제 source row로 staging하므로 동일 10,000행 membership을
+            // 한 번 더 저장할 이유가 없다. managed v2만 unchanged 행 복원을 위해 membership을 보낸다.
+            if (excelCachedParsed.schemaVersion >= 2 && excelCachedParsed.mode !== 'bootstrap') {
               for (var membershipIndex = 0; membershipIndex < excelCachedParsed.rows.length; membershipIndex += excelSnapshotMembershipChunkSize) {
                 var membershipChunk = excelCachedParsed.rows.slice(membershipIndex, membershipIndex + excelSnapshotMembershipChunkSize).map(function (entry) {
                   return {

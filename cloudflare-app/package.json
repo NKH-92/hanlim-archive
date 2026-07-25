@@ -27,6 +27,7 @@
     "smoke:principal": "node scripts/release-smoke-principal.mjs",
     "recovery:d1:time-travel": "node scripts/capture-d1-recovery.mjs",
     "measure:search-consolidation": "node scripts/measure-search-consolidation.mjs",
+    "rehearse:initial-load": "node scripts/rehearse-initial-load.mjs",
     "admin:check:remote": "node scripts/check-admin-readiness.mjs",
     "admin:provision:remote": "node scripts/provision-admin-guarded.mjs",
     "admin:remediate-main:remote": "node scripts/remediate-main-admin-guarded.mjs",

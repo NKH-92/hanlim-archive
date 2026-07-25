@@ -241,18 +241,35 @@ function userStatus(user) {
 }
 
 export function passwordPage({ session, error = "", success = false, required = false }) {
+  const passwordFields = `
+    <label>현재 비밀번호<input type="password" name="currentPassword" autocomplete="current-password" required></label>
+    <label>새 비밀번호<input type="password" name="newPassword" autocomplete="new-password" required></label>
+    <label>새 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" required></label>
+    <p class="muted">새 비밀번호는 ${PASSWORD_POLICY.minLength}자 이상이어야 합니다. 변경 후 현재 계정을 제외한 기존 로그인 세션은 종료됩니다.</p>
+    <button type="submit" class="primary">변경</button>
+  `;
+
+  if (required) {
+    return page("비밀번호 변경", `
+      <section class="page-head"><h1>비밀번호 변경</h1></section>
+      <dialog id="required-password-change" class="modal" open data-auto-open-modal data-forced-modal aria-labelledby="required-password-change-title">
+        <form method="post" action="/account/password" class="modal-body">
+          <h2 id="required-password-change-title">첫 로그인 비밀번호 변경</h2>
+          ${alertWarning("최초 로그인입니다. 계속 사용하려면 기본 비밀번호를 새 비밀번호로 변경하세요.")}
+          ${error ? alertDanger(error) : ""}
+          ${passwordFields}
+        </form>
+      </dialog>
+    `, session);
+  }
+
   return page("비밀번호 변경", `
     <section class="page-head"><h1>비밀번호 변경</h1></section>
     <section class="panel narrow">
-      ${required ? alertWarning("최초 로그인입니다. 계속 사용하려면 기본 비밀번호를 새 비밀번호로 변경하세요.") : ""}
       ${error ? alertDanger(error) : ""}
       ${success ? `<div class="alert success">비밀번호가 변경되었습니다.</div>` : ""}
       <form method="post" action="/account/password" class="stack">
-        <label>현재 비밀번호<input type="password" name="currentPassword" autocomplete="current-password" required></label>
-        <label>새 비밀번호<input type="password" name="newPassword" autocomplete="new-password" required></label>
-        <label>새 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" required></label>
-        <p class="muted">새 비밀번호는 ${PASSWORD_POLICY.minLength}자 이상이어야 합니다. 변경 후 현재 계정을 제외한 기존 로그인 세션은 종료됩니다.</p>
-        <button type="submit" class="primary">변경</button>
+        ${passwordFields}
       </form>
     </section>
   `, session);

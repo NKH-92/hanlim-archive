@@ -2,6 +2,7 @@ import { FREE_TIER_BUDGET } from "../../../freeTierBudget.js";
 import { createBatchPlan } from "../../../platform/d1/batchPlan.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
+import { isD1ValuePayloadWithinLimit } from "../../../platform/d1/valueSize.js";
 import { hasPermission, PERMISSIONS, permissionSnapshot } from "../../../permissions.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { auditActorSnapshot } from "../../identity/index.js";
@@ -499,6 +500,12 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     );
   }
 
+  const lookup = {
+    categoryNames: new Map((options.categories || []).map((category) => [Number(category.id), category.name])),
+    tagNames: new Map((options.tags || []).map((tag) => [Number(tag.id), tag.name])),
+    slotsById: new Map((options.slots || []).map((slot) => [Number(slot.id), slot]))
+  };
+
   let sourceRows;
   try {
     sourceRows = stagedRows.map((row) => ({
@@ -523,7 +530,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
         ) {
           throw new Error(`${rowNumber}행의 기준 버전이 현재 문서와 다릅니다.`);
         }
-        sourceRows.push(sourceRowFromCurrentDocument(document, membership, options));
+        sourceRows.push(sourceRowFromCurrentDocument(document, membership, lookup));
       }
       sourceRows.sort((left, right) => Number(left.rowNumber) - Number(right.rowNumber));
     }
@@ -544,11 +551,6 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     );
   }
 
-  const lookup = {
-    categoryNames: new Map((options.categories || []).map((category) => [Number(category.id), category.name])),
-    tagNames: new Map((options.tags || []).map((tag) => [Number(tag.id), tag.name])),
-    slotsById: new Map((options.slots || []).map((slot) => [Number(slot.id), slot]))
-  };
   const existingDocuments = snapshot.mode === "bootstrap"
     ? (documentResult.results ?? []).filter((document) => !isInitialBootstrapSeed(document))
     : (documentResult.results ?? []);
@@ -604,33 +606,33 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
   }) ? 1 : 0;
   const canonicalRowsHash = await computeCanonicalRowsHash(match.items);
   const actorSnapshot = auditActorSnapshot(actor);
-  const changes = {};
-  for (const item of match.items) {
-    changes[String(item.rowNumber)] = {
-      action: item.action,
-      matchedDocumentId: item.matchedDocumentId || null,
-      rowKey: item.rowKey,
-      expectedRowVersion: item.expectedRowVersion,
-      beforeJson: item.before ? JSON.stringify(item.before) : null,
-      afterJson: item.after ? JSON.stringify(item.after) : null,
-      changedFieldsJson: JSON.stringify(item.changedFields || []),
-      changeFlagsJson: JSON.stringify(item.changeFlags || []),
-      normalizedJson: JSON.stringify({
-        schemaVersion: 1,
-        rowKey: item.rowKey,
-        values: item.values,
-        status: item.status,
-        changeFlags: item.changeFlags,
-        changedFields: item.changedFields
-      })
-    };
-  }
-  const exclusionPayload = JSON.stringify(match.exclusions.map((item) => ({
+  const changePayloads = match.items.map((item) => snapshotChangePayload(item, {
+    bootstrap: snapshot.mode === "bootstrap"
+  }));
+  const changeChunks = splitSnapshotPayloadChunks(changePayloads);
+  const exclusionPayloads = match.exclusions.map((item) => ({
     documentId: item.documentId,
     excelRowKey: item.excelRowKey,
     expectedRowVersion: item.expectedRowVersion,
     beforeJson: JSON.stringify(item.before)
-  })));
+  }));
+  const exclusionChunks = splitSnapshotPayloadChunks(exclusionPayloads);
+  const fixedPrepareStatements = 3; // 기존 exclusion 삭제 + snapshot ready + system audit
+  if (
+    changeChunks.length + exclusionChunks.length + fixedPrepareStatements
+      > FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch
+  ) {
+    return failSnapshotValidation(
+      env,
+      snapshotId,
+      "검증 결과가 한 요청의 안전한 D1 payload 범위를 초과했습니다. 비고·태그 길이를 줄인 뒤 다시 시도하세요.",
+      actor,
+      false,
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD
+    );
+  }
+  const changeStatements = changeChunks.map((chunk) => snapshotRowChangeStatement(env, snapshotId, chunk));
+  const exclusionStatements = exclusionChunks.map((chunk) => snapshotExclusionInsertStatement(env, snapshotId, chunk));
 
   const statements = [
     env.DB.prepare(`
@@ -638,35 +640,8 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
       WHERE snapshot_id = ?
         AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'staging')
     `).bind(snapshotId, snapshotId),
-    env.DB.prepare(`
-      UPDATE document_snapshot_rows AS row
-      SET row_key = json_extract(change.value, '$.rowKey'),
-          normalized_json = json_extract(change.value, '$.normalizedJson'),
-          before_json = json_extract(change.value, '$.beforeJson'),
-          after_json = json_extract(change.value, '$.afterJson'),
-          changed_fields_json = json_extract(change.value, '$.changedFieldsJson'),
-          change_flags_json = json_extract(change.value, '$.changeFlagsJson'),
-          expected_row_version = CAST(json_extract(change.value, '$.expectedRowVersion') AS INTEGER),
-          action = json_extract(change.value, '$.action'),
-          matched_document_id = CAST(json_extract(change.value, '$.matchedDocumentId') AS INTEGER)
-      FROM json_each(?) change
-      WHERE row.snapshot_id = ?
-        AND row.row_number = CAST(change.key AS INTEGER)
-        AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'staging')
-    `).bind(JSON.stringify(changes), snapshotId, snapshotId),
-    env.DB.prepare(`
-      INSERT INTO document_snapshot_exclusions (
-        snapshot_id, document_id, excel_row_key, expected_row_version, before_json
-      )
-      SELECT
-        ?,
-        CAST(json_extract(item.value, '$.documentId') AS INTEGER),
-        json_extract(item.value, '$.excelRowKey'),
-        CAST(json_extract(item.value, '$.expectedRowVersion') AS INTEGER),
-        json_extract(item.value, '$.beforeJson')
-      FROM json_each(?) item
-      WHERE EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'staging')
-    `).bind(snapshotId, exclusionPayload, snapshotId),
+    ...changeStatements,
+    ...exclusionStatements,
     env.DB.prepare(`
       UPDATE document_snapshots
       SET status = 'ready',
@@ -715,7 +690,8 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     }, "ready")
   ];
   const results = await executeMutationBatch(env, createSnapshotPlan("prepare", statements));
-  const ready = results[3]?.results?.[0];
+  const readyResultIndex = 1 + changeStatements.length + exclusionStatements.length;
+  const ready = results[readyResultIndex]?.results?.[0];
   if (!ready) {
     return failSnapshotValidation(
       env,
@@ -734,7 +710,8 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     requiredPermissions,
     missingPermissions: missing,
     warnings,
-    canonicalRowsHash
+    canonicalRowsHash,
+    statementCount: statements.length
   };
 }
 
@@ -1202,11 +1179,11 @@ function exportDocument(row) {
   };
 }
 
-function sourceRowFromCurrentDocument(document, membership, options) {
-  const category = (options.categories || []).find((item) => Number(item.id) === Number(document.category_id));
-  const slot = (options.slots || []).find((item) => Number(item.id) === Number(document.rack_slot_id));
+function sourceRowFromCurrentDocument(document, membership, lookup) {
+  const categoryName = lookup.categoryNames?.get(Number(document.category_id)) || "";
+  const slot = lookup.slotsById?.get(Number(document.rack_slot_id));
   const tagIds = String(document.tag_ids || "").split(",").map(Number).filter(Number.isInteger);
-  const tagNames = tagIds.map((id) => (options.tags || []).find((tag) => Number(tag.id) === id)?.name).filter(Boolean);
+  const tagNames = tagIds.map((id) => lookup.tagNames?.get(id) || "").filter(Boolean);
   return {
     rowNumber: Number(membership.row_number),
     sourceRowKey: clean(membership.row_key),
@@ -1216,7 +1193,7 @@ function sourceRowFromCurrentDocument(document, membership, options) {
     revisionDate: clean(document.revision_date),
     disposalDueYear: document.disposal_due_year,
     documentName: clean(document.document_name),
-    category: clean(category?.name),
+    category: clean(categoryName),
     rackCode: clean(slot?.code),
     rackNumber: clean(slot?.code),
     rackColumn: Number(slot?.column_number || 0),
@@ -1254,6 +1231,88 @@ function normalizeSourceRow(source = {}) {
     note: clean(source.note),
     status: clean(source.status)
   };
+}
+
+function snapshotChangePayload(item, { bootstrap = false } = {}) {
+  const normalizedJson = JSON.stringify({
+    schemaVersion: 1,
+    rowKey: item.rowKey,
+    values: item.values,
+    status: item.status,
+    changeFlags: item.changeFlags,
+    changedFields: item.changedFields
+  });
+  return {
+    rowNumber: Number(item.rowNumber),
+    action: item.action,
+    matchedDocumentId: item.matchedDocumentId || null,
+    rowKey: item.rowKey,
+    expectedRowVersion: item.expectedRowVersion,
+    beforeJson: bootstrap ? null : (item.before ? JSON.stringify(item.before) : null),
+    // bootstrap 신규행은 화면이 normalized_json을 fallback으로 읽고 apply도 normalized_json만 쓴다.
+    // 동일한 10,000개 after payload를 중복 저장하지 않는다.
+    afterJson: bootstrap ? null : (item.after ? JSON.stringify(item.after) : null),
+    changedFieldsJson: JSON.stringify(item.changedFields || []),
+    changeFlagsJson: JSON.stringify(item.changeFlags || []),
+    normalizedJson
+  };
+}
+
+/** D1 value 상한을 넘지 않게 JSON payload를 재귀적으로 반분한다. */
+function splitSnapshotPayloadChunks(items) {
+  if (!items.length) return [];
+  const json = JSON.stringify(items);
+  if (isD1ValuePayloadWithinLimit(json)) return [{ items, json }];
+  if (items.length === 1) {
+    throw new RangeError("snapshot payload 한 행이 D1 value 안전 상한을 초과했습니다.");
+  }
+  const middle = Math.ceil(items.length / 2);
+  return [
+    ...splitSnapshotPayloadChunks(items.slice(0, middle)),
+    ...splitSnapshotPayloadChunks(items.slice(middle))
+  ];
+}
+
+function snapshotRowChangeStatement(env, snapshotId, chunk) {
+  return env.DB.prepare(`
+    WITH changes AS MATERIALIZED (
+      SELECT
+        CAST(json_extract(value, '$.rowNumber') AS INTEGER) AS row_number,
+        value
+      FROM json_each(?)
+    )
+    UPDATE document_snapshot_rows AS row
+    SET row_key = json_extract(changes.value, '$.rowKey'),
+        normalized_json = json_extract(changes.value, '$.normalizedJson'),
+        before_json = json_extract(changes.value, '$.beforeJson'),
+        after_json = json_extract(changes.value, '$.afterJson'),
+        changed_fields_json = json_extract(changes.value, '$.changedFieldsJson'),
+        change_flags_json = json_extract(changes.value, '$.changeFlagsJson'),
+        expected_row_version = CAST(json_extract(changes.value, '$.expectedRowVersion') AS INTEGER),
+        action = json_extract(changes.value, '$.action'),
+        matched_document_id = CAST(json_extract(changes.value, '$.matchedDocumentId') AS INTEGER)
+    FROM changes
+    WHERE row.snapshot_id = ?
+      AND row.row_number = changes.row_number
+      AND row.row_number IN (SELECT row_number FROM changes)
+      AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'staging')
+  `).bind(chunk.json, snapshotId, snapshotId);
+}
+
+function snapshotExclusionInsertStatement(env, snapshotId, chunk) {
+  return env.DB.prepare(`
+    INSERT INTO document_snapshot_exclusions (
+      snapshot_id, document_id, excel_row_key, expected_row_version, before_json
+    )
+    SELECT
+      ?,
+      CAST(json_extract(item.value, '$.documentId') AS INTEGER),
+      json_extract(item.value, '$.excelRowKey'),
+      CAST(json_extract(item.value, '$.expectedRowVersion') AS INTEGER),
+      json_extract(item.value, '$.beforeJson')
+    FROM json_each(?) item
+    WHERE EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'staging')
+  `).bind(snapshotId, chunk.json, snapshotId);
 }
 
 function optionalPositiveInteger(value) {

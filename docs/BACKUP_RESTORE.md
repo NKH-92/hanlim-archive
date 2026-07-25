@@ -176,11 +176,13 @@ node --test tests/excelSnapshotWorkbookE2E.test.js
 node --test tests/searchProjection.test.js
 node --test tests/tenThousandTransition.test.js
 node --test tests/racksDomain.test.js
+npm run rehearse:initial-load -- --count=10000
 ```
 
 | 입력·경로 | 테스트가 실제 확인한 값 | 결과·전체 시간 |
 |---|---|---|
-| 생성한 300행 JS snapshot fixture → 빈 migrated Core → bootstrap/apply | ready의 create 300/update 0/unchanged 0/exclude 0, apply 뒤 current 300/excluded 0/disposed 30, current tag 연결 600, 초기 seed 0. export 문서 300과 모든 row key 존재, canonical hash는 소문자 64자리이며 잘못된 hash는 거부. 두 번째 snapshot은 update 1/unchanged 298/exclude 1, apply 뒤 current 299/excluded 1. 같은 파일의 1,000행은 current 1,000 및 27 statements를 확인 | 5/5 통과, 2,287.0171 ms |
+| 생성한 300행 JS snapshot fixture → 빈 migrated Core → bootstrap/apply | ready의 create 300/update 0/unchanged 0/exclude 0, apply 뒤 current 300/excluded 0/disposed 30, current tag 연결 600, 초기 seed 0. export 문서 300과 모든 row key 존재, canonical hash는 소문자 64자리이며 잘못된 hash는 거부. 두 번째 snapshot은 update 1/unchanged 298/exclude 1, apply 뒤 current 299/excluded 1. 같은 파일의 1,000행은 current 1,000 및 28 statements를 확인 | 회귀 테스트 통과 |
+| 생성한 10,000행 초기 List → 전체 migration 52개 → 실제 snapshot bootstrap 경로 | 50행×200 staging, prepare 11문장, apply 28문장, current 10,000/disposed 1,000/tag 연결 20,000, bootstrap membership/create audit/초기 disposal log 각 0. prepare JSON 재스캔 병목 수정 뒤 126.20초 → 약 0.57초, 전체 약 1.42초. 최종 Core 구조 비교 조회는 기본 목록 0.04ms, 문서번호 0.03ms, 문서명 0.02ms, 위치 scan 3.46ms | 로컬 구조 리허설 통과. Cloudflare SLA·실제 rows_written 측정은 아님 |
 | migration seed 2건을 서버 export → 메모리 실제 XLSX 생성 → ExcelJS 재파싱 → managed prepare | 보이는 13개 열과 숨김 14열, 날짜·분류·랙/열/선반/면·태그를 왕복한 뒤 create/update/exclude/identity change 각 0, unchanged 2 | 1/1 통과, 554.7382 ms |
 | 빈 migrated Core 메모리 DB의 projection dirty·재색인·검색 fixture | reference·랙 이름 변경이 전체 재구축 대신 영향 문서만 dirty로 표시, in-place 재색인이 current 아닌 문서를 정리, 배출이 projection 쓰기와 큐 삭제를 한 batch로 처리, 경합 시 오래된 내용이 최신 projection을 덮어쓰지 않음. 200건 초과 결과의 페이지·전체 합계·패싯, 등록·개정·CSV 경로의 응답 직후 검색 API 반영, Cron 유지보수가 예산 안에서 `ready`까지 전진 | 11/11 통과, 1,111.5411 ms |
 | 용량 정책·membership fixture | 11,000 경고와 12,000 하드 상한, 상한 다음 current 문서의 원자 차단, 무변경 12,000행 경로의 source JSON 미재전송 | 3/3 통과, 341.5783 ms |
@@ -189,7 +191,8 @@ node --test tests/racksDomain.test.js
 이번 fixture의 300행은 6개 분류와 25개 랙 면을 순환하고 각 행에 `중요문서;원본보관`을 넣지만,
 테스트가 분류별·위치별 기대 건수를 직접 assertion하지는 않는다. 따라서 분류별 집계, 위치별 집계, current
 identity 중복 query 결과, 검색 결과와 bootstrap 문서 위치의 end-to-end 일치, 승인된 고정 canonical hash,
-정확히 10,000건의 적재·indexed count, `/readyz`와 관리 화면 확인은 **미측정/운영 서명 Excel 필요**다.
+정확히 10,000건의 **synthetic bootstrap/apply는 측정 완료**했다. 다만 실제 승인 Excel의 분류별·위치별 집계,
+Cloudflare `rows_written`, projection indexed count 10,000, `/readyz`와 관리 화면 확인은 **미측정/운영 서명 Excel 필요**다.
 실제 XLSX 테스트도 migration seed를 managed 0-diff로 왕복한 것이며, 생성 XLSX bytes를 300행 bootstrap에
 직접 apply한 단일 통합 E2E는 아니다. 운영 복구 승인 전에 위 3~7단계를 실제 서명 Excel 사본으로 다시
 수행한다.

@@ -67,8 +67,8 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
   // 조회한다. 내부 ARC 보관코드는 이 경로에 포함하지 않아 기존 비노출 정책을 유지한다.
   if (hasQuery && looksLikeDocumentNumber(trimmed)) {
     const exactWhere = where
-      ? `${where} AND LOWER(d.document_number) = LOWER(?)`
-      : "WHERE LOWER(d.document_number) = LOWER(?)";
+      ? `${where} AND UPPER(d.document_number) = UPPER(?)`
+      : "WHERE UPPER(d.document_number) = UPPER(?)";
     const exact = await env.DB.prepare(`
       SELECT
         d.id,
@@ -913,10 +913,19 @@ async function isSearchIndexDegraded(env) {
 
 async function getSearchGeneration(env) {
   try {
-    const state = await env.DB.prepare("SELECT generation FROM search_index_state WHERE id = 1").first();
+    const state = await env.DB.prepare("SELECT generation FROM search_projection_state WHERE id = 1").first();
     return Math.max(1, Number(state?.generation || 1));
-  } catch {
-    return 1;
+  } catch (error) {
+    // 0050 expand migration 전 Worker/DB 조합의 짧은 배포 전환 구간만 legacy counter를 사용한다.
+    if (!/no such column:\s*generation|no such table:\s*search_projection_state/i.test(String(error?.message || error))) {
+      throw error;
+    }
+    try {
+      const legacy = await env.DB.prepare("SELECT generation FROM search_index_state WHERE id = 1").first();
+      return Math.max(1, Number(legacy?.generation || 1));
+    } catch {
+      return 1;
+    }
   }
 }
 

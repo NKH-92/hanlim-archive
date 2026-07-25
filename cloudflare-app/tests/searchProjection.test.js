@@ -49,7 +49,7 @@ test("reference 이름 변경은 전체 재구축 대신 영향 문서만 재색
     database.prepare("DELETE FROM search_projection_dirty").run();
     database.prepare("UPDATE search_index_state SET rebuild_required = 0 WHERE id = 1").run();
     const generationBefore = database.prepare(
-      "SELECT generation FROM search_index_state WHERE id = 1"
+      "SELECT generation FROM search_projection_state WHERE id = 1"
     ).get().generation;
 
     const category = database.prepare(`
@@ -74,9 +74,14 @@ test("reference 이름 변경은 전체 재구축 대신 영향 문서만 재색
       "이름 변경은 전체 재구축을 요구하지 않는다"
     );
     assert.ok(
-      database.prepare("SELECT generation FROM search_index_state WHERE id = 1").get().generation
+      database.prepare("SELECT generation FROM search_projection_state WHERE id = 1").get().generation
         > generationBefore,
-      "cursor 무효화를 위한 generation은 계속 증가한다"
+      "cursor 무효화를 위한 projection generation은 계속 증가한다"
+    );
+    assert.equal(
+      database.prepare("SELECT generation FROM search_projection_state WHERE id = 1").get().generation,
+      database.prepare("SELECT generation FROM search_index_state WHERE id = 1").get().generation,
+      "expand 기간에는 rollback Worker용 legacy generation과 dual-write한다"
     );
 
     // 색인에 들어가지 않는 컬럼 변경은 아무 파생 작업도 만들지 않는다.
@@ -328,7 +333,7 @@ test("Core projection 검색은 정확 일치·퍼지·cursor·열화 판정 계
       "projection 후보 뒤 Core 퍼지 점수로 무관한 n-gram 후보를 제거한다"
     );
 
-    database.prepare("UPDATE search_index_state SET generation = generation + 1 WHERE id = 1").run();
+    database.prepare("UPDATE search_projection_state SET generation = generation + 1 WHERE id = 1").run();
     const stale = await getViewerSearchPayload(ready, { q: "2026", limit: 1, cursor: first.nextCursor });
     assert.equal(stale.ok, false);
     assert.equal(stale.code, "SEARCH_CURSOR_STALE");
