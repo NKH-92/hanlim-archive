@@ -101,13 +101,17 @@ export async function changeUserPassword(env, username, currentPassword, newPass
     return { ok: false, message: "현재 비밀번호가 올바르지 않습니다." };
   }
 
-  // 길이 검사보다 먼저: 현재와 동일하면 forced-change를 해제하지 않는다.
-  if (await verifyPassword(newPassword, user.password_salt, user.password_hash)) {
-    return { ok: false, message: "새 비밀번호는 현재 비밀번호와 달라야 합니다." };
+  if (!isPasswordInputBounded(newPassword)) {
+    return { ok: false, message: "새 비밀번호가 허용된 최대 길이를 초과했습니다." };
   }
-
   const passwordValidation = validateNewPassword(newPassword);
   if (!passwordValidation.ok) return passwordValidation;
+
+  // 현재 비밀번호가 이미 검증된 뒤이므로 원문 비교로 동일성을 판정한다.
+  // 비밀번호 변경 요청의 PBKDF2를 3회에서 2회로 줄여 Workers Free CPU 여유를 확보한다.
+  if (String(newPassword) === String(currentPassword)) {
+    return { ok: false, message: "새 비밀번호는 현재 비밀번호와 달라야 합니다." };
+  }
 
   const record = await createPasswordRecord(newPassword);
   const currentSessionEpoch = Number(user.session_epoch || 0);

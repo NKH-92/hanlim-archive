@@ -69,7 +69,7 @@ test("expectedChangeAssertionSql은 STALE_VERSION abort SQL을 포함하며 1/0�
   const sql = expectedChangeAssertionSql();
   assert.match(sql, new RegExp(STALE_VERSION_ABORT));
   assert.doesNotMatch(sql, /1\s*\/\s*0/);
-  assert.match(sql, /abs\(-9223372036854775808\)/);
+  assert.match(sql, /json_extract\('\{\}', 'STALE_VERSION'\)/);
   assert.match(exactChangeCountAssertionSql("3"), new RegExp(STALE_VERSION_ABORT));
 });
 
@@ -104,6 +104,18 @@ test("실제 CHECK constraint 오류는 stale-write로 오분류하지 않는다
     .step("document.update", statement("update"))
     .expectChanged("document.update");
   await assert.rejects(() => gateway.batch(plan), (error) => error === checkError);
+});
+
+test("Cloudflare wrapper가 expected-change 오류를 cause에 감싸도 stale로 판정한다", () => {
+  const wrapped = new Error("D1 batch failed", {
+    cause: new Error("D1_ERROR: bad JSON path: 'STALE_VERSION'")
+  });
+  assert.equal(isExpectedChangeAbort(wrapped), true);
+  assert.equal(
+    isExpectedChangeAbort(new Error("D1_ERROR: integer overflow: SQLITE_ERROR")),
+    false,
+    "일반 overflow는 optimistic-lock 충돌로 오분류하지 않는다"
+  );
 });
 
 test("expected-change abort는 선행 INSERT를 포함한 트랜잭션 전체를 rollback한다", async () => {
@@ -161,12 +173,12 @@ test("request-global D1 budget는 여러 BatchPlan에 누적되며 DB 실행 전
   resetRequestD1Gateway(env);
 
   const half = Math.ceil(FREE_TIER_BUDGET.maxD1StatementsPerRequest / 2);
-  const firstPlan = createBatchPlan("budget.first").withBudget(FREE_TIER_BUDGET.maxD1StatementsPerRequest);
+  const firstPlan = createBatchPlan("budget.first").withBudget(FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch);
   for (let index = 0; index < half; index += 1) firstPlan.step(`s${index}`, statement(`first-${index}`));
   await executeMutationBatch(env, firstPlan);
   assert.equal(batchCalls, 1);
 
-  const secondPlan = createBatchPlan("budget.second").withBudget(FREE_TIER_BUDGET.maxD1StatementsPerRequest);
+  const secondPlan = createBatchPlan("budget.second").withBudget(FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch);
   for (let index = 0; index < half + 1; index += 1) secondPlan.step(`t${index}`, statement(`second-${index}`));
   await assert.rejects(() => executeMutationBatch(env, secondPlan), D1BudgetExceededError);
   assert.equal(batchCalls, 1, "budget 초과 시 database.batch를 호출하지 않는다");
@@ -206,7 +218,7 @@ test("공유 Cloudflare env에서 만든 동시 요청 gateway는 예산을 서�
   assert.equal(Object.hasOwn(sharedEnv, "__d1Gateway"), false);
 });
 
-test("request DB 직접 실행과 BatchPlan은 하나의 40-statement 예산을 공유한다", async () => {
+test("request DB 직접 실행과 BatchPlan은 하나의 48-statement 요청 예산을 공유한다", async () => {
   const { FREE_TIER_BUDGET } = await import("../src/freeTierBudget.js");
   const { createRequestD1Environment, d1First, ensureRequestD1Gateway, executeMutationBatch } = await import("../src/platform/d1/requestGateway.js");
   let directCalls = 0;
@@ -275,6 +287,86 @@ test("production request DB wrapper는 D1 100개 초과 bind를 원본 호출 �
     /D1 statement bind count 101 exceeds 100/
   );
   assert.equal(bindCalls, 1, "초과 bind는 원본 D1 statement에 전달하지 않는다");
+});
+
+test("production request의 BatchPlan은 proxy가 아닌 원본 D1 statements를 실행한다", async () => {
+  const {
+    createRequestD1Environment,
+    executeMutationBatch
+  } = await import("../src/platform/d1/requestGateway.js");
+  const rawStatements = new WeakSet();
+  const database = {
+    prepare(sql) {
+      const raw = {
+        sql,
+        bind() { return raw; },
+        async run() { return { meta: { changes: 1 } }; }
+      };
+      rawStatements.add(raw);
+      return raw;
+    },
+    async batch(statements) {
+      assert.ok(statements.every((statement) => rawStatements.has(statement)));
+      return statements.map(() => ({ meta: { changes: 1 } }));
+    }
+  };
+  const env = createRequestD1Environment({ DB: database });
+  const plan = createBatchPlan("request.raw-statements")
+    .step("mutation", env.DB.prepare("UPDATE probe SET value = 1"));
+  await executeMutationBatch(env, plan);
+});
+
+test("Core와 Search D1 및 raw batch는 파생 effect까지 하나의 요청 예산을 공유한다", async () => {
+  const { FREE_TIER_BUDGET } = await import("../src/freeTierBudget.js");
+  const {
+    createRequestD1Environment,
+    ensureRequestD1Gateway
+  } = await import("../src/platform/d1/requestGateway.js");
+  let coreCalls = 0;
+  let searchCalls = 0;
+  const makeDatabase = (record) => ({
+    prepare(sql) {
+      return {
+        sql,
+        async first() { record(); return null; },
+        async all() { record(); return { results: [] }; },
+        async run() { record(); return { meta: { changes: 1 } }; }
+      };
+    },
+    async batch(statements) {
+      record();
+      return statements.map(() => ({ meta: { changes: 1 } }));
+    }
+  });
+  const sharedEnv = {
+    DB: makeDatabase(() => { coreCalls += 1; }),
+    SEARCH_DB: makeDatabase(() => { searchCalls += 1; })
+  };
+  const requestEnv = createRequestD1Environment(sharedEnv, { requestId: "combined" });
+  const effectEnv = createRequestD1Environment(sharedEnv, {
+    requestId: "combined-search",
+    requestScope: requestEnv
+  });
+
+  await requestEnv.DB.prepare("core").first();
+  const searchBatchSize = FREE_TIER_BUDGET.maxD1StatementsPerRequest - 1;
+  await effectEnv.SEARCH_DB.batch(
+    Array.from({ length: searchBatchSize }, (_, index) =>
+      effectEnv.SEARCH_DB.prepare(`search-${index}`)
+    )
+  );
+
+  assert.equal(coreCalls, 1);
+  assert.equal(searchCalls, 1);
+  assert.equal(
+    ensureRequestD1Gateway(requestEnv).metrics().totalStatementCount,
+    FREE_TIER_BUDGET.maxD1StatementsPerRequest
+  );
+  await assert.rejects(
+    () => effectEnv.SEARCH_DB.prepare("overflow").first(),
+    D1BudgetExceededError
+  );
+  assert.equal(searchCalls, 1, "초과 Search query는 원본 binding에 전달하지 않는다");
 });
 
 function statement(name) {

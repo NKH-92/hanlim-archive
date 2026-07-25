@@ -68,8 +68,22 @@ export async function createDocumentImportJob(env, { sourceName = "", items = []
   }
   const temporaryCode = `IMP-TEMP-${crypto.randomUUID()}`;
   const actorId = requiredActorId(actor);
-  const stagedSql = normalizedItems.map(() => "SELECT ? AS row_number, ? AS payload_json").join(" UNION ALL ");
-  const stagedBinds = normalizedItems.flatMap((item) => [item.rowNumber, JSON.stringify(item.payload)]);
+  // 각 staging 문장은 행마다 2개, job lookup에 1개의 bind를 사용한다.
+  // D1 Free의 문장당 100 bind 상한 안에서 50행도 원자적 batch로 저장한다.
+  const stagingChunkSize = Math.floor(
+    (FREE_TIER_BUDGET.maxD1BoundParametersPerStatement - 1) / 2
+  );
+  const stagingStatements = chunkItems(normalizedItems, stagingChunkSize).map((chunk) => {
+    const stagedSql = chunk.map(() => "SELECT ? AS row_number, ? AS payload_json").join(" UNION ALL ");
+    const stagedBinds = chunk.flatMap((item) => [item.rowNumber, JSON.stringify(item.payload)]);
+    return env.DB.prepare(`
+      INSERT INTO document_import_items (job_id, row_number, payload_json)
+      SELECT j.id, staged.row_number, staged.payload_json
+      FROM document_import_jobs j
+      CROSS JOIN (${stagedSql}) AS staged
+      WHERE j.job_code = ?
+    `).bind(...stagedBinds, temporaryCode);
+  });
   const statements = [
     env.DB.prepare(`
       INSERT INTO document_import_jobs (
@@ -78,13 +92,7 @@ export async function createDocumentImportJob(env, { sourceName = "", items = []
       VALUES (?, ?, 'ready', ?, ?, ?)
       RETURNING id
     `).bind(temporaryCode, clean(sourceName) || null, normalizedItems.length, actorId, actorName(actor)),
-    env.DB.prepare(`
-      INSERT INTO document_import_items (job_id, row_number, payload_json)
-      SELECT j.id, staged.row_number, staged.payload_json
-      FROM document_import_jobs j
-      CROSS JOIN (${stagedSql}) AS staged
-      WHERE j.job_code = ?
-    `).bind(...stagedBinds, temporaryCode),
+    ...stagingStatements,
     env.DB.prepare(`
       INSERT INTO system_audit_logs (
         entity_type, entity_id, entity_reference, action, actor_user_id,
@@ -115,6 +123,14 @@ export async function createDocumentImportJob(env, { sourceName = "", items = []
   const id = Number(results[0]?.results?.[0]?.id || 0);
   if (!id) throw new Error("CSV 가져오기 작업 생성 결과를 확인할 수 없습니다.");
   return { ok: true, id };
+}
+
+function chunkItems(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 export async function processDocumentImportJob(env, jobId, actor) {

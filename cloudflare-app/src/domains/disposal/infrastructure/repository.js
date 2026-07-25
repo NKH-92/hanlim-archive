@@ -4,6 +4,7 @@ import { clean } from "../../../shared/text/normalize.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
 import { hasChanged } from "../../../data/sqlShared.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+import { d1ContainsPattern } from "../../../platform/d1/likePattern.js";
 import { createDisposalPlan } from "./plans.js";
 
 const BATCH_STATUSES = new Set(["draft", "frozen", "processing", "completed", "cancelled"]);
@@ -269,9 +270,9 @@ export async function getDisposalHistoryPage(env, { query = "", page = 1, pageSi
   const safePage = Math.max(1, Number(page) || 1);
   const safePageSize = Math.max(1, Math.min(Number(pageSize) || 30, 100));
   const offset = (safePage - 1) * safePageSize;
-  const like = `%${cleanQuery}%`;
+  const like = d1ContainsPattern(cleanQuery);
   const where = `dl.action = 'disposed' AND (
-    ? = '' OR d.document_number LIKE ? OR d.revision_number LIKE ? OR d.document_name LIKE ?
+    ? = '' OR d.document_number LIKE ? ESCAPE '\\' OR d.revision_number LIKE ? ESCAPE '\\' OR d.document_name LIKE ? ESCAPE '\\'
   )`;
   const countRow = await env.DB.prepare(`
     SELECT COUNT(*) AS count

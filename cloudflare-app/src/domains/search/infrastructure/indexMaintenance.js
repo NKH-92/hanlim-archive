@@ -13,6 +13,10 @@ import {
   isExpectedChangeAbort
 } from "../../../platform/d1/expectedChange.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+import {
+  assertD1ValuePayloadWithinLimit,
+  isD1ValuePayloadWithinLimit
+} from "../../../platform/d1/valueSize.js";
 
 export async function processSearchOutbox(env, {
   limit = FREE_TIER_BUDGET.searchOutboxCronChunkSize,
@@ -1179,6 +1183,34 @@ async function writeSearchDocumentsV2(
           };
     })
   ));
+  if (!isD1ValuePayloadWithinLimit(payload)) {
+    if (processedIds.length < 2) {
+      assertD1ValuePayloadWithinLimit(payload);
+    }
+    const splitAt = Math.ceil(processedIds.length / 2);
+    const firstIds = processedIds.slice(0, splitAt);
+    const secondIds = processedIds.slice(splitAt);
+    const firstIdSet = new Set(firstIds.map(Number));
+    const firstDocuments = documents.filter((document) => firstIdSet.has(Number(document.id)));
+    const secondDocuments = documents.filter((document) => !firstIdSet.has(Number(document.id)));
+    await writeSearchDocumentsV2(
+      searchDb,
+      firstIds,
+      firstDocuments,
+      generations,
+      sourceEventVersion,
+      { checkpoint: null, sourceVersions }
+    );
+    await writeSearchDocumentsV2(
+      searchDb,
+      secondIds,
+      secondDocuments,
+      generations,
+      sourceEventVersion,
+      { checkpoint, sourceVersions }
+    );
+    return;
+  }
   const statements = [
     searchDb.prepare(`
       INSERT INTO search_document_watermarks (
@@ -1376,11 +1408,32 @@ async function writeLegacySearchMirrorFromV2(searchDb, processedIds) {
 
 async function writeSearchDocuments(searchDb, processedIds, documents, generation, {
   lastDocumentId = 0,
-  rebuilding = false
+  rebuilding = false,
+  updateRuntime = true
 } = {}) {
   const idsJson = JSON.stringify(processedIds);
   const payload = JSON.stringify(documents.map((document) => searchDocumentPayload(document, generation)));
-  await searchDb.batch([
+  if (!isD1ValuePayloadWithinLimit(payload)) {
+    if (processedIds.length < 2) {
+      assertD1ValuePayloadWithinLimit(payload);
+    }
+    const splitAt = Math.ceil(processedIds.length / 2);
+    const firstIds = processedIds.slice(0, splitAt);
+    const secondIds = processedIds.slice(splitAt);
+    const firstIdSet = new Set(firstIds.map(Number));
+    const firstDocuments = documents.filter((document) => firstIdSet.has(Number(document.id)));
+    const secondDocuments = documents.filter((document) => !firstIdSet.has(Number(document.id)));
+    await writeSearchDocuments(searchDb, firstIds, firstDocuments, generation, {
+      rebuilding,
+      updateRuntime: false
+    });
+    return writeSearchDocuments(searchDb, secondIds, secondDocuments, generation, {
+      lastDocumentId,
+      rebuilding,
+      updateRuntime
+    });
+  }
+  const statements = [
     searchDb.prepare(`
       DELETE FROM search_documents_fts
       WHERE document_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))
@@ -1425,7 +1478,9 @@ async function writeSearchDocuments(searchDb, processedIds, documents, generatio
         json_extract(value, '$.normalizedText')
       FROM json_each(?)
     `).bind(payload),
-    searchDb.prepare(`
+  ];
+  if (updateRuntime) {
+    statements.push(searchDb.prepare(`
       UPDATE search_runtime_state
       SET generation = ?,
           indexed_document_count = (SELECT COUNT(*) FROM search_documents),
@@ -1433,8 +1488,10 @@ async function writeSearchDocuments(searchDb, processedIds, documents, generatio
           last_document_id = ?,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = 1
-    `).bind(generation, rebuilding ? "building" : "ready", lastDocumentId)
-  ]);
+    `).bind(generation, rebuilding ? "building" : "ready", lastDocumentId));
+  }
+  await searchDb.batch(statements);
+  if (!updateRuntime) return 0;
   const count = await searchDb.prepare("SELECT COUNT(*) AS count FROM search_documents").first();
   return Number(count?.count || 0);
 }

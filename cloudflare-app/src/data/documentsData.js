@@ -1,6 +1,7 @@
 import { collectDocumentFieldErrors, validateDocumentRecordFields, validateDocumentTextFields } from "../domains/documents/domain/validation.js";
 import { MAX_DOCUMENT_TAGS } from "../domains/documents/domain/limits.js";
 import { clean } from "../shared/text/normalize.js";
+import { d1ContainsPattern } from "../platform/d1/likePattern.js";
 import {
   DOCUMENT_BASE_JOINS,
   DOCUMENT_CORE_COLUMNS,
@@ -433,8 +434,8 @@ export async function getDisposalCandidates(env, filters = {}, limit = 201) {
   const binds = [];
   const query = clean(filters.query);
   if (query) {
-    clauses.push("(d.document_number LIKE ? OR d.revision_number LIKE ? OR d.document_name LIKE ?)");
-    const like = `%${query}%`;
+    clauses.push("(d.document_number LIKE ? ESCAPE '\\' OR d.revision_number LIKE ? ESCAPE '\\' OR d.document_name LIKE ? ESCAPE '\\')");
+    const like = d1ContainsPattern(query);
     binds.push(like, like, like);
   }
   if (filters.categoryId) {

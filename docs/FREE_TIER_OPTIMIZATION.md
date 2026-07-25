@@ -66,7 +66,8 @@ Static Assets 직접 응답은 ETag를 유지하지만 edge에 따라 `If-None-M
 다음 게이트를 모두 통과할 때만 additive Core projection migration과 dual comparison release를 시작한다.
 
 - Core + projection + rebuild 여유 30%를 포함한 최대 크기 400MB 이하
-- 일반 요청 40 statements 이하, 플랫폼 상한 50 미만
+- 일반 요청은 Core+Search 합산 48 statements 이하, 원자 mutation batch는 40 이하
+  (Cloudflare Free 플랫폼 상한 50 미만)
 - 일일 70,000 rows written 및 3.5M rows read 이하
 - 검색 부하 중 Excel 반영·정기폐기 p95가 기준선보다 10% 이상 악화되지 않고 overload 0건
 - golden search의 결과·필터·정렬·cursor·ETag critical mismatch 0건

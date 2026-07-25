@@ -1,7 +1,7 @@
 import { FREE_TIER_BUDGET } from "../../freeTierBudget.js";
 import { expectedChangeAssertionSql } from "./expectedChange.js";
 
-const GLOBAL_STATEMENT_BUDGET = FREE_TIER_BUDGET.maxD1StatementsPerRequest;
+const GLOBAL_STATEMENT_BUDGET = FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch;
 
 export class BatchPlan {
   #id;

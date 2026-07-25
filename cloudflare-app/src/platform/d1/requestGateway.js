@@ -4,6 +4,7 @@ import { FREE_TIER_BUDGET } from "../../freeTierBudget.js";
 
 const GATEWAYS = new WeakMap();
 const REQUEST_SCOPES = new WeakSet();
+const REQUEST_BUDGETS = new WeakMap();
 const RAW_STATEMENTS = new WeakMap();
 
 /**
@@ -11,18 +12,31 @@ const RAW_STATEMENTS = new WeakMap();
  * Production mutation batches must go through executeMutationBatch / gateway.batch(BatchPlan).
  */
 export function ensureRequestD1Gateway(env, options = {}) {
+  return ensureBindingD1Gateway(env, "DB", options);
+}
+
+function ensureBindingD1Gateway(env, binding, options = {}) {
   if (!env || typeof env !== "object") throw new TypeError("env가 필요합니다.");
-  if (GATEWAYS.has(env)) return GATEWAYS.get(env);
-  const database = env.DB;
+  let gateways = GATEWAYS.get(env);
+  if (!gateways) {
+    gateways = new Map();
+    GATEWAYS.set(env, gateways);
+  }
+  if (gateways.has(binding)) return gateways.get(binding);
+  const database = env[binding];
   if (!database || typeof database.batch !== "function") {
     throw new TypeError("D1 database binding이 필요합니다.");
   }
+  const requestBudget = REQUEST_BUDGETS.get(env) || { statementCount: 0 };
+  if (!REQUEST_BUDGETS.has(env)) REQUEST_BUDGETS.set(env, requestBudget);
   const gateway = createD1Gateway(database, {
     requestId: options.requestId || env.__requestId || "",
     logger: options.logger || env.__logger || null,
-    onMetrics: options.onMetrics || null
+    onMetrics: options.onMetrics || null,
+    requestBudget,
+    unwrapStatement
   });
-  GATEWAYS.set(env, gateway);
+  gateways.set(binding, gateway);
   return gateway;
 }
 
@@ -34,14 +48,23 @@ export function createRequestD1Environment(env, options = {}) {
   if (!env || typeof env !== "object") throw new TypeError("env가 필요합니다.");
   const requestEnv = Object.create(env);
   REQUEST_SCOPES.add(requestEnv);
-  if (env.DB && typeof env.DB.batch === "function") {
-    Object.defineProperty(requestEnv, "DB", {
+  const inheritedBudget = options.requestScope
+    ? REQUEST_BUDGETS.get(options.requestScope)
+    : null;
+  REQUEST_BUDGETS.set(requestEnv, inheritedBudget || { statementCount: 0 });
+  for (const binding of ["DB", "SEARCH_DB"]) {
+    if (!env[binding] || typeof env[binding].batch !== "function") continue;
+    // gateway는 wrapper가 아니라 원본 binding을 잡아야 raw batch가 중복 집계되지 않는다.
+    const gateway = ensureBindingD1Gateway(requestEnv, binding, options);
+    Object.defineProperty(requestEnv, binding, {
       configurable: false,
       enumerable: true,
       writable: false,
-      value: createRequestDatabase(env.DB, () => ensureRequestD1Gateway(requestEnv, options))
+      value: createRequestDatabase(
+        env[binding],
+        () => gateway
+      )
     });
-    ensureRequestD1Gateway(requestEnv, options);
   }
   return requestEnv;
 }
@@ -50,6 +73,7 @@ export function createRequestD1Environment(env, options = {}) {
 export function resetRequestD1Gateway(env) {
   if (!env) return;
   GATEWAYS.delete(env);
+  REQUEST_BUDGETS.delete(env);
 }
 
 /**
@@ -83,7 +107,9 @@ function createRequestDatabase(database, getGateway) {
   return new Proxy({}, {
     get(_target, property) {
       if (property === "prepare") return (sql) => wrapStatement(database.prepare(sql), getGateway);
-      if (property === "batch") return (statements) => database.batch(statements.map(unwrapStatement));
+      if (property === "batch") {
+        return (statements) => getGateway().rawBatch(statements.map(unwrapStatement));
+      }
       const value = Reflect.get(database, property, database);
       return typeof value === "function" ? value.bind(database) : value;
     }

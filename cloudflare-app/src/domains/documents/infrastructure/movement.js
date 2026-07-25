@@ -8,6 +8,7 @@ import { createSystemAuditStatement } from "../../audit/index.js";
 import { createDocumentMovePlan } from "./mutationPlans.js";
 import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+import { d1ContainsPattern } from "../../../platform/d1/likePattern.js";
 
 function actorSnapshot(session = {}) {
   const userId = Number(session.userId ?? session.user_id ?? session.id);
@@ -277,7 +278,7 @@ export async function getDocumentMovementPage(env, filters = {}, page = 1, pageS
   const binds = [];
   if (query) {
     clauses.push("(document_number_snapshot LIKE ? ESCAPE '\\' OR performed_by_username LIKE ? ESCAPE '\\' OR performed_by_name LIKE ? ESCAPE '\\')");
-    const escaped = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
+    const escaped = d1ContainsPattern(query);
     binds.push(escaped, escaped, escaped);
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";

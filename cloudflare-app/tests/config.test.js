@@ -15,7 +15,8 @@ test("getAppConfig uses safe defaults without env overrides", () => {
   assert.equal(config.csvImport.maxRows, DEFAULT_CSV_IMPORT_LIMITS.maxRows);
   assert.equal(config.racks.maxPerZone, MAX_RACKS_PER_ZONE);
   assert.equal(config.csvImport.maxRows, FREE_TIER_BUDGET.csvImportMaxItems);
-  assert.equal(FREE_TIER_BUDGET.maxD1StatementsPerRequest, 40);
+  assert.equal(FREE_TIER_BUDGET.maxD1StatementsPerRequest, 48);
+  assert.equal(FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch, 40);
   assert.equal(FREE_TIER_BUDGET.documentPageSize, 30);
   assert.deepEqual(config.support, { department: "", name: "", email: "" });
 });

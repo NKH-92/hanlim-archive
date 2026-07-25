@@ -210,7 +210,7 @@ test("가져오기 process는 저장된 모든 staged 폐기 행을 재검사하
   assert.equal(env.state.batches.length, 0);
 });
 
-test("CSV 작업 생성은 최대 50행을 한 multi-row staging statement에 저장한다", async () => {
+test("CSV 작업 생성은 최대 50행을 D1 bind 상한 이하의 staging statements에 저장한다", async () => {
   const env = recordingEnv({
     batch(statements) {
       return statements.map((_, index) => index === 0 ? { results: [{ id: 4 }], meta: { changes: 1 } } : { meta: { changes: 1 } });
@@ -221,9 +221,13 @@ test("CSV 작업 생성은 최대 50행을 한 multi-row staging statement에 �
   }));
   const result = await createDocumentImportJob(env, { sourceName: "docs.csv", items }, actor);
   assert.deepEqual(result, { ok: true, id: 4 });
-  assert.equal(env.state.batches[0].length, 4);
+  assert.equal(env.state.batches[0].length, 5);
   assert.match(env.state.batches[0][1].sql, /UNION ALL/);
   assert.match(env.state.batches[0][1].sql, /document_import_items/);
+  assert.match(env.state.batches[0][2].sql, /document_import_items/);
+  assert.equal(env.state.batches[0][1].args.length, 99);
+  assert.equal(env.state.batches[0][2].args.length, 3);
+  assert.ok(env.state.batches[0].every((statement) => statement.args.length <= 100));
 });
 
 test("CSV process는 pending 한 행만 token으로 선점하고 문서와 item 완료를 원자 처리한다", async () => {

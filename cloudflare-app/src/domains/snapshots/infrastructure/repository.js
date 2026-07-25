@@ -1337,7 +1337,7 @@ function systemSnapshotAuditStatement(env, snapshotId, action, summary, actor, d
 }
 
 function createSnapshotPlan(action, statements) {
-  const plan = createBatchPlan(`snapshots.${action}`).withBudget(FREE_TIER_BUDGET.maxD1StatementsPerRequest);
+  const plan = createBatchPlan(`snapshots.${action}`).withBudget(FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch);
   statements.forEach((statement, index) => plan.step(`${action}.${index + 1}`, statement, { guard: "snapshot-state" }));
   return plan;
 }
