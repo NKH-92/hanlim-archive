@@ -39,6 +39,18 @@ test("/readyz HEAD는 준비 판정을 유지하면서 본문을 제거한다", 
   assert.equal(await response.text(), "");
 });
 
+test("/readyz는 요구 migration 이후의 additive migration도 rollback 호환 상태로 인정한다", async () => {
+  const response = await worker.fetch(
+    new Request(`${ORIGIN}/readyz`),
+    readyEnv({ coreMigration: "0045_future_additive.sql", searchMigration: "0004_future_additive.sql" })
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(Object.values(body.checks).every(Boolean), true);
+});
+
 test("/readyz는 어느 D1 migration이 뒤처져도 503으로 닫힌다", async (context) => {
   for (const options of [
     { coreMigration: "0040_ten_thousand_operational_transition.sql" },
