@@ -2,7 +2,10 @@ import { base64UrlToBytes, bytesToBase64Url, constantTimeEqual } from "../platfo
 import { validateNewPassword } from "../domains/identity/index.js";
 
 const LEGACY_PASSWORD_ITERATIONS = 100000;
-const CURRENT_PASSWORD_ITERATIONS = 600000;
+// Cloudflare Workers Web Crypto는 PBKDF2 반복 횟수를 최대 100,000회까지 허용한다.
+// 기존 raw digest도 같은 work factor를 사용하므로 성공 로그인에서 반복 횟수를
+// 올리는 대신 self-describing record 형식으로만 안전하게 전환한다.
+const CURRENT_PASSWORD_ITERATIONS = 100000;
 const PASSWORD_HASH_PREFIX = "pbkdf2-sha256";
 export const MAX_PASSWORD_INPUT_BYTES = 1024;
 
@@ -17,7 +20,7 @@ export async function createPasswordRecord(password) {
 }
 
 // 배포 직전의 이전 Worker와 신규 Worker가 함께 읽어야 하는 45분 TTL smoke 계정 전용이다.
-// 신규 Worker의 첫 로그인에서 현재 600,000회 형식으로 자동 승격된다.
+// 일반 계정만 첫 로그인에서 현재 self-describing 형식으로 자동 전환한다.
 export async function createReleaseSmokeCompatibilityPasswordRecord(password) {
   assertPasswordInputBounded(password);
   const saltBytes = crypto.getRandomValues(new Uint8Array(16));
@@ -67,7 +70,8 @@ function parsePasswordHash(expectedHash) {
     return { digest: value, iterations: LEGACY_PASSWORD_ITERATIONS, legacy: true };
   }
   const iterations = Number(match[1]);
-  if (!Number.isInteger(iterations) || iterations < LEGACY_PASSWORD_ITERATIONS || iterations > 2_000_000) {
+  // 런타임 상한을 넘는 record는 crypto.subtle 호출 전에 fail-closed한다.
+  if (!Number.isInteger(iterations) || iterations !== CURRENT_PASSWORD_ITERATIONS) {
     return { digest: "", iterations: CURRENT_PASSWORD_ITERATIONS, legacy: false };
   }
   return { digest: match[2], iterations, legacy: false };

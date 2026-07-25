@@ -251,9 +251,10 @@ runner 임시 파일에만 둔다. 두 계정의 TTL은 45분이며 workflow는 
 실행한다. 다음 release의 사전 정리와 Cron janitor도 만료 계정을 제거한다. cleanup 실패는 운영 사고로
 취급해 `approved_by = release-smoke:<operation-id>` 계정을 즉시 격리한다.
 
-비밀번호 최소 길이는 6자를 유지하고, 신규 hash는 PBKDF2-SHA256 600,000회 반복을 사용한다.
-기존 100,000회 record는 성공 로그인 시 자동 승격한다. 로그인 실패 제한과 session epoch 기반 세션
-무효화는 계속 적용한다.
+비밀번호 최소 길이는 6자를 유지하고, 신규 hash는 Cloudflare Workers Web Crypto 상한에 맞춰
+PBKDF2-SHA256 100,000회 반복을 사용한다. 기존 100,000회 raw digest는 성공 로그인 시 반복 횟수를
+명시하는 self-describing record로 자동 전환하고, 100,000회를 넘는 record는 PBKDF2 실행 전에
+fail-closed한다. 로그인 실패 제한과 session epoch 기반 세션 무효화는 계속 적용한다.
 
 최초 또는 복구 환경에서 독립 Admin이 없으면 production Environment reviewer 승인 후 `Provision Independent Admin` workflow를 한 번 실행한다. 이 workflow는 알려진 bootstrap·smoke 사용자명을 거부하고, 대상 환경·D1 ID를 확인한 뒤 기존 계정을 덮어쓰지 않는 INSERT만 수행한다. 배포 workflow는 migration 전후에 승인된 독립 Admin 존재를 확인하고, 배포 전후 해당 계정으로 `/admin/settings` 접근까지 smoke한다.
 

@@ -139,7 +139,7 @@ test("validateUser는 미등록·비승인 계정에도 동일한 password verif
   }
 });
 
-test("legacy PBKDF2 100000회 record는 정상 로그인 시 현재 work factor로 승격된다", async () => {
+test("legacy PBKDF2 100000회 raw record는 정상 로그인 시 self-describing 형식으로 전환된다", async () => {
   const database = await createMigratedDatabase();
   try {
     const password = "legacy-password-2026";
@@ -160,11 +160,28 @@ test("legacy PBKDF2 100000회 record는 정상 로그인 시 현재 work factor�
     const upgraded = database.prepare(`
       SELECT password_hash FROM app_users WHERE username = ?
     `).get("legacy-hash@example.com").password_hash;
-    assert.match(upgraded, /^pbkdf2-sha256\$600000\$/);
+    assert.match(upgraded, /^pbkdf2-sha256\$100000\$/);
     assert.notEqual(upgraded, legacyHash);
   } finally {
     database.close();
   }
+});
+
+test("Workers PBKDF2 상한을 넘는 record는 예외 없이 fail-closed한다", async () => {
+  const unsupported = `pbkdf2-sha256$600000$${"A".repeat(43)}`;
+  assert.equal(
+    await validateUser(
+      envWithUser({
+        passwordRecord: {
+          salt: "A".repeat(22),
+          hash: unsupported
+        }
+      }),
+      "user@example.com",
+      "secret-123"
+    ),
+    null
+  );
 });
 
 test("release smoke 계정은 Worker rollback 호환성을 위해 TTL 동안 legacy hash를 유지한다", async () => {
