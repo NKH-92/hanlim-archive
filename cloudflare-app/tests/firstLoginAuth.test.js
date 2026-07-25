@@ -464,7 +464,7 @@ test("0044 migration은 기존 2단계 인증 seed와 복구 코드를 모두 �
   }
 });
 
-test("로그인은 2단계 인증 등록 이력과 무관하게 세션을 발급하고 관련 경로를 노출하지 않는다", async () => {
+test("최종 schema는 제거된 MFA 저장소 없이 로그인하고 관련 경로를 노출하지 않는다", async () => {
   const database = new DatabaseSync(":memory:");
 
   try {
@@ -472,16 +472,17 @@ test("로그인은 2단계 인증 등록 이력과 무관하게 세션을 발급
     const { createPasswordRecord } = await import("../src/auth/passwords.js");
     const password = "inside";
     const material = await createPasswordRecord(password);
-    const inserted = database.prepare(`
+    database.prepare(`
       INSERT INTO app_users (
         username, display_name, password_salt, password_hash,
         status, role, approved_at, approved_by, must_change_password
       ) VALUES (?, ?, ?, ?, 'approved', 'Admin', CURRENT_TIMESTAMP, 'test', 0)
     `).run("admin-with-history@hanlim.com", "관리자", material.salt, material.hash);
-    database.prepare(`
-      INSERT INTO user_mfa (user_id, status, encrypted_secret, enabled_at)
-      VALUES (?, 'enabled', 'historical-seed', CURRENT_TIMESTAMP)
-    `).run(Number(inserted.lastInsertRowid));
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN ('user_mfa', 'user_mfa_recovery_codes')").get().count,
+      0,
+      "0051 이후 제거된 MFA 저장소는 최종 schema에 남지 않는다"
+    );
 
     const env = sqliteEnv(database);
     const login = await worker.fetch(

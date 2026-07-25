@@ -72,6 +72,15 @@ test("정적 client 조립은 직렬화 소스·초기화 순서·검색 계약�
   assert.doesNotMatch(script, /fetch\('\/api\/search-index'/);
 });
 
+test("최초 비밀번호 변경 모달은 자동으로 열리고 Escape로 닫히지 않는다", () => {
+  const script = clientScriptModule.clientScript();
+
+  assert.match(script, /\[data-auto-open-modal\]/);
+  assert.match(script, /data-forced-modal/);
+  assert.match(script, /modal\.addEventListener\('cancel', function \(event\) \{ event\.preventDefault\(\); \}\)/);
+  assert.match(script, /if \(modal\.open\) modal\.close\(\);[\s\S]*modal\.showModal\(\);/);
+});
+
 test("명령 팔레트는 키보드 이동과 포커스 복귀 계약을 유지한다", () => {
   const script = clientScriptModule.clientScript();
 

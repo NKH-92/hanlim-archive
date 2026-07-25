@@ -104,23 +104,26 @@ Search DB에서 후보 ID를 얻은 뒤 **항상 Core를 다시 읽어** 권한�
 | R4 cutover (완료) | 읽기 기본값을 Core projection으로 전환 | 플래그로 복귀 |
 | R5 정리 (완료) | `SEARCH_DB` binding, 두 번째 migration 체인, lease·watermark·tombstone·generation·cutover 코드 삭제. 배포·복구 scope=core | 이전 Worker version rollback |
 | R6 정리 (완료) | migration 0049로 `search_index_outbox`·`search_event_clock`과 관련 trigger 17개 DROP. `search-migrations/` 삭제 | 이전 Worker version rollback |
-| R7 별도 승인 | cursor generation을 `search_projection_state`로 옮긴 뒤 `search_index_state` DROP, 물리 Search D1 삭제 | expand 단계 선행 필요 |
+| R7a expand (구현 완료·배포 전) | migration 0050으로 cursor generation을 `search_projection_state`에 추가하고 runtime을 전환. 이전 Worker rollback용 `search_index_state`는 dual-write | 이전 Worker가 legacy counter를 계속 사용 가능 |
+| R7b contract (별도 승인) | 안정화 관찰 뒤 `search_index_state` DROP, 더 이상 쓰지 않는 물리 Search D1 삭제 | R7a가 충분히 배포·검증된 뒤에만 수행 |
+| R8 초기 적재 schema 정리 (구현 완료·배포 전) | migration 0051로 제거된 MFA·legacy bootstrap job 저장소 DROP, 0052로 staging action 보조 index 제거 | 직전 운영 Worker의 runtime 참조 0과 rollback table shape를 보존한 상태에서 적용 |
 
 R2~R5를 한 배포에 합쳤다. 근거: 통합 시점의 운영 대장이 검증용 테스트 문서뿐이어서 검색 열화 구간을
 수용할 수 있었다. 배포 직후 projection이 `ready`가 될 때까지 검색은 최근 200건 Core 퍼지로 열화되며,
-402건 기준 Cron 5분 주기·chunk 100건으로 약 25분이 걸린다. 실사용 대장에서는 R2~R4와 R5를 분리하고
-R4 안정 확인 뒤에 R5를 진행한다.
+402건 기준 당시 Cron 5분 주기·chunk 100건으로 약 25분이 걸렸다. migration 0050 이후 실사용 10,000건 초기
+적재는 무료 write를 한 UTC 일자에 몰지 않도록 기본 chunk를 10건으로 낮춘다. 5분 Cron만 사용하면 전체 재색인은
+1,000회, 최소 약 83시간 20분(약 3.5일)이므로 운영전환 전에 미리 수행한다.
 
 R5는 rollback 폭을 좁히지만 Core의 legacy 테이블은 남겨 이전 Worker version rollback을 유지했다.
 R6에서 그 테이블을 DROP한 근거는 배포된 R5 Worker가 `search_index_outbox`·`search_event_clock`을
 읽지 않는다는 것이다. 두 테이블에 쓰던 것은 trigger뿐이므로 trigger를 함께 지우면 이전 Worker의 쓰기
 경로도 그대로 동작한다. 즉 R6는 rollback 호환을 깨지 않는다.
 
-반면 `search_index_state`는 아직 DROP할 수 없다. `generation` 컬럼이 검색 cursor 무효화에 쓰이고
-엑셀 전체 반영이 같은 카운터를 올린다. 지우려면 cursor generation을 `search_projection_state`로 옮기는
-expand 배포가 먼저 나가야 하므로 R7로 분리했다. 배포 workflow의
-`Verify rollback Worker against migrated schema`가 이 순서를 강제한다. 남은 테이블 크기는 문서 수
-상한을 넘지 않으므로 방치해도 용량 문제가 되지 않는다.
+migration 0050에서 `search_projection_state.generation`을 추가하고 runtime cursor를 이 값으로 전환했다.
+문서·태그·기준정보 변경 trigger는 새 generation과 `search_index_state.generation`을 함께 올려 이전 Worker rollback도
+유지한다. 따라서 `search_index_state`는 이제 runtime 필수 상태가 아니라 rollback mirror다. 실제 배포 후 충분한
+안정화 관찰 기간을 거친 별도 contract release에서만 DROP한다. 배포 workflow의
+`Verify rollback Worker against migrated schema`가 이 순서를 강제한다.
 
 ### R5 정리 결과
 
@@ -134,7 +137,8 @@ expand 배포가 먼저 나가야 하므로 R7로 분리했다. 배포 workflow�
 | readiness·관리 화면 | legacy search 상세와 `warnings.searchDatabase`·`searchOperational` 제거. `warnings.searchProjectionSynced` 하나만 유지 |
 | 배포·운영 | `SEARCH_D1_TARGET_DATABASE_ID`, `D1_RECOVERY_SCOPE=core-and-search`, Search Time Travel bookmark, `db:migrate:search:local` 제거 |
 | `search-migrations/` | R5에서 적용 중단하고 `check-migrations.mjs`의 Search chain 검증 제거, R6에서 파일 삭제 |
-| R7로 이연 | cursor generation 이관 후 `search_index_state` DROP, 물리 Search D1 삭제 |
+| R7a 구현 | cursor generation을 `search_projection_state`로 이관하고 legacy counter dual-write |
+| R7b로 이연 | 안정화 뒤 `search_index_state` DROP, 물리 Search D1 삭제 |
 
 ### 파생 색인 비용 절감
 
@@ -145,6 +149,27 @@ expand 배포가 먼저 나가야 하므로 R7로 분리했다. 배포 workflow�
   전체 색인 스캔 없이 rowid로 끝난다.
 - 재색인은 physical generation 사본을 만들지 않고 in-place upsert로 진행해 문서당 쓰기 행이
   세대 수만큼 늘지 않는다.
+- migration 0050은 실제 FTS 실행계획이 `FTS MATCH → projection INTEGER PRIMARY KEY`를 쓰는 것을 확인하고
+  사용되지 않는 projection secondary index 4개를 제거했다. documents는 identity·Excel key 무결성, 기본 current 목록 정렬,
+  그리고 모든 텍스트 검색 앞에서 실행되는 문서명 완전일치용 NOCASE index만 남긴다. 위치 조회는 최대 12,000건 scan을 허용한다.
+  로컬 10,000건 리허설에서 exact-name lookup 0.02ms, 위치 scan 3.46ms였으며 이는 구조 비교용 로컬 수치이지 운영 SLA는 아니다.
+  `document_tags`와 snapshot membership은 `WITHOUT ROWID`로 바꿔 초기 적재 write를 줄였다.
+- bootstrap은 승인 Excel의 초기 상태이므로 10,000개 `excel_sync_create`/초기 `disposed` 행위를 중복 생성하지 않는다.
+  행별 원본은 snapshot row와 `last_snapshot_id`, 전체 출처는 canonical hash와 system apply audit로 보존한다. 신규 문서의
+  내부 `ARC-*` 코드도 INSERT 시 바로 확정해 전체 문서를 한 번 더 UPDATE하던 단계를 없앴다.
+- D1 gateway는 mutation batch 결과의 `rows_read`·`rows_written`을 `d1.query` 로그에 기록하므로, 최초 적재의 실제
+  write amplification은 추정치가 아니라 D1 Metrics와 구조화 로그를 대조해 판정한다.
+- migration 0051은 현재 runtime 참조가 0인 `user_mfa`, `user_mfa_recovery_codes`, `bootstrap_runs`, `bootstrap_chunks`를
+  제거한다. 0052는 `document_snapshot_rows.id`를 제거하는 안을 rollback 비호환으로 기각하고, 최대 12,000행으로 제한된
+  staging에서 불필요한 `idx_document_snapshot_rows_action`만 제거한다. 직전 Worker가 SELECT하는 table shape는 그대로 보존한다.
+  `login_throttle`은 현재 비밀번호 초기화·release smoke·legacy fallback이 사용하고,
+  `search_index_state`는 직전 Worker rollback mirror이므로 이번 정리 대상에서 제외한다.
+- snapshot prepare는 기존 `UPDATE rows FROM json_each(전체 JSON)`이 row마다 JSON virtual table을 다시 스캔하던 구조를
+  `MATERIALIZED` change CTE + `(snapshot_id,row_number)` index lookup으로 바꿨다. payload는 1.9MB 이하로 자동 분할하고
+  bootstrap은 동일한 `after_json`을 중복 저장하지 않는다. 로컬 10,000건 리허설에서 prepare는 126.20초에서 약 0.57초로
+  줄었고 prepare 11문장, apply 28문장으로 모두 40문장 mutation 예산 안에 있다.
+- 최종 migration replay 기준 schema는 FTS 내부 table을 포함해 44 tables, named index 37개다. 0050 전의
+  48 tables·56 named index에서 업무 기능이나 무결성 trigger를 줄이지 않고 dead storage와 write amplification만 축소했다.
 
 ## 변경 후 검증
 

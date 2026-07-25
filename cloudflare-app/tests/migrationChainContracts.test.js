@@ -7,8 +7,7 @@ const BASELINE_LAST_MIGRATION = 39;
 
 const CORE_TABLES = [
   "app_users",
-  "bootstrap_chunks",
-  "bootstrap_runs",
+  // 0051에서 runtime 미사용 legacy bootstrap job table을 제거했다.
   "bootstrap_runtime_control",
   "capacity_policy",
   "categories",
@@ -39,8 +38,8 @@ const CORE_TABLES = [
   "rack_slots",
   "racks",
   "search_clicks",
-  // 0049에서 search_event_clock·search_index_outbox를 제거했다. search_index_state는 검색 cursor
-  // generation 카운터로 계속 쓰인다.
+  // 0049에서 search_event_clock·search_index_outbox를 제거했다. 0050부터 cursor는 projection state를
+  // 사용하고 search_index_state는 이전 Worker rollback용 generation mirror로만 남는다.
   "search_index_state",
   "search_logs",
   // Core projection: 검색 FTS5를 Core D1 안에 두어 크로스 DB 보상 계층을 제거한다.
@@ -55,8 +54,7 @@ const CORE_TABLES = [
   "search_projection_state",
   "system_audit_logs",
   "tags",
-  "user_mfa",
-  "user_mfa_recovery_codes",
+  // 애플리케이션 MFA는 0044에서 제거했고 0051에서 dead storage까지 정리했다.
   "user_role_templates"
 ].sort();
 
@@ -104,7 +102,7 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_search_projection_document_tag_insert",
   "trg_search_projection_document_update",
   // 0047/0048: reference 이름 변경은 전체 재구축(trg_search_rebuild_*) 대신 영향 문서만 표시한다.
-  // 0049에서 outbox·clock 쓰기를 걷어내고 cursor generation과 dirty 표시만 남겼다.
+  // 0049에서 outbox·clock 쓰기를 걷어냈고 0050은 projection/legacy cursor generation dual-write와 dirty 표시만 남긴다.
   "trg_search_scope_category_update",
   "trg_search_scope_rack_slot_update",
   "trg_search_scope_rack_update",

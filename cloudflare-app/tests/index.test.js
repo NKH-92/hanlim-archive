@@ -578,6 +578,10 @@ function viewerSearchEnv() {
     DB: {
       prepare(sql) {
         return {
+          async first() {
+            if (sql.includes("SELECT generation FROM search_projection_state")) return { generation: 1 };
+            return null;
+          },
           bind(usernameOrLimit) {
             return {
               async first() {

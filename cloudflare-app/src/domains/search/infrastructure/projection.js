@@ -131,7 +131,7 @@ export function projectionRowPayload(document) {
 
 export async function getSearchProjectionState(env) {
   const row = await env.DB.prepare(`
-    SELECT indexed_document_count, reindex_status, reindex_cursor, last_reindexed_at, updated_at
+    SELECT generation, indexed_document_count, reindex_status, reindex_cursor, last_reindexed_at, updated_at
     FROM search_projection_state
     WHERE id = 1
   `).first();
@@ -140,6 +140,7 @@ export async function getSearchProjectionState(env) {
   ).first();
   return {
     available: Boolean(row),
+    generation: Math.max(1, Number(row?.generation || 1)),
     indexedDocumentCount: Number(row?.indexed_document_count || 0),
     reindexStatus: row?.reindex_status || "unavailable",
     reindexCursor: Number(row?.reindex_cursor || 0),

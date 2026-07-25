@@ -65,6 +65,32 @@ test("D1Gateway는 BatchPlan만 받고 기대 변경 실패를 구조화한다",
   await assert.rejects(() => gateway.batch([statement("raw")]), /BatchPlan만/);
 });
 
+test("D1Gateway는 batch meta의 rows_read·rows_written을 구조화 로그와 누적 metric에 보존한다", async () => {
+  const metrics = [];
+  const database = {
+    async batch() {
+      return [
+        { meta: { rows_read: 7, rows_written: 3, changes: 1 } },
+        { meta: { rows_read: 2, rows_written: 5, changes: 1 } }
+      ];
+    }
+  };
+  const gateway = createD1Gateway(database, { onMetrics: (metric) => metrics.push(metric) });
+  const plan = createBatchPlan("usage.measure")
+    .step("first", statement("first"))
+    .step("second", statement("second"));
+
+  await gateway.batch(plan);
+
+  assert.equal(metrics.length, 1);
+  assert.equal(metrics[0].rowsRead, 9);
+  assert.equal(metrics[0].rowsWritten, 8);
+  assert.equal(metrics[0].bindingRowsRead, 9);
+  assert.equal(metrics[0].bindingRowsWritten, 8);
+  assert.equal(gateway.metrics().rowsRead, 9);
+  assert.equal(gateway.metrics().rowsWritten, 8);
+});
+
 test("expectedChangeAssertionSql은 STALE_VERSION abort SQL을 포함하며 1/0에 의존하지 않는다", () => {
   const sql = expectedChangeAssertionSql();
   assert.match(sql, new RegExp(STALE_VERSION_ABORT));

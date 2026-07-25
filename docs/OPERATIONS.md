@@ -25,8 +25,11 @@ Core/Search 단일 D1 전환은 2026-07-26 검토에서 통합으로 결정하�
 동시접속 약 10명·문서 약 10,000건 규모에서 물리 분리의 근거가 확인되지 않았고, 검색 읽기 경로가 이미 매
 요청 Core를 다시 읽으므로 분리로 얻는 격리가 실제로 성립하지 않는다. Worker는 이제 `DB` 하나만 바인딩하며
 검색 projection은 같은 DB의 파생 테이블이다. 단계별 근거는
-[무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)의 릴리스 단계에 있고, Core의 legacy
-outbox·clock 테이블 DROP과 물리 Search D1 삭제는 R6 별도 승인으로 남겨 두었다.
+[무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)의 릴리스 단계에 있다. legacy outbox·clock은
+R6에서 제거했고, migration 0050은 cursor generation 이관과 초기 10,000건 write 최적화를 expand 방식으로 구현한다.
+migration 0051은 이미 제거된 MFA 저장소와 현재 runtime이 사용하지 않는 옛 bootstrap job table을 정리하고,
+0052는 직전 Worker가 읽는 staging `id` shape는 보존한 채 최대 12,000행 범위에서 불필요한 action 보조 index만 제거한다.
+물리 Search D1과 rollback mirror `search_index_state` 제거만 안정화 이후 별도 contract release로 남긴다.
 
 ### Break-glass: 공개 로그인 경계 차단
 
@@ -131,7 +134,7 @@ npm run deploy:dry
 - migration pending 0과 release 대상 SHA
 - 관리자 화면(`/admin`)의 `검색 운영 준비 완료 · Core migration 충족 · projection ready · 색인 N건 · dirty 0건`
   표시. `/readyz`는 파생 색인 지연으로 닫히지 않으므로 색인 상태는 이 화면에서만 확인한다.
-  통합 배포나 Core 복구 직후에는 `projection pending`으로 시작해 Cron(5분 주기, chunk 100건)이
+  통합 배포나 Core 복구 직후에는 `projection pending`으로 시작해 Cron(5분 주기, 기본 chunk 10건)이
   `ready`로 전진시킨다. 그 사이 검색은 최근 200건 Core 퍼지로 열화되므로 `ready` 전환과
   `dirty 0건`을 확인할 때까지 대량 등록·폐기를 시작하지 않는다.
 - Worker 오류율과 D1 오류, console JavaScript 오류, CSP 위반 부재
@@ -206,6 +209,11 @@ node scripts/audit-excel-snapshot-data.mjs --db path\to\backup.sqlite --out repo
 
 ## 최초 10,000건 운영전환
 
+현재 운영·검증 환경에 등록된 문서가 전부 테스트 데이터라면 그 DB를 `DELETE`/초기화해 실대장으로 재사용하지 않는다.
+실사용 전환은 **새 Core D1**을 만들고 전체 migration → 승인 Excel bootstrap → projection 재색인 → 검증을 끝낸 뒤 Worker binding을
+새 DB로 전환한다. 기존 테스트 Core와 Worker는 rollback 관찰 기간 동안 읽기 가능한 상태로 보존하고, 안정화 승인 뒤 별도 정리한다.
+이 방식이면 테스트 데이터의 audit/history/sequence가 실대장 provenance에 섞이지 않고 bootstrap의 "초기 승인 상태" 의미도 유지된다.
+
 ### 배포 전 외부 설정
 
 1. Cloudflare 계정에 Core D1 하나(`DB`)만 준비한다. 검색 projection은 같은 DB 안의 파생 테이블이므로
@@ -233,18 +241,46 @@ npm run check:migrations
 - 최초 승인 파일은 정확히 10,000행이며 SHA-256, 승인 참조, 검색 정답 표본을 별도 증적으로 보존한다.
 - 11,000건은 운영 경고, 12,000건은 기술 상한이다. 12,001번째 등록·재포함·snapshot apply는 DB trigger가
   전체 transaction을 차단한다.
-- schema v2 XLSX의 N~P 숨김 열은 관리 ID, 기준 행 버전, 기준 행 SHA-256이다. 전체 membership은 요청당
+- schema v2 XLSX의 N~P 숨김 열은 관리 ID, 기준 행 버전, 기준 행 SHA-256이다. managed 동기화의 전체 membership은 요청당
   1,000행, 실제 변경행은 50행씩 전송한다. 관리 snapshot의 신규+변경+제외 영향은 1,000건 이하여야 한다.
-- 초기 적재는 Cloudflare Dashboard의 당일 계정 전체 `rows_written`을 먼저 확인한다. 내부 정지선은
-  00:00 UTC 기준 70,000이며 초과 예상 시 다음 UTC 일자로 넘긴다. 임시 Paid 전환은 사용하지 않는다.
+  최초 bootstrap은 모든 행을 source row로 staging하므로 동일 10,000행 membership을 별도로 만들지 않는다.
+- 초기 적재는 Cloudflare Dashboard의 당일 계정 전체 `rows_written`과 Workers Logs의 `d1.query.rowsWritten`을 함께 확인한다.
+  평시 대량작업 대응선은 00:00 UTC 기준 70,000이고, 최초 bootstrap 전용 정지선은 85,000이다. migration 0050 최종 schema에서
+  bootstrap apply의 지배적 write는 문서 10,000건 × (table + 5 index) 약 60,000행과 tag 연결 20,000행으로 약 80,000행이며,
+  snapshot/system metadata가 소량 더해진다. 이는 schema 기반 사전 추정일 뿐 실제 D1 `meta.rows_written`이 권위값이다.
+  따라서 10,000건 apply는 해당 UTC 일자의 계정 write가 5,000행 미만인 상태에서만 시작하고, 85,000행에 도달하면 같은 날
+  추가 대량 write를 중지한다. staging/prepare에서 이미 write가 누적됐으면 apply를 다음 UTC 일자로 넘긴다. apply 뒤 전체
+  재색인은 chunk 10으로 분산하며 평시 70,000행 대응선에 접근하면 자연스럽게 다음 일자의 Cron으로 이어가고 수동 가속하지 않는다.
+  임시 Paid 전환은 사용하지 않는다.
+
+### 10,000건 로컬 구조 리허설
+
+실제 승인 List 투입 전에는 전체 migration과 동일한 snapshot bootstrap 경로를 메모리 SQLite에서 먼저 실행한다.
+이 명령은 Cloudflare 네트워크·CPU SLA나 실제 `rows_written`을 대신하지 않으며, 행 수·원자 경계·payload 분할·statement
+예산·bootstrap provenance 계약이 목표 규모에서 성립하는지 확인하는 구조 리허설이다.
+
+```powershell
+cd cloudflare-app
+npm run rehearse:initial-load -- --count=10000
+```
+
+2026-07-26 최종 리허설은 10,000건/태그 20,000연결을 200개 staging chunk로 처리했고 prepare 11문장,
+apply 28문장으로 모두 40문장 mutation 예산 안에 있었다. current 10,000건, 폐기 상태 1,000건, bootstrap
+membership 0건, 가상 create audit 0건, 초기 disposal log 0건을 확인했다. prepare SQL을 JSON row별 재스캔에서
+`MATERIALIZED` change CTE와 `(snapshot_id,row_number)` lookup으로 바꾼 뒤 로컬 prepare 시간은 126.20초에서
+약 0.57초로 감소했고 전체 bootstrap/apply는 약 1.42초였다. 최종 Core index 구조의 비교값은 기본 목록 0.04ms,
+정확 문서번호 0.03ms, 정확 문서명 0.02ms, 위치 scan 3.46ms였다. 이 시간값은 운영 성능 보증이 아니다.
 
 ### 전환·검색 확인
 
-1. 신규 Core에 migration manifest의 전체 chain(`0001~0049`)을 순서대로 적용한다. `0048` 적용 직후
-   projection은 비어 있고 `reindex_status = 'pending'`이므로 Cron 재색인이 끝날 때까지 검색이 최근 200건
-   Core 퍼지로 강등되는 것이 정상이다.
+1. 신규 Core에 migration manifest의 전체 chain(`0001~0052`)을 순서대로 적용한다. `0048`에서 projection을 만들고
+   `0050`에서 초기 적재용 index를 축소하고 cursor generation을 projection 상태로 expand하며, `0051`에서 제거된 MFA와
+   legacy bootstrap job 저장소를 정리하고 `0052`에서 staging action 보조 index를 제거한다. bootstrap apply 직후
+   projection은 `reindex_status = 'pending'`이므로 Cron 재색인이 끝날 때까지 검색이 최근 200건 Core 퍼지로 강등되는 것이 정상이다.
 2. 승인 파일을 bootstrap으로 검증하고 문서 수, identity, FK, 분류·상태·위치·태그 집계와 canonical hash를 대조한다.
 3. Core projection 재색인 상태가 `ready`, 색인 건수가 10,000, dirty 큐가 0인지 관리 화면에서 확인한다.
+   기본 chunk 10·5분 Cron만 사용하면 10,000건 전체 재색인은 1,000회 invocation이 필요하므로 최소 약 83시간 20분(약 3.5일)을
+   운영전환 일정에 선반영한다. 이 시간은 무료 write를 한 UTC 일자에 몰지 않기 위한 의도적 여유다.
    `/readyz`는 Core schema만 판정하므로 색인 상태 확인에 사용하지 않는다.
 4. 새로 추출한 schema v2 XLSX를 무수정 재업로드해 update/create/exclude가 모두 0인지 확인한다.
 5. 정확 문서번호, 일반 검색, 오래된 문서, 초성·한영 자판 표본, cursor `더보기`, 색인 장애 fallback을 시험한다.
@@ -264,6 +300,7 @@ npm run check:migrations
 | `sizes.coreBytes` | Cloudflare Dashboard의 Core D1 database 크기. 통합 후 `sizes.searchBytes`는 0 |
 | `dailyRows.read`, `dailyRows.written` | D1 Metrics의 UTC 일 단위 계정 합계 최댓값 |
 | `statements.maxPerRequest`, `statements.maxPerMutationBatch` | Workers Logs의 `d1.query` 구조화 로그 `totalStatements` 최댓값 |
+| bootstrap/apply `rows_written` | Workers Logs의 mutation `d1.query.rowsWritten` 합계와 D1 Metrics 계정 합계를 함께 대조 |
 | `contention.*` | 검색 부하 중 엑셀 반영·정기폐기 p95와 overload 건수 |
 | `goldenSearch.*` | 통합 전 compare 기간에 수집한 `search.projection-compare` 집계(보존 증적 재사용) |
 | `reindexDrill.*` | projection 전체 삭제 후 12,000건 재색인 훈련 결과 |
@@ -331,8 +368,9 @@ FROM search_projection_dirty;
 쿼리·인덱스를 점검한다. `exceededCpu`는 1건부터 장애 증적으로 보존한다.
 
 `search_index_outbox`와 `search_event_clock`은 migration 0049에서 제거했다. 파생 색인 신호는
-`search_projection_dirty` 하나로 모이므로 점검 대상도 위 dirty 큐 하나다. `search_index_state`는 남아 있지만
-검색 cursor generation 카운터로만 쓰이며 잔량·지연 개념이 없다.
+`search_projection_dirty` 하나로 모이므로 점검 대상도 위 dirty 큐 하나다. migration 0050부터 검색 cursor는
+`search_projection_state.generation`을 사용한다. `search_index_state`는 이전 Worker rollback 호환을 위한 generation mirror로만
+남아 있으며, 안정화 기간 뒤 별도 contract migration에서 제거한다.
 
 PBKDF2-SHA256 100,000회는 Workers CPU 상한 때문에 하향하지 않는다. 로그인 CPU p95가 해당 월의 Workers 상한에
 붙거나 `exceededCpu`가 발생하면 먼저 계정·IP 로그인 실패 제한과 PBKDF2 전 조기 차단이 실제로 동작하는지 확인하고,

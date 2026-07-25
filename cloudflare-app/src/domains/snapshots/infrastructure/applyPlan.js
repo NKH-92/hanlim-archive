@@ -221,18 +221,24 @@ export function buildApplyStatements(env, {
         status, sync_state, last_snapshot_id, updated_at
       )
       SELECT
-        'SNP-' || row.snapshot_id || '-' || row.row_number,
+        CASE
+          -- 최초 대장은 DB 안에서 새로 생성된 업무 이력이 아니라 승인 Excel의 초기 상태다.
+          -- row_number는 파일 안에서 유일하므로 bootstrap은 처음부터 최종 내부 코드로 넣어
+          -- 10,000건 전체를 다시 UPDATE하는 write amplification을 피한다.
+          WHEN s.mode = 'bootstrap' THEN 'ARC-' || printf('%06d', row.row_number - 1)
+          ELSE 'SNP-' || row.snapshot_id || '-' || row.row_number
+        END,
         row.row_key,
-        CAST(json_extract(row.after_json, '$.values.categoryId') AS INTEGER),
-        json_extract(row.after_json, '$.values.documentNumber'),
-        json_extract(row.after_json, '$.values.revisionNumber'),
-        NULLIF(json_extract(row.after_json, '$.values.revisionDate'), ''),
-        CAST(NULLIF(json_extract(row.after_json, '$.values.disposalDueYear'), '') AS INTEGER),
-        json_extract(row.after_json, '$.values.documentName'),
-        NULLIF(json_extract(row.after_json, '$.values.note'), ''),
-        CAST(json_extract(row.after_json, '$.values.rackSlotId') AS INTEGER),
-        json_extract(row.after_json, '$.values.rackFace'),
-        json_extract(row.after_json, '$.values.status'),
+        CAST(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.categoryId') AS INTEGER),
+        json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.documentNumber'),
+        json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.revisionNumber'),
+        NULLIF(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.revisionDate'), ''),
+        CAST(NULLIF(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.disposalDueYear'), '') AS INTEGER),
+        json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.documentName'),
+        NULLIF(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.note'), ''),
+        CAST(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.rackSlotId') AS INTEGER),
+        json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.rackFace'),
+        json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.status'),
         'current', row.snapshot_id, CURRENT_TIMESTAMP
       FROM document_snapshot_rows row
       JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
@@ -272,6 +278,9 @@ export function buildApplyStatements(env, {
       JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
       JOIN documents d ON d.excel_row_key = row.row_key
       WHERE row.snapshot_id = ? AND row.action = 'create'
+        -- bootstrap의 행별 provenance는 snapshot row + canonical hash + system apply audit가 담당한다.
+        -- 초기 10,000건을 10,000개의 가상 "등록 행위"로 중복 기록하지 않는다.
+        AND s.mode <> 'bootstrap'
     `).bind(actorSnapshot.displayName, role, actorSnapshot.userId, actorSnapshot.username, reason, approval, id),
 
     // 12. 신규 disposed log + create tags
@@ -281,6 +290,8 @@ export function buildApplyStatements(env, {
       FROM documents d
       JOIN document_snapshots s ON s.id = d.last_snapshot_id AND s.status = 'applying'
       WHERE d.last_snapshot_id = ? AND d.status = 'disposed'
+        -- bootstrap 파일에 이미 폐기 상태인 행은 시스템에서 발생한 폐기 행위가 아니다.
+        AND s.mode <> 'bootstrap'
         AND EXISTS (SELECT 1 FROM document_snapshots WHERE id = ? AND status = 'applying')
         AND NOT EXISTS (SELECT 1 FROM disposal_logs log WHERE log.document_id = d.id)
     `).bind(actorSnapshot.displayName, reason, id, id),
@@ -291,7 +302,7 @@ export function buildApplyStatements(env, {
       FROM document_snapshot_rows row
       JOIN document_snapshots s ON s.id = row.snapshot_id AND s.status = 'applying'
       JOIN documents d ON d.excel_row_key = row.row_key
-      CROSS JOIN json_each(json_extract(row.after_json, '$.values.tagIds')) tag
+      CROSS JOIN json_each(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.tagIds')) tag
       JOIN tags t ON t.id = CAST(tag.value AS INTEGER) AND t.is_active = 1
       WHERE row.snapshot_id = ? AND row.action = 'create'
     `).bind(id),
@@ -417,7 +428,8 @@ export function buildApplyStatements(env, {
       // Core projection도 같은 batch에서 전체 재색인 대상으로 되돌린다.
       env.DB.prepare(`
         UPDATE search_projection_state
-        SET reindex_status = 'pending',
+        SET generation = generation + 1,
+            reindex_status = 'pending',
             reindex_cursor = 0,
             last_error = NULL,
             updated_at = CURRENT_TIMESTAMP

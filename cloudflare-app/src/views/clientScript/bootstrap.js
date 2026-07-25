@@ -137,6 +137,16 @@ export function bootstrapScript(escapeHtmlSource) {
         });
       });
 
+      document.querySelectorAll('[data-auto-open-modal]').forEach(function (modal) {
+        if (modal.hasAttribute('data-forced-modal')) {
+          modal.addEventListener('cancel', function (event) { event.preventDefault(); });
+        }
+        if (typeof modal.showModal === 'function') {
+          // open 속성은 스크립트 실패 시에도 폼이 보이게 하는 fallback이다. 정상 브라우저에서는 top layer modal로 승격한다.
+          if (modal.open) modal.close();
+          modal.showModal();
+        }
+      });
       document.querySelectorAll('[data-open-modal]').forEach(function (button) {
         button.addEventListener('click', function () {
           var modal = document.getElementById(button.dataset.openModal);

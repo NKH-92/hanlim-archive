@@ -109,14 +109,17 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 19. **rollback 호환성**: migration은 이전 Worker와 함께 동작하는 additive 변경을 먼저 적용한다.
     배포 전 현재 100% traffic Worker를 rollback 대상으로 기록하고, migration 전후 인증과 핵심 쓰기
     불변식을 확인한다. 비호환 schema 제거는 별도 release로 분리한다.
-20. **10,000건 용량 경계**: 현재 대장은 11,000건부터 운영 경고, 12,000건에서 DB trigger와 application
-    guard가 신규 등록·재포함·엑셀 반영을 함께 차단한다. 전체 membership은 1,000행, 실제 변경행은 50행씩
-    전송하며 일상 변경 영향은 1,000건을 넘길 수 없다.
+20. **10,000건 용량·초기 적재 경계**: 현재 대장은 11,000건부터 운영 경고, 12,000건에서 DB trigger와 application
+    guard가 신규 등록·재포함·엑셀 반영을 함께 차단한다. managed v2의 전체 membership은 1,000행, 실제 변경행은 50행씩
+    전송하며 일상 변경 영향은 1,000건을 넘길 수 없다. 최초 bootstrap은 모든 행을 실제 source row로 staging하므로
+    중복 membership을 만들지 않는다. 승인 Excel 자체가 초기 상태의 출처이므로 10,000개의 가상 create/dispose audit을
+    중복 생성하지 않고 snapshot row·canonical hash·system apply audit과 `last_snapshot_id`로 행별 provenance를 보존한다.
 21. **검색 projection은 Core D1 안의 파생 데이터**: `DB`는 문서·사용자·감사·권한의 유일한 권위 저장소이며
     검색 projection(`search_projection_documents`, `search_projection_fts`)도 같은 DB에 둔다. projection에는
     `storage_code`, 사용자, 감사정보를 저장하지 않는다. 검색 후보는 최대 200개 ID이며 Core에서 현재 상태·필터를
-    재검증한 뒤 최대 30건과 opaque cursor만 응답한다. cursor 무효화는 `search_index_state.generation`
-    단일 카운터를 계속 사용한다. 색인 본문(`normalized_text`)은 n-gram과 한글 초성을 만드는
+    재검증한 뒤 최대 30건과 opaque cursor만 응답한다. cursor 무효화는 projection과 같은 소유권에 있는
+    `search_projection_state.generation`을 사용한다. migration 0050의 expand 기간에는 이전 Worker rollback을 위해
+    `search_index_state.generation`도 같은 trigger에서 함께 증가시킨다. 색인 본문(`normalized_text`)은 n-gram과 한글 초성을 만드는
     `data/searchIndexTerms.js`가 유일한 출처다. SQL trigger로 재현할 수 없으므로 trigger는 재색인 대상만
     `search_projection_dirty`에 표시하고, 색인 쓰기는 항상 애플리케이션이 수행한다. projection 쓰기와 dirty 행
     삭제는 하나의 `env.DB.batch()`에 두므로 **"projection 최신 OR 문서가 dirty"가 트랜잭션으로 보장된다.**
@@ -133,8 +136,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     두 번째 migration 체인, 그리고 cross-DB 정합성을 위해 존재했던 outbox lease·processor lease·문서별
     watermark·삭제 tombstone·active/building/previous generation·rebuild token·cutover fence는 모두 제거했다.
     `search_index_outbox`와 전역 `search_event_clock`, 그리고 그 둘에 쓰던 17개 trigger도 제거했으므로
-    파생 색인 신호는 `search_projection_dirty` 하나로 모인다. `search_index_state`는 남지만 역할은
-    검색 cursor generation 카운터 하나뿐이다. 통합 근거와 단계는
+    파생 색인 신호는 `search_projection_dirty` 하나로 모인다. migration 0050부터 runtime cursor는
+    `search_projection_state.generation`을 사용하며 `search_index_state`는 이전 Worker rollback용 mirror로만 남긴다.
+    충분한 rollback 관찰 기간 뒤 별도 contract migration에서 제거한다. 통합 근거와 단계는
     [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)에 있다.
 24. **인증 재검증과 임시 계정 수명**: 비밀번호 최소 길이는 6자이며 신규 PBKDF2-SHA256 record는
     Cloudflare Workers Web Crypto 상한인 100,000회 반복을 사용한다. legacy raw digest는 성공한 로그인에서

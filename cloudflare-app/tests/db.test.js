@@ -521,7 +521,7 @@ test("viewer search item exposes location-first api shape", () => {
 
 test("exact document numbers use the direct SQL path without internal storage codes", async () => {
   const env = recordingEnv({
-    all: (sql) => sql.includes("LOWER(d.document_number)")
+    all: (sql) => sql.includes("UPPER(d.document_number)")
       ? [sampleDocument({ document_number: "PV-2026-014" })]
       : []
   });
@@ -531,8 +531,8 @@ test("exact document numbers use the direct SQL path without internal storage co
   assert.equal(rows.length, 1);
   assert.equal(rows[0].match_reason, "문서번호 정확히 일치");
   assert.equal(env.state.calls.filter((call) => call.type === "all").length, 1);
-  assert.match(env.state.calls[0].sql, /LOWER\(d\.document_number\)/);
-  assert.doesNotMatch(env.state.calls[0].sql, /LOWER\(d\.storage_code\)/);
+  assert.match(env.state.calls[0].sql, /UPPER\(d\.document_number\)/);
+  assert.doesNotMatch(env.state.calls[0].sql, /UPPER\(d\.storage_code\)/);
 });
 
 test("browser search index omits internal storage codes", async () => {
