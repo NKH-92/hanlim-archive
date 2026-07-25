@@ -9,6 +9,7 @@ import {
 import { actorDisplayName } from "../domain/policy.js";
 import { createSetMutationPlan } from "./mutationPlans.js";
 import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
+import { d1ContainsPattern } from "../../../platform/d1/likePattern.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 import { auditActorSnapshot } from "../../identity/index.js";
 
@@ -34,7 +35,7 @@ export async function getDocumentSets(env, filters = {}) {
   const where = [];
   const binds = [];
   if (query) {
-    const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
+    const pattern = d1ContainsPattern(query);
     where.push("(s.name LIKE ? ESCAPE '\\' OR COALESCE(s.description, '') LIKE ? ESCAPE '\\')");
     binds.push(pattern, pattern);
   }

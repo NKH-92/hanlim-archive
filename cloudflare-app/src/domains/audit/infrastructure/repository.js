@@ -2,6 +2,7 @@ import { auditActorSnapshot } from "../../identity/index.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { createBatchPlan } from "../../../platform/d1/batchPlan.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+import { d1ContainsPattern } from "../../../platform/d1/likePattern.js";
 
 const DEFAULT_PAGE_SIZE = 30;
 const MAX_PAGE_SIZE = 100;
@@ -145,7 +146,7 @@ function buildAuditWhere(filters) {
     binds.push(filters.to);
   }
   if (filters.actor) {
-    const pattern = `%${escapeLike(filters.actor)}%`;
+    const pattern = d1ContainsPattern(filters.actor);
     clauses.push("(actor_username_snapshot LIKE ? ESCAPE '\\' OR actor_display_name_snapshot LIKE ? ESCAPE '\\')");
     binds.push(pattern, pattern);
   }
@@ -158,7 +159,7 @@ function buildAuditWhere(filters) {
     binds.push(filters.action);
   }
   if (filters.reference) {
-    const pattern = `%${escapeLike(filters.reference)}%`;
+    const pattern = d1ContainsPattern(filters.reference);
     clauses.push("(entity_reference LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\')");
     binds.push(pattern, pattern);
   }
@@ -189,8 +190,4 @@ function readFilter(filters, ...keys) {
 function positiveInteger(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function escapeLike(value) {
-  return String(value).replace(/[\\%_]/g, "\\$&");
 }

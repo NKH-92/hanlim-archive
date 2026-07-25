@@ -4,21 +4,37 @@ import { isExpectedChangeAbort } from "./expectedChange.js";
 
 const GLOBAL_STATEMENT_BUDGET = FREE_TIER_BUDGET.maxD1StatementsPerRequest;
 
-export function createD1Gateway(database, { logger = null, requestId = "", onMetrics = null } = {}) {
+export function createD1Gateway(database, {
+  logger = null,
+  requestId = "",
+  onMetrics = null,
+  requestBudget = null,
+  unwrapStatement = (statement) => statement
+} = {}) {
   if (!database || typeof database.batch !== "function") throw new TypeError("D1 database binding이 필요합니다.");
   let statementCount = 0;
+  const sharedBudget = requestBudget || { statementCount: 0 };
 
   function ensureRequestBudget(additional) {
-    if (statementCount + additional > GLOBAL_STATEMENT_BUDGET) {
-      throw new D1BudgetExceededError("request", statementCount + additional, GLOBAL_STATEMENT_BUDGET);
+    if (sharedBudget.statementCount + additional > GLOBAL_STATEMENT_BUDGET) {
+      throw new D1BudgetExceededError(
+        "request",
+        sharedBudget.statementCount + additional,
+        GLOBAL_STATEMENT_BUDGET
+      );
     }
+  }
+
+  function consume(additional) {
+    statementCount += additional;
+    sharedBudget.statementCount += additional;
   }
 
   async function execute(kind, statement, method, args = []) {
     if (!statement || typeof statement[method] !== "function") throw new TypeError(`D1 ${kind} statement가 올바르지 않습니다.`);
     ensureRequestBudget(1);
     const startedAt = performance.now();
-    statementCount += 1;
+    consume(1);
     try {
       return await statement[method](...args);
     } finally {
@@ -27,7 +43,15 @@ export function createD1Gateway(database, { logger = null, requestId = "", onMet
   }
 
   function record(kind, count, startedAt, planId = null) {
-    const metric = Object.freeze({ requestId, kind, planId, statements: count, totalStatements: statementCount, durationMs: performance.now() - startedAt });
+    const metric = Object.freeze({
+      requestId,
+      kind,
+      planId,
+      statements: count,
+      bindingStatements: statementCount,
+      totalStatements: sharedBudget.statementCount,
+      durationMs: performance.now() - startedAt
+    });
     if (onMetrics) onMetrics(metric);
     if (logger?.info) logger.info("d1.query", metric);
   }
@@ -45,9 +69,9 @@ export function createD1Gateway(database, { logger = null, requestId = "", onMet
       const execution = plan.execution(prepare);
       ensureRequestBudget(execution.statements.length);
       const startedAt = performance.now();
-      statementCount += execution.statements.length;
+      consume(execution.statements.length);
       try {
-        const results = await database.batch(execution.statements);
+        const results = await database.batch(execution.statements.map(unwrapStatement));
         // prepare가 없는 test double만 post-batch 검사로 보완한다.
         if (!prepare) {
           for (const [index, step] of (execution.metadata.steps || []).entries()) {
@@ -68,7 +92,23 @@ export function createD1Gateway(database, { logger = null, requestId = "", onMet
         record("batch", execution.statements.length, startedAt, execution.metadata.id);
       }
     },
-    metrics() { return Object.freeze({ statementCount }); }
+    async rawBatch(statements) {
+      if (!Array.isArray(statements)) throw new TypeError("D1 batch statements 배열이 필요합니다.");
+      ensureRequestBudget(statements.length);
+      const startedAt = performance.now();
+      consume(statements.length);
+      try {
+        return await database.batch(statements);
+      } finally {
+        record("raw-batch", statements.length, startedAt);
+      }
+    },
+    metrics() {
+      return Object.freeze({
+        statementCount,
+        totalStatementCount: sharedBudget.statementCount
+      });
+    }
   });
 }
 

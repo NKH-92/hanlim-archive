@@ -2,7 +2,7 @@ import { FREE_TIER_BUDGET } from "../../../freeTierBudget.js";
 import { createBatchPlan } from "../../../platform/d1/batchPlan.js";
 
 export function createDocumentCreatePlan(statements, tagCount) {
-  const plan = createBatchPlan("documents.create").withBudget(FREE_TIER_BUDGET.maxD1StatementsPerRequest);
+  const plan = createBatchPlan("documents.create").withBudget(FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch);
   plan.step("document.insert-temporary", statements[0], { guard: "unique:document-number+revision" });
   for (let index = 0; index < tagCount; index += 1) {
     plan.step(`document.tag.attach.${index + 1}`, statements[index + 1], { guard: "temporary-storage-code" });
@@ -16,7 +16,7 @@ export function createDocumentCreatePlan(statements, tagCount) {
 }
 
 export function createDocumentUpdatePlan(statements, tagCount, guard) {
-  const plan = createBatchPlan("documents.update").withBudget(FREE_TIER_BUDGET.maxD1StatementsPerRequest)
+  const plan = createBatchPlan("documents.update").withBudget(FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch)
     .step("document.audit.update", statements[0], { guard, auditEventId: "document.update" })
     .step("document.tags.detach", statements[1], { guard });
   for (let index = 0; index < tagCount; index += 1) {
@@ -48,7 +48,7 @@ export function createDocumentRevisionPlan(statements, guard) {
     "document.revision.previous.dispose"
   ];
   const plan = createBatchPlan("documents.revise")
-    .withBudget(FREE_TIER_BUDGET.maxD1StatementsPerRequest);
+    .withBudget(FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch);
   statements.forEach((statement, index) => plan.step(names[index], statement, {
     guard,
     auditEventId: index === 4
@@ -77,7 +77,7 @@ export function createDocumentStatusPlan(action, statements, guard) {
 
 export function createDocumentBulkDisposePlan(statements, documentCount) {
   const plan = createBatchPlan("documents.bulk-dispose")
-    .withBudget(FREE_TIER_BUDGET.maxD1StatementsPerRequest - 2);
+    .withBudget(FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch - 2);
   for (let index = 0; index < documentCount; index += 1) {
     const offset = index * 3;
     const guard = `active-document:${index + 1}`;

@@ -141,7 +141,11 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 - audit/history INSERT는 상태 UPDATE/DELETE보다 먼저 같은 `env.DB.batch()`에서 실행한다.
 - 선행 INSERT도 application 사전조회가 아니라 같은 pre-state SQL guard를 사용한다.
 - batch 마지막 mutation의 변경 행 수로 no-op과 낙관적 잠금 경합을 감지한다.
-- 모든 SQL 값은 bind parameter로 전달하고 요청당 D1 statement 예산 40, statement당 bind parameter 100개를 넘지 않는다. 최대 200개 ID를 다루는 세트 작업은 JSON 한 bind와 `json_each()`를 사용한다.
+- 모든 SQL 값은 bind parameter로 전달한다. Core와 Search를 합친 요청당 D1 statement 예산은
+  Cloudflare Free의 50개보다 2개 낮은 48개, 원자 mutation `BatchPlan`은 40개,
+  statement당 bind parameter는 100개를 넘지 않는다. LIKE pattern은 UTF-8 50 bytes,
+  JSON value payload는 플랫폼 2,000,000 bytes보다 낮은 1,900,000 bytes에서 분할한다.
+  최대 200개 ID를 다루는 세트 작업은 JSON 한 bind와 `json_each()`를 사용한다.
 - 폐기·CSV 작업은 claim token과 terminal 상태를 보존해 재호출 시 중복 기록을 만들지 않는다.
 - 감사·이동·세트 이력은 append-only trigger를 유지하고, 내부 `storage_code`는 DB·감사 내부에서만 사용한다.
 - 엑셀 snapshot apply는 claim → 문서별 감사 → set-based diff → 전역 감사 → version 확정을 40문장 이하

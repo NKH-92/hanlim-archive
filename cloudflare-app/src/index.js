@@ -18,6 +18,7 @@ import {
   resolvePublicRoute
 } from "./app/routeRegistry.js";
 import { createRequestD1Environment } from "./platform/d1/requestGateway.js";
+import { D1LikePatternTooLongError } from "./platform/d1/likePattern.js";
 import {
   runBoundedSearchMaintenance,
   syncChangedSearchDocuments,
@@ -33,15 +34,24 @@ export default {
     const requestEnv = createRequestD1Environment(env, { requestId: reqId });
     const effects = {
       async syncSearchDocument(documentId) {
-        const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search` });
+        const searchEnv = createRequestD1Environment(env, {
+          requestId: `${reqId}-search`,
+          requestScope: requestEnv
+        });
         return syncChangedSearchDocuments(searchEnv, [documentId]);
       },
       async syncSearchDocuments(documentIds) {
-        const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search` });
+        const searchEnv = createRequestD1Environment(env, {
+          requestId: `${reqId}-search`,
+          requestScope: requestEnv
+        });
         return syncChangedSearchDocuments(searchEnv, documentIds);
       },
       async syncPendingSearchDocuments(limit) {
-        const searchEnv = createRequestD1Environment(env, { requestId: `${reqId}-search-batch` });
+        const searchEnv = createRequestD1Environment(env, {
+          requestId: `${reqId}-search-batch`,
+          requestScope: requestEnv
+        });
         return syncPendingSearchDocuments(searchEnv, { limit });
       }
     };
@@ -49,6 +59,11 @@ export default {
     try {
       response = await route(request, requestEnv, effects);
     } catch (error) {
+      if (error instanceof D1LikePatternTooLongError) {
+        const session = await readSession(request, requestEnv).catch(() => null);
+        response = errorPage(error.message, session, error.status);
+        return withSecurityHeaders(response, request);
+      }
       // 미처리 예외: 원시 오류 메시지를 사용자에게 노출하지 않는다(정보 노출 방지).
       // 상관용 짧은 reqId만 사용자에게 주고, 전체 오류는 서버 로그에만 남긴다.
       const url = new URL(request.url);
