@@ -170,13 +170,18 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           D1_PROVISION_ENV: production
         run: npm run smoke:principal -- --action provision
+      # rollback 대상은 이번 release가 배포할 version이 아니라 지금 100% traffic을 받는 이전 version이다.
+      # /readyz는 각 version이 스스로 정의하는 판정이므로, 판정 기준을 바꾸는 release에서는 이전 version의
+      # readiness가 구조적으로 만족될 수 없다. 이 step의 질문은 "migration 뒤에도 rollback 대상이 사용자에게
+      # 서비스할 수 있는가"이므로 healthz·session-epoch 호환·로그인·검색·관리 화면으로 판정한다.
+      # readiness는 이번에 배포하는 version에만 요구한다(아래 post-deploy smoke).
       - name: Verify rollback Worker against migrated schema
         if: steps.classify_release.outputs.release_class == 'database'
         env:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
           SMOKE_REQUIRE_ADMIN: "1"
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
-          SMOKE_REQUIRE_READINESS: "1"
+          SMOKE_REQUIRE_READINESS: "0"
         run: |
           export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
           export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
@@ -236,6 +241,7 @@ jobs:
           export SMOKE_EXPECTED_WORKER_VERSION="$DEPLOYED_VERSION_ID"
           set -o pipefail
           npm run smoke:release 2>&1 | tee release-evidence/smoke.txt
+      # rollback 검증도 이전 version을 대상으로 하므로 위와 같은 이유로 readiness를 요구하지 않는다.
       - name: Roll back Worker after release failure
         if: >-
           always() && (steps.deploy_worker.outcome == 'failure' ||
@@ -246,7 +252,7 @@ jobs:
           SMOKE_REQUIRE_ADMIN: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '0' || '1' }}
           SMOKE_PUBLIC_ONLY: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '1' || '0' }}
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
-          SMOKE_REQUIRE_READINESS: "1"
+          SMOKE_REQUIRE_READINESS: "0"
         run: |
           set -euo pipefail
           if [ "$RELEASE_CLASS" != "asset-only" ]; then

@@ -90,11 +90,19 @@ npm run deploy:dry
 5. append-only migration을 적용하고 독립 Admin 존재를 다시 확인한다.
 6. 신규 schema가 적용된 뒤 release run 전용 read-only 계정과 `can_manage_users`만 가진 일반 User 계정을
    무작위 credential로 생성하고, 이전 Worker에서 실제 로그인·검색·`/admin/settings`를 확인한다.
+   `/readyz`는 각 Worker version이 스스로 정의하는 판정이므로 rollback 대상에는 요구하지 않는다. 판정 기준을
+   바꾸는 release에서는 이전 version의 readiness가 구조적으로 만족될 수 없기 때문이다. readiness는 8단계의
+   배포 후 smoke에서 이번에 배포한 version에만 요구한다.
 7. release SHA tag·message를 붙여 Worker를 production에 직접 배포한다.
 8. `/healthz`, `/readyz`, Worker version, 전송·asset·로그인·검색·사용자 관리 smoke를 실행한다.
 9. Worker 배포 또는 smoke 실패 시 기록한 이전 100% traffic version으로 되돌리고 같은 인증 smoke를 실행한다.
 10. 성공·실패와 관계없이 release 전용 계정을 제거하고 복구 지점·migration·배포·smoke·rollback 증거를
    release artifact로 보존한다.
+11. migration이 포함된 release였다면 다음 PR에서 `migrations/released-baseline.json`을 이번에 배포한
+   migration까지 전진시킨다. `checksums`에 항목을 추가하고 `releasedThrough`와 `schema`를
+   `manifest.json`의 값과 맞춘다. 과거 migration SQL과 기존 checksum은 바꾸지 않는다.
+   이 전진을 빼먹으면 `check-released-baseline-history.mjs`가 "released baseline must retain every
+   migration from the trusted base"로 이후 **모든 PR**의 `required / verify`를 fail-closed한다.
 
 배포는 `d1-production-maintenance` concurrency group에서 직렬화한다. D1 Time Travel 복구는 데이터 변경을
 되돌리는 파괴적 작업이므로 자동 rollback하지 않고 [D1 복구 절차](./BACKUP_RESTORE.md)에 따라 별도 승인한다.
