@@ -27,6 +27,8 @@ test("disableUser는 감사 INSERT를 상태 UPDATE 앞에 같은 batch로 실�
   assert.match(audit.sql, /FROM app_users[\s\S]*status IN \(\?\)/);
   assert.match(update.sql, /SET status = 'disabled'/);
   assert.match(update.sql, /session_epoch = session_epoch \+ 1/);
+  // 권한 화면 OCC가 상태 변경을 놓치지 않도록 상태 전이도 row_version을 올린다.
+  assert.match(update.sql, /row_version = row_version \+ 1/);
   assert.deepEqual(audit.args.slice(-2), [7, "approved"]);
   const details = JSON.parse(audit.args[9]);
   assert.equal(details.before.status, "approved");
@@ -38,6 +40,7 @@ test("enableUser는 disabled 사용자만 approved로 복구한다", async () =>
   assert.equal((await enableUser(enabled, 7, actor)).ok, true);
   assert.match(enabled.state.batches[0][1].sql, /SET status = 'approved'/);
   assert.match(enabled.state.batches[0][1].sql, /session_epoch = session_epoch \+ 1/);
+  assert.match(enabled.state.batches[0][1].sql, /row_version = row_version \+ 1/);
 
   const pending = userMutationEnv(userRow({ status: "pending" }));
   const result = await enableUser(pending, 7, actor);
@@ -112,6 +115,8 @@ test("resetUserPassword는 감사·잠금 해제·credential 교체를 한 batch
   assert.match(clearThrottle.sql, /substr\(username/);
   assert.match(update.sql, /must_change_password = 1/);
   assert.match(update.sql, /session_epoch = \?/);
+  // credential만 바꾸는 경로는 권한 편집을 무효화하지 않으므로 row_version을 올리지 않는다.
+  assert.doesNotMatch(update.sql, /row_version = row_version \+ 1/);
   assert.equal(update.args[2], 5);
   assert.doesNotMatch(JSON.stringify(update.args), /temporary-password-2026/);
 });

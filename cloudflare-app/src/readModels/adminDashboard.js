@@ -3,7 +3,7 @@ import { getAppUsers } from "../domains/identity/index.js";
 import { getSearchIndexStats, getSearchOperationalState } from "../domains/search/index.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
 
-const EXPECTED_CORE_MIGRATION = "0045_user_role_templates.sql";
+const EXPECTED_CORE_MIGRATION = "0046_app_user_team.sql";
 const EXPECTED_SEARCH_MIGRATION = "0003_rebuild_barriers_and_watermarks.sql";
 
 export async function loadAdminDashboardReadModel(env, session) {

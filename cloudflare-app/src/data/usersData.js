@@ -12,6 +12,10 @@ import {
 } from "../domains/identity/infrastructure/userMutationPlans.js";
 import { executeMutationBatch } from "../platform/d1/requestGateway.js";
 
+// app_users.row_version은 역할·권한 화면이 OCC로 사용하는 값이다. 그 화면이 판단 근거로 삼는
+// 필드(status, role, security_review_required, role_template_key, can_*)를 바꾸는 경로는 모두
+// row_version을 증가시킨다. credential·session_epoch만 바꾸는 경로(비밀번호 변경·초기화·로그아웃)는
+// 권한 편집 내용을 무효화하지 않으므로 증가시키지 않는다(불필요한 충돌 거부를 만들지 않기 위해).
 const USER_PERMISSION_COLUMNS = PERMISSION_KEYS.join(", ");
 const MATCHED_ROLE_TEMPLATE_LABEL = `(
   SELECT label
@@ -38,6 +42,7 @@ export async function getAppUsers(env) {
       must_change_password,
       security_review_required,
       session_epoch,
+      team,
       role_template_key,
       row_version,
       ${MATCHED_ROLE_TEMPLATE_LABEL} AS role_template_label,
@@ -70,6 +75,7 @@ export async function getAppUser(env, id) {
       must_change_password,
       security_review_required,
       session_epoch,
+      team,
       role_template_key,
       row_version,
       ${MATCHED_ROLE_TEMPLATE_LABEL} AS role_template_label,
@@ -125,6 +131,7 @@ export async function createSignupRequest(env, values) {
         approved_by = NULL,
         rejected_at = NULL,
         rejected_by = NULL,
+        row_version = row_version + 1,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(displayName, passwordRecord.salt, passwordRecord.hash, existing.id).run();
@@ -150,6 +157,7 @@ export async function approveUser(env, id, actor) {
       approved_by = ?,
       rejected_at = NULL,
       rejected_by = NULL,
+      row_version = row_version + 1,
       updated_at = CURRENT_TIMESTAMP
     `,
     updateBinds: [actorUsername(actor)]
@@ -166,6 +174,7 @@ export async function rejectUser(env, id, actor) {
       approved_by = NULL,
       rejected_at = CURRENT_TIMESTAMP,
       rejected_by = ?,
+      row_version = row_version + 1,
       updated_at = CURRENT_TIMESTAMP
     `,
     updateBinds: [actorUsername(actor)]
@@ -176,7 +185,7 @@ export async function disableUser(env, id, actor) {
   return transitionUserStatus(env, id, actor, {
     action: "disable",
     summary: "사용자 사용중지",
-    updateSql: "status = 'disabled', session_epoch = session_epoch + 1, updated_at = CURRENT_TIMESTAMP"
+    updateSql: "status = 'disabled', session_epoch = session_epoch + 1, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP"
   });
 }
 
@@ -184,7 +193,7 @@ export async function enableUser(env, id, actor) {
   return transitionUserStatus(env, id, actor, {
     action: "enable",
     summary: "사용자 다시 사용",
-    updateSql: "status = 'approved', session_epoch = session_epoch + 1, updated_at = CURRENT_TIMESTAMP"
+    updateSql: "status = 'approved', session_epoch = session_epoch + 1, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP"
   });
 }
 

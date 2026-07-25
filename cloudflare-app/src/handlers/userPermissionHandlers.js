@@ -18,7 +18,7 @@ import {
   userPermissionsPage
 } from "../views/permissionViews.js";
 import { userPasswordResetPage } from "../views/adminViews.js";
-import { PERMISSION_KEYS, permissionFlags } from "../permissions.js";
+import { CUSTOM_ROLE_TEMPLATE_KEY, PERMISSION_KEYS, permissionFlags } from "../permissions.js";
 import { redirect } from "../platform/http/responses.js";
 
 export async function renderUserPermissions(env, session, userId, error = "") {
@@ -38,10 +38,29 @@ export async function handleUserPermissions(request, env, session, userId) {
   if (form.get("confirmPermissions") !== "1") {
     return renderUserPermissions(env, session, userId, "저장 후 적용될 권한 변경 결과를 확인하세요.");
   }
-  const permissions = permissionsFromForm(form);
-  const selectedKey = String(form.get("templateKey") || "custom");
-  const template = selectedKey === "custom" ? null : await getRoleTemplate(env, selectedKey);
-  const roleTemplateKey = template && samePermissions(template, permissions) ? template.key : null;
+  const selectedKey = String(form.get("templateKey") || CUSTOM_ROLE_TEMPLATE_KEY);
+  let permissions = permissionsFromForm(form);
+  let roleTemplateKey = null;
+
+  if (selectedKey !== CUSTOM_ROLE_TEMPLATE_KEY) {
+    // 역할을 선택한 저장은 브라우저 script 없이도 템플릿 값이 적용되어야 하므로
+    // 체크박스가 아니라 서버가 읽은 템플릿을 권한의 근거로 사용한다.
+    const template = await getRoleTemplate(env, selectedKey);
+    if (!template) {
+      return renderUserPermissions(env, session, userId, "선택한 역할 템플릿을 찾을 수 없습니다. 목록을 새로고침하세요.");
+    }
+    if (renderedTemplateVersion(form, template.key) !== Number(template.row_version)) {
+      return renderUserPermissions(
+        env,
+        session,
+        userId,
+        "역할 템플릿이 변경되었습니다. 화면을 새로고침한 뒤 다시 선택하세요."
+      );
+    }
+    permissions = permissionFlags(template);
+    roleTemplateKey = template.key;
+  }
+
   const result = await updateUserPermissions(env, userId, {
     permissions,
     roleTemplateKey,
@@ -60,8 +79,11 @@ export async function renderRoleTemplates(env, session) {
 export async function renderRoleTemplateEdit(env, session, key, error = "") {
   const [template, users] = await Promise.all([getRoleTemplate(env, key), getAppUsers(env)]);
   if (!template) return notFoundPage(session);
+  // 일괄 반영은 승인된 일반 계정만 대상으로 한다. 대기·반려·사용중지 계정은 상태 절차로 처리한다.
   const eligibleUsers = users.filter((user) => (
-    user.role === "User" && Number(user.security_review_required || 0) !== 1
+    user.role === "User"
+    && user.status === "approved"
+    && Number(user.security_review_required || 0) !== 1
   ));
   return roleTemplateEditPage({ session, template, users: eligibleUsers, error });
 }
@@ -147,8 +169,14 @@ function permissionsFromForm(form) {
   return Object.fromEntries(PERMISSION_KEYS.map((permission) => [permission, form.get(permission) === "1"]));
 }
 
-function samePermissions(left, right) {
-  const leftFlags = permissionFlags(left);
-  const rightFlags = permissionFlags(right);
-  return PERMISSION_KEYS.every((permission) => leftFlags[permission] === rightFlags[permission]);
+// 화면이 렌더링할 때 본 템플릿 버전. 저장 시점 버전과 다르면 반영하지 않는다.
+function renderedTemplateVersion(form, key) {
+  let versions;
+  try {
+    versions = JSON.parse(String(form.get("templateVersions") || "{}"));
+  } catch {
+    return 0;
+  }
+  const version = Number(versions?.[key]);
+  return Number.isSafeInteger(version) && version >= 1 ? version : 0;
 }

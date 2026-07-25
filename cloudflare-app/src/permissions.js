@@ -22,30 +22,9 @@ export const PERMISSION_LABELS = Object.freeze({
   [PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS]: "엑셀 전체 대장 반영"
 });
 
-export const PERMISSION_PRESETS = Object.freeze({
-  viewer: Object.freeze({ label: "조회 사용자", permissions: Object.freeze([]) }),
-  archive_manager: Object.freeze({
-    label: "문서고 담당자",
-    permissions: Object.freeze([
-      PERMISSIONS.MANAGE_DOCUMENTS,
-      PERMISSIONS.MOVE_DOCUMENTS,
-      PERMISSIONS.MANAGE_SETS
-    ])
-  }),
-  disposal_manager: Object.freeze({
-    label: "폐기 담당자",
-    permissions: Object.freeze([PERMISSIONS.MANAGE_DISPOSALS])
-  }),
-  operations_admin: Object.freeze({
-    label: "운영 관리자",
-    permissions: Object.freeze([PERMISSIONS.MANAGE_MASTERS, PERMISSIONS.VIEW_AUDIT])
-  }),
-  system_admin: Object.freeze({
-    label: "시스템 관리자",
-    permissions: PERMISSION_KEYS
-  }),
-  custom: Object.freeze({ label: "사용자 지정", permissions: null })
-});
+// 역할 정의의 단일 출처는 D1의 user_role_templates다(migration 0045).
+// 아래 값은 "템플릿을 쓰지 않는 개별 예외" 선택을 나타내는 화면·핸들러 공용 표식이다.
+export const CUSTOM_ROLE_TEMPLATE_KEY = "custom";
 
 const permissionSet = new Set(PERMISSION_KEYS);
 
@@ -82,25 +61,10 @@ export function permissionSnapshot(session = {}) {
   return permissionFlags(session);
 }
 
-export function permissionsForPreset(preset, custom = {}) {
-  const selected = PERMISSION_PRESETS[preset] || PERMISSION_PRESETS.custom;
-  if (selected.permissions === null) {
-    return permissionFlags(custom);
-  }
-  const granted = new Set(selected.permissions);
-  return Object.fromEntries(PERMISSION_KEYS.map((permission) => [permission, granted.has(permission)]));
-}
-
-export function matchingPermissionPreset(source = {}) {
-  const flags = permissionFlags(source);
-  for (const [key, preset] of Object.entries(PERMISSION_PRESETS)) {
-    if (preset.permissions === null) continue;
-    const granted = new Set(preset.permissions);
-    if (PERMISSION_KEYS.every((permission) => flags[permission] === granted.has(permission))) {
-      return key;
-    }
-  }
-  return "custom";
+export function samePermissions(left, right) {
+  const leftFlags = permissionFlags(left);
+  const rightFlags = permissionFlags(right);
+  return PERMISSION_KEYS.every((permission) => leftFlags[permission] === rightFlags[permission]);
 }
 
 function readPermissionFlag(value) {

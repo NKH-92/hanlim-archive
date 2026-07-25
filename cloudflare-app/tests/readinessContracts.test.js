@@ -4,7 +4,7 @@ import test from "node:test";
 import worker from "../src/index.js";
 
 const ORIGIN = "https://archive.example.com";
-const CORE_MIGRATION = "0045_user_role_templates.sql";
+const CORE_MIGRATION = "0046_app_user_team.sql";
 const SEARCH_MIGRATION = "0003_rebuild_barriers_and_watermarks.sql";
 
 test("/readyz는 Core·Search migration과 검색 운영 상태가 모두 준비되면 공개 최소 body와 200을 반환한다", async () => {

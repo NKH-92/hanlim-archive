@@ -1,4 +1,10 @@
 .env
+# 사용자 명단·초기 credential 산출물은 개인정보이므로 저장소에 넣지 않는다.
+/*.xlsx
+/*.xls
+/*.csv
+/roster*
+cloudflare-app/provisioning-local/
 node_modules/
 .pnpm-store/
 backups/
