@@ -35,15 +35,14 @@ function parseBookmark(result, label) {
 export function validateD1RecoveryEvidence(evidence, {
   envName,
   coreDatabaseId,
-  searchDatabaseId,
   releaseSha,
   runId,
-  scope = evidence?.scope || "core-and-search"
+  scope = evidence?.scope || "core"
 }) {
   const errors = [];
   if (evidence?.schemaVersion !== 1) errors.push("D1 recovery evidence schemaVersion must be 1.");
-  if (!["core", "core-and-search"].includes(scope)) errors.push("D1 recovery evidence scope is invalid.");
-  if ((evidence?.scope || "core-and-search") !== scope) errors.push("D1 recovery evidence scope does not match.");
+  if (scope !== "core") errors.push("D1 recovery evidence scope is invalid.");
+  if ((evidence?.scope || "core") !== scope) errors.push("D1 recovery evidence scope does not match.");
   if (evidence?.environment !== envName) errors.push("D1 recovery evidence environment does not match.");
   if (evidence?.releaseSha !== String(releaseSha || "").toLowerCase()) {
     errors.push("D1 recovery evidence release SHA does not match.");
@@ -51,11 +50,7 @@ export function validateD1RecoveryEvidence(evidence, {
   if (String(evidence?.runId || "") !== String(runId || "")) {
     errors.push("D1 recovery evidence run ID does not match.");
   }
-  const expected = [["core", "hanlim-archive", coreDatabaseId]];
-  if (scope === "core-and-search") {
-    expected.push(["search", "hanlim-archive-search-10k", searchDatabaseId]);
-  }
-  for (const [label, name, databaseId] of expected) {
+  for (const [label, name, databaseId] of [["core", "hanlim-archive", coreDatabaseId]]) {
     const entry = evidence?.databases?.[label];
     if (entry?.name !== name) errors.push(`${label} D1 recovery database name does not match.`);
     if (entry?.databaseId !== databaseId) errors.push(`${label} D1 recovery database ID does not match.`);
@@ -72,21 +67,18 @@ export function preflightD1Recovery({
 } = {}) {
   const errors = [];
   const envName = String(environment.D1_RECOVERY_ENV || "");
-  const scope = String(environment.D1_RECOVERY_SCOPE || "core-and-search");
+  const scope = String(environment.D1_RECOVERY_SCOPE || "core");
   const coreDatabaseId = String(environment.D1_TARGET_DATABASE_ID || "");
-  const searchDatabaseId = String(environment.SEARCH_D1_TARGET_DATABASE_ID || "");
   const releaseSha = String(environment.GITHUB_SHA || "").toLowerCase();
   const runId = String(environment.GITHUB_RUN_ID || "");
   const outputPath = String(environment.D1_RECOVERY_EVIDENCE_PATH || "");
   const target = preflightDeploy({
     envName,
     expectedDatabaseId: coreDatabaseId,
-    expectedSearchDatabaseId: searchDatabaseId,
-    requireSearchDatabase: scope === "core-and-search",
     dryRun: true,
     ...(config ? { config } : {})
   });
-  if (!["core", "core-and-search"].includes(scope)) errors.push("D1_RECOVERY_SCOPE must be core or core-and-search.");
+  if (scope !== "core") errors.push("D1_RECOVERY_SCOPE must be core.");
   if (!target.ok) errors.push(...target.errors);
   if (!/^[a-f0-9]{40}$/.test(releaseSha)) errors.push("GITHUB_SHA must be a 40-character commit SHA.");
   if (!/^\d+$/.test(runId)) errors.push("GITHUB_RUN_ID must be numeric.");
@@ -98,7 +90,6 @@ export function preflightD1Recovery({
         envName,
         scope,
         coreDatabaseId,
-        searchDatabaseId,
         releaseSha,
         runId,
         outputPath: path.resolve(outputPath)
@@ -114,13 +105,6 @@ export function captureD1Recovery({
   const checked = preflightD1Recovery({ environment, config });
   if (!checked.ok) return checked;
   const databases = [{ label: "core", name: "hanlim-archive", databaseId: checked.coreDatabaseId }];
-  if (checked.scope === "core-and-search") {
-    databases.push({
-      label: "search",
-      name: "hanlim-archive-search-10k",
-      databaseId: checked.searchDatabaseId
-    });
-  }
   const captured = {};
   try {
     for (const database of databases) {

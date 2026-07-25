@@ -60,22 +60,84 @@ Static Assets 직접 응답은 ETag를 유지하지만 edge에 따라 `If-None-M
 | Search outbox | 0건 |
 | Search indexed current 문서 | 300건 |
 
-용량은 단일 D1 후보가 될 만큼 작지만, D1은 DB별로 쿼리를 직렬 처리한다. Search D1을 Core에 합치면
-별도 query queue가 사라지므로 검색 부하 중 Excel 반영·정기폐기 경합 증적 없이 합치지 않는다.
+문서당으로 환산하면 Core 약 4.3KB, Search 약 5.4KB다. 목표 규모인 10,000건에서 합산 약 100MB이고
+Cloudflare Free의 DB당 상한은 500MB다. 즉 용량은 분리 근거가 되지 않는다.
 
-다음 게이트를 모두 통과할 때만 additive Core projection migration과 dual comparison release를 시작한다.
+### 판정: 통합
 
-- Core + projection + rebuild 여유 30%를 포함한 최대 크기 400MB 이하
-- 일반 요청은 Core+Search 합산 48 statements 이하, 원자 mutation batch는 40 이하
-  (Cloudflare Free 플랫폼 상한 50 미만)
+동시접속 약 10명, 문서 약 10,000건이라는 확정 요구사항에서 물리 분리를 유지할 근거는 확인되지 않았다.
+이전 판단은 "D1이 DB별로 쿼리를 직렬 처리하므로 검색 부하가 Core 쓰기와 경합한다"였으나, 통합 전 읽기 경로는
+Search DB에서 후보 ID를 얻은 뒤 **항상 Core를 다시 읽어** 권한·상태·필터를 재검증했다
+(`data/searchData.js`의 `getCoreCandidateDocuments`). 모든 검색 요청이 이미 Core의 직렬 큐를 통과했으므로
+분리로 Core에서 덜어낸 것은 FTS 매칭 스캔뿐이었다.
+
+분리가 만들던 비용은 다음과 같고 전부 크로스 DB 트랜잭션이 없다는 사실 하나에서 나왔다.
+
+- outbox lease, processor lease, 문서별 source watermark, 삭제 tombstone
+- physical shadow generation, cutover fence, rollback, generation 정리
+- 읽기 경로 이중화(Search 실패 시 최근 200건만 읽는 열화 폴백)
+- 두 번째 migration 체인·manifest·baseline과 배포 시 두 번째 Time Travel bookmark
+- `/readyz`가 파생 색인 동기화까지 요구해 파생 지연이 배포 게이트가 되던 구조
+
+**입증 책임은 뒤집는다.** 이 규모에서는 통합이 기본값이고, 분리를 유지하려면 검색 부하와 대량 작업의
+실측 경합 증적을 제시해야 한다.
+
+### 전환 게이트
+
+`npm run measure:search-consolidation -- --input <measurement.json>`이 아래 게이트를 판정한다.
+판정 로직은 `scripts/measure-search-consolidation.mjs`, 계약 검증은 `tests/searchProjection.test.js`에 있다.
+
+- Core + projection + 재색인 여유 30%를 포함한 최대 크기 400MB 이하(플랫폼 상한 500MB)
+- 일반 요청 48 statements 이하, 원자 mutation batch 40 이하 (Cloudflare Free 상한 50 미만)
 - 일일 70,000 rows written 및 3.5M rows read 이하
 - 검색 부하 중 Excel 반영·정기폐기 p95가 기준선보다 10% 이상 악화되지 않고 overload 0건
 - golden search의 결과·필터·정렬·cursor·ETag critical mismatch 0건
-- projection 전체 삭제 후 12,000건 rebuild 및 최신 문서 overlay 훈련 성공
+- projection 전체 삭제 후 12,000건 재색인 훈련 성공
 
-게이트가 하나라도 실패하면 현재 Search D1, outbox, generation, watermark, tombstone을 유지한다.
-Search binding 제거와 물리 DB 삭제는 같은 release에서 수행하지 않는다. 물리 삭제는 별도 승인,
-보존기간 종료, 모든 rollback 후보의 Search 무의존 확인 뒤에만 수행한다.
+### 릴리스 단계
+
+| 단계 | 내용 | 롤백 |
+|---|---|---|
+| R1 측정 | 운영 용량·일일 rows·검색 p95·요청당 statement 수집 후 게이트 판정 | 코드 변경 없음 |
+| R2 additive (완료) | migration 0047(reference 변경 범위 제한), 0048(Core projection·FTS·dirty 큐). 쓰기는 양쪽 반영 | additive migration, 읽기 경로 무변경 |
+| R3 compare (완료) | 두 읽기 경로의 결과·건수·패싯을 함께 실행해 비교하고 mismatch를 구조화 로그로 남기는 경로 추가 | 플래그 되돌리기 |
+| R4 cutover (완료) | 읽기 기본값을 Core projection으로 전환 | 플래그로 복귀 |
+| R5 정리 (완료) | `SEARCH_DB` binding, 두 번째 migration 체인, lease·watermark·tombstone·generation·cutover 코드 삭제. 배포·복구 scope=core | 이전 Worker version rollback |
+| R6 별도 승인 | Core의 legacy outbox·clock 테이블 DROP, 보존기간 종료 후 물리 Search D1 삭제 | 불가 |
+
+R2~R5를 한 배포에 합쳤다. 근거: 통합 시점의 운영 대장이 검증용 테스트 문서뿐이어서 검색 열화 구간을
+수용할 수 있었다. 배포 직후 projection이 `ready`가 될 때까지 검색은 최근 200건 Core 퍼지로 열화되며,
+402건 기준 Cron 5분 주기·chunk 100건으로 약 25분이 걸린다. 실사용 대장에서는 R2~R4와 R5를 분리하고
+R4 안정 확인 뒤에 R5를 진행한다.
+
+R5는 rollback 폭을 좁히지만 Core의 legacy 테이블은 남겨 이전 Worker version rollback을 유지한다.
+`search_index_outbox`, `search_event_clock`과 그 trigger를 DROP하는 contract migration만이 Worker
+rollback을 불가능하게 만들고, 회수하는 용량은 수백 KB에 불과하므로 R6로 미뤘다. 두 테이블의 크기는
+문서 수 상한을 넘지 않으므로 방치해도 용량 문제가 되지 않는다.
+
+### R5 정리 결과
+
+| 대상 | 처리 |
+|---|---|
+| `wrangler.jsonc` | 세 환경 모두에서 `SEARCH_DB` binding과 `SEARCH_READ_MODE` var 제거 |
+| `src/domains/search/infrastructure/indexMaintenance.js` | 파일 삭제(outbox lease, processor lease, watermark, tombstone, shadow generation, cutover, rollback, generation 정리) |
+| `src/data/searchData.js` | legacy 색인 읽기 경로와 compare·mismatch 로깅 제거. projection 단일 경로와 Core 퍼지 폴백만 남김 |
+| `src/domains/search/index.js` | legacy outbox 계약 재수출 제거. Cron은 dirty 배출과 재색인 chunk만 수행 |
+| `src/platform/d1/requestGateway.js` | `SEARCH_DB` 예산 wrapper와 잔여 statement 계산 제거 |
+| readiness·관리 화면 | legacy search 상세와 `warnings.searchDatabase`·`searchOperational` 제거. `warnings.searchProjectionSynced` 하나만 유지 |
+| 배포·운영 | `SEARCH_D1_TARGET_DATABASE_ID`, `D1_RECOVERY_SCOPE=core-and-search`, Search Time Travel bookmark, `db:migrate:search:local` 제거 |
+| `search-migrations/` | 파일은 이력으로 동결하고 적용 중단. `check-migrations.mjs`의 Search chain 검증 제거 |
+| R6로 이연 | `search_index_outbox`·`search_event_clock`·관련 trigger DROP contract migration, 물리 Search D1 삭제 |
+
+### 파생 색인 비용 절감
+
+- reference(대분류·태그·랙·슬롯) 이름 변경이 전체 재색인을 유발하던 `trg_search_rebuild_*`를
+  영향 문서만 표시하는 `trg_search_scope_*`로 교체했다. 이름 한 건 변경이 10,000건 재색인을
+  요구하지 않는다.
+- projection FTS5는 external content(`content_rowid = 'document_id'`)를 사용해 문서 1건 갱신이
+  전체 색인 스캔 없이 rowid로 끝난다.
+- 재색인은 physical generation 사본을 만들지 않고 in-place upsert로 진행해 문서당 쓰기 행이
+  세대 수만큼 늘지 않는다.
 
 ## 변경 후 검증
 
@@ -85,7 +147,6 @@ npm run verify
 npm run audit:dependencies
 $env:CLOUDFLARE_ENV = "production"
 $env:D1_TARGET_DATABASE_ID = "<production Core D1 UUID>"
-$env:SEARCH_D1_TARGET_DATABASE_ID = "<production Search D1 UUID>"
 npm run deploy:dry
 ```
 

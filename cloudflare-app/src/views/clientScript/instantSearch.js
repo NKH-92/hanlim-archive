@@ -1,7 +1,7 @@
 // 전역 클라이언트 스크립트의 즉시 검색 조각. 10,000건 전환부터 브라우저 전체 인덱스를 받지 않는다.
 
 export function instantSearchScript() {
-  return `      // 서버 즉시 검색: Search D1 후보 → Core 재검증 → 최대 30건 cursor 응답.
+  return `      // 서버 즉시 검색: Core projection 후보 → Core 재검증 → 최대 30건 cursor 응답.
       var viewerApp = document.querySelector('[data-viewer-app]');
       var viewerForm = document.querySelector('[data-viewer-form]');
       var viewerInput = viewerForm ? viewerForm.querySelector('input[name="q"]') : null;

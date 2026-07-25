@@ -413,6 +413,21 @@ export function buildApplyStatements(env, {
             WHERE id = ? AND status = 'applying'
           )
       `).bind(id),
+      // bootstrap은 파생 trigger를 억제하므로 dirty 큐가 채워지지 않는다.
+      // Core projection도 같은 batch에서 전체 재색인 대상으로 되돌린다.
+      env.DB.prepare(`
+        UPDATE search_projection_state
+        SET reindex_status = 'pending',
+            reindex_cursor = 0,
+            last_error = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = 1
+          AND EXISTS (
+            SELECT 1
+            FROM document_snapshots
+            WHERE id = ? AND status = 'applying'
+          )
+      `).bind(id),
       env.DB.prepare(`
         UPDATE bootstrap_runtime_control
         SET suppress_derived_triggers = 0,

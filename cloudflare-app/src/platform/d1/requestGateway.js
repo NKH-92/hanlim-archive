@@ -52,18 +52,14 @@ export function createRequestD1Environment(env, options = {}) {
     ? REQUEST_BUDGETS.get(options.requestScope)
     : null;
   REQUEST_BUDGETS.set(requestEnv, inheritedBudget || { statementCount: 0 });
-  for (const binding of ["DB", "SEARCH_DB"]) {
-    if (!env[binding] || typeof env[binding].batch !== "function") continue;
+  if (env.DB && typeof env.DB.batch === "function") {
     // gateway는 wrapper가 아니라 원본 binding을 잡아야 raw batch가 중복 집계되지 않는다.
-    const gateway = ensureBindingD1Gateway(requestEnv, binding, options);
-    Object.defineProperty(requestEnv, binding, {
+    const gateway = ensureBindingD1Gateway(requestEnv, "DB", options);
+    Object.defineProperty(requestEnv, "DB", {
       configurable: false,
       enumerable: true,
       writable: false,
-      value: createRequestDatabase(
-        env[binding],
-        () => gateway
-      )
+      value: createRequestDatabase(env.DB, () => gateway)
     });
   }
   return requestEnv;

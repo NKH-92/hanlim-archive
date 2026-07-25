@@ -242,7 +242,7 @@ PR과 `main`의 변경은 CI에서 다음 항목을 검사합니다.
 
 1. release source 재검증과 migration evidence 생성
 2. 현재 100% traffic Worker와 독립 Admin 확인
-3. Core·Search D1 Time Travel 복구 지점 기록
+3. Core D1 Time Travel 복구 지점 기록
 4. 현재 운영 로그인·검색 smoke
 5. append-only migration 적용
 6. Worker를 production에 직접 배포
@@ -255,7 +255,7 @@ README와 `docs/**`처럼 실행 코드에 영향을 주지 않는 변경만 병
 
 ## 복구와 장애 대응
 
-- 운영 migration 전에 같은 실행에서 생성한 Core·Search D1 Time Travel bookmark가 반드시 존재해야 합니다.
+- 운영 migration 전에 같은 실행에서 생성한 Core D1 Time Travel bookmark가 반드시 존재해야 합니다.
 - Worker 오류이면서 migration이 호환되면 기록된 정확한 이전 Worker version으로 rollback합니다.
 - 데이터 손상이나 비호환 schema 문제는 Worker rollback만으로 완료하지 않고 복구 절차를 시작합니다.
 - 복구 bookmark, release SHA와 Worker version을 운영 증거로 보존합니다.

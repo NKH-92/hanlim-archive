@@ -24,11 +24,9 @@ function databaseIdsForEnv(config, envName) {
   if (!envBlock) throw new Error(`wrangler env '${envName}'가 없습니다.`);
   const binding = (envBlock.d1_databases || []).find((item) => item.binding === "DB")
     || (envBlock.d1_databases || [])[0];
-  const searchBinding = (envBlock.d1_databases || []).find((item) => item.binding === "SEARCH_DB");
   const coreId = String(binding?.database_id || "").trim();
-  const searchId = String(searchBinding?.database_id || "").trim();
   if (!coreId) throw new Error(`wrangler env '${envName}'에 Core D1 database_id가 없습니다.`);
-  return { coreId, searchId, hasSearchBinding: Boolean(searchBinding) };
+  return { coreId };
 }
 
 export function resolveWranglerEntrypoint(appRoot) {
@@ -76,10 +74,8 @@ export function runWranglerCaptured({
 export function preflightDeploy({
   envName = process.env.CLOUDFLARE_ENV || process.env.DEPLOY_ENV,
   expectedDatabaseId = process.env.D1_TARGET_DATABASE_ID || "",
-  expectedSearchDatabaseId = process.env.SEARCH_D1_TARGET_DATABASE_ID || "",
   versionTag = process.env.WORKER_VERSION_TAG || "",
   versionMessage = process.env.WORKER_VERSION_MESSAGE || "",
-  requireSearchDatabase = false,
   dryRun = false,
   appRoot = ROOT,
   config = loadWranglerConfig(appRoot)
@@ -91,13 +87,8 @@ export function preflightDeploy({
   if (errors.length) return { ok: false, errors, dryRun };
 
   let configuredId;
-  let configuredSearchId = "";
-  let hasSearchBinding = false;
   try {
-    const databaseIds = databaseIdsForEnv(config, envName);
-    configuredId = databaseIds.coreId;
-    configuredSearchId = databaseIds.searchId;
-    hasSearchBinding = databaseIds.hasSearchBinding;
+    configuredId = databaseIdsForEnv(config, envName).coreId;
   } catch (error) {
     return { ok: false, errors: [error.message], dryRun };
   }
@@ -124,22 +115,6 @@ export function preflightDeploy({
       dryRun
     };
   }
-  if (hasSearchBinding && requireSearchDatabase) {
-    if (!configuredSearchId || /REPLACE_WITH_|TODO|CHANGE_ME|YOUR_/i.test(configuredSearchId)) {
-      return { ok: false, errors: [`wrangler env '${envName}' SEARCH_DB database_id가 placeholder입니다.`], dryRun };
-    }
-    if (!String(expectedSearchDatabaseId || "").trim()) {
-      return { ok: false, errors: ["SEARCH_D1_TARGET_DATABASE_ID는 필수입니다."], dryRun };
-    }
-    if (String(expectedSearchDatabaseId) !== String(configuredSearchId)) {
-      return {
-        ok: false,
-        errors: [`SEARCH_D1_TARGET_DATABASE_ID가 wrangler env '${envName}' SEARCH_DB database_id와 일치하지 않습니다.`],
-        dryRun
-      };
-    }
-  }
-
   if (versionTag && !/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(versionTag)) {
     errors.push("WORKER_VERSION_TAG는 64자 이하 영문·숫자·점·밑줄·하이픈만 허용합니다.");
   }
@@ -152,7 +127,6 @@ export function preflightDeploy({
     ok: true,
     envName,
     configuredId,
-    configuredSearchId,
     expectedDatabaseId,
     dryRun,
     appRoot: resolve(appRoot),
@@ -170,7 +144,7 @@ const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(res
 if (isMain) {
   const dryRun = process.argv.includes("--dry-run");
   const appRoot = argumentValue("--app-root") || ROOT;
-  const result = preflightDeploy({ dryRun, appRoot, requireSearchDatabase: true });
+  const result = preflightDeploy({ dryRun, appRoot });
   if (!result.ok) {
     for (const error of result.errors) console.error(`[deploy] ${error}`);
     process.exit(1);
@@ -196,8 +170,7 @@ if (isMain) {
       args,
       environment: {
         ...process.env,
-        CLOUDFLARE_D1_DATABASE_ID: result.configuredId,
-        CLOUDFLARE_SEARCH_D1_DATABASE_ID: result.configuredSearchId
+        CLOUDFLARE_D1_DATABASE_ID: result.configuredId
       }
     });
   } catch (error) {

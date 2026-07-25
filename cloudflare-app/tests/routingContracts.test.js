@@ -208,7 +208,6 @@ test("고급 도구 숨김과 무관하게 서버는 직접 URL 권한을 검사
 
   const auditPermissions = { can_view_audit: 1 };
   const auditEnv = sessionEnv(false, auditPermissions);
-  auditEnv.SEARCH_DB = auditEnv.DB;
   const auditCookie = await sessionCookie(auditEnv, false, auditPermissions);
   await t.test("감사 권한 사용자는 검색 리포트 직접 URL과 /admin 고급 링크에 접근한다", async () => {
     const response = await worker.fetch(authenticatedRequest("/admin/search-report", auditCookie), auditEnv);

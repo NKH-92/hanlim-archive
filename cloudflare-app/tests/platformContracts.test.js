@@ -316,57 +316,51 @@ test("production request의 BatchPlan은 proxy가 아닌 원본 D1 statements를
   await executeMutationBatch(env, plan);
 });
 
-test("Core와 Search D1 및 raw batch는 파생 effect까지 하나의 요청 예산을 공유한다", async () => {
+test("Core D1 직접 실행과 raw batch는 파생 effect까지 하나의 요청 예산을 공유한다", async () => {
   const { FREE_TIER_BUDGET } = await import("../src/freeTierBudget.js");
   const {
     createRequestD1Environment,
     ensureRequestD1Gateway
   } = await import("../src/platform/d1/requestGateway.js");
   let coreCalls = 0;
-  let searchCalls = 0;
-  const makeDatabase = (record) => ({
+  const database = {
     prepare(sql) {
       return {
         sql,
-        async first() { record(); return null; },
-        async all() { record(); return { results: [] }; },
-        async run() { record(); return { meta: { changes: 1 } }; }
+        async first() { coreCalls += 1; return null; },
+        async all() { coreCalls += 1; return { results: [] }; },
+        async run() { coreCalls += 1; return { meta: { changes: 1 } }; }
       };
     },
     async batch(statements) {
-      record();
+      coreCalls += 1;
       return statements.map(() => ({ meta: { changes: 1 } }));
     }
-  });
-  const sharedEnv = {
-    DB: makeDatabase(() => { coreCalls += 1; }),
-    SEARCH_DB: makeDatabase(() => { searchCalls += 1; })
   };
+  const sharedEnv = { DB: database };
   const requestEnv = createRequestD1Environment(sharedEnv, { requestId: "combined" });
+  // 검색 색인 반영은 같은 Core binding을 쓰지만 별도 request scope로 실행되며 예산은 공유한다.
   const effectEnv = createRequestD1Environment(sharedEnv, {
-    requestId: "combined-search",
+    requestId: "combined-projection",
     requestScope: requestEnv
   });
 
   await requestEnv.DB.prepare("core").first();
-  const searchBatchSize = FREE_TIER_BUDGET.maxD1StatementsPerRequest - 1;
-  await effectEnv.SEARCH_DB.batch(
-    Array.from({ length: searchBatchSize }, (_, index) =>
-      effectEnv.SEARCH_DB.prepare(`search-${index}`)
-    )
+  const batchSize = FREE_TIER_BUDGET.maxD1StatementsPerRequest - 1;
+  await effectEnv.DB.batch(
+    Array.from({ length: batchSize }, (_, index) => effectEnv.DB.prepare(`projection-${index}`))
   );
 
-  assert.equal(coreCalls, 1);
-  assert.equal(searchCalls, 1);
+  assert.equal(coreCalls, 2);
   assert.equal(
     ensureRequestD1Gateway(requestEnv).metrics().totalStatementCount,
     FREE_TIER_BUDGET.maxD1StatementsPerRequest
   );
   await assert.rejects(
-    () => effectEnv.SEARCH_DB.prepare("overflow").first(),
+    () => effectEnv.DB.prepare("overflow").first(),
     D1BudgetExceededError
   );
-  assert.equal(searchCalls, 1, "초과 Search query는 원본 binding에 전달하지 않는다");
+  assert.equal(coreCalls, 2, "초과 query는 원본 binding에 전달하지 않는다");
 });
 
 function statement(name) {

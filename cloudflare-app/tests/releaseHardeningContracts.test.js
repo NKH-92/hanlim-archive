@@ -13,19 +13,14 @@ import {
 import { preflightSmokePrincipal, runSmokePrincipal } from "../scripts/release-smoke-principal.mjs";
 
 const CORE_ID = "1262ca00-b431-490c-aad2-539d77d4f73f";
-const SEARCH_ID = "e9dc4469-30ca-47c7-ad01-6aa9aea0b3ac";
 const RELEASE_SHA = "a".repeat(40);
 const CORE_BOOKMARK = `00000001-00000002-00000003-${"a".repeat(32)}`;
-const SEARCH_BOOKMARK = `00000004-00000005-00000006-${"b".repeat(32)}`;
 
-function productionConfig(searchDatabaseId = SEARCH_ID) {
+function productionConfig() {
   return {
     env: {
       production: {
-        d1_databases: [
-          { binding: "DB", database_id: CORE_ID },
-          { binding: "SEARCH_DB", database_id: searchDatabaseId }
-        ]
+        d1_databases: [{ binding: "DB", database_id: CORE_ID }]
       }
     }
   };
@@ -37,7 +32,6 @@ function releaseEnvironment(overrides = {}) {
     D1_PROVISION_ENV: "production",
     D1_RECOVERY_ENV: "production",
     D1_TARGET_DATABASE_ID: CORE_ID,
-    SEARCH_D1_TARGET_DATABASE_ID: SEARCH_ID,
     RELEASE_SMOKE_OPERATION_ID: "release-12345678-aaaaaaaaaaaa",
     RELEASE_SMOKE_CREDENTIAL_PATH: path.join(tmpdir(), "smoke.json"),
     D1_RECOVERY_EVIDENCE_PATH: path.join(tmpdir(), "d1-recovery.json"),
@@ -47,15 +41,19 @@ function releaseEnvironment(overrides = {}) {
   };
 }
 
-test("D1 recovery preflight binds both production databases and release identity", () => {
+test("D1 recovery preflight binds the production Core database and release identity", () => {
   assert.equal(preflightD1Recovery({
     environment: releaseEnvironment(),
     config: productionConfig()
   }).ok, true);
   assert.equal(preflightD1Recovery({
-    environment: releaseEnvironment({ SEARCH_D1_TARGET_DATABASE_ID: CORE_ID }),
+    environment: releaseEnvironment({ D1_TARGET_DATABASE_ID: "11111111-2222-3333-4444-555555555555" }),
     config: productionConfig()
   }).ok, false);
+  assert.equal(preflightD1Recovery({
+    environment: releaseEnvironment({ D1_RECOVERY_SCOPE: "core-and-search" }),
+    config: productionConfig()
+  }).ok, false, "제거된 Search 복구 scope는 fail-closed한다");
   assert.equal(preflightD1Recovery({
     environment: releaseEnvironment({ GITHUB_SHA: "not-a-sha" }),
     config: productionConfig()
@@ -73,7 +71,6 @@ test("runtime-only recovery는 임시 smoke 계정이 쓰는 Core bookmark만 �
     const calls = [];
     const environment = releaseEnvironment({
       D1_RECOVERY_SCOPE: "core",
-      SEARCH_D1_TARGET_DATABASE_ID: "",
       D1_RECOVERY_EVIDENCE_PATH: outputPath
     });
     const result = captureD1Recovery({
@@ -93,7 +90,6 @@ test("runtime-only recovery는 임시 smoke 계정이 쓰는 Core bookmark만 �
     assert.equal(validateD1RecoveryEvidence(result.evidence, {
       envName: "production",
       coreDatabaseId: CORE_ID,
-      searchDatabaseId: "",
       releaseSha: RELEASE_SHA,
       runId: "12345678",
       scope: "core"
@@ -103,7 +99,7 @@ test("runtime-only recovery는 임시 smoke 계정이 쓰는 Core bookmark만 �
   }
 });
 
-test("D1 recovery captures both Time Travel bookmarks and rejects tampering", async () => {
+test("D1 recovery captures the Core Time Travel bookmark and rejects tampering", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "d1-recovery-test-"));
   try {
     const outputPath = path.join(directory, "recovery.json");
@@ -114,39 +110,32 @@ test("D1 recovery captures both Time Travel bookmarks and rejects tampering", as
       execPath: "node-runtime",
       spawn(command, args, options) {
         calls.push({ command, args, options });
-        const isSearch = args.includes("hanlim-archive-search-10k");
-        return {
-          status: 0,
-          stdout: JSON.stringify({ bookmark: isSearch ? SEARCH_BOOKMARK : CORE_BOOKMARK })
-        };
+        return { status: 0, stdout: JSON.stringify({ bookmark: CORE_BOOKMARK }) };
       }
     });
     assert.equal(result.ok, true);
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].args.slice(-7), [
       "d1", "time-travel", "info", "hanlim-archive", "--env", "production", "--json"
     ]);
     assert.equal(calls[0].options.shell, false);
 
     const evidence = JSON.parse(await readFile(outputPath, "utf8"));
+    assert.deepEqual(Object.keys(evidence.databases), ["core"]);
     assert.equal(evidence.databases.core.databaseId, CORE_ID);
     assert.equal(evidence.databases.core.bookmark, CORE_BOOKMARK);
-    assert.equal(evidence.databases.search.databaseId, SEARCH_ID);
-    assert.equal(evidence.databases.search.bookmark, SEARCH_BOOKMARK);
     assert.equal(validateD1RecoveryEvidence(evidence, {
       envName: "production",
       coreDatabaseId: CORE_ID,
-      searchDatabaseId: SEARCH_ID,
       releaseSha: RELEASE_SHA,
       runId: "12345678"
     }).ok, true);
 
     const tampered = structuredClone(evidence);
-    tampered.databases.search.databaseId = CORE_ID;
+    tampered.databases.core.databaseId = "11111111-2222-3333-4444-555555555555";
     assert.equal(validateD1RecoveryEvidence(tampered, {
       envName: "production",
       coreDatabaseId: CORE_ID,
-      searchDatabaseId: SEARCH_ID,
       releaseSha: RELEASE_SHA,
       runId: "12345678"
     }).ok, false);
