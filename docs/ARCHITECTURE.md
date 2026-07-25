@@ -126,8 +126,10 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     event는 만료 가능한 owner lease를 사용하고 완료 시 event version과 owner를 함께 비교한다. 실패 전에
     Search 쓰기가 시작되지 않은 transient 오류와 stale event는 장기 backoff를 만들지 않는다. generation
     정리는 실행 시점의 active·previous·building generation을 다시 조회해 진행 중 rebuild를 삭제하지 않는다.
-23. **인증 재검증과 임시 계정 수명**: 비밀번호 최소 길이는 6자이며 신규 PBKDF2-SHA256 record는 600,000회
-    반복을 사용한다. legacy 100,000회 record는 성공한 로그인에서 CAS 방식으로 승격한다. 계정 상태와
+23. **인증 재검증과 임시 계정 수명**: 비밀번호 최소 길이는 6자이며 신규 PBKDF2-SHA256 record는
+    Cloudflare Workers Web Crypto 상한인 100,000회 반복을 사용한다. legacy raw digest는 성공한 로그인에서
+    CAS 방식으로 반복 횟수를 명시하는 self-describing record로 전환하며, 런타임 상한을 넘는 record는
+    PBKDF2 실행 전에 fail-closed한다. 계정 상태와
     session epoch는 매 요청 DB에서 재검증하고, 반복 로그인 실패는 HMAC 기반 계정·IP 제한으로 차단한다.
     release smoke 계정은 45분 TTL과 필요한 단일 권한만 가지며 다음 release와 Cron janitor가 누수를 제거한다.
 24. **운영 version 격리**: 기본 Wrangler 환경은 운영 Worker·D1을 가리키지 않고 preview URL을 만들지 않는다.
