@@ -1,23 +1,28 @@
 import {
+  applyRoleTemplateToUsers,
   disableUser,
   enableUser,
   getAppUser,
+  getAppUsers,
+  getRoleTemplate,
+  getRoleTemplates,
   PASSWORD_POLICY,
   resetUserPassword,
+  updateRoleTemplate,
   updateUserPermissions
 } from "../domains/identity/index.js";
 import { errorPage, notFoundPage } from "../views/authViews.js";
-import { userPermissionsPage } from "../views/permissionViews.js";
-import { userPasswordResetPage } from "../views/adminViews.js";
 import {
-  PERMISSION_KEYS,
-  PERMISSION_PRESETS,
-  permissionsForPreset
-} from "../permissions.js";
+  roleTemplateEditPage,
+  roleTemplatesPage,
+  userPermissionsPage
+} from "../views/permissionViews.js";
+import { userPasswordResetPage } from "../views/adminViews.js";
+import { PERMISSION_KEYS, permissionFlags } from "../permissions.js";
 import { redirect } from "../platform/http/responses.js";
 
 export async function renderUserPermissions(env, session, userId, error = "") {
-  const user = await getAppUser(env, userId);
+  const [user, templates] = await Promise.all([getAppUser(env, userId), getRoleTemplates(env)]);
   if (!user) return notFoundPage(session);
   if (Number(user.security_review_required || 0) === 1) {
     return errorPage("보안 검토 대상 계정은 일반 사용자 승인·권한 변경 절차로 복구할 수 없습니다.", session, 400);
@@ -25,7 +30,7 @@ export async function renderUserPermissions(env, session, userId, error = "") {
   if (user.role === "Admin") {
     return errorPage("기존 Admin 계정은 항상 모든 권한을 가지므로 개별 권한을 변경하지 않습니다.", session, 400);
   }
-  return userPermissionsPage({ session, user, error });
+  return userPermissionsPage({ session, user, templates, error });
 }
 
 export async function handleUserPermissions(request, env, session, userId) {
@@ -33,14 +38,66 @@ export async function handleUserPermissions(request, env, session, userId) {
   if (form.get("confirmPermissions") !== "1") {
     return renderUserPermissions(env, session, userId, "저장 후 적용될 권한 변경 결과를 확인하세요.");
   }
-  const preset = String(form.get("preset") || "custom");
-  const selectedPreset = Object.hasOwn(PERMISSION_PRESETS, preset) ? preset : "custom";
-  const custom = Object.fromEntries(PERMISSION_KEYS.map((permission) => [permission, form.get(permission) === "1"]));
-  const result = await updateUserPermissions(env, userId, permissionsForPreset(selectedPreset, custom), session);
+  const permissions = permissionsFromForm(form);
+  const selectedKey = String(form.get("templateKey") || "custom");
+  const template = selectedKey === "custom" ? null : await getRoleTemplate(env, selectedKey);
+  const roleTemplateKey = template && samePermissions(template, permissions) ? template.key : null;
+  const result = await updateUserPermissions(env, userId, {
+    permissions,
+    roleTemplateKey,
+    expectedRowVersion: form.get("expectedRowVersion")
+  }, session);
   if (!result.ok) {
     return renderUserPermissions(env, session, userId, result.message);
   }
   return redirect("/admin/settings?toast=permissions-saved");
+}
+
+export async function renderRoleTemplates(env, session) {
+  return roleTemplatesPage({ session, templates: await getRoleTemplates(env) });
+}
+
+export async function renderRoleTemplateEdit(env, session, key, error = "") {
+  const [template, users] = await Promise.all([getRoleTemplate(env, key), getAppUsers(env)]);
+  if (!template) return notFoundPage(session);
+  const eligibleUsers = users.filter((user) => (
+    user.role === "User" && Number(user.security_review_required || 0) !== 1
+  ));
+  return roleTemplateEditPage({ session, template, users: eligibleUsers, error });
+}
+
+export async function handleRoleTemplateUpdate(request, env, session, key) {
+  const form = await request.formData();
+  if (form.get("confirmTemplate") !== "1") {
+    return renderRoleTemplateEdit(env, session, key, "기존 사용자에게 자동 반영되지 않음을 확인하세요.");
+  }
+  const result = await updateRoleTemplate(env, key, {
+    label: form.get("label"),
+    permissions: permissionsFromForm(form),
+    expectedRowVersion: form.get("expectedRowVersion")
+  }, session);
+  if (!result.ok) return renderRoleTemplateEdit(env, session, key, result.message);
+  return redirect(`/admin/role-templates/${encodeURIComponent(key)}/edit?toast=template-saved`);
+}
+
+export async function handleRoleTemplateBulkApply(request, env, session, key) {
+  const form = await request.formData();
+  if (form.get("confirmBulkApply") !== "1") {
+    return renderRoleTemplateEdit(env, session, key, "선택 사용자의 개별 예외를 교체함을 확인하세요.");
+  }
+  const targets = form.getAll("userId").map((id) => ({
+    id,
+    expectedRowVersion: form.get(`rowVersion_${id}`)
+  }));
+  const result = await applyRoleTemplateToUsers(
+    env,
+    key,
+    targets,
+    session,
+    form.get("expectedTemplateRowVersion")
+  );
+  if (!result.ok) return renderRoleTemplateEdit(env, session, key, result.message);
+  return redirect(`/admin/role-templates/${encodeURIComponent(key)}/edit?toast=template-applied`);
 }
 
 export async function handleUserStatusAction(env, session, userId, action) {
@@ -84,4 +141,14 @@ export async function handleUserPasswordReset(request, env, session, userId) {
   const result = await resetUserPassword(env, userId, temporaryPassword, session);
   if (!result.ok) return renderUserPasswordReset(env, session, userId, result.message);
   return redirect("/admin/settings?toast=password-reset");
+}
+
+function permissionsFromForm(form) {
+  return Object.fromEntries(PERMISSION_KEYS.map((permission) => [permission, form.get(permission) === "1"]));
+}
+
+function samePermissions(left, right) {
+  const leftFlags = permissionFlags(left);
+  const rightFlags = permissionFlags(right);
+  return PERMISSION_KEYS.every((permission) => leftFlags[permission] === rightFlags[permission]);
 }

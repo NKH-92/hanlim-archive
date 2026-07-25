@@ -3,7 +3,6 @@ import {
   disposeDocument,
   getDocumentMovements,
   getDocumentRevisionHistory,
-  permanentlyDeleteDocument,
   reviseDocument,
   restoreDocument,
   updateDocument
@@ -293,19 +292,6 @@ export async function handleDocumentRoute(request, env, session, routeInfo, effe
       return errorPage(result.message, session, 400);
     }
     return redirect(`/documents/${id}?toast=restored`);
-  }
-
-  if (request.method === "POST" && action === "delete-permanent") {
-    const denied = requireManageDisposals(session);
-    if (denied) {
-      return denied;
-    }
-
-    const result = await permanentlyDeleteDocument(env, id, session, session.role);
-    if (!result.ok) {
-      return errorPage(result.message, session, 400);
-    }
-    return redirect("/app?toast=deleted");
   }
 
   return notFoundPage(session);

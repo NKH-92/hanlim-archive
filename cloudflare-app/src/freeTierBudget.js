@@ -4,6 +4,8 @@ export const FREE_TIER_BUDGET = Object.freeze({
   // Cloudflare Free의 50 query/invocation보다 2개 낮춰 진단·정리 여유를 둔다.
   maxD1StatementsPerRequest: 48,
   maxD1MutationStatementsPerBatch: 40,
+  // 로그인 실패 1건은 pair/account/ip/global을 한 원자 batch로 기록한다.
+  loginFailureMutationStatementsPerBatch: 4,
   maxD1BoundParametersPerStatement: 100,
   maxD1LikePatternBytes: 50,
   maxD1ValueBytes: 2_000_000,

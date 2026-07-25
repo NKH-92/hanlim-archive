@@ -1,7 +1,7 @@
 // 인증 이후의 애플리케이션 라우트. dispatcher 호출 순서가 응답 우선순위다.
 import { accessDeniedPage, notFoundPage } from "../views/authViews.js";
 import { sessionHasManagementAccess } from "../permissions.js";
-import { matchAdminUserRoute } from "../routes.js";
+import { matchAdminUserRoute, matchRoleTemplateRoute } from "../routes.js";
 import { redirect } from "../platform/http/responses.js";
 import { resolveAuthenticatedRoute } from "../app/routeRegistry.js";
 import { requireAdmin } from "./guards.js";
@@ -19,9 +19,13 @@ import { routeMasterRequest } from "./masterRouter.js";
 import { handleMovementHistory } from "./movementHandlers.js";
 import { requireManageUsers, requireViewAudit } from "./permissionGuards.js";
 import {
+  handleRoleTemplateBulkApply,
+  handleRoleTemplateUpdate,
   handleUserPermissions,
   handleUserPasswordReset,
   handleUserStatusAction,
+  renderRoleTemplateEdit,
+  renderRoleTemplates,
   renderUserPasswordReset,
   renderUserPermissions
 } from "./userPermissionHandlers.js";
@@ -87,6 +91,25 @@ export async function routeAuthenticatedRequest(request, env, session, url, path
 
   if (path === "/admin/settings" && request.method === "GET") {
     return requireManageUsers(session) ?? handleAdminSettings(env, session);
+  }
+
+  if (path === "/admin/role-templates" && request.method === "GET") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? renderRoleTemplates(env, session);
+  }
+
+  const roleTemplateRoute = matchRoleTemplateRoute(path);
+  if (roleTemplateRoute) {
+    const denied = requireManageUsers(session) ?? requireAdmin(session);
+    if (denied) return denied;
+    if (request.method === "GET" && roleTemplateRoute.action === "edit") {
+      return renderRoleTemplateEdit(env, session, roleTemplateRoute.key);
+    }
+    if (request.method === "POST" && roleTemplateRoute.action === "edit") {
+      return handleRoleTemplateUpdate(request, env, session, roleTemplateRoute.key);
+    }
+    if (request.method === "POST" && roleTemplateRoute.action === "apply") {
+      return handleRoleTemplateBulkApply(request, env, session, roleTemplateRoute.key);
+    }
   }
 
   if (path === "/admin/search-report" && request.method === "GET") {

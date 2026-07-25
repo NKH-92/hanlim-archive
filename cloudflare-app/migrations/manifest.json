@@ -44,7 +44,8 @@
     "0041_identity_mfa_and_login_throttle.sql": "6720de71c724d64760795ccd3fb3009cefbba035993c8ccadd9a6863db2f2974",
     "0042_search_event_source_version.sql": "dd10bc4d17556a7604dc51973c5b1f60cec1a5d3a850f021fe98faf3720f55f5",
     "0043_release_identity_and_search_leases.sql": "4f7a51c8fab91c82411e30edbe695918d3eb82b2b49f338d24776d7793b35e32",
-    "0044_remove_application_mfa.sql": "5b5c480077065889b1ccde4531f0641e67d8d211bd9d2e63f4c655220898cf75"
+    "0044_remove_application_mfa.sql": "5b5c480077065889b1ccde4531f0641e67d8d211bd9d2e63f4c655220898cf75",
+    "0045_user_role_templates.sql": "47781a2f35984f920fcf107d90a259297452d53f07fd2486d14c19e42f301b59"
   },
   "schema": {
     "tables": [
@@ -88,7 +89,8 @@
       "system_audit_logs",
       "tags",
       "user_mfa",
-      "user_mfa_recovery_codes"
+      "user_mfa_recovery_codes",
+      "user_role_templates"
     ],
     "triggers": [
       "trg_category_row_version_compat",
@@ -157,6 +159,8 @@
       "trg_security_review_no_approval",
       "trg_system_audit_logs_no_delete",
       "trg_system_audit_logs_no_update",
+      "trg_system_role_template_no_delete",
+      "trg_system_role_template_no_update",
       "trg_tag_row_version_compat",
       "trg_tag_sync_version_delete",
       "trg_tag_sync_version_insert",

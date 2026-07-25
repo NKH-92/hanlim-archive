@@ -16,6 +16,8 @@ export const TOAST_MESSAGES = Object.freeze({
   enabled: "사용자 계정을 활성화했습니다.",
   disabled: "사용자 계정을 비활성화했습니다.",
   "permissions-saved": "사용자 권한을 저장했습니다.",
+  "template-saved": "역할 템플릿을 저장했습니다.",
+  "template-applied": "선택한 사용자에게 역할 템플릿을 반영했습니다.",
   "password-reset": "임시 비밀번호를 설정했습니다. 다음 로그인에서 비밀번호 변경이 강제됩니다.",
   "password-changed": "비밀번호가 변경되었습니다.",
   "set-locked": "준비 문서 세트를 잠갔습니다.",

@@ -13,6 +13,14 @@ import {
 import { executeMutationBatch } from "../platform/d1/requestGateway.js";
 
 const USER_PERMISSION_COLUMNS = PERMISSION_KEYS.join(", ");
+const MATCHED_ROLE_TEMPLATE_LABEL = `(
+  SELECT label
+  FROM user_role_templates
+  WHERE key = app_users.role_template_key
+    AND ${PERMISSION_KEYS.map((permission) => (
+      `user_role_templates.${permission} = app_users.${permission}`
+    )).join("\n    AND ")}
+)`;
 
 export async function getAppUsers(env) {
   const result = await env.DB.prepare(`
@@ -30,6 +38,9 @@ export async function getAppUsers(env) {
       must_change_password,
       security_review_required,
       session_epoch,
+      role_template_key,
+      row_version,
+      ${MATCHED_ROLE_TEMPLATE_LABEL} AS role_template_label,
       updated_at,
       ${USER_PERMISSION_COLUMNS}
     FROM app_users
@@ -59,6 +70,9 @@ export async function getAppUser(env, id) {
       must_change_password,
       security_review_required,
       session_epoch,
+      role_template_key,
+      row_version,
+      ${MATCHED_ROLE_TEMPLATE_LABEL} AS role_template_label,
       updated_at,
       ${USER_PERMISSION_COLUMNS}
     FROM app_users
@@ -174,45 +188,77 @@ export async function enableUser(env, id, actor) {
   });
 }
 
-export async function updateUserPermissions(env, id, permissions, actor) {
+export async function updateUserPermissions(env, id, values, actor) {
   const user = await getAppUser(env, id);
-  if (!user || user.role !== "User" || Number(user.security_review_required || 0) === 1) {
+  const expectedRowVersion = Number(values?.expectedRowVersion);
+  if (
+    !user
+    || user.role !== "User"
+    || Number(user.security_review_required || 0) === 1
+    || !Number.isSafeInteger(expectedRowVersion)
+    || expectedRowVersion < 1
+  ) {
     return { ok: false, message: "권한을 변경할 사용자를 찾을 수 없습니다." };
+  }
+  if (Number(user.row_version) !== expectedRowVersion) {
+    return { ok: false, stale: true, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
   }
 
   const beforePermissions = permissionFlags(user);
-  const afterPermissions = permissionFlags(permissions);
-  if (PERMISSION_KEYS.every((permission) => beforePermissions[permission] === afterPermissions[permission])) {
+  const afterPermissions = permissionFlags(values?.permissions);
+  const beforeRoleTemplateKey = user.role_template_key || null;
+  const roleTemplateKey = /^[a-z0-9_]{1,40}$/.test(String(values?.roleTemplateKey || ""))
+    ? String(values.roleTemplateKey)
+    : null;
+  if (
+    beforeRoleTemplateKey === roleTemplateKey
+    && PERMISSION_KEYS.every((permission) => beforePermissions[permission] === afterPermissions[permission])
+  ) {
     return { ok: true, unchanged: true };
   }
 
-  const expectedUpdatedAt = user.updated_at;
-  const guardSql = "FROM app_users WHERE id = ? AND role = 'User' AND security_review_required = 0 AND updated_at = ?";
+  const guardSql = "FROM app_users WHERE id = ? AND role = 'User' AND security_review_required = 0 AND row_version = ?";
+  const guardBinds = [user.id, expectedRowVersion];
   const audit = createSystemAuditStatement(env, {
     entityType: "user",
     entityId: user.id,
     entityReference: user.username,
     action: "permissions_update",
     actor,
-    summary: "사용자 권한 변경",
+    summary: "사용자 역할·권한 변경",
     details: {
-      before: { permissions: beforePermissions },
-      after: { permissions: afterPermissions }
+      before: {
+        roleTemplateKey: beforeRoleTemplateKey,
+        permissions: beforePermissions,
+        rowVersion: expectedRowVersion
+      },
+      after: {
+        roleTemplateKey,
+        permissions: afterPermissions,
+        rowVersion: expectedRowVersion + 1
+      }
     }
-  }, { guardSql, guardBinds: [user.id, expectedUpdatedAt] });
-  const values = PERMISSION_KEYS.map((permission) => afterPermissions[permission] ? 1 : 0);
+  }, { guardSql, guardBinds });
+  const valuesToBind = PERMISSION_KEYS.map((permission) => afterPermissions[permission] ? 1 : 0);
   const update = env.DB.prepare(`
     UPDATE app_users
-    SET ${PERMISSION_KEYS.map((permission) => `${permission} = ?`).join(",\n        ")},
+    SET role_template_key = ?,
+        ${PERMISSION_KEYS.map((permission) => `${permission} = ?`).join(",\n        ")},
+        row_version = row_version + 1,
         updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND role = 'User' AND security_review_required = 0 AND updated_at = ?
-  `).bind(...values, user.id, expectedUpdatedAt);
-  const plan = createUserPermissionMutationPlan(audit, update, `app_users:${user.id}:${expectedUpdatedAt}`);
-  const results = await executeMutationBatch(env, plan);
+    WHERE id = ? AND role = 'User' AND security_review_required = 0 AND row_version = ?
+  `).bind(roleTemplateKey, ...valuesToBind, user.id, expectedRowVersion);
+  const plan = createUserPermissionMutationPlan(audit, update, `app_users:${user.id}:${expectedRowVersion}`);
 
-  return changed(results[1])
-    ? { ok: true }
-    : { ok: false, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  try {
+    await executeMutationBatch(env, plan);
+    return { ok: true };
+  } catch (error) {
+    if (error?.code === "STALE_VERSION") {
+      return { ok: false, stale: true, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    }
+    throw error;
+  }
 }
 
 export async function resetUserPassword(env, id, temporaryPassword, actor) {

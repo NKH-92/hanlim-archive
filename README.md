@@ -6,6 +6,30 @@
 사내 웹 애플리케이션입니다. Cloudflare Workers와 D1을 사용하며 실제 배포 대상은
 [`cloudflare-app/`](./cloudflare-app/)입니다.
 
+## 시스템 지위와 운영 결정
+
+이 시스템은 **보조 위치검색 시스템**이며 공식 원본(system of record)은 업무 책임자가 서명해 보관하는
+**Excel 문서대장**입니다. 웹의 데이터와 검색 결과는 공식 원본을 대체하지 않습니다. 운영자는 매월 1회와
+대량·중요 변경 직후 현재 대장을 Excel로 추출해 문서 수·canonical hash를 확인하고, 업무 책임자의 서명을
+받아 접근 통제된 사내 보관 위치에 보존합니다. 장애 복구는 먼저 D1 Time Travel의 최근 7일 복구 지점을
+사용하고, 범위를 벗어나거나 D1 복구가 부적합하면 마지막 서명 Excel 대장을 빈 환경에 재적재합니다.
+
+| 결정 | 근거 | 승인·일자 |
+|---|---|---|
+| `workers.dev` 운영 주소 유지, Cloudflare Access 미적용 | 별도 도메인·Access 운영 복잡도를 현재 범위에서 수용하고 앱 로그인을 경계로 사용 | 문서대장 업무 소유자 및 production Environment 승인자, 2026-07-25 (PR 승인 기록) |
+| 비밀번호 최소 6자 유지 | 기존 업무 정책과 호환성을 유지하되 실패 제한·PBKDF2 100,000회·session epoch를 보완 통제로 사용 | 동일, 2026-07-25 |
+| D1 Time Travel 7일 + 서명 Excel 장기 복구 | 무료 운영 범위에서 단기 시점 복구와 공식 원본 기반 장기 복구를 분리 | 동일, 2026-07-25 |
+
+운영 URL이 인터넷에서 접근 가능하고 최소 6자 비밀번호를 허용한다는 잔여 위험은 의식적으로 수용합니다.
+`exceededCpu`, 로그인 자동 시도 또는 한도 접근이 확인되면 다음 break-glass 순서로 전환합니다.
+
+1. Cloudflare Dashboard에서 운영 Worker에 Access를 즉시 적용한다.
+2. release smoke 요청에 승인된 service token 헤더를 추가해 배포 검증을 복구한다.
+3. 검증된 커스텀 도메인으로 운영 주소를 전환하고 `workers.dev` 직접 접근을 차단한다.
+
+상세 운영과 복구 절차는 [OPERATIONS](./docs/OPERATIONS.md)와
+[BACKUP_RESTORE](./docs/BACKUP_RESTORE.md)를 따릅니다.
+
 - 운영 서비스: [한림 문서고](https://hanlim-archive.skarhkdgus7.workers.dev)
 - 기본 브랜치: `main`
 - 런타임: Cloudflare Workers + D1 + 정적 Assets

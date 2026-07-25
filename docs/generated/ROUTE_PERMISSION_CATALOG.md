@@ -28,14 +28,18 @@
 | `session.logout.fallback` | `*` | `/logout` | required | authenticated |
 | `admin.dashboard` | `GET` | `/admin` | required | policy:any-management-permission |
 | `admin.settings` | `GET` | `/admin/settings` | required | `can_manage_users` |
+| `admin.role-templates` | `GET` | `/admin/role-templates` | required | `can_manage_users` + policy:admin-only |
+| `admin.role-template.edit.form` | `GET` | `/admin/role-templates/:key/edit` | required | `can_manage_users` + policy:admin-only |
+| `admin.role-template.edit` | `POST` | `/admin/role-templates/:key/edit` | required | `can_manage_users` + policy:admin-only |
+| `admin.role-template.apply` | `POST` | `/admin/role-templates/:key/apply` | required | `can_manage_users` + policy:admin-only |
 | `admin.search-report` | `GET` | `/admin/search-report` | required | `can_view_audit` |
 | `admin.audit` | `GET` | `/admin/audit` | required | `can_view_audit` |
 | `admin.movements` | `GET` | `/admin/movements` | required | policy:move-or-audit |
 | `admin.data-quality` | `GET` | `/admin/data-quality` | required | `can_manage_documents` |
 | `admin.user.permissions.form` | `GET` | `/admin/users/:id/permissions` | required | `can_manage_users` |
 | `admin.user.permissions` | `POST` | `/admin/users/:id/permissions` | required | `can_manage_users` |
-| `admin.user.password-reset.form` | `GET` | `/admin/users/:id/reset-password` | required | `can_manage_users` |
-| `admin.user.password-reset` | `POST` | `/admin/users/:id/reset-password` | required | `can_manage_users` |
+| `admin.user.password-reset.form` | `GET` | `/admin/users/:id/reset-password` | required | `can_manage_users` + policy:admin-only |
+| `admin.user.password-reset` | `POST` | `/admin/users/:id/reset-password` | required | `can_manage_users` + policy:admin-only |
 | `admin.user.approve` | `POST` | `/admin/users/:id/approve` | required | `can_manage_users` |
 | `admin.user.reject` | `POST` | `/admin/users/:id/reject` | required | `can_manage_users` |
 | `admin.user.disable` | `POST` | `/admin/users/:id/disable` | required | `can_manage_users` |
@@ -63,7 +67,6 @@
 | `documents.move` | `POST` | `/documents/:id/move` | required | `can_move_documents` |
 | `documents.dispose` | `POST` | `/documents/:id/dispose` | required | `can_manage_disposals` |
 | `documents.restore` | `POST` | `/documents/:id/restore` | required | policy:admin-only |
-| `documents.delete-permanent` | `POST` | `/documents/:id/delete-permanent` | required | `can_manage_disposals` |
 | `sets.list` | `GET` | `/sets` | required | authenticated |
 | `sets.create.form` | `GET` | `/sets/new` | required | `can_manage_sets` |
 | `sets.create` | `POST` | `/sets` | required | `can_manage_sets` |
@@ -120,23 +123,24 @@
 | `snapshots.rows` | `POST` | `/document-snapshots/:id/rows` | required | `can_manage_documents` |
 | `snapshots.membership` | `POST` | `/document-snapshots/:id/membership` | required | `can_manage_documents` |
 | `snapshots.prepare` | `POST` | `/document-snapshots/:id/prepare` | required | `can_manage_documents` |
-| `snapshots.apply` | `POST` | `/document-snapshots/:id/apply` | required | policy:allOf:can_manage_documents+can_apply_document_snapshots |
+| `snapshots.apply` | `POST` | `/document-snapshots/:id/apply` | required | `can_manage_documents+can_apply_document_snapshots` + policy:allOf:can_manage_documents+can_apply_document_snapshots |
 | `snapshots.cancel` | `POST` | `/document-snapshots/:id/cancel` | required | `can_manage_documents` |
 
 ## Permission matrix
 
 | permission/policy | route ids |
 |---|---|
-| `can_manage_disposals` | `documents.disposal`, `documents.bulk-dispose`, `documents.disposal.process`, `documents.dispose-filtered`, `documents.dispose`, `documents.delete-permanent`, `disposal.list`, `disposal.new`, `disposal.create`, `disposal.details`, `disposal.edit.form`, `disposal.edit`, `disposal.freeze`, `disposal.start`, `disposal.process`, `disposal.cancel`, `disposal.export`, `disposal.item.exclude`, `disposal.item.include` |
+| `can_manage_disposals` | `documents.disposal`, `documents.bulk-dispose`, `documents.disposal.process`, `documents.dispose-filtered`, `documents.dispose`, `disposal.list`, `disposal.new`, `disposal.create`, `disposal.details`, `disposal.edit.form`, `disposal.edit`, `disposal.freeze`, `disposal.start`, `disposal.process`, `disposal.cancel`, `disposal.export`, `disposal.item.exclude`, `disposal.item.include` |
 | `can_manage_documents` | `admin.data-quality`, `documents.duplicate`, `documents.create`, `documents.export`, `documents.snapshot.export`, `documents.snapshot.export.create`, `documents.snapshot.export.rows`, `documents.snapshot.export.finalize`, `documents.import.form`, `documents.new`, `documents.edit.form`, `documents.edit`, `documents.revise.form`, `documents.revise`, `imports.list`, `imports.create`, `imports.details`, `imports.failures`, `imports.process`, `imports.cancel`, `snapshots.list`, `snapshots.create`, `snapshots.details`, `snapshots.rows`, `snapshots.membership`, `snapshots.prepare`, `snapshots.cancel` |
+| `can_manage_documents+can_apply_document_snapshots` + policy:allOf:can_manage_documents+can_apply_document_snapshots | `snapshots.apply` |
 | `can_manage_masters` | `racks.list`, `racks.create`, `racks.new`, `racks.configure.form`, `racks.configure`, `racks.details`, `racks.edit.form`, `racks.edit`, `categories.list`, `categories.save`, `categories.edit`, `categories.delete`, `tags.list`, `tags.save`, `tags.edit`, `tags.delete` |
 | `can_manage_sets` | `sets.create.form`, `sets.create`, `sets.edit.form`, `sets.clone.form`, `sets.clone`, `sets.edit`, `sets.delete`, `sets.add`, `sets.remove`, `sets.lock`, `sets.unlock` |
-| `can_manage_users` | `admin.settings`, `admin.user.permissions.form`, `admin.user.permissions`, `admin.user.password-reset.form`, `admin.user.password-reset`, `admin.user.approve`, `admin.user.reject`, `admin.user.disable`, `admin.user.enable` |
+| `can_manage_users` | `admin.settings`, `admin.user.permissions.form`, `admin.user.permissions`, `admin.user.approve`, `admin.user.reject`, `admin.user.disable`, `admin.user.enable` |
+| `can_manage_users` + policy:admin-only | `admin.role-templates`, `admin.role-template.edit.form`, `admin.role-template.edit`, `admin.role-template.apply`, `admin.user.password-reset.form`, `admin.user.password-reset` |
 | `can_move_documents` | `documents.move.form`, `documents.move` |
 | `can_view_audit` | `admin.search-report`, `admin.audit` |
 | authenticated | `home.redirect`, `search.home`, `floor-plan.read`, `qa.read`, `search.suggestions`, `search.viewer`, `search.index`, `search.click`, `session.password.form`, `session.password.change`, `session.logout`, `session.logout.fallback`, `documents.list`, `documents.details`, `sets.list`, `sets.details`, `sets.export`, `sets.export.csv` |
 | policy:admin-only | `documents.restore` |
-| policy:allOf:can_manage_documents+can_apply_document_snapshots | `snapshots.apply` |
 | policy:always-404 | `session.signup.blocked` |
 | policy:any-management-permission | `admin.dashboard` |
 | policy:move-or-audit | `admin.movements` |

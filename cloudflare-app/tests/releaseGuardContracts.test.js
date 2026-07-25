@@ -15,6 +15,18 @@ const RELEASE_SHA = "a".repeat(40);
 const CORE_BOOKMARK = `00000001-00000002-00000003-${"a".repeat(32)}`;
 const SEARCH_BOOKMARK = `00000004-00000005-00000006-${"b".repeat(32)}`;
 
+test("배포 npm script는 browser build 뒤 verify를 한 번만 수행하고 dry-run 경로를 유지한다", async () => {
+  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+
+  assert.equal(packageJson.scripts.predeploy, "npm run build:browser && npm run verify");
+  assert.match(packageJson.scripts.verify, /(?:^|&& )npm run check:browser(?: &&|$)/);
+  assert.doesNotMatch(packageJson.scripts.predeploy, /check:browser/);
+  assert.equal(
+    packageJson.scripts["deploy:dry"],
+    "npm run build:browser && npm run check:browser && node scripts/deploy-guarded.mjs --dry-run"
+  );
+});
+
 function recoveryEvidence(overrides = {}) {
   return {
     schemaVersion: 1,
@@ -259,7 +271,7 @@ test("migration released-baseline은 과거 SQL 변조·checksum 동시변조·�
     await cp(new URL("released-baseline.json", source), join(dir, "released-baseline.json"));
 
     const baseline = JSON.parse(await readFile(join(dir, "released-baseline.json"), "utf8"));
-    assert.equal(Object.keys(baseline.checksums).at(-1), "0044_remove_application_mfa.sql");
+    assert.equal(Object.keys(baseline.checksums).at(-1), "0045_user_role_templates.sql");
     const first = Object.keys(baseline.checksums)[0];
 
     assert.equal((await verifyMigrationChain({ migrationsDir: dir, applySchema: false })).ok, true);

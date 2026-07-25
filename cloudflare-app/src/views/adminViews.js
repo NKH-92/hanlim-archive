@@ -31,17 +31,29 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
     dataLinks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화", "엑셀 전체 동기화·검증·인쇄용 추출"]);
     dataLinks.push(["/documents/new", "fa-file-circle-plus", "문서 추가", "신규 문서를 현재 리스트에 즉시 등록"]);
-    dataLinks.push(["/admin/data-quality", "fa-list-check", "데이터 품질", "문제 문서 작업 목록"]);
   }
   if (hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
-    dataLinks.push(["/admin/search-report", "fa-chart-simple", "검색 리포트", "자주 찾는·실패 검색어"]);
     dataLinks.push(["/admin/audit", "fa-list-check", "감사 이력", "전역 변경 이력"]);
   }
   if (hasPermission(session, PERMISSIONS.MOVE_DOCUMENTS) || hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
     dataLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력", "문서 위치 변경 조회"]);
   }
   if (dataLinks.length) {
-    groups.push(managementGroup("데이터 및 감사", "데이터 품질과 변경 증적을 확인합니다.", dataLinks));
+    groups.push(managementGroup("데이터 및 감사", "데이터와 변경 증적을 확인합니다.", dataLinks));
+  }
+  const advancedLinks = [];
+  if (hasPermission(session, PERMISSIONS.MANAGE_SETS)) {
+    advancedLinks.push(["/sets", "fa-layer-group", "준비 문서 세트", "문서 묶음 생성·잠금·인쇄"]);
+  }
+  if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
+    advancedLinks.push(["/document-import-jobs", "fa-file-csv", "CSV 가져오기", "이전 방식의 CSV 문서 등록 작업"]);
+    advancedLinks.push(["/admin/data-quality", "fa-list-check", "데이터 품질", "문제 문서 작업 목록"]);
+  }
+  if (hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
+    advancedLinks.push(["/admin/search-report", "fa-chart-simple", "검색 리포트", "자주 찾는·실패 검색어"]);
+  }
+  if (advancedLinks.length) {
+    groups.push(managementGroup("관리자 고급 도구", "일상 업무에서 분리한 전문 관리 기능입니다.", advancedLinks, true));
   }
   const heroAction = pending && hasPermission(session, PERMISSIONS.MANAGE_USERS)
     ? `<a class="button action-button" href="/admin/settings">승인 요청 확인</a>`
@@ -119,12 +131,25 @@ function dataQualityPanel(quality) {
 
 function searchIndexPanel(stats) {
   const estimated = formatBytes(stats.estimatedJsonBytes);
-  const message = !stats.searchAvailable
-    ? "Search D1 연결을 확인하세요. 정확 문서번호와 필터 목록만 Core fallback으로 제공합니다."
-    : stats.rebuildRequired || stats.rebuildStatus !== "ready"
-      ? `검색 재구축이 필요합니다. 대기 outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`
-      : `Search D1 ${Number(stats.searchIndexedDocumentCount || 0).toLocaleString("ko-KR")}건 · outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`;
-  const level = !stats.searchAvailable || stats.rebuildRequired || stats.rebuildStatus !== "ready" ? "warning" : stats.level;
+  const readiness = stats.readiness;
+  const migrationStatus = readiness
+    ? `Core migration ${readiness.checks.coreDatabase ? "충족" : "미충족"} · Search migration ${readiness.checks.searchDatabase ? "충족" : "미충족"}`
+    : "";
+  const operationalStatus = readiness
+    ? `generation ${Number(stats.generation || 0).toLocaleString("ko-KR")}/${Number(stats.searchGeneration || 0).toLocaleString("ko-KR")} · active ${Number(stats.activeGeneration || 0).toLocaleString("ko-KR")} · indexed ${Number(stats.indexedDocumentCount || 0).toLocaleString("ko-KR")}/${Number(stats.searchIndexedDocumentCount || 0).toLocaleString("ko-KR")} · outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건 · rebuild ${stats.rebuildRequired ? "required" : stats.rebuildStatus}`
+    : "";
+  const message = readiness
+    ? `${readiness.ok ? "검색 운영 준비 완료" : "검색 운영 확인 필요"} · ${migrationStatus} · ${operationalStatus}`
+    : !stats.searchAvailable
+      ? "Search D1 연결을 확인하세요. 정확 문서번호와 필터 목록만 Core fallback으로 제공합니다."
+      : stats.rebuildRequired || stats.rebuildStatus !== "ready"
+        ? `검색 재구축이 필요합니다. 대기 outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`
+        : `Search D1 ${Number(stats.searchIndexedDocumentCount || 0).toLocaleString("ko-KR")}건 · outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`;
+  const level = readiness && !readiness.ok
+    ? "warning"
+    : !stats.searchAvailable || stats.rebuildRequired || stats.rebuildStatus !== "ready"
+      ? "warning"
+      : stats.level;
   return `<section class="panel search-index-health ${escapeHtml(level)}">
     <div><strong>서버 검색 인덱스</strong><span>${Number(stats.documentCount).toLocaleString("ko-KR")}건 · Core 예상 ${escapeHtml(estimated)}</span></div><p class="${escapeHtml(level)}">${escapeHtml(message)}</p>
   </section>`;
@@ -142,8 +167,11 @@ export function adminSettingsPage({ session, users }) {
   const approved = users.filter((u) => u.status === "approved");
   const disabled = users.filter((u) => u.status === "disabled");
   const rejected = users.filter((u) => u.status === "rejected");
+  const templateManagement = session?.role === "Admin"
+    ? `<a class="button" href="/admin/role-templates">역할 템플릿</a>`
+    : "";
   return page("사용자 관리", `
-    <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리합니다.</p></div><a class="button secondary" href="/admin">관리 설정</a></section>
+    <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리합니다.</p></div><div class="button-group">${templateManagement}<a class="button secondary" href="/admin">관리 설정</a></div></section>
     <section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${pending.length ? userRequestTable(pending, session) : emptyState("대기 중인 가입 요청이 없습니다.")}</section>
     <section class="two-col">
       <article class="panel">${sectionHeader("승인된 사용자", `${approved.length}명`)}${approved.length ? userRequestTable(approved, session) : emptyState("승인된 사용자가 없습니다.")}</article>
@@ -157,10 +185,15 @@ function userRequestTable(users, session) {
   return `
     <div class="table-wrap"><table class="doc-table">
       <caption class="sr-only">사용자 목록</caption>
-      <thead><tr><th>아이디</th><th>이름</th><th>상태</th><th>요청일</th><th>처리</th></tr></thead>
-      <tbody>${users.map((user) => `<tr><td data-label="아이디">${escapeHtml(user.username)}</td><td data-label="이름">${escapeHtml(user.display_name)}</td><td data-label="상태">${userStatus(user)}</td><td data-label="요청일">${escapeHtml(user.requested_at || "-")}</td><td data-label="처리">${userActions(user, session)}</td></tr>`).join("")}</tbody>
+      <thead><tr><th>아이디</th><th>이름</th><th>역할</th><th>상태</th><th>요청일</th><th>처리</th></tr></thead>
+      <tbody>${users.map((user) => `<tr><td data-label="아이디">${escapeHtml(user.username)}</td><td data-label="이름">${escapeHtml(user.display_name)}</td><td data-label="역할">${escapeHtml(userRoleLabel(user))}</td><td data-label="상태">${userStatus(user)}</td><td data-label="요청일">${escapeHtml(user.requested_at || "-")}</td><td data-label="처리">${userActions(user, session)}</td></tr>`).join("")}</tbody>
     </table></div>
   `;
+}
+
+function userRoleLabel(user) {
+  if (user.role === "Admin") return user.role_template_label || "시스템관리";
+  return user.role_template_label || "사용자 지정";
 }
 
 function userActions(user, session) {

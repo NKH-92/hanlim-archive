@@ -4,7 +4,7 @@ import {
   constantTimeEqual
 } from "../platform/crypto/encoding.js";
 import { parseCookies } from "../platform/http/cookies.js";
-import { permissionFlags } from "../permissions.js";
+import { permissionFlags, PERMISSION_KEYS } from "../permissions.js";
 import { normalizeRole } from "./shared.js";
 
 export const SESSION_COOKIE = "hanlim_session";
@@ -102,6 +102,8 @@ export async function readSession(request, env) {
       role: normalizeRole(user.role),
       mustChangePassword: Number(user.must_change_password) === 1,
       sessionEpoch: currentSessionEpoch,
+      roleTemplateKey: user.role_template_key || null,
+      roleTemplateLabel: user.role_template_label || null,
       ...permissionFlags(user)
     };
   } catch {
@@ -129,16 +131,20 @@ async function loadSessionUser(env, username) {
   try {
     return await env.DB.prepare(`
       SELECT u.*,
+        t.label AS role_template_label,
         CASE
           WHEN u.expires_at IS NOT NULL AND u.expires_at <= CURRENT_TIMESTAMP THEN 1
           ELSE 0
         END AS account_expired
       FROM app_users u
+      LEFT JOIN user_role_templates t
+        ON t.key = u.role_template_key
+        AND ${PERMISSION_KEYS.map((permission) => `t.${permission} = u.${permission}`).join("\n        AND ")}
       WHERE u.username = ?
       LIMIT 1
     `).bind(username).first();
   } catch (error) {
-    if (!/no such column:\s*u?\.?expires_at/i.test(String(error?.message || error))) {
+    if (!/no such (column|table):/i.test(String(error?.message || error))) {
       throw error;
     }
   }

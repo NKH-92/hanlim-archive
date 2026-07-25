@@ -1,9 +1,11 @@
-import { bytesToBase64Url } from "../platform/crypto/encoding.js";
+import { FREE_TIER_BUDGET } from "../freeTierBudget.js";
+import { createBatchPlan } from "../platform/d1/batchPlan.js";
+import { executeMutationBatch } from "../platform/d1/requestGateway.js";
 
 const POLICIES = Object.freeze({
   pair: Object.freeze({ failLimit: 5, windowMinutes: 10, lockMinutes: 10 }),
   account: Object.freeze({ failLimit: 15, windowMinutes: 10, lockMinutes: 5 }),
-  ip: Object.freeze({ failLimit: 30, windowMinutes: 10, lockMinutes: 15 }),
+  ip: Object.freeze({ failLimit: 10, windowMinutes: 10, lockMinutes: 15 }),
   global: Object.freeze({ failLimit: 300, windowMinutes: 5, lockMinutes: 5 })
 });
 
@@ -48,9 +50,17 @@ export async function isLoginLocked(env, identity, { nowIso = null } = {}) {
 export async function recordLoginFailure(env, identity, { nowIso = null } = {}) {
   if (typeof identity === "string") return recordLegacyFailure(env, identity, nowIso);
   try {
-    for (const bucket of await throttleBuckets(env, identity)) {
-      await upsertBucket(env, bucket, nowIso);
+    const buckets = await throttleBuckets(env, identity);
+    const plan = createBatchPlan("identity.login.failure")
+      .withBudget(FREE_TIER_BUDGET.loginFailureMutationStatementsPerBatch);
+    for (const bucket of buckets) {
+      plan.step(
+        `identity.login.failure.${bucket.scope}`,
+        createUpsertBucketStatement(env, bucket, nowIso),
+        { guard: `login-throttle:${bucket.scope}` }
+      );
     }
+    await executeMutationBatch(env, plan);
   } catch (error) {
     if (!isMissingV2Table(error)) throw error;
     await recordLegacyFailure(env, legacyIdentity(identity), nowIso);
@@ -120,7 +130,7 @@ async function keyedDigest(env, value) {
   return bytesToBase64Url(new Uint8Array(digest));
 }
 
-async function upsertBucket(env, bucket, nowIso) {
+function createUpsertBucketStatement(env, bucket, nowIso) {
   const policy = POLICIES[bucket.scope];
   const now = nowIso || null;
   const nowSql = now ? "?" : "datetime('now')";
@@ -135,7 +145,7 @@ async function upsertBucket(env, bucket, nowIso) {
   if (now) binds.push(now);
   if (now) binds.push(now);
   if (now) binds.push(now);
-  await env.DB.prepare(`
+  return env.DB.prepare(`
     INSERT INTO login_throttle_v2 (
       bucket_key, scope, fail_count, window_started_at, locked_until, updated_at
     )
@@ -155,7 +165,7 @@ async function upsertBucket(env, bucket, nowIso) {
         ELSE locked_until
       END,
       updated_at = ${nowSql}
-  `).bind(...binds).run();
+  `).bind(...binds);
 }
 
 function legacyKey(username) {
@@ -220,3 +230,9 @@ export const LOGIN_THROTTLE_POLICY = Object.freeze({
   lockMinutes: POLICIES.pair.lockMinutes,
   scopes: POLICIES
 });
+
+function bytesToBase64Url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
+}

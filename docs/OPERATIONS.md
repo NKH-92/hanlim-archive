@@ -2,6 +2,33 @@
 
 운영 resource 이름과 binding은 `cloudflare-app/wrangler.jsonc`를 단일 출처로 사용한다. 운영 변경은 GitHub Actions의 `Deploy Production` workflow로만 수행하며, 로컬에서 원격 migration이나 production deploy를 실행하지 않는다.
 
+## 시스템 지위·위험 수용 결정
+
+- 공식 원본은 업무 책임자가 서명해 보관하는 Excel 문서대장이며, 이 Worker/D1 시스템은 검색과 위치 확인을
+  돕는 보조 시스템이다. 웹 데이터가 서명 대장과 다르면 서명 대장을 기준으로 정정·재적재한다.
+- 매월 1회와 대량·중요 변경 직후 현재 대장을 추출한다. 문서 수, 대장 version, canonical hash와 인쇄용
+  관리대장을 대조한 뒤 업무 책임자가 서명하고 접근 통제된 사내 보관 위치에 보존한다.
+- 단기 복구는 Core·Search D1 Time Travel 7일을 먼저 사용한다. 7일 밖의 복구나 D1 복구가 부적합한 손상은
+  마지막 서명 Excel을 새 환경의 bootstrap/snapshot 경로로 재적재하고 검색 index를 재구축한다.
+- `workers.dev` 주소와 앱 로그인만 유지하며 Cloudflare Access는 평시 적용하지 않는다. 비밀번호 최소 6자도
+  유지한다. 공개 URL에 대한 자동 시도·credential 위험은 로그인 제한, PBKDF2 100,000회, session epoch와
+  운영 관측으로 줄이되 제거되지 않는 잔여 위험으로 수용한다.
+
+결정 근거는 무료 운영 범위, 기존 업무 비밀번호 정책, 서명 Excel의 공식 기록 지위다. 결정일은
+2026-07-25이며 승인자는 문서대장 업무 소유자와 production Environment 승인자다. 사람 이름과 승인 증거는
+저장소에 중복 기재하지 않고 해당 PR 및 Environment 승인 기록으로 보존한다. Access·커스텀 도메인,
+R2/외부 장기 백업, Cloudflare token 2분할, Core/Search 단일 D1 전환과 Actions SHA pin 갱신은 별도 근거와
+승인 전까지 보류한다.
+
+### Break-glass: 공개 로그인 경계 차단
+
+1. Cloudflare Dashboard에서 운영 Worker에 Access를 적용해 공개 로그인을 즉시 차단한다.
+2. `smoke:release`가 Access를 통과하도록 production secret의 service token을 승인된 헤더로만 전달한다.
+3. 검증된 커스텀 도메인으로 전환한 뒤 `workers.dev` 직접 접근을 차단하고 로그인·검색·관리 smoke를 다시 수행한다.
+
+전환 시각, 실행자, 사유, Access 정책, token 폐기와 smoke 결과를 incident 기록에 남긴다. 정상화는 원인과
+잔여 위험을 재승인한 뒤 역순으로 수행한다.
+
 `main`에 병합된 `cloudflare-app/**` 또는 `.github/workflows/deploy.yml` 변경만 자동 운영 배포를 시작한다.
 README, `docs/**`, PR template와 Git 관리 파일만 바뀐 문서·저장소 정리 commit은 CI로 검증하되 운영 D1
 migration·Worker 배포를 실행하지 않는다. 수동 `workflow_dispatch`는 위 경로와 관계없이 production
@@ -212,15 +239,59 @@ npm run check:migrations
 [D1 한도](https://developers.cloudflare.com/d1/platform/limits/)를 월별 점검 때 함께 확인한다.
 5분 Cron은 일 288회로 Worker 요청 한도의 0.3% 미만이며 Search outbox와 재구축 지연을 제한하기 위해 유지한다.
 
-| 항목 | 확인 위치 | 경고 시 조치 |
-|---|---|---|
-| Worker 요청·오류율·CPU | Cloudflare Dashboard의 Worker Metrics | request ID와 최근 배포 확인 |
-| D1 읽기·쓰기·DB 크기 | Cloudflare Dashboard의 D1 Metrics | 대량 작업 중지, 쿼리·인덱스 검토 |
-| Actions 사용량 | GitHub Billing의 Actions | 중복 실행과 불필요한 artifact 정리 |
-| D1 복구 | Time Travel과 release artifact | Core·Search bookmark, 7일 보존 기간, 복구 승인 절차 확인 |
-| 검색 index | 앱 관리 화면 | 경고 기준에서 크기 추적, 상한에서 구조 재검토 |
+### Workers Logs 1주 수집 점검표
 
-월 1회 `/healthz`·`/readyz`와 검색·상세 표본, 데이터 품질 작업목록, 유지관리자 접근권한, API token 최소권한을 함께 점검한다. 엑셀 대장 반영 전후에는 최근 백업·대장 버전·행 수·추가/변경/제외와 감사로그를 확인하고, 폐기 캠페인 전후에는 대상 확정 건수·승인 참조·감사로그·결과 CSV를 대조한다.
+점검 기간은 월별 점검일 직전의 완결된 7일로 고정하고 시작을 포함, 종료를 제외한
+`YYYY-MM-DD 00:00:00 UTC` 이상 `YYYY-MM-DD 00:00:00 UTC` 미만으로 기록한다. 현재 작업트리와 접근 가능한
+artifact에는 실제 Cloudflare 1주 데이터가 없으므로 아래 기간과 실측값은 추정하지 않고 `수집 대기`로 둔다.
+
+- **UTC 기간:** 수집 대기
+- **증적 보존 위치:** 접근 통제된 운영 증적 보관소의
+  `hanlim-archive/monthly-free-tier/YYYY-MM/<UTC-start>--<UTC-end>/`
+- **보존 파일:** Workers Metrics 원본/화면, Workers Logs 로그인 export와 집계식, D1 Metrics의 계정 합계와
+  Core·Search 상세, outbox 시점 표본, 아래 표를 채운 `summary.md`. 원본 로그는 저장소나 PR에 넣지 않고 PR에는
+  증적 위치와 무결성 hash만 남긴다.
+
+| 1주 점검 항목 | 실측값 | 경보선 | 수집·판정 |
+|---|---:|---|---|
+| 로그인 `cpu_time_ms` p50/p95 | 수집 대기 | 해당 월에 확인한 Workers CPU 상한 접근 여부를 추세로 판정 | Workers Logs에서 UTC 기간과 운영 Worker, `POST /login`을 필터한 export로 p50/p95 계산 |
+| `outcome=exceededCpu` | 수집 대기 | 1건 이상 | Workers Logs에서 같은 UTC 기간의 `outcome=exceededCpu` 건수와 request ID·시각 확인 |
+| 일 요청량 | 수집 대기 | 일 한도의 50% 경고, 80% 대응 | Dashboard의 Worker Metrics를 UTC 일 단위로 내려받아 7개 일별 값과 최댓값 기록. 현재 한도 기준 50,000/80,000건 |
+| D1 `rows_read` | 수집 대기 | 일 한도의 50% 경고, 70% 대응 | D1 Metrics에서 UTC 일 단위 계정 합계와 Core·Search 상세를 내려받아 7개 일별 값과 최댓값 기록. 현재 한도 기준 2,500,000/3,500,000행 |
+| D1 `rows_written` | 수집 대기 | 일 한도의 50% 경고, 70% 대응 | D1 Metrics에서 UTC 일 단위 계정 합계와 Core·Search 상세를 내려받아 7개 일별 값과 최댓값 기록. 현재 한도 기준 50,000/70,000행 |
+| Search outbox 최대 지연 | 수집 대기 | 15분 이상 | Workers Logs의 scheduled 실행 실패 시각과 D1 Dashboard 시점 표본에서 가장 오래된 미처리 `created_at`의 경과 분을 대조해 기간 내 관측 최댓값 기록 |
+
+수집은 다음 순서로 수행한다.
+
+1. Dashboard에서 그 달에 적용되는 Workers·D1 무료 한도와 표시 시간대를 확인하고 위 UTC 기간을 고정한다.
+2. Worker Metrics의 일 요청량과 D1 Metrics의 `rows_read`·`rows_written`을 일 단위로 export한다. D1은 계정 전체
+   한도 판정을 위해 계정 합계를 사용하고 Core·Search 수치는 원인 분석용으로 함께 보존한다.
+3. Workers Logs에서 동일 기간의 로그인 호출을 export해 `cpu_time_ms` p50/p95를 계산하고,
+   `outcome=exceededCpu`를 별도로 집계한다. Dashboard 보존 기간 때문에 7일을 한 번에 조회할 수 없으면 UTC 일별
+   export를 수집 당일 증적 위치에 누적한 뒤 같은 방식으로 합산한다.
+4. D1 Dashboard의 Core query console에서 읽기 전용으로 아래 시점 표본을 수집한다. 최소한 각 UTC 일 종료 전과
+   scheduled 실행 실패 직후에 저장하고, 7일 표본의 `oldest_age_minutes` 최댓값을 사용한다.
+
+```sql
+SELECT COUNT(*) AS pending_count,
+       COALESCE(ROUND(MAX((julianday(CURRENT_TIMESTAMP) - julianday(created_at)) * 1440), 1), 0)
+         AS oldest_age_minutes
+FROM search_index_outbox;
+```
+
+처리 완료된 outbox 행은 제거되므로 동시점 표본이 없는 과거 지연은 사후 복원할 수 없다. 표본이나 로그가 빠졌으면
+0분으로 쓰지 말고 `수집 대기`로 남긴다. 50% 경고에서는 증가 원인과 최근 배포·대량 작업을 확인한다. 요청량 80%,
+D1 행 70% 또는 outbox 15분에 도달하면 대량 작업을 중지하고 request ID, Cron 오류, 쿼리·인덱스를 점검한다.
+`exceededCpu`는 1건부터 장애 증적으로 보존한다.
+
+PBKDF2-SHA256 100,000회는 Workers CPU 상한 때문에 하향하지 않는다. 로그인 CPU p95가 해당 월의 Workers 상한에
+붙거나 `exceededCpu`가 발생하면 먼저 계정·IP 로그인 실패 제한과 PBKDF2 전 조기 차단이 실제로 동작하는지 확인하고,
+그 뒤에도 상한 접근이 지속될 때 Cloudflare Access 적용을 재검토한다.
+
+그 밖에 월 1회 Actions 사용량, D1 DB 크기·Time Travel과 Core·Search 복구 증적, 검색 index 크기를 확인한다.
+`/healthz`·`/readyz`와 검색·상세 표본, 데이터 품질 작업목록, 유지관리자 접근권한, API token 최소권한도 함께
+점검한다. 엑셀 대장 반영 전후에는 최근 백업·대장 버전·행 수·추가/변경/제외와 감사로그를 확인하고, 폐기 캠페인
+전후에는 대상 확정 건수·승인 참조·감사로그·결과 CSV를 대조한다.
 
 ## 문서 작업 공간 호환 계약
 

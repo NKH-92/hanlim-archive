@@ -43,17 +43,62 @@ test("GET /documents는 쿼리를 보존해 표준 문서 작업 공간으로 �
   assert.equal(response.headers.get("Location"), "/app?rack=7&status=active&sort=location");
 });
 
-test("문서 상세의 지원하지 않는 액션은 DB를 조회하지 않고 404를 반환한다", async () => {
+test("POST /documents/:id/delete-permanent는 DB를 조회하지 않고 404를 반환한다", async () => {
   const response = await documentHandlers.handleDocumentRoute(
-    new Request("https://archive.example.com/documents/7/unknown"),
+    new Request("https://archive.example.com/documents/7/delete-permanent", { method: "POST" }),
     {},
     { role: "Admin", displayName: "관리자", csrfToken: "csrf" },
-    { id: 7, action: "unknown" }
+    { id: 7, action: "delete-permanent" }
   );
 
   assert.equal(response.status, 404);
   assert.equal(response.headers.get("Content-Type"), "text/html; charset=utf-8");
   assert.match(await response.text(), /페이지를 찾을 수 없습니다/);
+});
+
+test("기존 문서 폐기와 Admin 폐기 해제 경로는 유지한다", async (t) => {
+  const cases = [
+    {
+      name: "폐기 권한 사용자는 보관중 문서를 폐기한다",
+      action: "dispose",
+      status: "active",
+      session: { role: "User", displayName: "폐기 담당자", can_manage_disposals: 1 },
+      reason: "보존기간 만료",
+      location: "/documents/7?toast=disposed",
+      nextStatus: "disposed"
+    },
+    {
+      name: "Admin은 폐기 문서를 복구한다",
+      action: "restore",
+      status: "disposed",
+      session: { role: "Admin", displayName: "관리자" },
+      reason: "오폐기 복구",
+      location: "/documents/7?toast=restored",
+      nextStatus: "active"
+    }
+  ];
+
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const env = documentStatusEnv(item.status);
+      const response = await documentHandlers.handleDocumentRoute(
+        new Request(`https://archive.example.com/documents/7/${item.action}`, {
+          method: "POST",
+          body: new URLSearchParams({ reason: item.reason })
+        }),
+        env,
+        item.session,
+        { id: 7, action: item.action }
+      );
+
+      assert.equal(response.status, 302);
+      assert.equal(response.headers.get("Location"), item.location);
+      assert.equal(env.state.batches.length, 1);
+      assert.ok(env.state.batches[0].some((statement) => (
+        statement.sql.includes("UPDATE documents") && statement.sql.includes(`status = '${item.nextStatus}'`)
+      )));
+    });
+  }
 });
 
 test("문서 개정은 동일 바인더 정보를 잠그고 개정번호와 일자만 입력받는다", async () => {
@@ -169,3 +214,44 @@ test("필터 전체 폐기 경로는 총 건수 확인이 다르면 캠페인을
   assert.match(await response.text(), /현재 필터 전체 대상은 3건/);
   assert.equal(batchCalls, 0);
 });
+
+function documentStatusEnv(status) {
+  const state = { batches: [] };
+  return {
+    state,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          args: [],
+          bind(...args) {
+            this.args = args;
+            return this;
+          },
+          async first() {
+            if (sql.includes("FROM document_revision_links")) return null;
+            if (sql.includes("FROM documents d")) {
+              return {
+                id: 7,
+                document_number: "SOP-QA-014",
+                revision_number: "Rev.03",
+                document_name: "변경관리 절차서",
+                status,
+                updated_at: "2026-07-18 09:00:00",
+                row_version: 3
+              };
+            }
+            return null;
+          },
+          async all() {
+            return { results: [] };
+          }
+        };
+      },
+      async batch(statements) {
+        state.batches.push(statements);
+        return statements.map(() => ({ meta: { changes: 1 } }));
+      }
+    }
+  };
+}

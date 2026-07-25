@@ -36,6 +36,22 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("session.logout.fallback", "identity", ANY, "/logout", { fallback: true }),
   route("admin.dashboard", "admin", "GET", "/admin", { policy: "any-management-permission" }),
   route("admin.settings", "identity", "GET", "/admin/settings", { permission: PERMISSIONS.MANAGE_USERS }),
+  route("admin.role-templates", "identity", "GET", "/admin/role-templates", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
+  route("admin.role-template.edit.form", "identity", "GET", "/admin/role-templates/:key/edit", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
+  route("admin.role-template.edit", "identity", "POST", "/admin/role-templates/:key/edit", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
+  route("admin.role-template.apply", "identity", "POST", "/admin/role-templates/:key/apply", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
   route("admin.search-report", "audit", "GET", "/admin/search-report", { permission: PERMISSIONS.VIEW_AUDIT }),
   route("admin.audit", "audit", "GET", "/admin/audit", { permission: PERMISSIONS.VIEW_AUDIT }),
   route("admin.movements", "audit", "GET", "/admin/movements", { policy: "move-or-audit" }),
@@ -74,7 +90,6 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("documents.move", "documents", "POST", "/documents/:id/move", { permission: PERMISSIONS.MOVE_DOCUMENTS }),
   route("documents.dispose", "documents", "POST", "/documents/:id/dispose", { permission: PERMISSIONS.MANAGE_DISPOSALS }),
   route("documents.restore", "documents", "POST", "/documents/:id/restore", { policy: "admin-only" }),
-  route("documents.delete-permanent", "documents", "POST", "/documents/:id/delete-permanent", { permission: PERMISSIONS.MANAGE_DISPOSALS }),
   route("sets.list", "sets", "GET", "/sets"),
   route("sets.create.form", "sets", "GET", "/sets/new", { permission: PERMISSIONS.MANAGE_SETS }),
   route("sets.create", "sets", "POST", "/sets", { permission: PERMISSIONS.MANAGE_SETS }),

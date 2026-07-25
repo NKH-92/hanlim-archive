@@ -1,16 +1,18 @@
 import {
   PERMISSION_KEYS,
   PERMISSION_LABELS,
-  PERMISSION_PRESETS,
-  matchingPermissionPreset,
   permissionFlags
 } from "../permissions.js";
 import { escapeHtml } from "../ui/html/escape.js";
-import { alertDanger, page } from "./layout.js";
+import { alertDanger, alertWarning, emptyState, page } from "./layout.js";
 
-export function userPermissionsPage({ session, user, error = "" }) {
+export function userPermissionsPage({ session, user, templates, error = "" }) {
   const flags = permissionFlags(user);
-  const currentPreset = matchingPermissionPreset(flags);
+  const currentTemplate = templates.find((template) => (
+    template.key === user.role_template_key && samePermissions(flags, template)
+  ));
+  const currentKey = currentTemplate?.key || "custom";
+  const currentLabel = currentTemplate?.label || "사용자 지정";
   const currentPermissions = PERMISSION_KEYS.filter((permission) => flags[permission]);
   return page("사용자 권한", `
     <section class="page-head">
@@ -20,29 +22,115 @@ export function userPermissionsPage({ session, user, error = "" }) {
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="/admin/users/${Number(user.id)}/permissions" class="stack">
+        <input type="hidden" name="expectedRowVersion" value="${Number(user.row_version)}">
         <div class="permission-current" role="status">
-          <strong>현재 구성: ${escapeHtml(PERMISSION_PRESETS[currentPreset].label)}</strong>
+          <strong>현재 구성: ${escapeHtml(currentLabel)}</strong>
           <span>${currentPermissions.length ? currentPermissions.map((permission) => escapeHtml(PERMISSION_LABELS[permission])).join(" · ") : "조회 전용"}</span>
         </div>
-        <label>권한 프리셋
-          <select name="preset" data-permission-preset>
-            ${Object.entries(PERMISSION_PRESETS).map(([value, preset]) => `<option value="${escapeHtml(value)}" data-permissions="${escapeHtml((preset.permissions || []).join(","))}" ${value === currentPreset ? "selected" : ""}>${escapeHtml(preset.label)}</option>`).join("")}
+        <label>역할 템플릿
+          <select name="templateKey" data-permission-preset>
+            ${templates.map((template) => `<option value="${escapeHtml(template.key)}" data-permissions="${escapeHtml(enabledPermissions(template).join(","))}" ${template.key === currentKey ? "selected" : ""}>${escapeHtml(template.label)}</option>`).join("")}
+            <option value="custom" ${currentKey === "custom" ? "selected" : ""}>사용자 지정</option>
           </select>
         </label>
         <fieldset data-custom-permissions><legend>저장 후 적용 권한</legend>
-          ${PERMISSION_KEYS.map((permission) => `<label class="check-inline"><input type="checkbox" name="${escapeHtml(permission)}" value="1" data-permission-key="${escapeHtml(permission)}" data-permission-label="${escapeHtml(PERMISSION_LABELS[permission])}" ${flags[permission] ? "checked" : ""}> ${escapeHtml(PERMISSION_LABELS[permission])}</label>`).join("")}
+          ${permissionCheckboxes(flags)}
         </fieldset>
         <section class="permission-diff" aria-live="polite" data-permission-diff>
           <strong>변경 미리보기</strong>
           <p>현재 권한과 동일합니다.</p>
         </section>
-        <p class="muted">프리셋을 선택하면 적용될 권한이 위 체크박스에 즉시 표시됩니다. 직접 조정하면 사용자 지정으로 전환됩니다.</p>
+        <p class="muted">템플릿을 선택하면 현재 템플릿 값을 복사합니다. 체크박스를 직접 조정하면 사용자 지정으로 저장됩니다.</p>
         <label class="checkbox"><input type="checkbox" name="confirmPermissions" value="1" required> 위 변경 결과를 확인했습니다.</label>
-        <button type="submit" class="button">권한 저장</button>
+        <button type="submit" class="button">역할·권한 저장</button>
       </form>
     </section>
     ${permissionPreviewScript(flags)}
   `, session);
+}
+
+export function roleTemplatesPage({ session, templates }) {
+  return page("역할 템플릿", `
+    <section class="page-head">
+      <div><h1>역할 템플릿</h1><p class="muted">표준 권한 구성을 관리하고 사용자에게 명시적으로 반영합니다.</p></div>
+      <a class="button secondary" href="/admin/settings">사용자 관리</a>
+    </section>
+    <section class="panel">
+      <div class="table-wrap"><table class="doc-table">
+        <caption class="sr-only">역할 템플릿 목록</caption>
+        <thead><tr><th>역할</th><th>권한</th><th>버전</th><th>관리</th></tr></thead>
+        <tbody>${templates.map((template) => `<tr>
+          <td data-label="역할"><strong>${escapeHtml(template.label)}</strong><br><span class="muted">${escapeHtml(template.key)}${template.fixed ? " · 고정" : ""}</span></td>
+          <td data-label="권한">${permissionSummary(template)}</td>
+          <td data-label="버전">${Number(template.row_version)}</td>
+          <td data-label="관리"><a class="button secondary sm" href="/admin/role-templates/${escapeHtml(template.key)}/edit">${template.fixed ? "사용자 반영" : "편집·반영"}</a></td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+    </section>
+  `, session);
+}
+
+export function roleTemplateEditPage({ session, template, users, error = "" }) {
+  const flags = permissionFlags(template);
+  return page("역할 템플릿 편집", `
+    <section class="page-head">
+      <div><h1>${escapeHtml(template.label)}</h1><p class="muted">${escapeHtml(template.key)} · 현재 버전 ${Number(template.row_version)}</p></div>
+      <a class="button secondary" href="/admin/role-templates">역할 템플릿</a>
+    </section>
+    ${error ? `<section class="panel narrow">${alertDanger(error)}</section>` : ""}
+    ${template.fixed ? `<section class="panel narrow">${alertWarning("시스템관리 역할은 운영 복구 경계이므로 이름과 권한을 수정할 수 없습니다.")}<h2>고정 권한</h2><p>${permissionSummary(template)}</p></section>` : `
+      <section class="panel narrow">
+        <h2>템플릿 편집</h2>
+        <form method="post" action="/admin/role-templates/${escapeHtml(template.key)}/edit" class="stack">
+          <input type="hidden" name="expectedRowVersion" value="${Number(template.row_version)}">
+          <label>역할 이름<input type="text" name="label" value="${escapeHtml(template.label)}" maxlength="50" required></label>
+          <fieldset><legend>표준 권한</legend>${permissionCheckboxes(flags, false)}</fieldset>
+          <label class="checkbox"><input type="checkbox" name="confirmTemplate" value="1" required> 템플릿 변경은 기존 사용자에게 자동 반영되지 않음을 확인했습니다.</label>
+          <button type="submit" class="button">템플릿 저장</button>
+        </form>
+      </section>`}
+    <section class="panel">
+      <h2>사용자에게 명시적으로 반영</h2>
+      <p class="muted">선택한 각 사용자의 감사로그를 남기고, 표시된 버전이 모두 일치할 때만 한 batch로 반영합니다. 한 번에 최대 38명까지 선택할 수 있습니다.</p>
+      ${users.length ? `<form method="post" action="/admin/role-templates/${escapeHtml(template.key)}/apply" class="stack">
+        <input type="hidden" name="expectedTemplateRowVersion" value="${Number(template.row_version)}">
+        <div class="table-wrap"><table class="doc-table">
+          <caption class="sr-only">역할을 반영할 사용자 선택</caption>
+          <thead><tr><th>선택</th><th>사용자</th><th>현재 역할</th><th>버전</th></tr></thead>
+          <tbody>${users.map((user) => `<tr>
+            <td data-label="선택"><input type="checkbox" name="userId" value="${Number(user.id)}" aria-label="${escapeHtml(user.display_name)} 선택"><input type="hidden" name="rowVersion_${Number(user.id)}" value="${Number(user.row_version)}"></td>
+            <td data-label="사용자">${escapeHtml(user.display_name)}<br><span class="muted">${escapeHtml(user.username)}</span></td>
+            <td data-label="현재 역할">${escapeHtml(user.role_template_label || "사용자 지정")}</td>
+            <td data-label="버전">${Number(user.row_version)}</td>
+          </tr>`).join("")}</tbody>
+        </table></div>
+        <label class="checkbox"><input type="checkbox" name="confirmBulkApply" value="1" required> 선택한 N명의 현재 개별 예외를 이 템플릿 값으로 교체합니다.</label>
+        <button type="submit" class="danger-button">선택 사용자에게 반영</button>
+      </form>` : emptyState("반영 가능한 일반 사용자가 없습니다.")}
+    </section>
+  `, session);
+}
+
+function permissionCheckboxes(flags, includeData = true) {
+  return PERMISSION_KEYS.map((permission) => `<label class="check-inline"><input type="checkbox" name="${escapeHtml(permission)}" value="1"${includeData ? ` data-permission-key="${escapeHtml(permission)}" data-permission-label="${escapeHtml(PERMISSION_LABELS[permission])}"` : ""} ${flags[permission] ? "checked" : ""}> ${escapeHtml(PERMISSION_LABELS[permission])}</label>`).join("");
+}
+
+function permissionSummary(source) {
+  const permissions = enabledPermissions(source);
+  return permissions.length
+    ? permissions.map((permission) => escapeHtml(PERMISSION_LABELS[permission])).join(" · ")
+    : "조회 전용";
+}
+
+function enabledPermissions(source) {
+  const flags = permissionFlags(source);
+  return PERMISSION_KEYS.filter((permission) => flags[permission]);
+}
+
+function samePermissions(left, right) {
+  const leftFlags = permissionFlags(left);
+  const rightFlags = permissionFlags(right);
+  return PERMISSION_KEYS.every((permission) => leftFlags[permission] === rightFlags[permission]);
 }
 
 function permissionPreviewScript(flags) {
