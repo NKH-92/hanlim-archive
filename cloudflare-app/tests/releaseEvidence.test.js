@@ -14,10 +14,13 @@ test("release evidence는 migration checksum과 schema manifest를 보존한다"
   const manifest = JSON.parse(await readFile(path.join(target, "migration-manifest.json"), "utf8"));
 
   assert.equal(evidence.sourceRevision, "abc123");
-  assert.equal(evidence.migrationCount, 48);
-  assert.equal(Object.keys(manifest.checksums).length, 48);
+  assert.equal(evidence.migrationCount, 49);
+  assert.equal(Object.keys(manifest.checksums).length, 49);
   assert.ok(manifest.schema.tables.includes("documents"));
   assert.ok(manifest.schema.tables.includes("search_projection_documents"));
+  // 0049에서 크로스 DB 보상 계층의 마지막 잔재를 제거했다.
+  assert.equal(manifest.schema.tables.includes("search_index_outbox"), false);
+  assert.equal(manifest.schema.tables.includes("search_event_clock"), false);
   assert.match(evidence.migrationManifestSha256, /^[a-f0-9]{64}$/);
   // 검색 색인이 Core migration 체인 안에 있으므로 별도 Search manifest 증빙을 만들지 않는다.
   assert.equal("searchMigrationCount" in evidence, false);

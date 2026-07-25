@@ -240,7 +240,7 @@ npm run check:migrations
 
 ### 전환·검색 확인
 
-1. 신규 Core에 migration manifest의 전체 chain(`0001~0048`)을 순서대로 적용한다. `0048` 적용 직후
+1. 신규 Core에 migration manifest의 전체 chain(`0001~0049`)을 순서대로 적용한다. `0048` 적용 직후
    projection은 비어 있고 `reindex_status = 'pending'`이므로 Cron 재색인이 끝날 때까지 검색이 최근 200건
    Core 퍼지로 강등되는 것이 정상이다.
 2. 승인 파일을 bootstrap으로 검증하고 문서 수, identity, FK, 분류·상태·위치·태그 집계와 canonical hash를 대조한다.
@@ -330,8 +330,9 @@ FROM search_projection_dirty;
 확인한다. 요청량 80%, D1 행 70% 또는 dirty 지연 15분에 도달하면 대량 작업을 중지하고 request ID, Cron 오류,
 쿼리·인덱스를 점검한다. `exceededCpu`는 1건부터 장애 증적으로 보존한다.
 
-`search_index_outbox`는 R5 이후 아무 코드도 읽지 않는다. trigger가 문서당 한 행만 upsert하므로 크기는 문서
-수를 넘지 않으며 잔량과 지연은 점검 대상이 아니다. 테이블과 trigger 제거는 R6 contract migration으로 한다.
+`search_index_outbox`와 `search_event_clock`은 migration 0049에서 제거했다. 파생 색인 신호는
+`search_projection_dirty` 하나로 모이므로 점검 대상도 위 dirty 큐 하나다. `search_index_state`는 남아 있지만
+검색 cursor generation 카운터로만 쓰이며 잔량·지연 개념이 없다.
 
 PBKDF2-SHA256 100,000회는 Workers CPU 상한 때문에 하향하지 않는다. 로그인 CPU p95가 해당 월의 Workers 상한에
 붙거나 `exceededCpu`가 발생하면 먼저 계정·IP 로그인 실패 제한과 PBKDF2 전 조기 차단이 실제로 동작하는지 확인하고,

@@ -103,17 +103,24 @@ Search DB에서 후보 ID를 얻은 뒤 **항상 Core를 다시 읽어** 권한�
 | R3 compare (완료) | 두 읽기 경로의 결과·건수·패싯을 함께 실행해 비교하고 mismatch를 구조화 로그로 남기는 경로 추가 | 플래그 되돌리기 |
 | R4 cutover (완료) | 읽기 기본값을 Core projection으로 전환 | 플래그로 복귀 |
 | R5 정리 (완료) | `SEARCH_DB` binding, 두 번째 migration 체인, lease·watermark·tombstone·generation·cutover 코드 삭제. 배포·복구 scope=core | 이전 Worker version rollback |
-| R6 별도 승인 | Core의 legacy outbox·clock 테이블 DROP, 보존기간 종료 후 물리 Search D1 삭제 | 불가 |
+| R6 정리 (완료) | migration 0049로 `search_index_outbox`·`search_event_clock`과 관련 trigger 17개 DROP. `search-migrations/` 삭제 | 이전 Worker version rollback |
+| R7 별도 승인 | cursor generation을 `search_projection_state`로 옮긴 뒤 `search_index_state` DROP, 물리 Search D1 삭제 | expand 단계 선행 필요 |
 
 R2~R5를 한 배포에 합쳤다. 근거: 통합 시점의 운영 대장이 검증용 테스트 문서뿐이어서 검색 열화 구간을
 수용할 수 있었다. 배포 직후 projection이 `ready`가 될 때까지 검색은 최근 200건 Core 퍼지로 열화되며,
 402건 기준 Cron 5분 주기·chunk 100건으로 약 25분이 걸린다. 실사용 대장에서는 R2~R4와 R5를 분리하고
 R4 안정 확인 뒤에 R5를 진행한다.
 
-R5는 rollback 폭을 좁히지만 Core의 legacy 테이블은 남겨 이전 Worker version rollback을 유지한다.
-`search_index_outbox`, `search_event_clock`과 그 trigger를 DROP하는 contract migration만이 Worker
-rollback을 불가능하게 만들고, 회수하는 용량은 수백 KB에 불과하므로 R6로 미뤘다. 두 테이블의 크기는
-문서 수 상한을 넘지 않으므로 방치해도 용량 문제가 되지 않는다.
+R5는 rollback 폭을 좁히지만 Core의 legacy 테이블은 남겨 이전 Worker version rollback을 유지했다.
+R6에서 그 테이블을 DROP한 근거는 배포된 R5 Worker가 `search_index_outbox`·`search_event_clock`을
+읽지 않는다는 것이다. 두 테이블에 쓰던 것은 trigger뿐이므로 trigger를 함께 지우면 이전 Worker의 쓰기
+경로도 그대로 동작한다. 즉 R6는 rollback 호환을 깨지 않는다.
+
+반면 `search_index_state`는 아직 DROP할 수 없다. `generation` 컬럼이 검색 cursor 무효화에 쓰이고
+엑셀 전체 반영이 같은 카운터를 올린다. 지우려면 cursor generation을 `search_projection_state`로 옮기는
+expand 배포가 먼저 나가야 하므로 R7로 분리했다. 배포 workflow의
+`Verify rollback Worker against migrated schema`가 이 순서를 강제한다. 남은 테이블 크기는 문서 수
+상한을 넘지 않으므로 방치해도 용량 문제가 되지 않는다.
 
 ### R5 정리 결과
 
@@ -126,8 +133,8 @@ rollback을 불가능하게 만들고, 회수하는 용량은 수백 KB에 불�
 | `src/platform/d1/requestGateway.js` | `SEARCH_DB` 예산 wrapper와 잔여 statement 계산 제거 |
 | readiness·관리 화면 | legacy search 상세와 `warnings.searchDatabase`·`searchOperational` 제거. `warnings.searchProjectionSynced` 하나만 유지 |
 | 배포·운영 | `SEARCH_D1_TARGET_DATABASE_ID`, `D1_RECOVERY_SCOPE=core-and-search`, Search Time Travel bookmark, `db:migrate:search:local` 제거 |
-| `search-migrations/` | 파일은 이력으로 동결하고 적용 중단. `check-migrations.mjs`의 Search chain 검증 제거 |
-| R6로 이연 | `search_index_outbox`·`search_event_clock`·관련 trigger DROP contract migration, 물리 Search D1 삭제 |
+| `search-migrations/` | R5에서 적용 중단하고 `check-migrations.mjs`의 Search chain 검증 제거, R6에서 파일 삭제 |
+| R7로 이연 | cursor generation 이관 후 `search_index_state` DROP, 물리 Search D1 삭제 |
 
 ### 파생 색인 비용 절감
 

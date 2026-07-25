@@ -52,8 +52,14 @@ test("300건 엑셀 한 파일을 현재 대장으로 반영하고 다음 파일
     `).get(first.snapshot.snapshot_code).count, 0);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE note = 'Cloudflare 테스트 기본 문서'").get().count, 0);
     assert.equal(database.prepare("SELECT suppress_derived_triggers FROM bootstrap_runtime_control WHERE id = 1").get().suppress_derived_triggers, 0);
-    assert.equal(database.prepare("SELECT rebuild_required FROM search_index_state WHERE id = 1").get().rebuild_required, 1);
-    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM search_index_outbox").get().count, 0);
+    // bootstrap은 파생 trigger를 억제하므로 dirty 큐가 비어 있고, 대신 같은 batch가 projection
+    // 전체 재색인을 예약한다. cursor generation도 함께 올라가 기존 검색 cursor가 무효화된다.
+    assert.equal(
+      database.prepare("SELECT reindex_status FROM search_projection_state WHERE id = 1").get().reindex_status,
+      "pending"
+    );
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM search_projection_dirty").get().count, 0);
+    assert.ok(database.prepare("SELECT generation FROM search_index_state WHERE id = 1").get().generation > 1);
 
     const exported = await getDocumentSnapshotExport(env);
     assert.equal(exported.documents.length, 300);
