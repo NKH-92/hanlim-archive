@@ -99,7 +99,7 @@ test("감사조회 권한은 readiness 상세 상태를 관리자 read model과 
   assert.equal(result.readiness.ok, false);
   assert.deepEqual(result.readiness.migrations.core, {
     current: "0043_application_mfa.sql",
-    expected: "0045_user_role_templates.sql",
+    expected: "0046_app_user_team.sql",
     ready: false
   });
   assert.deepEqual(result.readiness.search, {

@@ -148,3 +148,35 @@ test("명시적 역할 일괄 반영은 사용자별 감사와 N명 OCC를 원�
     database.close();
   }
 });
+
+test("역할 일괄 반영은 승인되지 않은 계정을 대상에서 거부한다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const env = { DB: sqliteD1(database) };
+    database.prepare(`
+      INSERT INTO app_users (
+        username, display_name, password_salt, password_hash, status, role, row_version
+      ) VALUES ('not-approved', '대기', 'salt', 'hash', 'pending', 'User', 1)
+    `).run();
+    const pending = database.prepare("SELECT id FROM app_users WHERE username = 'not-approved'").get();
+
+    const result = await applyRoleTemplateToUsers(env, "document_manager", [{
+      id: Number(pending.id),
+      expectedRowVersion: 1
+    }], actor, 1);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.stale, true);
+    const untouched = database.prepare(`
+      SELECT role_template_key, can_manage_documents, row_version
+      FROM app_users WHERE id = ?
+    `).get(pending.id);
+    assert.deepEqual({ ...untouched }, {
+      role_template_key: null,
+      can_manage_documents: 0,
+      row_version: 1
+    });
+  } finally {
+    database.close();
+  }
+});

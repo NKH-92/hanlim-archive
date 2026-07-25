@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -6,12 +7,41 @@ import {
   hasPermission,
   PERMISSION_KEYS,
   PERMISSIONS,
-  permissionsForPreset,
+  samePermissions,
   sessionHasManagementAccess
 } from "../src/permissions.js";
 import { requireManagementAccess, requirePermission } from "../src/handlers/permissionGuards.js";
+import { handleUserPermissions } from "../src/handlers/userPermissionHandlers.js";
 import { userPermissionsPage } from "../src/views/permissionViews.js";
 import { adminSettingsPage } from "../src/views/adminViews.js";
+import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
+import { sqliteD1 } from "./helpers/sqliteD1.js";
+
+const adminSession = {
+  userId: 1,
+  username: "admin",
+  displayName: "관리자",
+  role: "Admin",
+  csrfToken: "token".repeat(8)
+};
+
+function insertApprovedUser(database, username) {
+  database.prepare(`
+    INSERT INTO app_users (
+      username, display_name, password_salt, password_hash, status, role, role_template_key, row_version
+    ) VALUES (?, ?, 'salt', 'hash', 'approved', 'User', 'viewer', 1)
+  `).run(username, username);
+  return Number(database.prepare("SELECT id FROM app_users WHERE username = ?").get(username).id);
+}
+
+function permissionRequest(id, fields) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.set(key, value);
+  return new Request(`https://archive.example.com/admin/users/${id}/permissions`, {
+    method: "POST",
+    body: form
+  });
+}
 
 test("Admin은 세부 플래그와 관계없이 모든 권한을 가진다", () => {
   const admin = { role: "Admin" };
@@ -36,19 +66,14 @@ test("User는 DB 권한 플래그에 해당하는 기능만 사용할 수 있다
   assert.match(await denied.text(), /접근 권한/);
 });
 
-test("권한 프리셋은 복수 권한과 사용자 지정을 안정적으로 매핑한다", () => {
-  const archiveManager = permissionsForPreset("archive_manager");
-  assert.equal(archiveManager.can_manage_documents, true);
-  assert.equal(archiveManager.can_move_documents, true);
-  assert.equal(archiveManager.can_manage_sets, true);
-  assert.equal(archiveManager.can_manage_disposals, false);
+test("코드에는 역할 정의 상수를 두지 않고 플래그 비교만 제공한다", async () => {
+  const source = await readFile(new URL("../src/permissions.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /PERMISSION_PRESETS|permissionsForPreset|matchingPermissionPreset/);
+  assert.doesNotMatch(source, /archive_manager|disposal_manager|operations_admin/);
 
-  const custom = permissionsForPreset("custom", { can_manage_users: true });
-  assert.equal(custom.can_manage_users, true);
-  assert.equal(custom.can_view_audit, false);
-
-  const systemAdmin = permissionsForPreset("system_admin");
-  assert.ok(PERMISSION_KEYS.every((permission) => systemAdmin[permission]));
+  assert.equal(samePermissions({ can_manage_documents: 1 }, { can_manage_documents: true }), true);
+  assert.equal(samePermissions({ can_manage_documents: 1 }, { can_move_documents: 1 }), false);
+  assert.equal(samePermissions({}, {}), true);
 });
 
 test("사용자 권한 화면은 DB 역할 템플릿 3종과 개별 예외 권한을 제공한다", async () => {
@@ -76,11 +101,100 @@ test("사용자 권한 화면은 DB 역할 템플릿 3종과 개별 예외 권�
   assert.match(html, />시스템관리</);
   assert.match(html, /현재 구성: 사용자 지정/);
   assert.match(html, /name="expectedRowVersion" value="3"/);
+  assert.match(html, /name="templateVersions" value="[^"]*&quot;document_manager&quot;:1[^"]*"/);
+  assert.match(html, /역할을 선택해 저장하면 서버가 그 역할의 표준 권한을 그대로 적용합니다/);
   for (const permission of PERMISSION_KEYS) {
     assert.match(html, new RegExp(`name="${permission}"`));
   }
   assert.doesNotMatch(html, /viewer<script>/);
   assert.match(html, /viewer&lt;script&gt;/);
+});
+
+test("역할을 선택한 저장은 체크박스 없이도 서버가 템플릿 권한을 적용한다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const env = { DB: sqliteD1(database) };
+    const id = insertApprovedUser(database, "role-target");
+    const response = await handleUserPermissions(
+      permissionRequest(id, {
+        confirmPermissions: "1",
+        templateKey: "document_manager",
+        templateVersions: JSON.stringify({ viewer: 1, document_manager: 1, system_admin: 1 }),
+        expectedRowVersion: "1"
+      }),
+      env,
+      adminSession,
+      id
+    );
+
+    assert.equal(response.status, 302);
+    const saved = database.prepare(`
+      SELECT role_template_key, can_manage_documents, can_move_documents,
+        can_manage_disposals, can_manage_sets, can_manage_users, row_version
+      FROM app_users WHERE id = ?
+    `).get(id);
+    assert.deepEqual({ ...saved }, {
+      role_template_key: "document_manager",
+      can_manage_documents: 1,
+      can_move_documents: 1,
+      can_manage_disposals: 1,
+      can_manage_sets: 1,
+      can_manage_users: 0,
+      row_version: 2
+    });
+  } finally {
+    database.close();
+  }
+});
+
+test("사용자 지정 저장만 체크박스를 사용하고, 편집된 템플릿 저장은 거부한다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const env = { DB: sqliteD1(database) };
+    const id = insertApprovedUser(database, "custom-target");
+
+    const custom = await handleUserPermissions(
+      permissionRequest(id, {
+        confirmPermissions: "1",
+        templateKey: "custom",
+        templateVersions: JSON.stringify({ viewer: 1, document_manager: 1, system_admin: 1 }),
+        expectedRowVersion: "1",
+        can_move_documents: "1"
+      }),
+      env,
+      adminSession,
+      id
+    );
+    assert.equal(custom.status, 302);
+    const saved = database.prepare(`
+      SELECT role_template_key, can_manage_documents, can_move_documents, row_version
+      FROM app_users WHERE id = ?
+    `).get(id);
+    assert.deepEqual({ ...saved }, {
+      role_template_key: null,
+      can_manage_documents: 0,
+      can_move_documents: 1,
+      row_version: 2
+    });
+
+    database.prepare("UPDATE user_role_templates SET row_version = row_version + 1 WHERE key = 'viewer'").run();
+    const stale = await handleUserPermissions(
+      permissionRequest(id, {
+        confirmPermissions: "1",
+        templateKey: "viewer",
+        templateVersions: JSON.stringify({ viewer: 1, document_manager: 1, system_admin: 1 }),
+        expectedRowVersion: "2"
+      }),
+      env,
+      adminSession,
+      id
+    );
+    assert.equal(stale.status, 200);
+    assert.match(await stale.text(), /역할 템플릿이 변경되었습니다/);
+    assert.equal(database.prepare("SELECT row_version FROM app_users WHERE id = ?").get(id).row_version, 2);
+  } finally {
+    database.close();
+  }
 });
 
 test("사용자 관리 화면은 반려와 사용중지를 분리한다", async () => {

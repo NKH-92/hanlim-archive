@@ -6,7 +6,7 @@ import {
   isExpectedChangeAbort
 } from "../platform/d1/expectedChange.js";
 import { executeMutationBatch } from "../platform/d1/requestGateway.js";
-import { PERMISSION_KEYS, permissionFlags } from "../permissions.js";
+import { PERMISSION_KEYS, permissionFlags, samePermissions } from "../permissions.js";
 import { clean } from "../shared/text/normalize.js";
 
 const SYSTEM_TEMPLATE_KEY = "system_admin";
@@ -60,10 +60,7 @@ export async function updateRoleTemplate(env, key, values, actor) {
 
   const beforePermissions = permissionFlags(current);
   const afterPermissions = permissionFlags(values?.permissions);
-  if (
-    current.label === label
-    && PERMISSION_KEYS.every((permission) => beforePermissions[permission] === afterPermissions[permission])
-  ) {
+  if (current.label === label && samePermissions(beforePermissions, afterPermissions)) {
     return { ok: true, unchanged: true };
   }
 
@@ -134,7 +131,7 @@ export async function applyRoleTemplateToUsers(env, key, targets, actor, expecte
   }
   const placeholders = normalizedTargets.map(() => "?").join(", ");
   const usersResult = await env.DB.prepare(`
-    SELECT id, username, display_name, role, security_review_required, role_template_key, row_version,
+    SELECT id, username, display_name, role, status, security_review_required, role_template_key, row_version,
       ${PERMISSION_KEYS.join(", ")}
     FROM app_users
     WHERE id IN (${placeholders})
@@ -145,6 +142,7 @@ export async function applyRoleTemplateToUsers(env, key, targets, actor, expecte
     users.length !== normalizedTargets.length
     || users.some((user) => (
       user.role !== "User"
+      || user.status !== "approved"
       || Number(user.security_review_required || 0) === 1
       || Number(user.row_version) !== expectedById.get(Number(user.id))
     ))
@@ -160,6 +158,7 @@ export async function applyRoleTemplateToUsers(env, key, targets, actor, expecte
       FROM app_users
       WHERE id = ?
         AND role = 'User'
+        AND status = 'approved'
         AND security_review_required = 0
         AND row_version = ?
         AND EXISTS (
@@ -202,6 +201,7 @@ export async function applyRoleTemplateToUsers(env, key, targets, actor, expecte
         row_version = row_version + 1,
         updated_at = CURRENT_TIMESTAMP
     WHERE role = 'User'
+      AND status = 'approved'
       AND security_review_required = 0
       AND EXISTS (
         SELECT 1

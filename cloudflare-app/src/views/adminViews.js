@@ -185,8 +185,8 @@ function userRequestTable(users, session) {
   return `
     <div class="table-wrap"><table class="doc-table">
       <caption class="sr-only">사용자 목록</caption>
-      <thead><tr><th>아이디</th><th>이름</th><th>역할</th><th>상태</th><th>요청일</th><th>처리</th></tr></thead>
-      <tbody>${users.map((user) => `<tr><td data-label="아이디">${escapeHtml(user.username)}</td><td data-label="이름">${escapeHtml(user.display_name)}</td><td data-label="역할">${escapeHtml(userRoleLabel(user))}</td><td data-label="상태">${userStatus(user)}</td><td data-label="요청일">${escapeHtml(user.requested_at || "-")}</td><td data-label="처리">${userActions(user, session)}</td></tr>`).join("")}</tbody>
+      <thead><tr><th>아이디</th><th>이름</th><th>팀</th><th>역할</th><th>상태</th><th>요청일</th><th>처리</th></tr></thead>
+      <tbody>${users.map((user) => `<tr><td data-label="아이디">${escapeHtml(user.username)}</td><td data-label="이름">${escapeHtml(user.display_name)}</td><td data-label="팀">${escapeHtml(user.team || "-")}</td><td data-label="역할">${escapeHtml(userRoleLabel(user))}</td><td data-label="상태">${userStatus(user)}</td><td data-label="요청일">${escapeHtml(user.requested_at || "-")}</td><td data-label="처리">${userActions(user, session)}</td></tr>`).join("")}</tbody>
     </table></div>
   `;
 }

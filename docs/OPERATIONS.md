@@ -216,7 +216,7 @@ npm run check:migrations
 
 ### 전환·검색 확인
 
-1. 신규 Core에 migration manifest의 전체 chain(`0001~0043`), Search에
+1. 신규 Core에 migration manifest의 전체 chain(`0001~0045`), Search에
    `search-migrations/0001~0003`을 순서대로 적용한다. Search `0003` 적용 뒤에는 부분 생성된
    무토큰 shadow generation을 폐기하고 active generation을 유지한 채 재구축이 다시 시작되는 것이 정상이다.
 2. 승인 파일을 bootstrap으로 검증하고 문서 수, identity, FK, 분류·상태·위치·태그 집계와 canonical hash를 대조한다.
@@ -309,6 +309,7 @@ PBKDF2-SHA256 100,000회는 Workers CPU 상한 때문에 하향하지 않는다.
 - repository secret `CLOUDFLARE_API_TOKEN`: 대상 Worker deploy·version 조회·rollback과 Core·Search
   migration·release 전용 계정 생성·삭제에 필요한 권한만 부여한다. workflow는 필요한 step에만 이 값을 전달한다.
 - `ADMIN_PROVISION_USERNAME`, `ADMIN_PROVISION_DISPLAY_NAME`, `ADMIN_PROVISION_PASSWORD`: 독립 Admin을 최초 1회 생성할 때만 사용하는 production Environment secret. 시스템 비밀번호 정책에 따라 6자 이상으로 둔다.
+- `USER_PROVISION_ROSTER`, `USER_PROVISION_PASSWORD`: 사용자 일괄 등록에만 사용하는 production Environment secret. 등록 후 삭제한다.
 
 Worker 런타임에는 Wrangler의 운영 환경 secret으로 다음 값을 각각 별도 생성해 등록한다.
 
@@ -326,6 +327,38 @@ runner 임시 파일에만 둔다. 두 계정의 TTL은 45분이며 workflow는 
 PBKDF2-SHA256 100,000회 반복을 사용한다. 기존 100,000회 raw digest는 성공 로그인 시 반복 횟수를
 명시하는 self-describing record로 자동 전환하고, 100,000회를 넘는 record는 PBKDF2 실행 전에
 fail-closed한다. 로그인 실패 제한과 session epoch 기반 세션 무효화는 계속 적용한다.
+
+### 사용자 일괄 등록
+
+명단(이름·팀·이메일)과 초기 비밀번호는 개인정보·credential이므로 저장소·migration·PR에 넣지 않고 production
+Environment secret으로만 전달한다. 등록은 `Provision Archive Users` workflow(`npm run users:provision:remote`)로
+수행하며 승인된 조회 권한 계정을 만든다.
+
+1. 로컬에서 명단 파일을 roster JSON으로 변환한다. 입력 파일과 출력 JSON은 `.gitignore`로 차단되어 있고
+   커밋하지 않는다.
+
+   ```powershell
+   cd cloudflare-app
+   npm run users:roster -- --input ..\명단.xlsx --out provisioning-local\user-roster.json
+   ```
+
+   `이름`/`부서`/`이메일주소` 헤더를 인식하고, 이메일을 소문자 로그인 아이디로 정규화한다. 알려진
+   bootstrap·smoke 계정은 생성 대상에서 제외되고 팀 갱신 항목으로만 남는다.
+2. production Environment secret에 등록한다. `USER_PROVISION_ROSTER`에 위 JSON 전체를,
+   `USER_PROVISION_PASSWORD`에 초기 비밀번호를 넣는다. 등록이 끝나면 두 secret을 삭제한다.
+3. `Provision Archive Users` workflow를 승인 후 1회 실행한다. 스크립트는 대상 환경·D1 ID·확인문구를 검사하고,
+   기존 계정은 절대 덮어쓰지 않으며(`INSERT ... WHERE NOT EXISTS`), 이번 실행이 만든 계정에는
+   `approved_by = guarded-user-provisioning:<operation-id>` 표식을 남긴다. 실패 시 그 표식의 계정만 보상 정리한다.
+4. 등록 계정은 `status='approved'`, `role='User'`, `role_template_key='viewer'`, 8개 권한 전부 0,
+   `must_change_password=1`이다. 최초 로그인 시 업무 화면 진입 전에 비밀번호 변경이 강제된다.
+5. 이미 있는 계정은 credential·역할·권한을 건드리지 않고 명단의 팀 값만 맞춘다. 주 관리자
+   계정처럼 보호 대상인 계정도 팀만 갱신된다.
+6. 실행 로그에는 건수만 남는다. 이름·이메일은 출력하지 않는다.
+
+공용 초기 비밀번호는 수용한 위험이다. 운영 URL이 공개되어 있고 아이디가 이메일이므로, 어떤 사용자가 최초
+로그인을 하기 전에는 그 아이디와 공용 초기값으로 외부에서 먼저 접근할 수 있다. 등록 직후 전원에게 즉시 로그인·변경을
+안내하고, 며칠 뒤 `must_change_password = 1`로 남은 계정(= 아직 아무도 쓰지 않은 계정)을 확인해 사용중지하거나
+비밀번호를 다시 초기화한다. 계정별 무작위 초기값으로 바꾸면 이 위험은 사라지므로 다음 등록 때 재검토한다.
 
 최초 또는 복구 환경에서 독립 Admin이 없으면 production Environment reviewer 승인 후 `Provision Independent Admin` workflow를 한 번 실행한다. 이 workflow는 알려진 bootstrap·smoke 사용자명을 거부하고, 대상 환경·D1 ID를 확인한 뒤 기존 계정을 덮어쓰지 않는 INSERT만 수행한다. 배포 workflow는 migration 전후에 승인된 독립 Admin 존재를 확인하고, 배포 전후 해당 계정으로 `/admin/settings` 접근까지 smoke한다.
 
