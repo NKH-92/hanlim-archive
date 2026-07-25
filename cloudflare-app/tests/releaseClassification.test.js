@@ -33,7 +33,6 @@ test("release classifier는 일반 Worker 변경에 Core recovery만 요구한�
 test("release classifier는 migration, binding, workflow, 미지 경로를 전체 보호 경로로 닫는다", () => {
   for (const file of [
     "cloudflare-app/migrations/0045_example.sql",
-    "cloudflare-app/search-migrations/0004_example.sql",
     "cloudflare-app/wrangler.jsonc",
     ".github/workflows/deploy.yml",
     "unexpected/release-input.txt"
@@ -41,7 +40,8 @@ test("release classifier는 migration, binding, workflow, 미지 경로를 전�
     const result = classifyReleaseFiles([file]);
     assert.equal(result.releaseClass, "database", file);
     assert.equal(result.requiresMigration, true, file);
-    assert.equal(result.recoveryScope, "core-and-search", file);
+    // 검색 색인이 Core D1 안으로 들어왔으므로 복구 대상은 Core 하나다.
+    assert.equal(result.recoveryScope, "core", file);
   }
 });
 

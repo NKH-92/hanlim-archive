@@ -20,26 +20,18 @@
   "triggers": {
     "crons": ["*/5 * * * *"]
   },
+  // 검색 projection과 FTS5는 Core D1 안에 있다. 별도 Search D1 binding은 사용하지 않는다.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "hanlim-archive-local",
       "database_id": "00000000-0000-0000-0000-000000000001",
       "migrations_dir": "migrations"
-    },
-    {
-      "binding": "SEARCH_DB",
-      "database_name": "hanlim-archive-search-local",
-      "database_id": "00000000-0000-0000-0000-000000000002",
-      "migrations_dir": "search-migrations"
     }
   ],
   // 엑셀 전체 대장 반영 개방 단계: disabled → admin-only → permissioned
-  // SEARCH_READ_MODE: core(Core projection) | compare(양쪽 비교·mismatch 로깅) | search-db(기존 Search D1)
-  // projection이 ready가 아니면 core 모드에서도 Search D1 → Core 퍼지 순으로 자동 강등한다.
   "vars": {
-    "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only",
-    "SEARCH_READ_MODE": "core"
+    "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only"
   },
   // 원격 migration/deploy는 명시적 env 이름을 요구한다. top-level은 로컬·개발 기본값이다.
   "env": {
@@ -48,10 +40,8 @@
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       },
-      // R3: compare로 관측한 뒤 게이트 통과를 확인하고 R4에서 core로 올린다.
       "vars": {
-        "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only",
-        "SEARCH_READ_MODE": "compare"
+        "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only"
       },
       "d1_databases": [
         {
@@ -59,12 +49,6 @@
           "database_name": "hanlim-archive-staging",
           "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
           "migrations_dir": "migrations"
-        },
-        {
-          "binding": "SEARCH_DB",
-          "database_name": "hanlim-archive-search-10k-staging",
-          "database_id": "REPLACE_WITH_STAGING_SEARCH_D1_DATABASE_ID",
-          "migrations_dir": "search-migrations"
         }
       ]
     },
@@ -75,10 +59,8 @@
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       },
-      // R3: compare로 관측한 뒤 게이트 통과를 확인하고 R4에서 core로 올린다.
       "vars": {
-        "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only",
-        "SEARCH_READ_MODE": "compare"
+        "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only"
       },
       "d1_databases": [
         {
@@ -86,12 +68,6 @@
           "database_name": "hanlim-archive",
           "database_id": "1262ca00-b431-490c-aad2-539d77d4f73f",
           "migrations_dir": "migrations"
-        },
-        {
-          "binding": "SEARCH_DB",
-          "database_name": "hanlim-archive-search-10k",
-          "database_id": "e9dc4469-30ca-47c7-ad01-6aa9aea0b3ac",
-          "migrations_dir": "search-migrations"
         }
       ]
     }

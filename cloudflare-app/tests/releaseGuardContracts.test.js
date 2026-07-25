@@ -10,10 +10,8 @@ import { verifyReleasedBaselineAgainstBase } from "../scripts/check-released-bas
 
 // Synthetic UUID: contract tests must not duplicate a real production D1 identifier.
 const TEST_PRODUCTION_ID = "00000000-0000-4000-8000-000000000001";
-const TEST_SEARCH_ID = "00000000-0000-4000-8000-000000000002";
 const RELEASE_SHA = "a".repeat(40);
 const CORE_BOOKMARK = `00000001-00000002-00000003-${"a".repeat(32)}`;
-const SEARCH_BOOKMARK = `00000004-00000005-00000006-${"b".repeat(32)}`;
 
 test("배포 npm script는 browser build 뒤 verify를 한 번만 수행하고 dry-run 경로를 유지한다", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -38,11 +36,6 @@ function recoveryEvidence(overrides = {}) {
         name: "hanlim-archive",
         databaseId: TEST_PRODUCTION_ID,
         bookmark: CORE_BOOKMARK
-      },
-      search: {
-        name: "hanlim-archive-search-10k",
-        databaseId: TEST_SEARCH_ID,
-        bookmark: SEARCH_BOOKMARK
       }
     },
     ...overrides
@@ -72,12 +65,6 @@ function baseConfig() {
   };
 }
 
-function searchConfig(searchDatabaseId = TEST_SEARCH_ID) {
-  const config = baseConfig();
-  config.env.production.d1_databases.push({ binding: "SEARCH_DB", database_id: searchDatabaseId });
-  return config;
-}
-
 test("remote migrate는 env database_id 불일치·placeholder·누락 승인을 mutation 전에 거부한다", () => {
   const config = baseConfig();
   assert.equal(preflightRemoteMigrate({
@@ -91,14 +78,7 @@ test("remote migrate는 env database_id 불일치·placeholder·누락 승인을
     envName: "production",
     expectedDatabaseId: TEST_PRODUCTION_ID,
     ...migrationEvidence(),
-    config: searchConfig("REPLACE_WITH_PRODUCTION_SEARCH_D1_DATABASE_ID")
-  }).ok, false);
-  assert.equal(preflightRemoteMigrate({
-    envName: "production",
-    expectedDatabaseId: TEST_PRODUCTION_ID,
-    expectedSearchDatabaseId: TEST_SEARCH_ID,
-    ...migrationEvidence(),
-    config: searchConfig()
+    config
   }).ok, true);
 
   assert.equal(preflightRemoteMigrate({
@@ -117,33 +97,30 @@ test("remote migrate는 env database_id 불일치·placeholder·누락 승인을
   assert.equal(preflightRemoteMigrate({
     envName: "production",
     expectedDatabaseId: TEST_PRODUCTION_ID,
-    expectedSearchDatabaseId: TEST_SEARCH_ID,
     ...migrationEvidence({
       recoveryEvidence: recoveryEvidence({
         releaseSha: "b".repeat(40)
       })
     }),
-    config: searchConfig()
+    config
   }).ok, false);
 
   const ok = preflightRemoteMigrate({
     envName: "production",
     expectedDatabaseId: TEST_PRODUCTION_ID,
-    expectedSearchDatabaseId: TEST_SEARCH_ID,
     ...migrationEvidence(),
     dryRun: true,
-    config: searchConfig()
+    config
   });
   assert.equal(ok.ok, true);
   assert.equal(ok.configuredId, TEST_PRODUCTION_ID);
   assert.equal(ok.recoveryBookmarks.core, CORE_BOOKMARK);
-  assert.equal(ok.recoveryBookmarks.search, SEARCH_BOOKMARK);
+  assert.equal("search" in ok.recoveryBookmarks, false, "Search D1 복구 지점은 더 이상 요구하지 않는다");
   assert.equal(preflightRemoteMigrate({
     envName: "production",
     expectedDatabaseId: TEST_PRODUCTION_ID,
-    expectedSearchDatabaseId: TEST_SEARCH_ID,
     ...migrationEvidence({ approvalContext: "approval-token-16+" }),
-    config: searchConfig()
+    config
   }).ok, false);
 });
 
@@ -173,20 +150,6 @@ test("deploy preflight는 unscoped env와 staging placeholder를 거부한다", 
     config: baseConfig()
   });
   assert.equal(ok.ok, true);
-
-  assert.equal(preflightDeploy({
-    envName: "production",
-    expectedDatabaseId: TEST_PRODUCTION_ID,
-    requireSearchDatabase: true,
-    config: searchConfig("REPLACE_WITH_PRODUCTION_SEARCH_D1_DATABASE_ID")
-  }).ok, false);
-  assert.equal(preflightDeploy({
-    envName: "production",
-    expectedDatabaseId: TEST_PRODUCTION_ID,
-    expectedSearchDatabaseId: TEST_SEARCH_ID,
-    requireSearchDatabase: true,
-    config: searchConfig()
-  }).ok, true);
 
   assert.equal(preflightDeploy({
     envName: "production",

@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
+import worker from "../src/index.js";
+import { createSessionCookie } from "../src/auth.js";
 import { createDocument } from "../src/domains/documents/index.js";
-import {
-  getViewerSearchPayload,
-  rebuildSearchIndexChunk,
-  resolveSearchReadMode
-} from "../src/domains/search/index.js";
+import { createDocumentImportJob } from "../src/domains/imports/index.js";
+import { getViewerSearchPayload } from "../src/domains/search/index.js";
 import {
   drainSearchProjectionDirty,
   drainSearchProjectionDirtyForDocuments,
@@ -20,20 +17,10 @@ import { actorFixture } from "./helpers/fixtures.js";
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 import { sqliteD1 } from "./helpers/sqliteD1.js";
 
-async function createSearchDatabase() {
-  const database = new DatabaseSync(":memory:");
-  for (const name of [
-    "0001_search_index.sql",
-    "0002_shadow_generations_and_facets.sql",
-    "0003_rebuild_barriers_and_watermarks.sql"
-  ]) {
-    database.exec(await readFile(new URL(`../search-migrations/${name}`, import.meta.url), "utf8"));
-  }
-  return database;
-}
+const SESSION_SECRET = "projection-search-test-secret-at-least-32-characters";
 
 async function readyProjection(env) {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const result = await reindexSearchProjectionChunk(env);
     if (result.completed) return result;
   }
@@ -48,12 +35,11 @@ function dirtyRows(database) {
   `).all();
 }
 
-test("검색 읽기 모드는 core가 기본이고 알 수 없는 값도 core로 닫는다", () => {
-  assert.equal(resolveSearchReadMode({}), "core");
-  assert.equal(resolveSearchReadMode({ SEARCH_READ_MODE: "compare" }), "compare");
-  assert.equal(resolveSearchReadMode({ SEARCH_READ_MODE: "search-db" }), "search-db");
-  assert.equal(resolveSearchReadMode({ SEARCH_READ_MODE: "nonsense" }), "core");
-});
+function csrfFromCookie(cookie) {
+  const value = cookie.match(/hanlim_session=([^;]+)/)[1];
+  const [payload] = value.split(".", 1);
+  return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")).csrfToken;
+}
 
 test("reference 이름 변경은 전체 재구축 대신 영향 문서만 재색인 대상으로 표시한다", async () => {
   const database = await createMigratedDatabase();
@@ -61,13 +47,11 @@ test("reference 이름 변경은 전체 재구축 대신 영향 문서만 재색
   try {
     await readyProjection(env);
     database.prepare("DELETE FROM search_projection_dirty").run();
-    database.prepare("DELETE FROM search_index_outbox").run();
     database.prepare("UPDATE search_index_state SET rebuild_required = 0 WHERE id = 1").run();
     const generationBefore = database.prepare(
       "SELECT generation FROM search_index_state WHERE id = 1"
     ).get().generation;
 
-    // 문서 1건만 가진 대분류 이름 변경
     const category = database.prepare(`
       SELECT c.id, COUNT(d.id) AS documents
       FROM categories c
@@ -84,11 +68,6 @@ test("reference 이름 변경은 전체 재구축 대신 영향 문서만 재색
     ).all(category.id).map(({ id }) => id);
     assert.ok(affected.length > 0);
     assert.deepEqual(dirtyRows(database).map((row) => row.document_id), affected);
-    assert.deepEqual(
-      database.prepare("SELECT document_id FROM search_index_outbox ORDER BY document_id")
-        .all().map(({ document_id }) => document_id),
-      affected
-    );
     assert.equal(
       database.prepare("SELECT rebuild_required FROM search_index_state WHERE id = 1").get().rebuild_required,
       0,
@@ -315,78 +294,96 @@ test("배출 도중 새 변경이 생기면 오래된 내용이 최신 projectio
   }
 });
 
-test("Core projection 검색은 Search D1 경로와 같은 결과·건수·패싯을 만든다", async () => {
-  const coreDatabase = await createMigratedDatabase();
-  const searchDatabase = await createSearchDatabase();
-  const env = { DB: sqliteD1(coreDatabase), SEARCH_DB: sqliteD1(searchDatabase) };
-  try {
-    await rebuildSearchIndexChunk(env);
-    await rebuildSearchIndexChunk(env);
-    await readyProjection(env);
-
-    for (const query of ["2026", "제조기록서", "밸리데이선", "MR-2026-001"]) {
-      const legacy = await getViewerSearchPayload(
-        { ...env, SEARCH_READ_MODE: "search-db" },
-        { q: query, limit: 30 }
-      );
-      const projection = await getViewerSearchPayload(
-        { ...env, SEARCH_READ_MODE: "core" },
-        { q: query, limit: 30 }
-      );
-      assert.equal(projection.ok, legacy.ok, query);
-      assert.equal(projection.fallback, false, query);
-      assert.deepEqual(
-        projection.items.map((item) => item.documentNumber),
-        legacy.items.map((item) => item.documentNumber),
-        `${query} 결과 목록이 일치해야 한다`
-      );
-      assert.equal(projection.pagination.totalItems, legacy.pagination.totalItems, `${query} 전체 건수`);
-      assert.deepEqual(
-        projection.facets.statuses.map((facet) => [facet.value, facet.count]),
-        legacy.facets.statuses.map((facet) => [facet.value, facet.count]),
-        `${query} 상태 패싯`
-      );
-    }
-  } finally {
-    coreDatabase.close();
-    searchDatabase.close();
-  }
-});
-
-test("SEARCH_DB가 없어도 Core projection만으로 검색이 정상 응답한다", async () => {
+test("Core projection 검색은 정확 일치·퍼지·cursor·열화 판정 계약을 유지한다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database) };
   try {
-    await readyProjection(env);
-    const payload = await getViewerSearchPayload(env, { q: "제조기록서", limit: 30 });
+    // 재색인 완료 전에는 색인 없는 Core 퍼지 응답이므로 열화로 표시한다.
+    const beforeReady = await getViewerSearchPayload(env, { q: "2026", limit: 30 });
+    assert.equal(beforeReady.fallback, true);
 
-    assert.equal(payload.ok, true);
-    assert.equal(payload.fallback, false, "projection이 읽히면 열화 응답이 아니다");
-    assert.deepEqual(payload.items.map((item) => item.documentNumber), ["MR-2026-001"]);
+    await readyProjection(env);
+    const ready = { DB: sqliteD1(database) };
+
+    const first = await getViewerSearchPayload(ready, { q: "2026", limit: 1 });
+    assert.equal(first.ok, true);
+    assert.equal(first.items.length, 1);
+    assert.equal(first.hasMore, true);
+    assert.ok(first.nextCursor);
+    assert.equal(first.fallback, false);
+
+    const exactName = await getViewerSearchPayload(ready, {
+      q: "2026년 1분기 제조기록서",
+      limit: 30
+    });
+    assert.equal(exactName.pagination.totalItems, 1);
+    assert.deepEqual(exactName.items.map((item) => item.documentNumber), ["MR-2026-001"]);
+    assert.equal(exactName.items[0].matchReason, "문서명 정확히 일치");
+
+    const fuzzy = await getViewerSearchPayload(ready, { q: "밸리데이선", limit: 30 });
+    assert.equal(fuzzy.ok, true);
+    assert.deepEqual(
+      fuzzy.items.map((item) => item.documentNumber),
+      ["PV-2026-014"],
+      "projection 후보 뒤 Core 퍼지 점수로 무관한 n-gram 후보를 제거한다"
+    );
+
+    database.prepare("UPDATE search_index_state SET generation = generation + 1 WHERE id = 1").run();
+    const stale = await getViewerSearchPayload(ready, { q: "2026", limit: 1, cursor: first.nextCursor });
+    assert.equal(stale.ok, false);
+    assert.equal(stale.code, "SEARCH_CURSOR_STALE");
   } finally {
     database.close();
   }
 });
 
-test("projection이 준비되지 않으면 기존 Search D1 경로로 강등한다", async () => {
-  const coreDatabase = await createMigratedDatabase();
-  const searchDatabase = await createSearchDatabase();
-  const env = { DB: sqliteD1(coreDatabase), SEARCH_DB: sqliteD1(searchDatabase) };
+test("projection 검색은 200건을 넘는 결과의 정확한 페이지·전체 합계·패싯을 반환한다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
   try {
-    await rebuildSearchIndexChunk(env);
-    await rebuildSearchIndexChunk(env);
-    assert.equal(
-      coreDatabase.prepare("SELECT reindex_status FROM search_projection_state WHERE id = 1").get().reindex_status,
-      "pending"
-    );
+    database.exec(`
+      WITH RECURSIVE sequence(value) AS (
+        SELECT 1
+        UNION ALL
+        SELECT value + 1 FROM sequence WHERE value < 250
+      )
+      INSERT INTO documents (
+        storage_code, category_id, document_number, revision_number, document_name,
+        rack_slot_id, rack_face, status, sync_state
+      )
+      SELECT
+        'ARC-EXACT-' || printf('%03d', sequence.value),
+        source.category_id,
+        'EXACT-' || printf('%03d', sequence.value),
+        'Rev.0',
+        CASE
+          WHEN sequence.value = 250 THEN '정확검색 대표 문서'
+          ELSE '정확검색 공통 문서 ' || sequence.value
+        END,
+        source.rack_slot_id,
+        source.rack_face,
+        'active',
+        'current'
+      FROM sequence
+      CROSS JOIN (SELECT category_id, rack_slot_id, rack_face FROM documents ORDER BY id LIMIT 1) source;
+    `);
+    await readyProjection(env);
+    const ready = { DB: sqliteD1(database) };
 
-    const payload = await getViewerSearchPayload(env, { q: "2026", limit: 30 });
-    assert.equal(payload.ok, true);
+    const firstPage = await getViewerSearchPayload(ready, { q: "정확검색", page: 1, pageSize: 30 });
+    assert.equal(firstPage.items.length, 30);
+    assert.equal(firstPage.pagination.totalItems, 250);
+
+    const payload = await getViewerSearchPayload(ready, { q: "정확검색", page: 3, pageSize: 30 });
     assert.equal(payload.fallback, false);
-    assert.ok(payload.items.length > 0);
+    assert.equal(payload.items.length, 30);
+    assert.equal(payload.pagination.page, 3);
+    assert.equal(payload.pagination.totalItems, 250);
+    assert.equal(payload.pagination.totalPages, 9);
+    assert.equal(payload.facets.categories.reduce((sum, item) => sum + Number(item.count), 0), 250);
+    assert.equal(payload.facets.statuses.find((item) => item.value === "active")?.count, 250);
   } finally {
-    coreDatabase.close();
-    searchDatabase.close();
+    database.close();
   }
 });
 
@@ -422,14 +419,169 @@ test("신규 등록 문서는 요청 직후 대상 문서만 projection에 반�
     assert.equal(synced.processed, 1);
     assert.deepEqual(dirtyRows(database), []);
 
-    const byName = await getViewerSearchPayload(env, { q: "projection 즉시", limit: 30 });
+    const ready = { DB: sqliteD1(database) };
+    const byName = await getViewerSearchPayload(ready, { q: "projection 즉시", limit: 30 });
     assert.ok(byName.items.some((item) => item.documentNumber === "PRJ-2026-001"));
-    const byTag = await getViewerSearchPayload(env, { q: tag.name, limit: 30 });
+    const byTag = await getViewerSearchPayload({ DB: sqliteD1(database) }, { q: tag.name, limit: 30 });
     assert.ok(byTag.items.some((item) => item.documentNumber === "PRJ-2026-001"));
 
     const state = await getSearchProjectionState(env);
     assert.equal(state.ready, true);
     assert.equal(state.pendingDirtyCount, 0);
+  } finally {
+    database.close();
+  }
+});
+
+test("개별 등록·개정·CSV 생성 경로는 응답 직후 실제 검색 API에 반영된다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), SESSION_SECRET };
+  try {
+    await readyProjection(env);
+
+    database.prepare(`
+      INSERT INTO app_users (
+        username, display_name, password_salt, password_hash,
+        status, role, approved_at, approved_by, must_change_password,
+        security_review_required, session_epoch, can_manage_documents
+      )
+      VALUES (?, ?, ?, ?, 'approved', 'User', CURRENT_TIMESTAMP, 'test-fixture', 0, 0, 0, 1)
+    `).run("projection-search-admin@example.com", "즉시 검색 관리자", "s".repeat(32), "h".repeat(64));
+    const session = {
+      username: "projection-search-admin@example.com",
+      displayName: "즉시 검색 관리자",
+      role: "Admin"
+    };
+    const cookie = await createSessionCookie(session, env, false);
+    const csrfToken = csrfFromCookie(cookie);
+    const source = database.prepare(`
+      SELECT category_id, rack_slot_id, rack_face
+      FROM documents
+      WHERE sync_state = 'current'
+      ORDER BY id
+      LIMIT 1
+    `).get();
+    const tag = database.prepare("SELECT id, name FROM tags WHERE is_active = 1 ORDER BY id LIMIT 1").get();
+    const body = new URLSearchParams({
+      csrf_token: csrfToken,
+      categoryId: String(source.category_id),
+      documentNumber: "IMM-WORKER-2026-001",
+      revisionNumber: "Rev.0",
+      revisionDate: "2026-07-24",
+      disposalDueYear: "2031",
+      documentName: "응답 직후 검색 문서",
+      rackSlotId: String(source.rack_slot_id),
+      rackFace: source.rack_face,
+      note: ""
+    });
+    body.append("tagIds", String(tag.id));
+
+    const created = await worker.fetch(new Request("https://archive.example.com/documents", {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: "https://archive.example.com" },
+      body
+    }), env);
+    assert.equal(created.status, 302);
+
+    const byName = await worker.fetch(new Request(
+      "https://archive.example.com/api/viewer/search?q=" + encodeURIComponent("응답 직후 검색"),
+      { headers: { Cookie: cookie, Accept: "application/json" } }
+    ), env);
+    assert.ok((await byName.json()).items.some((item) => item.documentNumber === "IMM-WORKER-2026-001"));
+
+    const byTag = await worker.fetch(new Request(
+      "https://archive.example.com/api/viewer/search?q=" + encodeURIComponent(tag.name),
+      { headers: { Cookie: cookie, Accept: "application/json" } }
+    ), env);
+    assert.ok((await byTag.json()).items.some((item) => item.documentNumber === "IMM-WORKER-2026-001"));
+
+    const createdId = Number((created.headers.get("Location") || "").match(/\/documents\/(\d+)/)?.[1] || 0);
+    const createdRow = database.prepare("SELECT updated_at, row_version FROM documents WHERE id = ?").get(createdId);
+    const revision = new URLSearchParams({
+      csrf_token: csrfToken,
+      revisionNumber: "Rev.1",
+      revisionDate: "2026-07-24",
+      confirmReplacement: "1",
+      expectedUpdatedAt: createdRow.updated_at,
+      expectedRowVersion: String(createdRow.row_version)
+    });
+    const revised = await worker.fetch(new Request(`https://archive.example.com/documents/${createdId}/revise`, {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: "https://archive.example.com" },
+      body: revision
+    }), env);
+    assert.equal(revised.status, 302);
+    const revisedSearch = await worker.fetch(new Request(
+      "https://archive.example.com/api/viewer/search?q=" + encodeURIComponent("Rev.1 응답 직후 검색 문서"),
+      { headers: { Cookie: cookie, Accept: "application/json" } }
+    ), env);
+    assert.ok((await revisedSearch.json()).items.some((item) => item.revisionNumber === "Rev.1"));
+
+    const admin = database.prepare("SELECT id FROM app_users WHERE username = ?").get(session.username);
+    const importJob = await createDocumentImportJob(env, {
+      sourceName: "projection-search.csv",
+      items: [{
+        values: {
+          categoryId: source.category_id,
+          documentNumber: "IMM-CSV-2026-001",
+          revisionNumber: "Rev.0",
+          revisionDate: "2026-07-24",
+          disposalDueYear: "2031",
+          documentName: "CSV 응답 직후 검색 문서",
+          note: "",
+          rackSlotId: source.rack_slot_id,
+          rackFace: source.rack_face,
+          tagIds: [tag.id]
+        },
+        status: "active"
+      }]
+    }, { ...session, id: admin.id, userId: admin.id });
+    const imported = await worker.fetch(new Request(
+      `https://archive.example.com/document-import-jobs/${importJob.id}/process`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          Origin: "https://archive.example.com",
+          Accept: "application/json"
+        },
+        body: new URLSearchParams({ csrf_token: csrfToken })
+      }
+    ), env);
+    assert.equal(imported.status, 200);
+    assert.ok((await imported.json()).createdDocumentId > 0);
+    const importedSearch = await worker.fetch(new Request(
+      "https://archive.example.com/api/viewer/search?q=" + encodeURIComponent("CSV 응답 직후 검색"),
+      { headers: { Cookie: cookie, Accept: "application/json" } }
+    ), env);
+    assert.ok((await importedSearch.json()).items.some((item) => item.documentNumber === "IMM-CSV-2026-001"));
+  } finally {
+    database.close();
+  }
+});
+
+test("Cron 유지보수는 dirty 배출과 재색인을 예산 안에서 ready까지 전진시킨다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  try {
+    database.prepare("UPDATE documents SET document_name = ? WHERE id = 1").run("cron 대상 문서");
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      let pending;
+      await worker.scheduled({}, env, { waitUntil(promise) { pending = promise; } });
+      await pending;
+      const state = await getSearchProjectionState(env);
+      if (state.ready && state.pendingDirtyCount === 0) break;
+    }
+
+    const state = await getSearchProjectionState(env);
+    assert.equal(state.ready, true);
+    assert.equal(state.pendingDirtyCount, 0);
+    assert.equal(
+      database.prepare(
+        "SELECT document_name FROM search_projection_documents WHERE document_id = 1"
+      ).get().document_name,
+      "cron 대상 문서"
+    );
   } finally {
     database.close();
   }

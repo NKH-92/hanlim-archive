@@ -57,7 +57,6 @@ export function preflightSmokePrincipal({ action, environment = process.env } = 
   const target = preflightDeploy({
     envName,
     expectedDatabaseId: environment.D1_TARGET_DATABASE_ID,
-    expectedSearchDatabaseId: environment.SEARCH_D1_TARGET_DATABASE_ID,
     requireSearchDatabase: true,
     dryRun: true
   });

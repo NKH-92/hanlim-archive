@@ -123,17 +123,19 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     경합 처리는 lease가 아니라 `(document_id, event_version)` 삭제 건수 assertion 하나로 끝난다. 오래된 내용을
     쓰려던 batch는 전체 rollback되고 dirty 행이 큐에 남아 재처리된다. 전체 재색인은 physical generation과
     cutover 없이 in-place upsert로 진행하므로 재색인 중에도 검색 결과가 비지 않는다.
-22. **파생 색인은 배포 게이트가 아니다**: `/readyz`의 필수 조건은 Core D1 schema가 기대 migration에 도달하는 것뿐이다.
-    검색 색인 지연·재구축·legacy Search D1 상태는 `warnings`로 노출하고 관리자 화면에서 확인한다. 파생 색인의
+22. **파생 색인은 배포 게이트가 아니다**: `/readyz`의 필수 조건은 Core D1 schema가 기대 migration에 도달하는 것뿐이며
+    이 판정에 사용하는 조회는 Core D1 3문장(`d1_migrations`, `search_projection_state`, `search_projection_dirty`)이다.
+    projection 재색인 지연과 dirty 잔량은 `warnings`로 노출하고 관리자 화면에서 확인한다. 파생 색인의
     지연을 준비 실패로 올리면 파생 데이터 지연이 곧 서비스 중단 판정이 되어 격리 목적과 반대로 작동한다.
-    Cron 한 invocation은 요청당 statement 예산 48개를 공유하므로 legacy Search D1 유지보수를 먼저 실행하고,
-    projection 유지보수는 남은 예산이 한 chunk를 담을 수 있을 때만 진행한다. 개별 문서 변경은 Cron을 기다리지 않고
-    같은 요청에서 projection을 배출한다.
-23. **Search D1 전환 경로(과도기)**: `SEARCH_DB`와 `search-migrations/`는 읽기 rollback 대상으로만 남아 있다.
-    `SEARCH_READ_MODE`가 `core`(기본), `compare`, `search-db`를 선택하며 projection이 `ready`가 아니면
-    core 모드도 Search D1 → Core 퍼지 순으로 자동 강등한다. `compare`는 두 경로를 함께 실행해 결과·건수·패싯
-    불일치를 구조화 로그로 남긴다. 과거 migration은 수정하지 않으며 binding 제거와 물리 DB 삭제는 서로 다른
-    release로 분리한다. 전환 게이트는 [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)을 따른다.
+    Cron 한 invocation은 요청당 statement 예산 48개 안에서 dirty 배출과 재색인 chunk를 순서대로 수행한다.
+    개별 문서 변경은 Cron을 기다리지 않고 같은 요청에서 projection을 배출한다.
+23. **검색 전용 D1은 존재하지 않는다**: Worker는 모든 환경에서 `DB` 하나만 바인딩한다. `SEARCH_DB` binding,
+    두 번째 migration 체인, 그리고 cross-DB 정합성을 위해 존재했던 outbox lease·processor lease·문서별
+    watermark·삭제 tombstone·active/building/previous generation·rebuild token·cutover fence는 모두 제거했다.
+    물리 Search D1과 `search-migrations/`는 보존기간 동안 이력으로 남기지만 코드·배포·복구 경로는 참조하지 않는다.
+    Core에 남은 `search_index_outbox`·`search_index_state`·`search_event_clock`은 이전 Worker rollback 호환을
+    위해 유지하며 DROP은 별도 승인 release로 분리한다. 통합 근거와 단계는
+    [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)에 있다.
 24. **인증 재검증과 임시 계정 수명**: 비밀번호 최소 길이는 6자이며 신규 PBKDF2-SHA256 record는
     Cloudflare Workers Web Crypto 상한인 100,000회 반복을 사용한다. legacy raw digest는 성공한 로그인에서
     CAS 방식으로 반복 횟수를 명시하는 self-describing record로 전환하며, 런타임 상한을 넘는 record는
@@ -149,7 +151,7 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 - audit/history INSERT는 상태 UPDATE/DELETE보다 먼저 같은 `env.DB.batch()`에서 실행한다.
 - 선행 INSERT도 application 사전조회가 아니라 같은 pre-state SQL guard를 사용한다.
 - batch 마지막 mutation의 변경 행 수로 no-op과 낙관적 잠금 경합을 감지한다.
-- 모든 SQL 값은 bind parameter로 전달한다. Core·projection·(과도기의) Search를 합친 요청당 D1 statement
+- 모든 SQL 값은 bind parameter로 전달한다. 권위 데이터와 검색 projection을 합친 요청당 D1 statement
   예산은 Cloudflare Free의 50개보다 2개 낮은 48개, 원자 mutation `BatchPlan`은 40개,
   statement당 bind parameter는 100개를 넘지 않는다. LIKE pattern은 UTF-8 50 bytes,
   JSON value payload는 플랫폼 2,000,000 bytes보다 낮은 1,900,000 bytes에서 분할한다.
@@ -196,7 +198,7 @@ npm run verify
 npx wrangler deploy --dry-run
 ```
 
-무료 티어 최적화의 정적 자산 경계, 배포 분류, Core/Search D1 전환 게이트는
+무료 티어 최적화의 정적 자산 경계, 배포 분류, 검색 단일 D1 통합 단계는
 [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)을 따른다.
 
 `main` 푸시는 GitHub Actions가 운영 migration과 배포를 수행하므로 로컬 작업에서는 명시적 요청 없이

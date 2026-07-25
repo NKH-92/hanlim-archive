@@ -9,8 +9,6 @@ export async function generateReleaseEvidence({ outDir = path.join(APP_ROOT, "re
   const manifestPath = path.join(APP_ROOT, "migrations", "manifest.json");
   const manifestBytes = await readFile(manifestPath);
   const migrationManifest = JSON.parse(manifestBytes.toString("utf8"));
-  const searchManifestBytes = await readFile(path.join(APP_ROOT, "search-migrations", "manifest.json"));
-  const searchMigrationManifest = JSON.parse(searchManifestBytes.toString("utf8"));
   const evidence = {
     schemaVersion: 1,
     createdAt: new Date().toISOString(),
@@ -20,16 +18,12 @@ export async function generateReleaseEvidence({ outDir = path.join(APP_ROOT, "re
     node: process.version,
     migrationCount: Object.keys(migrationManifest.checksums).length,
     migrationManifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
-    schema: migrationManifest.schema,
-    searchMigrationCount: Object.keys(searchMigrationManifest.checksums).length,
-    searchMigrationManifestSha256: createHash("sha256").update(searchManifestBytes).digest("hex"),
-    searchSchema: searchMigrationManifest.schema
+    schema: migrationManifest.schema
   };
 
   await mkdir(outDir, { recursive: true });
   await Promise.all([
     writeFile(path.join(outDir, "migration-manifest.json"), `${JSON.stringify(migrationManifest, null, 2)}\n`, "utf8"),
-    writeFile(path.join(outDir, "search-migration-manifest.json"), `${JSON.stringify(searchMigrationManifest, null, 2)}\n`, "utf8"),
     writeFile(path.join(outDir, "release-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`, "utf8")
   ]);
   return Object.freeze(evidence);

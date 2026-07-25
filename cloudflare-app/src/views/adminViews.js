@@ -134,26 +134,16 @@ function searchIndexPanel(stats) {
   const readiness = stats.readiness;
   // 검색 색인 동기화는 /readyz 실패가 아니라 이 화면의 경고로 노출한다(파생 데이터 격리).
   const migrationStatus = readiness
-    ? `Core migration ${readiness.checks.coreDatabase ? "충족" : "미충족"} · Search migration ${readiness.warnings.searchDatabase ? "충족" : "미충족"}`
+    ? `Core migration ${readiness.checks.coreDatabase ? "충족" : "미충족"}`
     : "";
   const projectionStatus = readiness
     ? `projection ${readiness.projection.reindexStatus} · 색인 ${Number(readiness.projection.indexedDocumentCount || 0).toLocaleString("ko-KR")}건 · dirty ${Number(readiness.projection.pendingDirtyCount || 0).toLocaleString("ko-KR")}건`
     : "";
-  const operationalStatus = readiness
-    ? `generation ${Number(stats.generation || 0).toLocaleString("ko-KR")}/${Number(stats.searchGeneration || 0).toLocaleString("ko-KR")} · active ${Number(stats.activeGeneration || 0).toLocaleString("ko-KR")} · indexed ${Number(stats.indexedDocumentCount || 0).toLocaleString("ko-KR")}/${Number(stats.searchIndexedDocumentCount || 0).toLocaleString("ko-KR")} · outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건 · rebuild ${stats.rebuildRequired ? "required" : stats.rebuildStatus}`
-    : "";
   const message = readiness
-    ? `${readiness.ok && !readiness.degraded ? "검색 운영 준비 완료" : "검색 운영 확인 필요"} · ${migrationStatus} · ${projectionStatus} · ${operationalStatus}`
-    : !stats.searchAvailable
-      ? "Search D1 연결을 확인하세요. 정확 문서번호와 필터 목록만 Core fallback으로 제공합니다."
-      : stats.rebuildRequired || stats.rebuildStatus !== "ready"
-        ? `검색 재구축이 필요합니다. 대기 outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`
-        : `Search D1 ${Number(stats.searchIndexedDocumentCount || 0).toLocaleString("ko-KR")}건 · outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`;
-  const level = readiness && (!readiness.ok || readiness.degraded)
-    ? "warning"
-    : !stats.searchAvailable || stats.rebuildRequired || stats.rebuildStatus !== "ready"
-      ? "warning"
-      : stats.level;
+    ? `${readiness.ok && !readiness.degraded ? "검색 운영 준비 완료" : "검색 운영 확인 필요"} · ${migrationStatus} · ${projectionStatus}`
+    : `색인 ${Number(stats.indexedDocumentCount || 0).toLocaleString("ko-KR")}건`;
+  // 표시 등급은 read model이 readiness와 용량 경고를 이미 합쳐 계산한 값을 그대로 사용한다.
+  const level = stats.level;
   return `<section class="panel search-index-health ${escapeHtml(level)}">
     <div><strong>서버 검색 인덱스</strong><span>${Number(stats.documentCount).toLocaleString("ko-KR")}건 · Core 예상 ${escapeHtml(estimated)}</span></div><p class="${escapeHtml(level)}">${escapeHtml(message)}</p>
   </section>`;

@@ -48,7 +48,7 @@
     "0045_user_role_templates.sql": "47781a2f35984f920fcf107d90a259297452d53f07fd2486d14c19e42f301b59",
     "0046_app_user_team.sql": "d74673a101d17ceca984c80e3d8a7f8575510fd3ecad66e7576c719c65eba0fe",
     "0047_search_reference_change_scope.sql": "ca308e715ce9dad283e897a3fa5e852e1cac4b60a748727c3ae6244def322d15",
-    "0048_core_search_projection.sql": "f37fda1240d2ef9c725018f08308886f8c00a87df8297239cdafbe142bb9dcda"
+    "0048_core_search_projection.sql": "b8110d215e5abbb8fc18149032d7c2a2fe5e36739d047cd12a445d823e5bfdda"
   },
   "schema": {
     "tables": [

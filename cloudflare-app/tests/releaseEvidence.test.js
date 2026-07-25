@@ -12,17 +12,15 @@ test("release evidence는 migration checksum과 schema manifest를 보존한다"
   context.after(() => rm(target, { recursive: true, force: true }));
   const evidence = await generateReleaseEvidence({ outDir: target, env: { SOURCE_REVISION: "abc123", SOURCE_REF: "test" } });
   const manifest = JSON.parse(await readFile(path.join(target, "migration-manifest.json"), "utf8"));
-  const searchManifest = JSON.parse(await readFile(path.join(target, "search-migration-manifest.json"), "utf8"));
 
   assert.equal(evidence.sourceRevision, "abc123");
   assert.equal(evidence.migrationCount, 48);
   assert.equal(Object.keys(manifest.checksums).length, 48);
-  assert.equal(evidence.searchMigrationCount, 3);
-  assert.equal(Object.keys(searchManifest.checksums).length, 3);
-  assert.ok(searchManifest.schema.tables.includes("search_document_watermarks"));
   assert.ok(manifest.schema.tables.includes("documents"));
+  assert.ok(manifest.schema.tables.includes("search_projection_documents"));
   assert.match(evidence.migrationManifestSha256, /^[a-f0-9]{64}$/);
-  assert.match(evidence.searchMigrationManifestSha256, /^[a-f0-9]{64}$/);
+  // 검색 색인이 Core migration 체인 안에 있으므로 별도 Search manifest 증빙을 만들지 않는다.
+  assert.equal("searchMigrationCount" in evidence, false);
 });
 
 test("release smoke는 health, login, signup, 인증 검색 계약을 확인한다", async () => {

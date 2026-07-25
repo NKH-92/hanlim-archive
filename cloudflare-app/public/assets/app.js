@@ -1160,7 +1160,7 @@
         navigator.sendBeacon('/api/search-click', payload);
       });
 
-      // 서버 즉시 검색: Search D1 후보 → Core 재검증 → 최대 30건 cursor 응답.
+      // 서버 즉시 검색: Core projection 후보 → Core 재검증 → 최대 30건 cursor 응답.
       var viewerApp = document.querySelector('[data-viewer-app]');
       var viewerForm = document.querySelector('[data-viewer-form]');
       var viewerInput = viewerForm ? viewerForm.querySelector('input[name="q"]') : null;

@@ -1,7 +1,9 @@
 -- Core D1 안에 검색 projection과 FTS5 인덱스를 additive로 추가한다.
 -- 목적: Core/Search 물리 분리를 없애고 크로스 DB 보상 계층(lease, watermark, tombstone,
 -- shadow generation, cutover, rollback)을 제거하는 것이다. 이 migration은 읽기 경로를 바꾸지 않고
--- 스키마와 dirty 큐만 준비한다. 읽기 전환은 SEARCH_READ_MODE 런타임 플래그가 담당한다.
+-- 스키마와 dirty 큐만 준비한다. 적용 직후 projection은 비어 있고
+-- reindex_status = 'pending'이므로 재색인이 끝날 때까지 검색은 Core 퍼지 폴백으로 열화된다.
+-- 이전 Worker는 이 테이블을 읽지 않으므로 rollback 호환이다.
 --
 -- 설계 요약
 --   * projection과 dirty 큐가 같은 DB에 있으므로 "projection 최신 OR 문서가 dirty"가 트랜잭션으로 보장된다.

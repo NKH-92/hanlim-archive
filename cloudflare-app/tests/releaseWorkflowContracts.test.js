@@ -44,7 +44,7 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
     "name: approved free-tier production release",
     "Enforce production release from main",
     "Verify independent administrator before migration",
-    "Capture Core and Search D1 Time Travel recovery points",
+    "Capture Core D1 Time Travel recovery point",
     "Verify current Worker compatibility before migration",
     "Upload pre-mutation recovery and migration evidence",
     "Apply D1 migrations",

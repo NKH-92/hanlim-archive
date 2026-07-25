@@ -48,9 +48,7 @@ export async function buildMigrationManifest(migrationsDir) {
 
 const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  const target = process.argv.includes("--search")
-    ? join(ROOT, "search-migrations")
-    : join(ROOT, "migrations");
+  const target = join(ROOT, "migrations");
   const manifest = await buildMigrationManifest(target);
   await writeFile(join(target, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   console.log(

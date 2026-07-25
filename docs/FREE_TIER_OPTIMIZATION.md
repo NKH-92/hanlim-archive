@@ -66,10 +66,10 @@ Cloudflare Free의 DB당 상한은 500MB다. 즉 용량은 분리 근거가 되�
 ### 판정: 통합
 
 동시접속 약 10명, 문서 약 10,000건이라는 확정 요구사항에서 물리 분리를 유지할 근거는 확인되지 않았다.
-이전 판단은 "D1이 DB별로 쿼리를 직렬 처리하므로 검색 부하가 Core 쓰기와 경합한다"였으나, 실제 읽기 경로는
-Search DB에서 후보 ID를 얻은 뒤 **항상 Core를 다시 읽어** 권한·상태·필터를 재검증한다
-(`data/searchData.js`의 `getCoreCandidateDocuments`). 모든 검색 요청은 이미 Core의 직렬 큐를 통과하므로
-분리로 Core에서 덜어낸 것은 FTS 매칭 스캔뿐이다.
+이전 판단은 "D1이 DB별로 쿼리를 직렬 처리하므로 검색 부하가 Core 쓰기와 경합한다"였으나, 통합 전 읽기 경로는
+Search DB에서 후보 ID를 얻은 뒤 **항상 Core를 다시 읽어** 권한·상태·필터를 재검증했다
+(`data/searchData.js`의 `getCoreCandidateDocuments`). 모든 검색 요청이 이미 Core의 직렬 큐를 통과했으므로
+분리로 Core에서 덜어낸 것은 FTS 매칭 스캔뿐이었다.
 
 분리가 만들던 비용은 다음과 같고 전부 크로스 DB 트랜잭션이 없다는 사실 하나에서 나왔다.
 
@@ -99,37 +99,35 @@ Search DB에서 후보 ID를 얻은 뒤 **항상 Core를 다시 읽어** 권한�
 | 단계 | 내용 | 롤백 |
 |---|---|---|
 | R1 측정 | 운영 용량·일일 rows·검색 p95·요청당 statement 수집 후 게이트 판정 | 코드 변경 없음 |
-| R2 additive | migration 0047(reference 변경 범위 제한), 0048(Core projection·FTS·dirty 큐). 쓰기는 양쪽 반영 | additive migration, 읽기 경로 무변경 |
-| R3 compare | staging·production `SEARCH_READ_MODE=compare`(현재 값)로 두 경로 결과·건수·패싯 비교, mismatch 로깅 | 변수 되돌리기 |
-| R4 cutover | `wrangler.jsonc`의 staging·production `SEARCH_READ_MODE`를 `core`로 올린다. `SEARCH_DB` binding은 롤백용으로 유지 | `compare` 또는 `search-db`로 복귀 |
-| R5 정리 | binding 제거, lease·watermark·generation·cutover 코드 삭제, 배포 scope=core | 이전 Worker version rollback |
-| R6 별도 승인 | 보존기간 종료 후 물리 DB 삭제 | 불가 |
+| R2 additive (완료) | migration 0047(reference 변경 범위 제한), 0048(Core projection·FTS·dirty 큐). 쓰기는 양쪽 반영 | additive migration, 읽기 경로 무변경 |
+| R3 compare (완료) | 두 읽기 경로의 결과·건수·패싯을 함께 실행해 비교하고 mismatch를 구조화 로그로 남기는 경로 추가 | 플래그 되돌리기 |
+| R4 cutover (완료) | 읽기 기본값을 Core projection으로 전환 | 플래그로 복귀 |
+| R5 정리 (완료) | `SEARCH_DB` binding, 두 번째 migration 체인, lease·watermark·tombstone·generation·cutover 코드 삭제. 배포·복구 scope=core | 이전 Worker version rollback |
+| R6 별도 승인 | Core의 legacy outbox·clock 테이블 DROP, 보존기간 종료 후 물리 Search D1 삭제 | 불가 |
 
-R2와 R4는 같은 release에 넣지 않는다. `SEARCH_READ_MODE=core`에서도 projection이 `ready`가 아니면
-Search D1 → Core 퍼지 순으로 자동 강등하므로 재색인이 끝나기 전에 배포해도 검색은 계속 동작한다.
-게이트가 하나라도 실패하면 R4를 진행하지 않고 `compare` 또는 `search-db`에 머문다.
-Search binding 제거와 물리 DB 삭제는 같은 release에서 수행하지 않는다. 물리 삭제는 별도 승인,
-보존기간 종료, 모든 rollback 후보의 Search 무의존 확인 뒤에만 수행한다.
+R2~R5를 한 배포에 합쳤다. 근거: 통합 시점의 운영 대장이 검증용 테스트 문서뿐이어서 검색 열화 구간을
+수용할 수 있었다. 배포 직후 projection이 `ready`가 될 때까지 검색은 최근 200건 Core 퍼지로 열화되며,
+402건 기준 Cron 5분 주기·chunk 100건으로 약 25분이 걸린다. 실사용 대장에서는 R2~R4와 R5를 분리하고
+R4 안정 확인 뒤에 R5를 진행한다.
 
-### R5 정리 범위(다음 release)
+R5는 rollback 폭을 좁히지만 Core의 legacy 테이블은 남겨 이전 Worker version rollback을 유지한다.
+`search_index_outbox`, `search_event_clock`과 그 trigger를 DROP하는 contract migration만이 Worker
+rollback을 불가능하게 만들고, 회수하는 용량은 수백 KB에 불과하므로 R6로 미뤘다. 두 테이블의 크기는
+문서 수 상한을 넘지 않으므로 방치해도 용량 문제가 되지 않는다.
 
-R5는 운영에서 `SEARCH_READ_MODE=core`가 안정 확인된 뒤 별도 PR로 수행한다. 이 release가 rollback 경로를
-없애므로 R2~R4와 같은 배포에 넣지 않는다. 삭제 대상은 다음과 같다.
+### R5 정리 결과
 
-| 대상 | 내용 |
+| 대상 | 처리 |
 |---|---|
-| `wrangler.jsonc` | 모든 환경의 `SEARCH_DB` binding, `SEARCH_READ_MODE` var |
-| `src/domains/search/infrastructure/indexMaintenance.js` | 파일 전체(outbox lease, processor lease, watermark, tombstone, shadow generation, cutover, rollback, generation 정리) |
-| `src/data/searchData.js` | `getIndexedCandidateIds`, `getIndexedViewerPageV2`, `getFuzzyIndexedViewerPageV2`, `getLegacyCandidateIds`, compare 모드와 mismatch 로깅 |
-| `src/domains/search/index.js` | legacy outbox 계약 재수출과 Cron statement 예산 분배(projection이 예산 전체 사용) |
-| 새 contract migration | `search_index_outbox`, `search_event_clock`, `trg_search_outbox_*`, `trg_search_clock_*` 제거 (과거 migration은 수정하지 않고 새 번호로 DROP) |
-| `search-migrations/` | 파일은 이력으로 남기고 적용 중단, `check-migrations.mjs`의 Search chain 검증 제거 |
-| 배포·운영 | `SEARCH_D1_TARGET_DATABASE_ID`, `D1_RECOVERY_SCOPE=core-and-search`, Search Time Travel bookmark, `db:migrate:search:local` |
-| readiness·관리 화면 | `warnings.searchDatabase`, `warnings.searchOperational`, legacy search 상세 표시 |
-
-R5 시작 전 확인 항목: `SEARCH_READ_MODE=core`에서 7일 이상 무사고 운영, `search.projection-compare`
-mismatch 0 유지, projection `reindex_status = 'ready'`와 dirty 큐 0의 정상 상태 관측, R6 물리 삭제까지의
-보존기간 합의.
+| `wrangler.jsonc` | 세 환경 모두에서 `SEARCH_DB` binding과 `SEARCH_READ_MODE` var 제거 |
+| `src/domains/search/infrastructure/indexMaintenance.js` | 파일 삭제(outbox lease, processor lease, watermark, tombstone, shadow generation, cutover, rollback, generation 정리) |
+| `src/data/searchData.js` | legacy 색인 읽기 경로와 compare·mismatch 로깅 제거. projection 단일 경로와 Core 퍼지 폴백만 남김 |
+| `src/domains/search/index.js` | legacy outbox 계약 재수출 제거. Cron은 dirty 배출과 재색인 chunk만 수행 |
+| `src/platform/d1/requestGateway.js` | `SEARCH_DB` 예산 wrapper와 잔여 statement 계산 제거 |
+| readiness·관리 화면 | legacy search 상세와 `warnings.searchDatabase`·`searchOperational` 제거. `warnings.searchProjectionSynced` 하나만 유지 |
+| 배포·운영 | `SEARCH_D1_TARGET_DATABASE_ID`, `D1_RECOVERY_SCOPE=core-and-search`, Search Time Travel bookmark, `db:migrate:search:local` 제거 |
+| `search-migrations/` | 파일은 이력으로 동결하고 적용 중단. `check-migrations.mjs`의 Search chain 검증 제거 |
+| R6로 이연 | `search_index_outbox`·`search_event_clock`·관련 trigger DROP contract migration, 물리 Search D1 삭제 |
 
 ### 파생 색인 비용 절감
 
@@ -149,7 +147,6 @@ npm run verify
 npm run audit:dependencies
 $env:CLOUDFLARE_ENV = "production"
 $env:D1_TARGET_DATABASE_ID = "<production Core D1 UUID>"
-$env:SEARCH_D1_TARGET_DATABASE_ID = "<production Search D1 UUID>"
 npm run deploy:dry
 ```
 

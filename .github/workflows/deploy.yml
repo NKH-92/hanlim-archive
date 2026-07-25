@@ -32,7 +32,6 @@ jobs:
       D1_MIGRATE_ENV: production
       D1_RECOVERY_ENV: production
       D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
-      SEARCH_D1_TARGET_DATABASE_ID: ${{ vars.SEARCH_D1_TARGET_DATABASE_ID }}
       PRODUCTION_URL: https://hanlim-archive.skarhkdgus7.workers.dev
       SMOKE_ALLOWED_HOSTS: hanlim-archive.skarhkdgus7.workers.dev
       WORKER_VERSION_TAG: release-${{ github.sha }}
@@ -118,7 +117,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           D1_ADMIN_CHECK_PHASE: pre-migration
         run: npm run admin:check:remote
-      - name: Capture Core and Search D1 Time Travel recovery points
+      - name: Capture Core D1 Time Travel recovery point
         if: steps.classify_release.outputs.release_class != 'asset-only'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -1,7 +1,6 @@
 import { sharedSearchCore } from "../searchCore.js";
 import { FREE_TIER_BUDGET } from "../config.js";
 import { locationLabel, rackFaceLabel } from "../domains/racks/index.js";
-import { logError } from "../platform/observability/logger.js";
 import { paginateSlice } from "../shared/pagination.js";
 import { readBoolean } from "../shared/coercion.js";
 import { clean } from "../shared/text/normalize.js";
@@ -42,15 +41,16 @@ export { getSearchReport, recordSearchClick, recordSearchLog };
 const compareSearchResults = searchCore.compareSearchResults;
 const clickBoost = searchCore.clickBoost;
 
-// 일반 텍스트 검색은 Search D1에서 이 수만큼만 후보를 만든 뒤 Core D1에서 권한·상태를 재검증한다.
-// 무검색/필터 목록은 getDocumentPage()의 정확한 count/page 경로를 사용하므로 이 상한의 영향을 받지 않는다.
+// 일반 텍스트 검색은 Core projection FTS에서 이 수만큼만 후보를 만든 뒤 Core 문서 행에서
+// 권한·상태를 재검증한다. 무검색/필터 목록은 getDocumentPage()의 정확한 count/page 경로를
+// 사용하므로 이 상한의 영향을 받지 않는다.
 export const MAX_SEARCH_RESULTS = FREE_TIER_BUDGET.searchCandidateMaxItems;
 const SEARCH_CANDIDATE_FLOOR = FREE_TIER_BUDGET.searchCandidateMaxItems;
 
 export async function searchDocuments(env, query, limit = 100, filters = {}) {
   const trimmed = clean(query);
   const { where, binds: filterBinds } = buildDocumentFilterWhere(filters);
-  // 텍스트 검색은 Search D1 후보 200건 안에서 점수화한다. 검색어 없는 권위 목록은
+  // 텍스트 검색은 projection 후보 200건 안에서 점수화한다. 검색어 없는 권위 목록은
   // 이 함수가 아니라 getDocumentPage()의 SQL COUNT + page 경로를 사용한다.
   const requestedLimit = Number(limit);
   const safeLimit = Number.isFinite(requestedLimit) && requestedLimit > 0
@@ -98,7 +98,7 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
     }
   }
   if (hasQuery) {
-    const candidateIds = await getSearchCandidateIds(env, trimmed, candidateLimit);
+    const candidateIds = await getProjectionCandidateIds(env, trimmed, candidateLimit);
     if (candidateIds) {
       if (!candidateIds.length) return [];
       return scoreCandidateDocuments(
@@ -153,60 +153,11 @@ function looksLikeDocumentNumber(value) {
   return value.length <= 100 && /\d/.test(value) && /[-_/]/.test(value) && !/\s/.test(value);
 }
 
-async function getIndexedCandidateIds(searchDb, query, limit) {
-  const terms = buildSearchIndexTerms(query).slice(0, 12);
-  if (!terms.length) return [];
-  // 오타 한 글자로 전체 후보가 0건이 되지 않도록 n-gram 중 하나 이상 일치하는 후보를 만든 뒤,
-  // Core의 기존 퍼지 점수기로 최종 관련성을 다시 판정한다.
-  const expression = terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR ");
-  const result = await searchDb.prepare(`
-    SELECT CAST(document_id AS INTEGER) AS document_id
-    FROM search_documents_fts
-    WHERE search_documents_fts MATCH ?
-    LIMIT ?
-  `).bind(expression, Math.min(limit, FREE_TIER_BUDGET.searchCandidateMaxItems)).all();
-  return (result.results ?? []).map((row) => Number(row.document_id)).filter(Number.isInteger);
-}
-
-// 검색 읽기 경로 선택. core = Core projection, search-db = 기존 Search D1, compare = 두 경로 비교.
-// 기본값은 core이며 projection이 아직 ready가 아니면 Search D1 → Core 퍼지 순으로 자동 강등한다.
-const SEARCH_READ_MODES = new Set(["core", "compare", "search-db"]);
-
-export function resolveSearchReadMode(env) {
-  const mode = String(env?.SEARCH_READ_MODE || "").trim().toLowerCase();
-  return SEARCH_READ_MODES.has(mode) ? mode : "core";
-}
-
 /**
- * 후보 ID 목록을 만든다. 색인 경로를 전혀 쓸 수 없으면 null을 반환해 호출자가 Core 퍼지로 내려간다.
+ * 후보 ID 목록을 만든다. projection이 아직 ready가 아니면 null을 반환해
+ * 호출자가 Core 퍼지 후보 경로로 내려간다.
  * @returns {Promise<number[]|null>}
  */
-async function getSearchCandidateIds(env, query, limit) {
-  const mode = resolveSearchReadMode(env);
-  if (mode !== "search-db") {
-    const projectionIds = await getProjectionCandidateIds(env, query, limit);
-    if (projectionIds) {
-      if (mode !== "compare") return projectionIds;
-      const legacyIds = await getLegacyCandidateIds(env, query, limit);
-      reportProjectionMismatch(env, "candidates", query, {
-        projection: [...projectionIds].sort((left, right) => left - right),
-        legacy: legacyIds ? [...legacyIds].sort((left, right) => left - right) : null
-      });
-      return legacyIds ?? projectionIds;
-    }
-  }
-  return getLegacyCandidateIds(env, query, limit);
-}
-
-async function getLegacyCandidateIds(env, query, limit) {
-  if (!env.SEARCH_DB) return null;
-  try {
-    return await getIndexedCandidateIds(env.SEARCH_DB, query, limit);
-  } catch {
-    return null;
-  }
-}
-
 async function getProjectionCandidateIds(env, query, limit) {
   const expression = indexedSearchExpression(query);
   if (!expression) return null;
@@ -243,18 +194,6 @@ async function isProjectionReadable(env) {
     // env가 동결된 경우에도 판정 자체는 유효하다.
   }
   return readable;
-}
-
-function reportProjectionMismatch(env, scope, query, payload) {
-  const projection = JSON.stringify(payload.projection ?? null);
-  const legacy = JSON.stringify(payload.legacy ?? null);
-  if (projection === legacy) return;
-  logError("search.projection-compare", new Error(`SEARCH_PROJECTION_MISMATCH:${scope}`), {
-    scope,
-    query: normalizeSearchText(query).slice(0, 80),
-    projection: projection.slice(0, 500),
-    legacy: legacy.slice(0, 500)
-  });
 }
 
 async function getCoreCandidateDocuments(env, candidateIds, where, filterBinds) {
@@ -494,225 +433,6 @@ async function getFuzzyProjectionViewerPage(env, query, filters, filter, express
   return {
     documents: documents.slice(offset, offset + pageSize),
     totalItems: documents.length,
-    facets: buildViewerFacets(documents)
-  };
-}
-
-async function getIndexedViewerPage(env, query, filters, offset, pageSize) {
-  const mode = resolveSearchReadMode(env);
-  if (mode === "search-db") return getIndexedViewerPageV2(env, query, filters, offset, pageSize);
-
-  const projection = await getProjectionViewerPage(env, query, filters, offset, pageSize);
-  if (mode === "core") {
-    // projection이 아직 ready가 아니면 기존 Search D1 → Core 퍼지 순으로 강등한다.
-    return projection ?? getIndexedViewerPageV2(env, query, filters, offset, pageSize);
-  }
-
-  const legacy = await getIndexedViewerPageV2(env, query, filters, offset, pageSize);
-  reportProjectionMismatch(env, "viewer-page", query, {
-    projection: viewerPageFingerprint(projection),
-    legacy: viewerPageFingerprint(legacy)
-  });
-  return legacy ?? projection;
-}
-
-function viewerPageFingerprint(page) {
-  if (!page) return null;
-  const facetPairs = (items) => (items ?? []).map((item) => [item.value, Number(item.count || 0)]);
-  return {
-    totalItems: Number(page.totalItems || 0),
-    ids: page.documents.map((document) => Number(document.id)),
-    categories: facetPairs(page.facets?.categories),
-    zones: facetPairs(page.facets?.zones),
-    statuses: facetPairs(page.facets?.statuses)
-  };
-}
-
-function indexedSort(sort) {
-  if (sort === "updated") return "d.updated_at DESC, d.document_id DESC";
-  if (sort === "docnum") return "d.document_number, d.revision_number, d.document_id";
-  if (sort === "category") return "d.category_name, d.document_number, d.revision_number, d.document_id";
-  if (sort === "location") {
-    return "d.zone_number, d.rack_code, d.rack_face, d.column_number, d.shelf_number, d.document_id";
-  }
-  return "search_rank, d.document_id";
-}
-
-async function getIndexedViewerPageV2(env, query, filters, offset, pageSize) {
-  if (!env.SEARCH_DB) return null;
-  const literalExpression = indexedLiteralSearchExpression(query);
-  const fuzzyExpression = indexedSearchExpression(query);
-  if (!fuzzyExpression) return null;
-  try {
-    const state = await env.SEARCH_DB.prepare(`
-      SELECT active_generation, v2_ready, rebuild_status
-      FROM search_runtime_state
-      WHERE id = 1
-    `).first();
-    if (Number(state?.v2_ready || 0) !== 1) return null;
-    const generation = Number(state.active_generation || 0);
-    if (!generation) return null;
-    const filter = indexedFilterWhere(filters);
-    // 정확히 입력된 token들이 모두 있는 결과를 먼저 사용한다. 2·3글자 n-gram OR 후보는
-    // 실제 관련성 점수로 거르는 기존 제한 후보 경로에 맡겨 무관한 청크 문서가 섞이지 않게 한다.
-    const literalMatch = literalExpression
-      ? await env.SEARCH_DB.prepare(`
-        SELECT 1
-        FROM search_documents_fts_v2
-        JOIN search_documents_v2 d
-          ON d.generation = CAST(search_documents_fts_v2.generation AS INTEGER)
-         AND d.document_id = CAST(search_documents_fts_v2.document_id AS INTEGER)
-        WHERE search_documents_fts_v2 MATCH ?
-          AND d.generation = ?
-          ${filter.sql}
-        LIMIT 1
-      `).bind(literalExpression, generation, ...filter.binds).first()
-      : null;
-    if (!literalMatch) {
-      return getFuzzyIndexedViewerPageV2(
-        env,
-        query,
-        filters,
-        generation,
-        filter,
-        fuzzyExpression,
-        offset,
-        pageSize
-      );
-    }
-
-    const expression = literalExpression;
-    const commonJoin = `
-      FROM search_documents_fts_v2
-      JOIN search_documents_v2 d
-        ON d.generation = CAST(search_documents_fts_v2.generation AS INTEGER)
-       AND d.document_id = CAST(search_documents_fts_v2.document_id AS INTEGER)
-    `;
-    const commonWhere = `
-      WHERE search_documents_fts_v2 MATCH ?
-        AND d.generation = ?
-        ${filter.sql}
-    `;
-    const commonBinds = [expression, generation, ...filter.binds];
-    const [countRow, pageResult, categoryResult, zoneResult, statusResult, tagResult] = await Promise.all([
-      env.SEARCH_DB.prepare(`SELECT COUNT(*) AS count ${commonJoin} ${commonWhere}`).bind(...commonBinds).first(),
-      env.SEARCH_DB.prepare(`
-        SELECT d.document_id, bm25(search_documents_fts_v2) AS search_rank
-        ${commonJoin}
-        ${commonWhere}
-        ORDER BY ${indexedSort(filters.sort)}
-        LIMIT ? OFFSET ?
-      `).bind(...commonBinds, pageSize, offset).all(),
-      env.SEARCH_DB.prepare(`
-        SELECT d.category_id AS value, d.category_name AS label, COUNT(*) AS count
-        ${commonJoin}
-        ${commonWhere}
-        GROUP BY d.category_id, d.category_name
-        ORDER BY count DESC, label
-      `).bind(...commonBinds).all(),
-      env.SEARCH_DB.prepare(`
-        SELECT d.zone_number AS value, CAST(d.zone_number AS TEXT) || '구역' AS label, COUNT(*) AS count
-        ${commonJoin}
-        ${commonWhere}
-        AND d.zone_number > 0
-        GROUP BY d.zone_number
-        ORDER BY count DESC, value
-      `).bind(...commonBinds).all(),
-      env.SEARCH_DB.prepare(`
-        SELECT d.status AS value,
-               CASE d.status WHEN 'disposed' THEN '폐기' ELSE '보관중' END AS label,
-               COUNT(*) AS count
-        ${commonJoin}
-        ${commonWhere}
-        GROUP BY d.status
-        ORDER BY value
-      `).bind(...commonBinds).all(),
-      env.SEARCH_DB.prepare(`
-        SELECT
-          CAST(json_extract(indexed_tag.value, '$.id') AS INTEGER) AS value,
-          json_extract(indexed_tag.value, '$.name') AS label,
-          COUNT(*) AS count
-        ${commonJoin}
-        JOIN json_each(d.tags_json) indexed_tag
-        ${commonWhere}
-        GROUP BY value, label
-        ORDER BY count DESC, label
-      `).bind(...commonBinds).all()
-    ]);
-    const ranked = pageResult.results ?? [];
-    const ids = ranked.map((row) => Number(row.document_id)).filter(Number.isInteger);
-    const { where, binds } = buildDocumentFilterWhere(filters);
-    const coreRows = await getCoreCandidateDocuments(env, ids, where, binds);
-    const byId = new Map(coreRows.map((row) => [Number(row.id), row]));
-    const rankById = new Map(ranked.map((row) => [Number(row.document_id), Number(row.search_rank || 0)]));
-    const documents = ids.map((id) => byId.get(id)).filter(Boolean);
-    for (const document of documents) {
-      const match = scoreDocumentMatch(document, query);
-      document.relevance_score = Number(match.relevance_score || 0);
-      document.match_reason = match.match_reason;
-      document.search_rank = rankById.get(Number(document.id)) || 0;
-    }
-    return {
-      documents: documents.filter((document) => document.relevance_score > 0),
-      totalItems: Number(countRow?.count || 0),
-      activeGeneration: generation,
-      facets: {
-        categories: categoryResult.results ?? [],
-        tags: tagResult.results ?? [],
-        zones: zoneResult.results ?? [],
-        statuses: statusResult.results ?? []
-      }
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function getFuzzyIndexedViewerPageV2(
-  env,
-  query,
-  filters,
-  generation,
-  filter,
-  expression,
-  offset,
-  pageSize
-) {
-  const ranked = await env.SEARCH_DB.prepare(`
-    SELECT d.document_id, bm25(search_documents_fts_v2) AS search_rank
-    FROM search_documents_fts_v2
-    JOIN search_documents_v2 d
-      ON d.generation = CAST(search_documents_fts_v2.generation AS INTEGER)
-     AND d.document_id = CAST(search_documents_fts_v2.document_id AS INTEGER)
-    WHERE search_documents_fts_v2 MATCH ?
-      AND d.generation = ?
-      ${filter.sql}
-    ORDER BY search_rank, d.document_id
-    LIMIT ?
-  `).bind(
-    expression,
-    generation,
-    ...filter.binds,
-    FREE_TIER_BUDGET.searchCandidateMaxItems
-  ).all();
-  const ids = (ranked.results ?? [])
-    .map((row) => Number(row.document_id))
-    .filter(Number.isInteger);
-  if (!ids.length) return null;
-
-  const { where, binds } = buildDocumentFilterWhere(filters);
-  const coreRows = await getCoreCandidateDocuments(env, ids, where, binds);
-  const documents = scoreCandidateDocuments(
-    coreRows,
-    query,
-    FREE_TIER_BUDGET.searchCandidateMaxItems,
-    filters.sort,
-    await getSearchClickHits(env, query)
-  );
-  return {
-    documents: documents.slice(offset, offset + pageSize),
-    totalItems: documents.length,
-    activeGeneration: generation,
     facets: buildViewerFacets(documents)
   };
 }
@@ -1124,7 +844,7 @@ export async function getViewerSearchPayload(env, params = {}) {
         : buildSearchSuggestions(exactNamePage.documents, 8)
     };
   }
-  const indexedPage = await getIndexedViewerPage(env, query, filters, offset, pageSize);
+  const indexedPage = await getProjectionViewerPage(env, query, filters, offset, pageSize);
   if (indexedPage) {
     const nextOffset = offset + indexedPage.documents.length;
     const hasMore = nextOffset < indexedPage.totalItems;
@@ -1137,7 +857,6 @@ export async function getViewerSearchPayload(env, params = {}) {
       hasMore,
       candidateCount: indexedPage.totalItems,
       indexGeneration: generation,
-      activeIndexGeneration: indexedPage.activeGeneration,
       fallback: false,
       pagination: {
         page: Math.floor(offset / pageSize) + 1,
@@ -1185,12 +904,11 @@ export async function getViewerSearchPayload(env, params = {}) {
   };
 }
 
-// 색인 경로 없이 Core 퍼지 후보로 응답했는지. Core projection이 읽히면 Search D1 유무와 무관하게
-// 정상 색인 응답이다.
+// projection FTS 없이 Core 퍼지 후보(최근 200건)로만 응답했는지.
+// 전체 재색인이 끝나기 전이나 projection 조회 실패에서만 true가 된다.
 async function isSearchIndexDegraded(env) {
   if (env.__searchFallback === true) return true;
-  if (resolveSearchReadMode(env) !== "search-db" && await isProjectionReadable(env)) return false;
-  return !env.SEARCH_DB;
+  return !await isProjectionReadable(env);
 }
 
 async function getSearchGeneration(env) {

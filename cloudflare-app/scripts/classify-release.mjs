@@ -8,7 +8,6 @@ const REPOSITORY_ROOT = path.resolve(APP_ROOT, "..");
 
 const DATABASE_PATHS = Object.freeze([
   /^cloudflare-app\/migrations\//,
-  /^cloudflare-app\/search-migrations\//,
   /^cloudflare-app\/wrangler\.jsonc$/,
   /^\.github\/workflows\/deploy\.yml$/
 ]);
@@ -66,11 +65,7 @@ function releaseResult(releaseClass, changedFiles, reason) {
     releaseClass,
     requiresMigration: releaseClass === "database",
     requiresSmokePrincipals: releaseClass !== "asset-only",
-    recoveryScope: releaseClass === "database"
-      ? "core-and-search"
-      : releaseClass === "runtime-only"
-        ? "core"
-        : "none",
+    recoveryScope: releaseClass === "asset-only" ? "none" : "core",
     changedFiles: Object.freeze(changedFiles),
     reason
   });
