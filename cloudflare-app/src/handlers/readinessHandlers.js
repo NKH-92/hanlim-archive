@@ -17,8 +17,8 @@ export async function handleReadinessCheck(env) {
       getSearchOperationalState(env)
     ]);
     const checks = {
-      coreDatabase: coreMigration === EXPECTED_CORE_MIGRATION,
-      searchDatabase: searchMigration === EXPECTED_SEARCH_MIGRATION,
+      coreDatabase: migrationAtLeast(coreMigration, EXPECTED_CORE_MIGRATION),
+      searchDatabase: migrationAtLeast(searchMigration, EXPECTED_SEARCH_MIGRATION),
       searchOperational: isSearchOperational(search)
     };
     const ok = Object.values(checks).every(Boolean);
@@ -50,6 +50,17 @@ async function readLatestMigration(database) {
     LIMIT 1
   `).first();
   return String(row?.name || "");
+}
+
+function migrationAtLeast(current, expected) {
+  const currentSequence = migrationSequence(current);
+  const expectedSequence = migrationSequence(expected);
+  return expectedSequence >= 0 && currentSequence >= expectedSequence;
+}
+
+function migrationSequence(name) {
+  const match = /^(\d{4})_/.exec(String(name || ""));
+  return match ? Number(match[1]) : -1;
 }
 
 function isSearchOperational(state) {
