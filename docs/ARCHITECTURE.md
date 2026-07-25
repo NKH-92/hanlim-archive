@@ -44,6 +44,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 | `src/domains/masters/` | 대분류·태그 query/command/view |
 | `src/domains/racks/` | 랙 규격, 면·열 방향, 도면 geometry, slot, query/command |
 | `src/domains/search/` | 검색 repository/presenter, 고수준 동기화·유지보수 계약, browser/server 공통 공개 API |
+| `src/domains/search/infrastructure/projection.js` | Core D1 검색 projection 쓰기, dirty 배출, in-place 재색인 |
+| `src/data/searchIndexTerms.js` | FTS 색인 term(2·3-gram, 한글 초성) 단일 출처 |
 | `src/domains/sets/` | 세트 query/command, 잠금, 이력, presenter |
 | `src/domains/audit/` | 시스템 감사 INSERT, filter query, audit presenter |
 | `src/domains/dataQuality/` | 품질 issue catalog, 상세 query, 작업목록 view |
@@ -110,29 +112,35 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 20. **10,000건 용량 경계**: 현재 대장은 11,000건부터 운영 경고, 12,000건에서 DB trigger와 application
     guard가 신규 등록·재포함·엑셀 반영을 함께 차단한다. 전체 membership은 1,000행, 실제 변경행은 50행씩
     전송하며 일상 변경 영향은 1,000건을 넘길 수 없다.
-21. **Core/Search 분리**: `DB`는 문서·사용자·감사·권한의 유일한 권위 저장소이고 `SEARCH_DB`는
-    `search-migrations/`로 관리하는 재구축 가능 파생 인덱스다. Search D1에는 `storage_code`, 사용자,
-    감사정보를 저장하지 않는다. 검색 후보는 최대 200개 ID이며 Core에서 현재 상태·필터를 재검증한 뒤
-    최대 30건과 opaque cursor만 응답한다. 개별 문서 등록은 Core transaction 확정 뒤 별도 요청 예산으로
-    해당 문서의 outbox만 즉시 반영한다. Search 반영 실패나 전체 재구축 중에는 outbox를 남겨 Cron이
-    재처리하며, Core 등록 성공을 되돌리지 않는다. Shadow rebuild는 물리 generation과 Core content
-    generation을 분리하고 Core `search_event_clock`에서 발급한 영구 단조 source version을 문서별
-    watermark·삭제 tombstone으로 기록한다. 따라서 outbox 행이 처리 후 다시 만들어져 자체 event version이
-    1로 돌아가더라도 순서가 역전되지 않으며, 재구축이 먼저 읽은
-    오래된 문서가 최신 outbox 결과를 덮어쓰거나 삭제 문서를 되살릴 수 없다. Cutover는 rebuild token,
-    cursor CAS, Core generation·outbox fence를 모두 통과한 뒤에만 active generation을 교체하며 직전
-    active generation을 명시적으로 보존해 rollback 대상으로 사용한다.
-22. **검색 유지보수 lease**: Cron은 outbox를 먼저 배출한 뒤 rebuild를 진행한다. outbox processor와 각
-    event는 만료 가능한 owner lease를 사용하고 완료 시 event version과 owner를 함께 비교한다. 실패 전에
-    Search 쓰기가 시작되지 않은 transient 오류와 stale event는 장기 backoff를 만들지 않는다. generation
-    정리는 실행 시점의 active·previous·building generation을 다시 조회해 진행 중 rebuild를 삭제하지 않는다.
-23. **인증 재검증과 임시 계정 수명**: 비밀번호 최소 길이는 6자이며 신규 PBKDF2-SHA256 record는
+21. **검색 projection은 Core D1 안의 파생 데이터**: `DB`는 문서·사용자·감사·권한의 유일한 권위 저장소이며
+    검색 projection(`search_projection_documents`, `search_projection_fts`)도 같은 DB에 둔다. projection에는
+    `storage_code`, 사용자, 감사정보를 저장하지 않는다. 검색 후보는 최대 200개 ID이며 Core에서 현재 상태·필터를
+    재검증한 뒤 최대 30건과 opaque cursor만 응답한다. cursor 무효화는 `search_index_state.generation`
+    단일 카운터를 계속 사용한다. 색인 본문(`normalized_text`)은 n-gram과 한글 초성을 만드는
+    `data/searchIndexTerms.js`가 유일한 출처다. SQL trigger로 재현할 수 없으므로 trigger는 재색인 대상만
+    `search_projection_dirty`에 표시하고, 색인 쓰기는 항상 애플리케이션이 수행한다. projection 쓰기와 dirty 행
+    삭제는 하나의 `env.DB.batch()`에 두므로 **"projection 최신 OR 문서가 dirty"가 트랜잭션으로 보장된다.**
+    경합 처리는 lease가 아니라 `(document_id, event_version)` 삭제 건수 assertion 하나로 끝난다. 오래된 내용을
+    쓰려던 batch는 전체 rollback되고 dirty 행이 큐에 남아 재처리된다. 전체 재색인은 physical generation과
+    cutover 없이 in-place upsert로 진행하므로 재색인 중에도 검색 결과가 비지 않는다.
+22. **파생 색인은 배포 게이트가 아니다**: `/readyz`의 필수 조건은 Core D1 schema가 기대 migration에 도달하는 것뿐이다.
+    검색 색인 지연·재구축·legacy Search D1 상태는 `warnings`로 노출하고 관리자 화면에서 확인한다. 파생 색인의
+    지연을 준비 실패로 올리면 파생 데이터 지연이 곧 서비스 중단 판정이 되어 격리 목적과 반대로 작동한다.
+    Cron 한 invocation은 요청당 statement 예산 48개를 공유하므로 legacy Search D1 유지보수를 먼저 실행하고,
+    projection 유지보수는 남은 예산이 한 chunk를 담을 수 있을 때만 진행한다. 개별 문서 변경은 Cron을 기다리지 않고
+    같은 요청에서 projection을 배출한다.
+23. **Search D1 전환 경로(과도기)**: `SEARCH_DB`와 `search-migrations/`는 읽기 rollback 대상으로만 남아 있다.
+    `SEARCH_READ_MODE`가 `core`(기본), `compare`, `search-db`를 선택하며 projection이 `ready`가 아니면
+    core 모드도 Search D1 → Core 퍼지 순으로 자동 강등한다. `compare`는 두 경로를 함께 실행해 결과·건수·패싯
+    불일치를 구조화 로그로 남긴다. 과거 migration은 수정하지 않으며 binding 제거와 물리 DB 삭제는 서로 다른
+    release로 분리한다. 전환 게이트는 [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)을 따른다.
+24. **인증 재검증과 임시 계정 수명**: 비밀번호 최소 길이는 6자이며 신규 PBKDF2-SHA256 record는
     Cloudflare Workers Web Crypto 상한인 100,000회 반복을 사용한다. legacy raw digest는 성공한 로그인에서
     CAS 방식으로 반복 횟수를 명시하는 self-describing record로 전환하며, 런타임 상한을 넘는 record는
     PBKDF2 실행 전에 fail-closed한다. 계정 상태와
     session epoch는 매 요청 DB에서 재검증하고, 반복 로그인 실패는 HMAC 기반 계정·IP 제한으로 차단한다.
     release smoke 계정은 45분 TTL과 필요한 단일 권한만 가지며 다음 release와 Cron janitor가 누수를 제거한다.
-24. **운영 version 격리**: 기본 Wrangler 환경은 운영 Worker·D1을 가리키지 않고 preview URL을 만들지 않는다.
+25. **운영 version 격리**: 기본 Wrangler 환경은 운영 Worker·D1을 가리키지 않고 preview URL을 만들지 않는다.
     배포 전에 현재 100% traffic version을 기록하고 guarded deploy로 production에 직접 배포한다. canonical
     운영 URL smoke가 실패하면 기록한 version으로 rollback하고 다시 검증한다.
 
@@ -141,8 +149,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 - audit/history INSERT는 상태 UPDATE/DELETE보다 먼저 같은 `env.DB.batch()`에서 실행한다.
 - 선행 INSERT도 application 사전조회가 아니라 같은 pre-state SQL guard를 사용한다.
 - batch 마지막 mutation의 변경 행 수로 no-op과 낙관적 잠금 경합을 감지한다.
-- 모든 SQL 값은 bind parameter로 전달한다. Core와 Search를 합친 요청당 D1 statement 예산은
-  Cloudflare Free의 50개보다 2개 낮은 48개, 원자 mutation `BatchPlan`은 40개,
+- 모든 SQL 값은 bind parameter로 전달한다. Core·projection·(과도기의) Search를 합친 요청당 D1 statement
+  예산은 Cloudflare Free의 50개보다 2개 낮은 48개, 원자 mutation `BatchPlan`은 40개,
   statement당 bind parameter는 100개를 넘지 않는다. LIKE pattern은 UTF-8 50 bytes,
   JSON value payload는 플랫폼 2,000,000 bytes보다 낮은 1,900,000 bytes에서 분할한다.
   최대 200개 ID를 다루는 세트 작업은 JSON 한 bind와 `json_each()`를 사용한다.
@@ -168,6 +176,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 | manifest·bootstrap·ZIP·감사 보강 | `excelSnapshotCompletion.test.js`, `excelOpenXmlCompatibility.test.js` |
 | 웹 개별 변경 export 포함·개정 이력 경계 | `documentLedgerIntegration.test.js` |
 | 검색 server/browser 일치 | `searchParity.test.js`, `searchBehavior.test.js` |
+| Core projection dirty·재색인·읽기 parity | `searchProjection.test.js` |
+| 파생 색인이 `/readyz`를 닫지 않음 | `readinessContracts.test.js` |
 
 ## 변경 절차
 

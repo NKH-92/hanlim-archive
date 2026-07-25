@@ -163,7 +163,8 @@ test("1,000건 엑셀 반영은 단일 batch와 statement 예산 안에서 원�
     });
     assert.equal(applied.ok, true, applied.message);
     assert.ok(applied.statementCount <= FREE_TIER_BUDGET.maxD1StatementsPerRequest);
-    assert.equal(applied.statementCount, 27);
+    // 0048 이후 bootstrap batch는 Core projection 재색인 예약 1문장을 함께 포함한다.
+    assert.equal(applied.statementCount, 28);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 1000);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 0);
     assert.equal(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(prepared.snapshot.id).status, "completed");

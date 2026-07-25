@@ -132,20 +132,24 @@ function dataQualityPanel(quality) {
 function searchIndexPanel(stats) {
   const estimated = formatBytes(stats.estimatedJsonBytes);
   const readiness = stats.readiness;
+  // 검색 색인 동기화는 /readyz 실패가 아니라 이 화면의 경고로 노출한다(파생 데이터 격리).
   const migrationStatus = readiness
-    ? `Core migration ${readiness.checks.coreDatabase ? "충족" : "미충족"} · Search migration ${readiness.checks.searchDatabase ? "충족" : "미충족"}`
+    ? `Core migration ${readiness.checks.coreDatabase ? "충족" : "미충족"} · Search migration ${readiness.warnings.searchDatabase ? "충족" : "미충족"}`
+    : "";
+  const projectionStatus = readiness
+    ? `projection ${readiness.projection.reindexStatus} · 색인 ${Number(readiness.projection.indexedDocumentCount || 0).toLocaleString("ko-KR")}건 · dirty ${Number(readiness.projection.pendingDirtyCount || 0).toLocaleString("ko-KR")}건`
     : "";
   const operationalStatus = readiness
     ? `generation ${Number(stats.generation || 0).toLocaleString("ko-KR")}/${Number(stats.searchGeneration || 0).toLocaleString("ko-KR")} · active ${Number(stats.activeGeneration || 0).toLocaleString("ko-KR")} · indexed ${Number(stats.indexedDocumentCount || 0).toLocaleString("ko-KR")}/${Number(stats.searchIndexedDocumentCount || 0).toLocaleString("ko-KR")} · outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건 · rebuild ${stats.rebuildRequired ? "required" : stats.rebuildStatus}`
     : "";
   const message = readiness
-    ? `${readiness.ok ? "검색 운영 준비 완료" : "검색 운영 확인 필요"} · ${migrationStatus} · ${operationalStatus}`
+    ? `${readiness.ok && !readiness.degraded ? "검색 운영 준비 완료" : "검색 운영 확인 필요"} · ${migrationStatus} · ${projectionStatus} · ${operationalStatus}`
     : !stats.searchAvailable
       ? "Search D1 연결을 확인하세요. 정확 문서번호와 필터 목록만 Core fallback으로 제공합니다."
       : stats.rebuildRequired || stats.rebuildStatus !== "ready"
         ? `검색 재구축이 필요합니다. 대기 outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`
         : `Search D1 ${Number(stats.searchIndexedDocumentCount || 0).toLocaleString("ko-KR")}건 · outbox ${Number(stats.pendingOutboxCount || 0).toLocaleString("ko-KR")}건`;
-  const level = readiness && !readiness.ok
+  const level = readiness && (!readiness.ok || readiness.degraded)
     ? "warning"
     : !stats.searchAvailable || stats.rebuildRequired || stats.rebuildStatus !== "ready"
       ? "warning"

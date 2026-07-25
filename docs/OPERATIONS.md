@@ -8,8 +8,10 @@
   돕는 보조 시스템이다. 웹 데이터가 서명 대장과 다르면 서명 대장을 기준으로 정정·재적재한다.
 - 매월 1회와 대량·중요 변경 직후 현재 대장을 추출한다. 문서 수, 대장 version, canonical hash와 인쇄용
   관리대장을 대조한 뒤 업무 책임자가 서명하고 접근 통제된 사내 보관 위치에 보존한다.
-- 단기 복구는 Core·Search D1 Time Travel 7일을 먼저 사용한다. 7일 밖의 복구나 D1 복구가 부적합한 손상은
-  마지막 서명 Excel을 새 환경의 bootstrap/snapshot 경로로 재적재하고 검색 index를 재구축한다.
+- 단기 복구는 Core D1 Time Travel 7일을 먼저 사용한다. 검색 색인은 Core에서 재생성 가능한 파생 데이터이므로
+  별도 복구 시점을 맞추지 않고 Core 복구 후 재색인(`search_projection_state.reindex_status = 'pending'`)만
+  예약한다. legacy Search D1 bookmark는 읽기 rollback 대상이 남아 있는 동안만 함께 기록한다. 7일 밖의 복구나
+  D1 복구가 부적합한 손상은 마지막 서명 Excel을 새 환경의 bootstrap/snapshot 경로로 재적재한다.
 - `workers.dev` 주소와 앱 로그인만 유지하며 Cloudflare Access는 평시 적용하지 않는다. 비밀번호 최소 6자도
   유지한다. 공개 URL에 대한 자동 시도·credential 위험은 로그인 제한, PBKDF2 100,000회, session epoch와
   운영 관측으로 줄이되 제거되지 않는 잔여 위험으로 수용한다.
@@ -17,8 +19,13 @@
 결정 근거는 무료 운영 범위, 기존 업무 비밀번호 정책, 서명 Excel의 공식 기록 지위다. 결정일은
 2026-07-25이며 승인자는 문서대장 업무 소유자와 production Environment 승인자다. 사람 이름과 승인 증거는
 저장소에 중복 기재하지 않고 해당 PR 및 Environment 승인 기록으로 보존한다. Access·커스텀 도메인,
-R2/외부 장기 백업, Cloudflare token 2분할, Core/Search 단일 D1 전환과 Actions SHA pin 갱신은 별도 근거와
-승인 전까지 보류한다.
+R2/외부 장기 백업, Cloudflare token 2분할과 Actions SHA pin 갱신은 별도 근거와 승인 전까지 보류한다.
+
+Core/Search 단일 D1 전환은 2026-07-26 검토에서 통합으로 결정했다. 동시접속 약 10명·문서 약 10,000건
+규모에서 물리 분리의 근거가 확인되지 않았고, 검색 읽기 경로가 이미 매 요청 Core를 다시 읽으므로 분리로
+얻는 격리가 실제로 성립하지 않는다. 단계와 게이트는
+[무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)의 릴리스 단계를 따르며 `SEARCH_DB`
+binding 제거와 물리 DB 삭제는 별도 release·별도 승인으로 분리한다.
 
 ### Break-glass: 공개 로그인 경계 차단
 
@@ -43,10 +50,14 @@ cd cloudflare-app
 npm ci
 Copy-Item .dev.vars.example .dev.vars
 npm run db:migrate:local
+npm run db:migrate:search:local
 npm run check
 npm test
 npm run dev
 ```
+
+새 migration을 추가한 뒤에는 `npm run db:manifest`로 `migrations/manifest.json`의 checksum과 schema 목록을
+실제 replay 결과로 갱신한다. 이 스크립트는 과거 migration 파일과 `released-baseline.json`을 수정하지 않는다.
 
 `.dev.vars`에는 서로 다른 최소 32자의 무작위 `SESSION_SECRET`, `AUTH_HMAC_SECRET`을 넣고 commit하지 않는다.
 `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`로 각 값을
@@ -110,6 +121,8 @@ npm run deploy:dry
 - 승인 계정의 검색·문서 상세 read-only 표본
 - 독립 Admin의 `/admin/settings` 200과 실제 사용자 관리 marker
 - migration pending 0과 release 대상 SHA
+- `SEARCH_READ_MODE` 값과 관리자 화면의 `projection ready · 색인 N건 · dirty 0건` 표시
+  (`/readyz`는 파생 색인 지연으로 닫히지 않으므로 색인 상태는 이 화면에서 확인한다)
 - Worker 오류율과 D1 오류, console JavaScript 오류, CSP 위반 부재
 
 장애가 발생하면 변경을 중지하고 release SHA·Worker version·migration 결과·request ID를 확보한다. 애플리케이션 오류인지 데이터 손상인지 구분한 뒤 Worker rollback 또는 복구 절차를 선택한다.
@@ -188,10 +201,12 @@ node scripts/audit-excel-snapshot-data.mjs --db path\to\backup.sqlite --out repo
 2. `wrangler.jsonc`의 `SEARCH_DB` placeholder를 실제 UUID로 바꾸고 GitHub repository/environment variable
    `SEARCH_D1_TARGET_DATABASE_ID`에도 같은 값을 등록한다. placeholder 상태에서는 guarded migrate/deploy가
    fail-closed해야 정상이다.
-3. 계정의 D1 database 슬롯과 Cron Trigger 슬롯을 확인한다. Worker는 5분마다 Search outbox를 먼저 최대
-   25건 배출하고 이어서 재구축 100건을 처리한다. processor와 행별 lease는 2분 뒤 만료되어 중단된 실행을
-   다음 Cron이 회수한다. 개별 문서 등록은 응답 전에 대상 outbox 1건을 먼저 반영하며, Search 장애나
-   전체 재구축 중에는 outbox를 유지해 이 Cron이 재처리한다. 엑셀 전체 동기화는 기존 청크 경로를 유지한다.
+3. 계정의 D1 database 슬롯과 Cron Trigger 슬롯을 확인한다. Cron 한 invocation은 요청당 statement 예산
+   48개를 공유하므로 legacy Search D1 유지보수(outbox 25건 → 재구축 100건)를 먼저 실행하고, Core projection
+   유지보수(dirty 배출 → 재색인 chunk)는 남은 예산이 한 chunk를 담을 수 있을 때만 진행한다. 개별 문서 등록·수정은
+   Cron을 기다리지 않고 같은 요청에서 projection을 원자적으로 배출한다. projection 쓰기가 실패하면 dirty 행이
+   남아 다음 Cron이 재처리하며 Core 등록 성공은 되돌리지 않는다. 엑셀 전체 동기화는 기존 청크 경로를 유지하고
+   bootstrap 반영은 같은 batch에서 projection 재색인을 예약한다.
 4. Core와 Search D1의 Time Travel 사용 가능 여부와 7일 보존 기간을 확인한다. 별도 object storage는
    무료티어 운영 범위에 포함하지 않는다.
 
@@ -216,20 +231,45 @@ npm run check:migrations
 
 ### 전환·검색 확인
 
-1. 신규 Core에 migration manifest의 전체 chain(`0001~0045`), Search에
-   `search-migrations/0001~0003`을 순서대로 적용한다. Search `0003` 적용 뒤에는 부분 생성된
-   무토큰 shadow generation을 폐기하고 active generation을 유지한 채 재구축이 다시 시작되는 것이 정상이다.
+1. 신규 Core에 migration manifest의 전체 chain(`0001~0048`), legacy Search에
+   `search-migrations/0001~0003`을 순서대로 적용한다. Core `0048` 적용 직후 projection은 비어 있고
+   `reindex_status = 'pending'`이므로 Cron 재색인이 끝날 때까지 검색이 Search D1 → Core 퍼지로 강등되는 것이
+   정상이다. Search `0003` 적용 뒤에는 부분 생성된 무토큰 shadow generation을 폐기하고 active generation을
+   유지한 채 재구축이 다시 시작되는 것이 정상이다.
 2. 승인 파일을 bootstrap으로 검증하고 문서 수, identity, FK, 분류·상태·위치·태그 집계와 canonical hash를 대조한다.
-3. Search 재구축 상태가 `ready`, indexed count가 10,000, outbox가 0인지 관리 화면과 `/readyz`에서
-   확인한다. `building_generation`, `rebuild_token`, `cutover_generation`은 모두 비어 있어야 하고
-   `previous_active_generation`은 직전 정상 generation을 가리켜야 한다.
+3. Core projection 재색인 상태가 `ready`, 색인 건수가 10,000, dirty 큐가 0인지 관리 화면에서 확인한다.
+   legacy Search D1을 아직 유지하는 동안에는 재구축 상태 `ready`, indexed count 10,000, outbox 0과
+   `building_generation`·`rebuild_token`·`cutover_generation`이 비어 있는지도 함께 본다.
+   `/readyz`는 Core schema만 판정하므로 색인 상태 확인에 사용하지 않는다.
 4. 새로 추출한 schema v2 XLSX를 무수정 재업로드해 update/create/exclude가 모두 0인지 확인한다.
-5. 정확 문서번호, 일반 검색, 오래된 문서, 초성·한영 자판 표본, cursor `더보기`, Search 장애 fallback을 시험한다.
-6. 병합 전 `npm run verify`, `npm run deploy:dry`, D1 Time Travel 복구 절차와 Search 재구축 훈련을 완료한다.
+5. 정확 문서번호, 일반 검색, 오래된 문서, 초성·한영 자판 표본, cursor `더보기`, 색인 장애 fallback을 시험한다.
+6. 병합 전 `npm run verify`, `npm run deploy:dry`, D1 Time Travel 복구 절차와 재색인 훈련을 완료한다.
 
 쓰기 개방 전 rollback은 이전 100% Worker와 이전 Core binding으로 돌아간다. 쓰기 개방 후에는 이전 Core로
-되돌리지 않고 신규 Core 호환 Worker로 rollback한다. Search 장애는 Core를 유지한 채 fallback 후 재구축한다.
+되돌리지 않고 신규 Core 호환 Worker로 rollback한다. 색인 장애는 Core를 유지한 채 fallback 후 재색인한다.
 기존 Worker/Core는 최소 7일과 안정화 승인 중 더 긴 기간까지 삭제하지 않는다.
+
+### 검색 통합 측정
+
+`npm run measure:search-consolidation`은 통합 게이트를 실측값으로 판정한다. 측정 JSON은 아래 출처에서 채운다.
+
+| 필드 | 출처 |
+|---|---|
+| `documents.current`, `documents.planned` | 관리 화면의 문서 대장 용량과 목표 규모 |
+| `sizes.coreBytes`, `sizes.searchBytes` | Cloudflare Dashboard의 D1 database 크기 |
+| `dailyRows.read`, `dailyRows.written` | D1 Metrics의 UTC 일 단위 계정 합계 최댓값 |
+| `statements.maxPerRequest`, `statements.maxPerMutationBatch` | Workers Logs의 `d1.query` 구조화 로그 `totalStatements` 최댓값 |
+| `contention.*` | 검색 부하 중 엑셀 반영·정기폐기 p95와 overload 건수 |
+| `goldenSearch.*` | `SEARCH_READ_MODE=compare` 기간의 `search.projection-compare` 로그 집계 |
+| `reindexDrill.*` | projection 전체 삭제 후 12,000건 재색인 훈련 결과 |
+
+```powershell
+cd cloudflare-app
+npm run measure:search-consolidation -- --input reports\search-consolidation.json
+```
+
+게이트가 하나라도 실패하면 `SEARCH_READ_MODE`를 `core`로 올리지 않고 `compare` 또는 `search-db`에 머문다.
+판정 결과와 측정 JSON은 접근 통제된 운영 증적 보관소에 보존하고 저장소에는 넣지 않는다.
 
 ## 월별 무료티어 점검
 
@@ -367,7 +407,7 @@ commit SHA와 production Environment 승인 context가 모두 일치할 때만 g
 GitHub artifact에는 DB 데이터가 아니라 bookmark와 release metadata만 올린다. raw
 `wrangler d1 migrations apply`와 unscoped `wrangler deploy`는 운영 절차로 사용하지 않는다.
 
-정적 자산 Worker 우회, `asset-only`/`runtime-only`/`database` 배포 경로와 Search D1 전환 보류
-기준은 [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)을 따른다.
+정적 자산 Worker 우회, `asset-only`/`runtime-only`/`database` 배포 경로와 Core/Search 단일 D1 전환
+게이트·릴리스 단계는 [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)을 따른다.
 
 secret 값, 기본 비밀번호, 개인 계정 정보는 저장소·로그·issue·PR에 기록하지 않는다. 저장소 visibility, token 회전, 유지관리자 접근권한, branch protection은 운영 책임자가 수동으로 확인한다.

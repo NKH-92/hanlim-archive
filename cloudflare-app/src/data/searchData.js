@@ -1,6 +1,7 @@
 import { sharedSearchCore } from "../searchCore.js";
 import { FREE_TIER_BUDGET } from "../config.js";
 import { locationLabel, rackFaceLabel } from "../domains/racks/index.js";
+import { logError } from "../platform/observability/logger.js";
 import { paginateSlice } from "../shared/pagination.js";
 import { readBoolean } from "../shared/coercion.js";
 import { clean } from "../shared/text/normalize.js";
@@ -13,6 +14,7 @@ import {
   recordSearchLog
 } from "./searchAnalytics.js";
 import { buildDocumentFilterWhere, parseDocumentFilters } from "./searchFilters.js";
+import { buildSearchIndexTerms } from "./searchIndexTerms.js";
 import {
   DOCUMENT_BASE_JOINS,
   DOCUMENT_CORE_COLUMNS,
@@ -26,6 +28,8 @@ import {
 const searchCore = sharedSearchCore;
 
 export const normalizeSearchText = searchCore.normalizeSearchText;
+// 색인 term 생성기는 searchIndexTerms.js가 단일 출처다. 기존 공개 표면을 유지하기 위해 재수출한다.
+export { buildSearchIndexTerms };
 export const compactSearchText = searchCore.compactSearchText;
 export const searchTokens = searchCore.searchTokens;
 export const levenshteinDistance = searchCore.levenshteinDistance;
@@ -93,9 +97,9 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
       return exactRows;
     }
   }
-  if (hasQuery && env.SEARCH_DB) {
-    try {
-      const candidateIds = await getIndexedCandidateIds(env.SEARCH_DB, trimmed, candidateLimit);
+  if (hasQuery) {
+    const candidateIds = await getSearchCandidateIds(env, trimmed, candidateLimit);
+    if (candidateIds) {
       if (!candidateIds.length) return [];
       return scoreCandidateDocuments(
         await getCoreCandidateDocuments(env, candidateIds, where, filterBinds),
@@ -104,10 +108,10 @@ export async function searchDocuments(env, query, limit = 100, filters = {}) {
         sort,
         await getSearchClickHits(env, trimmed)
       );
-    } catch {
-      // Search D1 장애 시 Core의 제한된 후보 검색으로 내린다. 정확 문서번호와 필터 목록은 계속 제공된다.
-      env.__searchFallback = true;
     }
+    // 색인 경로를 쓸 수 없으면 Core의 제한된 후보 검색으로 내린다.
+    // 정확 문서번호 조회와 필터 목록은 계속 제공된다.
+    env.__searchFallback = true;
   }
   // 문서 후보 조회와 클릭 학습 조회는 서로 독립이므로 병렬로 보낸다.
   const [result, clickHits] = await Promise.all([
@@ -162,6 +166,95 @@ async function getIndexedCandidateIds(searchDb, query, limit) {
     LIMIT ?
   `).bind(expression, Math.min(limit, FREE_TIER_BUDGET.searchCandidateMaxItems)).all();
   return (result.results ?? []).map((row) => Number(row.document_id)).filter(Number.isInteger);
+}
+
+// 검색 읽기 경로 선택. core = Core projection, search-db = 기존 Search D1, compare = 두 경로 비교.
+// 기본값은 core이며 projection이 아직 ready가 아니면 Search D1 → Core 퍼지 순으로 자동 강등한다.
+const SEARCH_READ_MODES = new Set(["core", "compare", "search-db"]);
+
+export function resolveSearchReadMode(env) {
+  const mode = String(env?.SEARCH_READ_MODE || "").trim().toLowerCase();
+  return SEARCH_READ_MODES.has(mode) ? mode : "core";
+}
+
+/**
+ * 후보 ID 목록을 만든다. 색인 경로를 전혀 쓸 수 없으면 null을 반환해 호출자가 Core 퍼지로 내려간다.
+ * @returns {Promise<number[]|null>}
+ */
+async function getSearchCandidateIds(env, query, limit) {
+  const mode = resolveSearchReadMode(env);
+  if (mode !== "search-db") {
+    const projectionIds = await getProjectionCandidateIds(env, query, limit);
+    if (projectionIds) {
+      if (mode !== "compare") return projectionIds;
+      const legacyIds = await getLegacyCandidateIds(env, query, limit);
+      reportProjectionMismatch(env, "candidates", query, {
+        projection: [...projectionIds].sort((left, right) => left - right),
+        legacy: legacyIds ? [...legacyIds].sort((left, right) => left - right) : null
+      });
+      return legacyIds ?? projectionIds;
+    }
+  }
+  return getLegacyCandidateIds(env, query, limit);
+}
+
+async function getLegacyCandidateIds(env, query, limit) {
+  if (!env.SEARCH_DB) return null;
+  try {
+    return await getIndexedCandidateIds(env.SEARCH_DB, query, limit);
+  } catch {
+    return null;
+  }
+}
+
+async function getProjectionCandidateIds(env, query, limit) {
+  const expression = indexedSearchExpression(query);
+  if (!expression) return null;
+  try {
+    if (!await isProjectionReadable(env)) return null;
+    const result = await env.DB.prepare(`
+      SELECT search_projection_fts.rowid AS document_id
+      FROM search_projection_fts
+      WHERE search_projection_fts MATCH ?
+      LIMIT ?
+    `).bind(expression, Math.min(limit, FREE_TIER_BUDGET.searchCandidateMaxItems)).all();
+    return (result.results ?? []).map((row) => Number(row.document_id)).filter(Number.isInteger);
+  } catch {
+    return null;
+  }
+}
+
+async function isProjectionReadable(env) {
+  if (env.__projectionReadable !== undefined) return env.__projectionReadable;
+  let readable = false;
+  try {
+    const state = await env.DB.prepare(`
+      SELECT reindex_status, indexed_document_count
+      FROM search_projection_state
+      WHERE id = 1
+    `).first();
+    readable = state?.reindex_status === "ready";
+  } catch {
+    readable = false;
+  }
+  try {
+    env.__projectionReadable = readable;
+  } catch {
+    // env가 동결된 경우에도 판정 자체는 유효하다.
+  }
+  return readable;
+}
+
+function reportProjectionMismatch(env, scope, query, payload) {
+  const projection = JSON.stringify(payload.projection ?? null);
+  const legacy = JSON.stringify(payload.legacy ?? null);
+  if (projection === legacy) return;
+  logError("search.projection-compare", new Error(`SEARCH_PROJECTION_MISMATCH:${scope}`), {
+    scope,
+    query: normalizeSearchText(query).slice(0, 80),
+    projection: projection.slice(0, 500),
+    legacy: legacy.slice(0, 500)
+  });
 }
 
 async function getCoreCandidateDocuments(env, candidateIds, where, filterBinds) {
@@ -235,6 +328,204 @@ function indexedLiteralSearchExpression(query) {
   // 한 글자 위치 검색("1-1" 등)은 FTS token 일치가 지나치게 넓으므로 기존 퍼지 경로로 보낸다.
   if (!terms.length || terms.some((term) => term.length < 2)) return "";
   return terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" AND ");
+}
+
+function projectionSort(sort) {
+  if (sort === "updated") return "document_updated_at DESC, document_id DESC";
+  if (sort === "docnum") return "document_number, revision_number, document_id";
+  if (sort === "category") return "category_name, document_number, revision_number, document_id";
+  if (sort === "location") {
+    return "zone_number, rack_code, rack_face, column_number, shelf_number, document_id";
+  }
+  return "search_rank, document_id";
+}
+
+// Core projection은 같은 DB에 있으므로 후보·건수·facet을 하나의 CTE에서 뽑는다.
+// Search D1 경로가 필요했던 세대(generation) 게이트와 4개의 개별 facet 왕복이 사라진다.
+function projectionMatchedCte(filterSql) {
+  return `
+    WITH matched AS (
+      SELECT
+        d.document_id,
+        d.document_number,
+        d.revision_number,
+        d.category_id,
+        d.category_name,
+        d.zone_number,
+        d.rack_code,
+        d.rack_face,
+        d.column_number,
+        d.shelf_number,
+        d.status,
+        d.tags_json,
+        d.document_updated_at,
+        bm25(search_projection_fts) AS search_rank
+      FROM search_projection_fts
+      JOIN search_projection_documents d ON d.document_id = search_projection_fts.rowid
+      WHERE search_projection_fts MATCH ?
+        ${filterSql}
+    )
+  `;
+}
+
+function projectionFacetsSql(filterSql) {
+  return `
+    ${projectionMatchedCte(filterSql)}
+    SELECT 'category' AS kind, CAST(category_id AS TEXT) AS value, category_name AS label, COUNT(*) AS count
+    FROM matched
+    GROUP BY category_id, category_name
+    UNION ALL
+    SELECT 'zone', CAST(zone_number AS TEXT), CAST(zone_number AS TEXT) || '구역', COUNT(*)
+    FROM matched
+    WHERE zone_number > 0
+    GROUP BY zone_number
+    UNION ALL
+    SELECT 'status', status, CASE status WHEN 'disposed' THEN '폐기' ELSE '보관중' END, COUNT(*)
+    FROM matched
+    GROUP BY status
+    UNION ALL
+    SELECT
+      'tag',
+      CAST(json_extract(indexed_tag.value, '$.id') AS TEXT),
+      json_extract(indexed_tag.value, '$.name'),
+      COUNT(*)
+    FROM matched
+    JOIN json_each(matched.tags_json) indexed_tag
+    GROUP BY 2, 3
+  `;
+}
+
+function projectionFacets(rows) {
+  const buckets = { category: [], tag: [], zone: [], status: [] };
+  for (const row of rows) {
+    const kind = String(row.kind || "");
+    if (!Object.hasOwn(buckets, kind)) continue;
+    buckets[kind].push({
+      value: kind === "status" ? String(row.value || "") : Number(row.value || 0),
+      label: String(row.label || ""),
+      count: Number(row.count || 0)
+    });
+  }
+  const byCount = (left, right) => Number(right.count) - Number(left.count)
+    || String(left.label).localeCompare(String(right.label), "ko");
+  return {
+    categories: buckets.category.sort(byCount),
+    tags: buckets.tag.sort(byCount),
+    zones: buckets.zone.sort(byCount),
+    statuses: buckets.status.sort((left, right) => String(left.value).localeCompare(String(right.value)))
+  };
+}
+
+async function getProjectionViewerPage(env, query, filters, offset, pageSize) {
+  const fuzzyExpression = indexedSearchExpression(query);
+  if (!fuzzyExpression) return null;
+  try {
+    if (!await isProjectionReadable(env)) return null;
+    const filter = indexedFilterWhere(filters);
+    const literalExpression = indexedLiteralSearchExpression(query);
+    // 입력 token이 모두 들어간 결과가 있으면 그것을 권위 목록으로 쓴다.
+    // 없으면 2·3-gram OR 후보를 Core 퍼지 점수기로 다시 걸러 무관한 문서를 배제한다.
+    const literalCount = literalExpression
+      ? Number((await env.DB.prepare(`
+        ${projectionMatchedCte(filter.sql)}
+        SELECT COUNT(*) AS count FROM matched
+      `).bind(literalExpression, ...filter.binds).first())?.count || 0)
+      : 0;
+    if (!literalCount) {
+      return getFuzzyProjectionViewerPage(env, query, filters, filter, fuzzyExpression, offset, pageSize);
+    }
+
+    const binds = [literalExpression, ...filter.binds];
+    const [pageResult, facetResult] = await Promise.all([
+      env.DB.prepare(`
+        ${projectionMatchedCte(filter.sql)}
+        SELECT document_id, search_rank
+        FROM matched
+        ORDER BY ${projectionSort(filters.sort)}
+        LIMIT ? OFFSET ?
+      `).bind(...binds, pageSize, offset).all(),
+      env.DB.prepare(projectionFacetsSql(filter.sql)).bind(...binds).all()
+    ]);
+    const ranked = pageResult.results ?? [];
+    const ids = ranked.map((row) => Number(row.document_id)).filter(Number.isInteger);
+    const { where, binds: coreBinds } = buildDocumentFilterWhere(filters);
+    const coreRows = await getCoreCandidateDocuments(env, ids, where, coreBinds);
+    const byId = new Map(coreRows.map((row) => [Number(row.id), row]));
+    const rankById = new Map(ranked.map((row) => [Number(row.document_id), Number(row.search_rank || 0)]));
+    const documents = ids.map((id) => byId.get(id)).filter(Boolean);
+    for (const document of documents) {
+      const match = scoreDocumentMatch(document, query);
+      document.relevance_score = Number(match.relevance_score || 0);
+      document.match_reason = match.match_reason;
+      document.search_rank = rankById.get(Number(document.id)) || 0;
+    }
+    return {
+      documents: documents.filter((document) => document.relevance_score > 0),
+      totalItems: literalCount,
+      facets: projectionFacets(facetResult.results ?? [])
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getFuzzyProjectionViewerPage(env, query, filters, filter, expression, offset, pageSize) {
+  const ranked = await env.DB.prepare(`
+    ${projectionMatchedCte(filter.sql)}
+    SELECT document_id, search_rank
+    FROM matched
+    ORDER BY search_rank, document_id
+    LIMIT ?
+  `).bind(expression, ...filter.binds, FREE_TIER_BUDGET.searchCandidateMaxItems).all();
+  const ids = (ranked.results ?? [])
+    .map((row) => Number(row.document_id))
+    .filter(Number.isInteger);
+  if (!ids.length) return null;
+
+  const { where, binds } = buildDocumentFilterWhere(filters);
+  const coreRows = await getCoreCandidateDocuments(env, ids, where, binds);
+  const documents = scoreCandidateDocuments(
+    coreRows,
+    query,
+    FREE_TIER_BUDGET.searchCandidateMaxItems,
+    filters.sort,
+    await getSearchClickHits(env, query)
+  );
+  return {
+    documents: documents.slice(offset, offset + pageSize),
+    totalItems: documents.length,
+    facets: buildViewerFacets(documents)
+  };
+}
+
+async function getIndexedViewerPage(env, query, filters, offset, pageSize) {
+  const mode = resolveSearchReadMode(env);
+  if (mode === "search-db") return getIndexedViewerPageV2(env, query, filters, offset, pageSize);
+
+  const projection = await getProjectionViewerPage(env, query, filters, offset, pageSize);
+  if (mode === "core") {
+    // projection이 아직 ready가 아니면 기존 Search D1 → Core 퍼지 순으로 강등한다.
+    return projection ?? getIndexedViewerPageV2(env, query, filters, offset, pageSize);
+  }
+
+  const legacy = await getIndexedViewerPageV2(env, query, filters, offset, pageSize);
+  reportProjectionMismatch(env, "viewer-page", query, {
+    projection: viewerPageFingerprint(projection),
+    legacy: viewerPageFingerprint(legacy)
+  });
+  return legacy ?? projection;
+}
+
+function viewerPageFingerprint(page) {
+  if (!page) return null;
+  const facetPairs = (items) => (items ?? []).map((item) => [item.value, Number(item.count || 0)]);
+  return {
+    totalItems: Number(page.totalItems || 0),
+    ids: page.documents.map((document) => Number(document.id)),
+    categories: facetPairs(page.facets?.categories),
+    zones: facetPairs(page.facets?.zones),
+    statuses: facetPairs(page.facets?.statuses)
+  };
 }
 
 function indexedSort(sort) {
@@ -443,36 +734,6 @@ function scoreCandidateDocuments(rows, query, limit, sort, clickHits) {
   return scored
     .sort((left, right) => compareSearchResults(left, right, sort, true))
     .slice(0, limit);
-}
-
-export function buildSearchIndexTerms(value) {
-  const normalized = normalizeSearchText(value);
-  const terms = new Set();
-  for (const token of normalized.split(/\s+/).filter(Boolean)) {
-    if (token.length <= 2) {
-      terms.add(token);
-    } else {
-      for (let index = 0; index < token.length - 1; index += 1) {
-        terms.add(token.slice(index, index + 2));
-      }
-      for (let index = 0; index < token.length - 2; index += 1) {
-        terms.add(token.slice(index, index + 3));
-      }
-    }
-    const initials = hangulInitials(token);
-    if (initials && initials !== token) terms.add(initials);
-  }
-  return [...terms].filter((term) => term && !/["'*:()]/.test(term));
-}
-
-function hangulInitials(value) {
-  const initials = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
-  let output = "";
-  for (const character of value) {
-    const code = character.charCodeAt(0) - 0xac00;
-    output += code >= 0 && code <= 11171 ? initials[Math.floor(code / 588)] : character;
-  }
-  return output;
 }
 
 // 0건 검색 시 "혹시 이 문서를 찾으셨나요?" 후보 (커버리지 완화 재검색)
@@ -863,7 +1124,7 @@ export async function getViewerSearchPayload(env, params = {}) {
         : buildSearchSuggestions(exactNamePage.documents, 8)
     };
   }
-  const indexedPage = await getIndexedViewerPageV2(env, query, filters, offset, pageSize);
+  const indexedPage = await getIndexedViewerPage(env, query, filters, offset, pageSize);
   if (indexedPage) {
     const nextOffset = offset + indexedPage.documents.length;
     const hasMore = nextOffset < indexedPage.totalItems;
@@ -912,7 +1173,7 @@ export async function getViewerSearchPayload(env, params = {}) {
     hasMore,
     candidateCount: Math.min(allDocuments.length, FREE_TIER_BUDGET.searchCandidateMaxItems),
     indexGeneration: generation,
-    fallback: !env.SEARCH_DB || env.__searchFallback === true,
+    fallback: await isSearchIndexDegraded(env),
     pagination: {
       page: cursor ? Math.floor(offset / pageSize) + 1 : sliced.page,
       pageSize,
@@ -922,6 +1183,14 @@ export async function getViewerSearchPayload(env, params = {}) {
     facets: buildViewerFacets(allDocuments),
     suggestions
   };
+}
+
+// 색인 경로 없이 Core 퍼지 후보로 응답했는지. Core projection이 읽히면 Search D1 유무와 무관하게
+// 정상 색인 응답이다.
+async function isSearchIndexDegraded(env) {
+  if (env.__searchFallback === true) return true;
+  if (resolveSearchReadMode(env) !== "search-db" && await isProjectionReadable(env)) return false;
+  return !env.SEARCH_DB;
 }
 
 async function getSearchGeneration(env) {

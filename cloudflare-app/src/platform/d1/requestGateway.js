@@ -69,6 +69,16 @@ export function createRequestD1Environment(env, options = {}) {
   return requestEnv;
 }
 
+/**
+ * 요청 예산의 남은 statement 수. Cron처럼 여러 유지보수 단계를 한 invocation에 담을 때
+ * 다음 단계를 시작해도 되는지 판정한다. 요청 경계가 없으면 전체 예산을 반환한다.
+ */
+export function remainingRequestD1Statements(env) {
+  const budget = env ? REQUEST_BUDGETS.get(env) : null;
+  const used = Number(budget?.statementCount || 0);
+  return Math.max(0, FREE_TIER_BUDGET.maxD1StatementsPerRequest - used);
+}
+
 /** Reset gateway counter between tests or after a synthetic request boundary. */
 export function resetRequestD1Gateway(env) {
   if (!env) return;

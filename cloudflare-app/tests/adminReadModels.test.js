@@ -60,6 +60,16 @@ test("감사조회 권한은 readiness 상세 상태를 관리자 read model과 
         };
       }
       if (/FROM search_index_outbox/.test(statement)) return { count: 3 };
+      if (/FROM search_projection_state/.test(statement)) {
+        return {
+          indexed_document_count: 2,
+          reindex_status: "ready",
+          reindex_cursor: 0,
+          last_reindexed_at: "2026-07-26 00:00:00",
+          updated_at: "2026-07-26 00:00:00"
+        };
+      }
+      if (/FROM search_projection_dirty/.test(statement)) return { count: 0 };
       throw new Error(`unexpected Core query: ${statement}`);
     }),
     SEARCH_DB: fakeDatabase(searchSql, (statement) => {
@@ -91,15 +101,25 @@ test("감사조회 권한은 readiness 상세 상태를 관리자 read model과 
 
   const result = await loadAdminDashboardReadModel(env, session);
 
-  assert.deepEqual(result.readiness.checks, {
-    coreDatabase: false,
+  // 필수 판정은 Core schema뿐이고 파생 색인 상태는 warnings로만 노출한다.
+  assert.deepEqual(result.readiness.checks, { coreDatabase: false });
+  assert.deepEqual(result.readiness.warnings, {
+    searchProjectionSynced: true,
     searchDatabase: true,
     searchOperational: false
   });
   assert.equal(result.readiness.ok, false);
+  assert.equal(result.readiness.degraded, true);
+  assert.deepEqual(result.readiness.projection, {
+    available: true,
+    reindexStatus: "ready",
+    indexedDocumentCount: 2,
+    pendingDirtyCount: 0,
+    lastReindexedAt: "2026-07-26 00:00:00"
+  });
   assert.deepEqual(result.readiness.migrations.core, {
     current: "0043_application_mfa.sql",
-    expected: "0046_app_user_team.sql",
+    expected: "0048_core_search_projection.sql",
     ready: false
   });
   assert.deepEqual(result.readiness.search, {
@@ -116,12 +136,13 @@ test("감사조회 권한은 readiness 상세 상태를 관리자 read model과 
   });
   assert.equal(result.searchIndex.readiness, result.readiness);
   assert.equal(result.searchIndex.level, "warning");
-  assert.equal(coreSql.length, 4);
+  assert.equal(coreSql.length, 6);
   assert.equal(searchSql.length, 2);
 
   const html = await adminDashboardPage({ session, ...result }).text();
   assert.match(html, /검색 운영 확인 필요/);
   assert.match(html, /Core migration 미충족 · Search migration 충족/);
+  assert.match(html, /projection ready · 색인 2건 · dirty 0건/);
   assert.match(html, /generation 8\/7 · active 4/);
   assert.match(html, /indexed 2\/1 · outbox 3건 · rebuild building/);
 });
