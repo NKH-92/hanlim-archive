@@ -39,8 +39,8 @@ const CORE_TABLES = [
   "rack_slots",
   "racks",
   "search_clicks",
-  "search_event_clock",
-  "search_index_outbox",
+  // 0049에서 search_event_clock·search_index_outbox를 제거했다. search_index_state는 검색 cursor
+  // generation 카운터로 계속 쓰인다.
   "search_index_state",
   "search_logs",
   // Core projection: 검색 FTS5를 Core D1 안에 두어 크로스 DB 보상 계층을 제거한다.
@@ -95,23 +95,8 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_revision_linked_document_no_delete",
   "trg_revision_linked_identity_no_update",
   "trg_revision_previous_no_restore",
-  "trg_search_clock_category_delete",
-  "trg_search_clock_category_insert",
-  "trg_search_clock_category_update",
-  "trg_search_clock_rack_delete",
-  "trg_search_clock_rack_insert",
-  "trg_search_clock_rack_slot_delete",
-  "trg_search_clock_rack_slot_insert",
-  "trg_search_clock_rack_slot_update",
-  "trg_search_clock_rack_update",
-  "trg_search_clock_tag_delete",
-  "trg_search_clock_tag_insert",
-  "trg_search_clock_tag_update",
-  "trg_search_outbox_document_delete",
-  "trg_search_outbox_document_insert",
-  "trg_search_outbox_document_tag_delete",
-  "trg_search_outbox_document_tag_insert",
-  "trg_search_outbox_document_update",
+  // 0049: trg_search_clock_* 12개와 trg_search_outbox_* 5개는 제거했다. 파생 색인 신호는
+  // projection dirty 큐 하나로 모인다.
   // Core projection dirty 큐. 색인 본문은 JS(n-gram·초성)가 만들므로 trigger는 대상 표시만 한다.
   "trg_search_projection_document_delete",
   "trg_search_projection_document_insert",
@@ -119,6 +104,7 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_search_projection_document_tag_insert",
   "trg_search_projection_document_update",
   // 0047/0048: reference 이름 변경은 전체 재구축(trg_search_rebuild_*) 대신 영향 문서만 표시한다.
+  // 0049에서 outbox·clock 쓰기를 걷어내고 cursor generation과 dirty 표시만 남겼다.
   "trg_search_scope_category_update",
   "trg_search_scope_rack_slot_update",
   "trg_search_scope_rack_update",

@@ -132,9 +132,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 23. **검색 전용 D1은 존재하지 않는다**: Worker는 모든 환경에서 `DB` 하나만 바인딩한다. `SEARCH_DB` binding,
     두 번째 migration 체인, 그리고 cross-DB 정합성을 위해 존재했던 outbox lease·processor lease·문서별
     watermark·삭제 tombstone·active/building/previous generation·rebuild token·cutover fence는 모두 제거했다.
-    물리 Search D1과 `search-migrations/`는 보존기간 동안 이력으로 남기지만 코드·배포·복구 경로는 참조하지 않는다.
-    Core에 남은 `search_index_outbox`·`search_index_state`·`search_event_clock`은 이전 Worker rollback 호환을
-    위해 유지하며 DROP은 별도 승인 release로 분리한다. 통합 근거와 단계는
+    `search_index_outbox`와 전역 `search_event_clock`, 그리고 그 둘에 쓰던 17개 trigger도 제거했으므로
+    파생 색인 신호는 `search_projection_dirty` 하나로 모인다. `search_index_state`는 남지만 역할은
+    검색 cursor generation 카운터 하나뿐이다. 통합 근거와 단계는
     [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)에 있다.
 24. **인증 재검증과 임시 계정 수명**: 비밀번호 최소 길이는 6자이며 신규 PBKDF2-SHA256 record는
     Cloudflare Workers Web Crypto 상한인 100,000회 반복을 사용한다. legacy raw digest는 성공한 로그인에서
