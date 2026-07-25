@@ -100,8 +100,8 @@ Search DB에서 후보 ID를 얻은 뒤 **항상 Core를 다시 읽어** 권한�
 |---|---|---|
 | R1 측정 | 운영 용량·일일 rows·검색 p95·요청당 statement 수집 후 게이트 판정 | 코드 변경 없음 |
 | R2 additive | migration 0047(reference 변경 범위 제한), 0048(Core projection·FTS·dirty 큐). 쓰기는 양쪽 반영 | additive migration, 읽기 경로 무변경 |
-| R3 compare | `SEARCH_READ_MODE=compare`로 두 경로 결과·건수·패싯 비교, mismatch 로깅 | 변수 되돌리기 |
-| R4 cutover | `SEARCH_READ_MODE=core`. `SEARCH_DB` binding은 롤백용으로 유지 | `compare` 또는 `search-db`로 복귀 |
+| R3 compare | staging·production `SEARCH_READ_MODE=compare`(현재 값)로 두 경로 결과·건수·패싯 비교, mismatch 로깅 | 변수 되돌리기 |
+| R4 cutover | `wrangler.jsonc`의 staging·production `SEARCH_READ_MODE`를 `core`로 올린다. `SEARCH_DB` binding은 롤백용으로 유지 | `compare` 또는 `search-db`로 복귀 |
 | R5 정리 | binding 제거, lease·watermark·generation·cutover 코드 삭제, 배포 scope=core | 이전 Worker version rollback |
 | R6 별도 승인 | 보존기간 종료 후 물리 DB 삭제 | 불가 |
 

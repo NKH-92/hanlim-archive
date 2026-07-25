@@ -48,9 +48,10 @@
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       },
+      // R3: compare로 관측한 뒤 게이트 통과를 확인하고 R4에서 core로 올린다.
       "vars": {
         "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only",
-        "SEARCH_READ_MODE": "core"
+        "SEARCH_READ_MODE": "compare"
       },
       "d1_databases": [
         {
@@ -74,9 +75,10 @@
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       },
+      // R3: compare로 관측한 뒤 게이트 통과를 확인하고 R4에서 core로 올린다.
       "vars": {
         "EXCEL_SNAPSHOT_APPLY_MODE": "admin-only",
-        "SEARCH_READ_MODE": "core"
+        "SEARCH_READ_MODE": "compare"
       },
       "d1_databases": [
         {
