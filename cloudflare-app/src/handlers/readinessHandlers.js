@@ -1,8 +1,6 @@
-import { getSearchOperationalState } from "../domains/search/index.js";
 import { logError } from "../platform/observability/logger.js";
+import { loadOperationalReadinessReadModel } from "../readModels/adminDashboard.js";
 
-const EXPECTED_CORE_MIGRATION = "0044_remove_application_mfa.sql";
-const EXPECTED_SEARCH_MIGRATION = "0003_rebuild_barriers_and_watermarks.sql";
 const JSON_HEADERS = Object.freeze({
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store"
@@ -11,56 +9,12 @@ const JSON_HEADERS = Object.freeze({
 export async function handleReadinessCheck(env) {
   const workerVersion = String(env.CF_VERSION_METADATA?.id || "").trim() || null;
   try {
-    const [coreMigration, searchMigration, search] = await Promise.all([
-      readLatestMigration(env.DB),
-      readLatestMigration(env.SEARCH_DB),
-      getSearchOperationalState(env)
-    ]);
-    const checks = {
-      coreDatabase: coreMigration === EXPECTED_CORE_MIGRATION,
-      searchDatabase: searchMigration === EXPECTED_SEARCH_MIGRATION,
-      searchOperational: isSearchOperational(search)
-    };
-    const ok = Object.values(checks).every(Boolean);
-    return jsonResponse({
-      ok,
-      workerVersion,
-      checks,
-      search: {
-        generation: search.generation,
-        activeGeneration: search.activeGeneration,
-        indexedDocumentCount: search.searchIndexedDocumentCount,
-        pendingOutboxCount: search.pendingOutboxCount
-      }
-    }, ok ? 200 : 503);
+    const readiness = await loadOperationalReadinessReadModel(env);
+    return jsonResponse({ ok: readiness.ok, workerVersion }, readiness.ok ? 200 : 503);
   } catch (error) {
     logError("worker.readyz", error);
     return jsonResponse({ ok: false, workerVersion }, 503);
   }
-}
-
-async function readLatestMigration(database) {
-  if (!database || typeof database.prepare !== "function") {
-    throw new TypeError("D1 database binding이 필요합니다.");
-  }
-  const row = await database.prepare(`
-    SELECT name
-    FROM d1_migrations
-    ORDER BY id DESC
-    LIMIT 1
-  `).first();
-  return String(row?.name || "");
-}
-
-function isSearchOperational(state) {
-  // The legacy index remains the read path until the free-tier cron finishes the v2 shadow rebuild.
-  const sharedReady = state.searchAvailable
-    && !state.rebuildRequired
-    && state.rebuildStatus === "ready"
-    && state.pendingOutboxCount === 0
-    && state.generation === state.searchGeneration
-    && state.indexedDocumentCount === state.searchIndexedDocumentCount;
-  return sharedReady && (!state.v2Ready || state.activeGeneration >= 1);
 }
 
 function jsonResponse(body, status) {

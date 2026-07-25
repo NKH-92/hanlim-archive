@@ -4,10 +4,10 @@ import test from "node:test";
 import worker from "../src/index.js";
 
 const ORIGIN = "https://archive.example.com";
-const CORE_MIGRATION = "0044_remove_application_mfa.sql";
+const CORE_MIGRATION = "0045_user_role_templates.sql";
 const SEARCH_MIGRATION = "0003_rebuild_barriers_and_watermarks.sql";
 
-test("/readyz는 Core·Search migration과 검색 운영 상태가 모두 준비되면 버전 포함 200을 반환한다", async () => {
+test("/readyz는 Core·Search migration과 검색 운영 상태가 모두 준비되면 공개 최소 body와 200을 반환한다", async () => {
   const response = await worker.fetch(new Request(`${ORIGIN}/readyz`), readyEnv());
 
   assert.equal(response.status, 200);
@@ -16,18 +16,7 @@ test("/readyz는 Core·Search migration과 검색 운영 상태가 모두 준비
   assert.match(response.headers.get("Content-Security-Policy"), /default-src 'none'/);
   assert.deepEqual(await response.json(), {
     ok: true,
-    workerVersion: "ready-worker-v1",
-    checks: {
-      coreDatabase: true,
-      searchDatabase: true,
-      searchOperational: true
-    },
-    search: {
-      generation: 8,
-      activeGeneration: 4,
-      indexedDocumentCount: 2,
-      pendingOutboxCount: 0
-    }
+    workerVersion: "ready-worker-v1"
   });
 });
 
@@ -39,22 +28,36 @@ test("/readyz HEAD는 준비 판정을 유지하면서 본문을 제거한다", 
   assert.equal(await response.text(), "");
 });
 
-test("/readyz는 어느 D1 migration이 뒤처져도 503으로 닫힌다", async (context) => {
+test("/readyz는 요구 migration 이후의 additive migration도 rollback 호환 상태로 인정한다", async () => {
+  const response = await worker.fetch(
+    new Request(`${ORIGIN}/readyz`),
+    readyEnv({ coreMigration: "0046_future_additive.sql", searchMigration: "0004_future_additive.sql" })
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    workerVersion: "ready-worker-v1"
+  });
+});
+
+test("/readyz는 어느 D1 migration이 뒤처져도 상세 상태 없이 503으로 닫힌다", async (context) => {
   for (const options of [
     { coreMigration: "0040_ten_thousand_operational_transition.sql" },
     { searchMigration: "0001_search_index.sql" }
   ]) {
     await context.test(JSON.stringify(options), async () => {
       const response = await worker.fetch(new Request(`${ORIGIN}/readyz`), readyEnv(options));
-      const body = await response.json();
       assert.equal(response.status, 503);
-      assert.equal(body.ok, false);
-      assert.equal(Object.values(body.checks).every(Boolean), false);
+      assert.deepEqual(await response.json(), {
+        ok: false,
+        workerVersion: "ready-worker-v1"
+      });
     });
   }
 });
 
-test("/readyz는 검색 재구축·outbox·세대 불일치 상태를 503으로 판정한다", async (context) => {
+test("/readyz는 검색 재구축·outbox·세대 불일치 상태를 상세 상태 없이 503으로 판정한다", async (context) => {
   for (const options of [
     { rebuildRequired: 1 },
     { rebuildStatus: "building" },
@@ -64,11 +67,11 @@ test("/readyz는 검색 재구축·outbox·세대 불일치 상태를 503으로 
   ]) {
     await context.test(JSON.stringify(options), async () => {
       const response = await worker.fetch(new Request(`${ORIGIN}/readyz`), readyEnv(options));
-      const body = await response.json();
       assert.equal(response.status, 503);
-      assert.equal(body.checks.coreDatabase, true);
-      assert.equal(body.checks.searchDatabase, true);
-      assert.equal(body.checks.searchOperational, false);
+      assert.deepEqual(await response.json(), {
+        ok: false,
+        workerVersion: "ready-worker-v1"
+      });
     });
   }
 });
@@ -78,11 +81,12 @@ test("/readyz는 일치하는 기존 검색 인덱스를 v2 백그라운드 전�
     new Request(`${ORIGIN}/readyz`),
     readyEnv({ v2Ready: 0 })
   );
-  const body = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(body.ok, true);
-  assert.equal(body.checks.searchOperational, true);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    workerVersion: "ready-worker-v1"
+  });
 });
 
 test("/readyz는 binding 오류를 노출하지 않고 workerVersion만 포함한 503을 반환한다", async () => {

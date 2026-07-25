@@ -37,10 +37,22 @@ test("matcher와 named URL builder는 정적 route를 동적 parameter보다 우
   );
 });
 
-test("registry는 404와 method mismatch 405를 구분하되 compatibility router는 기존 404를 유지할 수 있다", () => {
+test("registry는 제거된 완전삭제 POST와 미지원 경로를 404로 유지하고 method mismatch만 405로 구분한다", () => {
   assert.equal(routeStatus("/documents/7", "GET"), 200);
   assert.equal(routeStatus("/documents/7", "PATCH"), 405);
+  assert.equal(resolveAuthenticatedRoute("/documents/7/delete-permanent", "POST"), null);
+  assert.equal(routeStatus("/documents/7/delete-permanent", "POST"), 404);
   assert.equal(routeStatus("/not-supported", "GET"), 404);
+});
+
+test("고급 영역으로 이동한 도구는 기존 route와 permission 계약을 유지한다", () => {
+  const permissionById = new Map(AUTHENTICATED_ROUTES.map((item) => [item.id, item.permission]));
+  assert.equal(permissionById.get("imports.list"), "can_manage_documents");
+  assert.equal(permissionById.get("admin.data-quality"), "can_manage_documents");
+  assert.equal(permissionById.get("admin.search-report"), "can_view_audit");
+  assert.equal(permissionById.get("sets.list"), null);
+  assert.equal(permissionById.get("documents.import.form"), "can_manage_documents");
+  assert.equal(permissionById.get("documents.disposal"), "can_manage_disposals");
 });
 
 test("모든 인증 POST descriptor는 Origin·CSRF를 요구하고 permission key는 catalog에 존재한다", () => {
@@ -54,5 +66,15 @@ test("모든 인증 POST descriptor는 Origin·CSRF를 요구하고 permission k
   assert.equal(ROUTES.find((item) => item.id === "documents.restore").policy, "admin-only");
   assert.equal(ROUTES.find((item) => item.id === "admin.user.password-reset").policy, "admin-only");
   assert.equal(ROUTES.find((item) => item.id === "admin.user.password-reset.form").policy, "admin-only");
+  for (const id of [
+    "admin.role-templates",
+    "admin.role-template.edit.form",
+    "admin.role-template.edit",
+    "admin.role-template.apply"
+  ]) {
+    const route = ROUTES.find((item) => item.id === id);
+    assert.equal(route.permission, "can_manage_users");
+    assert.equal(route.policy, "admin-only");
+  }
   assert.equal(ROUTES.find((item) => item.id === "session.signup.blocked").policy, "always-404");
 });

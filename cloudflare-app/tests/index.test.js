@@ -299,7 +299,13 @@ test("failed logins record a throttle failure", async () => {
 
   assert.equal(response.status, 302);
   assert.match(response.headers.get("Location"), /error=1/);
-  assert.ok(env.state.runs.some((sql) => sql.includes("INSERT INTO login_throttle")));
+  assert.equal(env.state.batches.length, 1);
+  assert.equal(env.state.batches[0].length, 4);
+  assert.ok(env.state.batches[0].every((sql) => sql.includes("INSERT INTO login_throttle_v2")));
+  assert.equal(
+    env.state.runs.filter((sql) => sql.includes("INSERT INTO login_throttle_v2")).length,
+    4
+  );
 });
 
 test("successful logins clear recorded failures", async () => {
@@ -347,38 +353,47 @@ function loginRequest(username, password) {
 }
 
 function loginThrottleEnv({ locked, user = null }) {
-  const state = { runs: [] };
+  const state = { runs: [], batches: [] };
 
   return {
     SESSION_SECRET,
     state,
     DB: {
       prepare(sql) {
-        return {
-          bind() {
-            return {
-              async first() {
-                if (sql.includes("FROM login_throttle")) {
-                  return locked ? { locked_until: "2999-01-01 00:00:00" } : null;
-                }
-                if (sql.includes("FROM app_users")) {
-                  return user;
-                }
-                return null;
-              },
-              async all() {
-                return { results: [] };
-              },
-              async run() {
-                state.runs.push(sql);
-                return { meta: { changes: 1 } };
-              }
-            };
-          }
-        };
+        return statement(sql);
+      },
+      async batch(statements) {
+        state.batches.push(statements.map(({ sql }) => sql));
+        return Promise.all(statements.map((item) => item.run()));
       }
     }
   };
+
+  function statement(sql, args = []) {
+    return {
+      sql,
+      args,
+      bind(...nextArgs) {
+        return statement(sql, nextArgs);
+      },
+      async first() {
+        if (sql.includes("FROM login_throttle")) {
+          return locked ? { locked_until: "2999-01-01 00:00:00" } : null;
+        }
+        if (sql.includes("FROM app_users")) {
+          return user;
+        }
+        return null;
+      },
+      async all() {
+        return { results: [] };
+      },
+      async run() {
+        state.runs.push(sql);
+        return { meta: { changes: 1 } };
+      }
+    };
+  }
 }
 
 function bulkDisposalEnv() {

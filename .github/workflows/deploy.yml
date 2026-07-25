@@ -177,6 +177,7 @@ jobs:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
           SMOKE_REQUIRE_ADMIN: "1"
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
+          SMOKE_REQUIRE_READINESS: "1"
         run: |
           export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
           export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
@@ -246,6 +247,7 @@ jobs:
           SMOKE_REQUIRE_ADMIN: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '0' || '1' }}
           SMOKE_PUBLIC_ONLY: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '1' || '0' }}
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
+          SMOKE_REQUIRE_READINESS: "1"
         run: |
           set -euo pipefail
           if [ "$RELEASE_CLASS" != "asset-only" ]; then

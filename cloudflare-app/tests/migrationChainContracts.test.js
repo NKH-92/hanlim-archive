@@ -46,7 +46,8 @@ const CORE_TABLES = [
   "system_audit_logs",
   "tags",
   "user_mfa",
-  "user_mfa_recovery_codes"
+  "user_mfa_recovery_codes",
+  "user_role_templates"
 ].sort();
 
 const IMMUTABILITY_TRIGGERS = [
@@ -116,6 +117,8 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_security_review_no_approval",
   "trg_system_audit_logs_no_delete",
   "trg_system_audit_logs_no_update",
+  "trg_system_role_template_no_delete",
+  "trg_system_role_template_no_update",
   "trg_tag_row_version_compat",
   "trg_tag_sync_version_delete",
   "trg_tag_sync_version_insert",

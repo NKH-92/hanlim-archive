@@ -79,6 +79,7 @@ test("진입점의 공개·인증 경계는 라우터 분리 후에도 응답 �
   const forcedEnv = sessionEnv(true);
   const normalCookie = await sessionCookie(normalEnv, false);
   const forcedCookie = await sessionCookie(forcedEnv, true);
+  const normalCsrfToken = sessionCsrfToken(normalCookie);
   const unauthenticatedUrl = new URL(`${ORIGIN}/missing?q=한글`);
   const unauthenticatedLocation = `/login?returnUrl=${encodeURIComponent(unauthenticatedUrl.pathname + unauthenticatedUrl.search)}`;
 
@@ -114,6 +115,17 @@ test("진입점의 공개·인증 경계는 라우터 분리 후에도 응답 �
     {
       name: "일반 인증 사용자의 미지원 경로는 최종 라우터에서 404가 된다",
       request: authenticatedRequest("/missing", normalCookie),
+      env: normalEnv,
+      status: 404,
+      location: null
+    },
+    {
+      name: "제거된 문서 완전삭제 POST는 유효한 CSRF 요청에도 404가 된다",
+      request: authenticatedRequest("/documents/7/delete-permanent", normalCookie, {
+        method: "POST",
+        headers: { Origin: ORIGIN },
+        body: new URLSearchParams({ csrf_token: normalCsrfToken })
+      }),
       env: normalEnv,
       status: 404,
       location: null
@@ -156,13 +168,91 @@ test("진입점의 공개·인증 경계는 라우터 분리 후에도 응답 �
   }
 });
 
-async function sessionCookie(env, mustChangePassword) {
+test("고급 도구 숨김과 무관하게 서버는 직접 URL 권한을 검사하고 기존 세트 조회 정책을 유지한다", async (t) => {
+  const viewerEnv = sessionEnv(false);
+  const viewerCookie = await sessionCookie(viewerEnv, false);
+  for (const path of [
+    "/documents/import",
+    "/document-import-jobs",
+    "/admin/data-quality",
+    "/admin/search-report",
+    "/documents/disposal"
+  ]) {
+    await t.test(`권한 없는 GET ${path}`, async () => {
+      const response = await worker.fetch(authenticatedRequest(path, viewerCookie), viewerEnv);
+      assert.equal(response.status, 403);
+    });
+  }
+
+  await t.test("세트 목록은 navigation에서 숨겨도 기존 인증 사용자 직접 조회를 유지한다", async () => {
+    const response = await worker.fetch(authenticatedRequest("/sets", viewerCookie), viewerEnv);
+    assert.equal(response.status, 200);
+  });
+
+  const documentPermissions = { can_manage_documents: 1 };
+  const documentEnv = sessionEnv(false, documentPermissions);
+  const documentCookie = await sessionCookie(documentEnv, false, documentPermissions);
+  for (const path of ["/documents/import", "/document-import-jobs", "/admin/data-quality"]) {
+    await t.test(`문서 관리 권한 GET ${path}`, async () => {
+      const response = await worker.fetch(authenticatedRequest(path, documentCookie), documentEnv);
+      assert.equal(response.status, 200);
+    });
+  }
+  await t.test("문서 관리 권한 사용자는 /admin에서 엑셀과 고급 문서 도구 링크를 본다", async () => {
+    const response = await worker.fetch(authenticatedRequest("/admin", documentCookie), documentEnv);
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /href="\/documents\/import"[\s\S]*엑셀 대장 동기화/);
+    assert.match(html, /관리자 고급 도구[\s\S]*href="\/document-import-jobs"[\s\S]*href="\/admin\/data-quality"/);
+  });
+
+  const auditPermissions = { can_view_audit: 1 };
+  const auditEnv = sessionEnv(false, auditPermissions);
+  auditEnv.SEARCH_DB = auditEnv.DB;
+  const auditCookie = await sessionCookie(auditEnv, false, auditPermissions);
+  await t.test("감사 권한 사용자는 검색 리포트 직접 URL과 /admin 고급 링크에 접근한다", async () => {
+    const response = await worker.fetch(authenticatedRequest("/admin/search-report", auditCookie), auditEnv);
+    assert.equal(response.status, 200);
+
+    const adminResponse = await worker.fetch(authenticatedRequest("/admin", auditCookie), auditEnv);
+    assert.equal(adminResponse.status, 200);
+    assert.match(await adminResponse.text(), /관리자 고급 도구[\s\S]*href="\/admin\/search-report"/);
+  });
+
+  const setPermissions = { can_manage_sets: 1 };
+  const setEnv = sessionEnv(false, setPermissions);
+  const setCookie = await sessionCookie(setEnv, false, setPermissions);
+  await t.test("세트 관리 권한 사용자는 /admin 고급 링크와 세트 직접 URL을 사용한다", async () => {
+    const adminResponse = await worker.fetch(authenticatedRequest("/admin", setCookie), setEnv);
+    assert.equal(adminResponse.status, 200);
+    assert.match(await adminResponse.text(), /관리자 고급 도구[\s\S]*href="\/sets"/);
+
+    const setsResponse = await worker.fetch(authenticatedRequest("/sets", setCookie), setEnv);
+    assert.equal(setsResponse.status, 200);
+  });
+
+  const disposalPermissions = { can_manage_disposals: 1 };
+  const disposalEnv = sessionEnv(false, disposalPermissions);
+  const disposalCookie = await sessionCookie(disposalEnv, false, disposalPermissions);
+  await t.test("폐기 관리 권한 사용자는 문서 폐기 직접 URL에 접근한다", async () => {
+    const response = await worker.fetch(authenticatedRequest("/documents/disposal", disposalCookie), disposalEnv);
+    assert.equal(response.status, 200);
+  });
+});
+
+async function sessionCookie(env, mustChangePassword, permissions = {}) {
   return createSessionCookie({
     username: "user@hanlim.com",
     displayName: "사용자",
     role: "User",
-    mustChangePassword
+    mustChangePassword,
+    ...permissions
   }, env, false);
+}
+
+function sessionCsrfToken(cookie) {
+  const encodedSession = cookie.split(";", 1)[0].split("=", 2)[1].split(".", 1)[0];
+  return JSON.parse(Buffer.from(encodedSession, "base64url").toString("utf8")).csrfToken;
 }
 
 function authenticatedRequest(path, cookie, init = {}) {
@@ -171,7 +261,24 @@ function authenticatedRequest(path, cookie, init = {}) {
   return new Request(`${ORIGIN}${path}`, { ...init, headers });
 }
 
-function sessionEnv(mustChangePassword) {
+function sessionEnv(mustChangePassword, permissions = {}) {
+  const user = {
+    id: 1,
+    username: "user@hanlim.com",
+    display_name: "사용자",
+    status: "approved",
+    role: "User",
+    must_change_password: mustChangePassword ? 1 : 0,
+    can_manage_documents: 0,
+    can_move_documents: 0,
+    can_manage_disposals: 0,
+    can_manage_sets: 0,
+    can_manage_masters: 0,
+    can_manage_users: 0,
+    can_view_audit: 0,
+    can_apply_document_snapshots: 0,
+    ...permissions
+  };
   return {
     SESSION_SECRET,
     DB: {
@@ -180,25 +287,16 @@ function sessionEnv(mustChangePassword) {
           bind() { return this; },
           async first() {
             if (/SELECT 1 AS ok/.test(sql)) return { ok: 1 };
-            return {
-              id: 1,
-              username: "user@hanlim.com",
-              display_name: "사용자",
-              status: "approved",
-              role: "User",
-              must_change_password: mustChangePassword ? 1 : 0,
-              can_manage_documents: 0,
-              can_move_documents: 0,
-              can_manage_disposals: 0,
-              can_manage_sets: 0,
-              can_manage_masters: 0,
-              can_manage_users: 0,
-              can_view_audit: 0,
-              can_apply_document_snapshots: 0
-            };
-          }
+            if (/FROM app_users/.test(sql)) return user;
+            return null;
+          },
+          async all() { return { results: [] }; },
+          async run() { return { success: true, meta: { changes: 0 } }; }
         };
         return statement;
+      },
+      async batch(statements) {
+        return statements.map(() => ({ results: [] }));
       }
     }
   };

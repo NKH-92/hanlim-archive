@@ -11,23 +11,38 @@ import {
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 
 function sqliteEnv(database) {
+  const state = { batchCalls: 0, batchStatementCounts: [] };
   return {
+    state,
     DB: {
       prepare(sql) {
         return {
           bind(...args) {
             const statement = database.prepare(sql);
             return {
-              async first() {
+              first() {
                 return statement.get(...args) ?? null;
               },
-              async run() {
+              run() {
                 const result = statement.run(...args);
                 return { meta: { changes: Number(result.changes) } };
               }
             };
           }
         };
+      },
+      batch(statements) {
+        state.batchCalls += 1;
+        state.batchStatementCounts.push(statements.length);
+        database.exec("BEGIN");
+        try {
+          const results = statements.map((statement) => statement.run());
+          database.exec("COMMIT");
+          return results;
+        } catch (error) {
+          database.exec("ROLLBACK");
+          throw error;
+        }
       }
     }
   };
@@ -88,7 +103,35 @@ test("login throttle 성공 로그인은 실패 카운터를 제거하고 다른
   }
 });
 
-test("v2 throttle은 HMAC pair/account/IP/global 4개 bucket을 원문 식별자 없이 기록한다", async () => {
+test("v2 실패 1건은 pair/account/IP/global 4개 step을 단 한 번 batch한다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const env = {
+      ...sqliteEnv(database),
+      AUTH_HMAC_SECRET: "test-auth-hmac-secret-with-at-least-32-characters"
+    };
+    const context = loginThrottleContext(new Request("https://archive.example.com/login", {
+      headers: { "CF-Connecting-IP": "203.0.113.55" }
+    }), "User@Hanlim.com");
+
+    await recordLoginFailure(env, context, { nowIso: "2026-07-24 12:00:00" });
+
+    assert.equal(env.state.batchCalls, 1);
+    assert.deepEqual(env.state.batchStatementCounts, [4]);
+    const rows = database.prepare("SELECT scope, fail_count FROM login_throttle_v2 ORDER BY scope").all()
+      .map(({ scope, fail_count }) => ({ scope, fail_count }));
+    assert.deepEqual(rows, [
+      { scope: "account", fail_count: 1 },
+      { scope: "global", fail_count: 1 },
+      { scope: "ip", fail_count: 1 },
+      { scope: "pair", fail_count: 1 }
+    ]);
+  } finally {
+    database.close();
+  }
+});
+
+test("v2 throttle은 HMAC pair/account/IP/global 정책과 pair 5회 잠금을 지킨다", async () => {
   const database = await createMigratedDatabase();
   try {
     const env = {
@@ -99,10 +142,13 @@ test("v2 throttle은 HMAC pair/account/IP/global 4개 bucket을 원문 식별자
       headers: { "CF-Connecting-IP": "203.0.113.55" }
     }), "User@Hanlim.com");
     const now = "2026-07-24 12:00:00";
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 4; index += 1) {
       await recordLoginFailure(env, context, { nowIso: now });
+      assert.equal(await isLoginLocked(env, context, { nowIso: now }), false);
     }
+    await recordLoginFailure(env, context, { nowIso: now });
     assert.equal(await isLoginLocked(env, context, { nowIso: now }), true);
+
     const rows = database.prepare(`
       SELECT bucket_key, scope, fail_count
       FROM login_throttle_v2
@@ -112,9 +158,73 @@ test("v2 throttle은 HMAC pair/account/IP/global 4개 bucket을 원문 식별자
     assert.deepEqual(rows.map(({ scope }) => scope).sort(), ["account", "global", "ip", "pair"]);
     assert.ok(rows.every(({ bucket_key }) => !bucket_key.includes("hanlim") && !bucket_key.includes("203.0.113")));
     assert.equal(rows.find(({ scope }) => scope === "pair").fail_count, 5);
+    assert.equal(env.state.batchCalls, 5);
+    assert.ok(env.state.batchStatementCounts.every((count) => count === 4));
+
     await clearLoginFailures(env, context);
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM login_throttle_v2 WHERE scope = 'pair'").get().n, 0);
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM login_throttle_v2 WHERE scope <> 'pair'").get().n, 2);
+  } finally {
+    database.close();
+  }
+});
+
+test("v2 IP bucket은 서로 다른 계정의 10번째 실패부터 해당 IP만 잠근다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const env = {
+      ...sqliteEnv(database),
+      AUTH_HMAC_SECRET: "test-auth-hmac-secret-with-at-least-32-characters"
+    };
+    const now = "2026-07-24 13:00:00";
+    const contextFor = (username, ip = "203.0.113.77") => loginThrottleContext(
+      new Request("https://archive.example.com/login", { headers: { "CF-Connecting-IP": ip } }),
+      username
+    );
+
+    for (let index = 1; index <= 9; index += 1) {
+      await recordLoginFailure(env, contextFor(`attacker-${index}@hanlim.com`), { nowIso: now });
+    }
+    assert.equal(await isLoginLocked(env, contextFor("probe@hanlim.com"), { nowIso: now }), false);
+
+    const tenth = contextFor("attacker-10@hanlim.com");
+    await recordLoginFailure(env, tenth, { nowIso: now });
+    assert.equal(await isLoginLocked(env, tenth, { nowIso: now }), true);
+    assert.equal(
+      await isLoginLocked(env, contextFor("probe@hanlim.com", "198.51.100.22"), { nowIso: now }),
+      false
+    );
+    assert.equal(LOGIN_THROTTLE_POLICY.scopes.ip.failLimit, 10);
+  } finally {
+    database.close();
+  }
+});
+
+test("login_throttle_v2가 없으면 object identity도 legacy pair 제한으로 fallback한다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    database.exec("DROP TABLE login_throttle_v2");
+    const env = {
+      ...sqliteEnv(database),
+      AUTH_HMAC_SECRET: "test-auth-hmac-secret-with-at-least-32-characters"
+    };
+    const context = loginThrottleContext(new Request("https://archive.example.com/login", {
+      headers: { "CF-Connecting-IP": "203.0.113.88" }
+    }), "Legacy@Hanlim.com");
+    const now = "2026-07-24 14:00:00";
+
+    for (let index = 0; index < 5; index += 1) {
+      await recordLoginFailure(env, context, { nowIso: now });
+    }
+    assert.equal(await isLoginLocked(env, context, { nowIso: now }), true);
+    assert.equal(
+      database.prepare("SELECT fail_count FROM login_throttle WHERE username = ?")
+        .get("legacy@hanlim.com|203.0.113.88").fail_count,
+      5
+    );
+
+    await clearLoginFailures(env, context);
+    assert.equal(database.prepare("SELECT COUNT(*) AS n FROM login_throttle").get().n, 0);
   } finally {
     database.close();
   }

@@ -58,6 +58,12 @@ export function matchAdminUserRoute(path) {
   };
 }
 
+export function matchRoleTemplateRoute(path) {
+  const match = path.match(/^\/admin\/role-templates\/([a-z0-9_]+)\/(edit|apply)$/);
+  if (!match) return null;
+  return { key: match[1], action: match[2] };
+}
+
 export function matchDisposalBatchRoute(path) {
   const item = path.match(/^\/disposal-batches\/(\d+)\/items\/(\d+)\/(exclude|include)$/);
   if (item) {

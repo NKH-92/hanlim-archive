@@ -52,23 +52,31 @@ test("rejectUser는 승인된 사용자를 rejected로 재사용하지 않는다
   assert.equal(env.state.batches.length, 0);
 });
 
-test("updateUserPermissions는 권한 플래그와 전후 snapshot을 원자적으로 기록한다", async () => {
-  const env = userMutationEnv(userRow());
+test("updateUserPermissions는 역할 템플릿·권한 플래그와 전후 snapshot을 원자적으로 기록한다", async () => {
+  const env = userMutationEnv(userRow({ role_template_key: "viewer", row_version: 3 }));
   const result = await updateUserPermissions(env, 7, {
-    can_manage_documents: true,
-    can_move_documents: true,
-    can_manage_sets: true
+    roleTemplateKey: "document_manager",
+    expectedRowVersion: 3,
+    permissions: {
+      can_manage_documents: true,
+      can_move_documents: true,
+      can_manage_sets: true
+    }
   }, actor);
 
   assert.equal(result.ok, true);
   const [audit, update] = env.state.batches[0];
   assert.match(audit.sql, /action/);
   assert.equal(audit.args[3], "permissions_update");
-  assert.match(update.sql, /can_manage_documents = \?[\s\S]*can_apply_document_snapshots = \?/);
-  assert.deepEqual(update.args.slice(0, 8), [1, 1, 0, 1, 0, 0, 0, 0]);
+  assert.match(update.sql, /role_template_key = \?[\s\S]*can_manage_documents = \?[\s\S]*can_apply_document_snapshots = \?[\s\S]*row_version = row_version \+ 1/);
+  assert.deepEqual(update.args.slice(0, 9), ["document_manager", 1, 1, 0, 1, 0, 0, 0, 0]);
+  assert.deepEqual(update.args.slice(-2), [7, 3]);
   const details = JSON.parse(audit.args[9]);
+  assert.equal(details.before.roleTemplateKey, "viewer");
   assert.equal(details.before.permissions.can_manage_documents, false);
+  assert.equal(details.after.roleTemplateKey, "document_manager");
   assert.equal(details.after.permissions.can_manage_documents, true);
+  assert.equal(details.after.rowVersion, 4);
 });
 
 test("resetUserPassword는 감사·잠금 해제·credential 교체를 한 batch로 실행한다", async () => {
@@ -131,6 +139,8 @@ function userRow(overrides = {}) {
     role: "User",
     status: "approved",
     updated_at: "2026-07-17 10:00:00",
+    role_template_key: "viewer",
+    row_version: 1,
     session_epoch: 0,
     must_change_password: 0,
     security_review_required: 0,

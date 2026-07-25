@@ -51,21 +51,31 @@ test("권한 프리셋은 복수 권한과 사용자 지정을 안정적으로 �
   assert.ok(PERMISSION_KEYS.every((permission) => systemAdmin[permission]));
 });
 
-test("사용자 권한 화면은 프리셋과 개별 권한을 제공한다", async () => {
+test("사용자 권한 화면은 DB 역할 템플릿 3종과 개별 예외 권한을 제공한다", async () => {
+  const templates = [
+    { key: "viewer", label: "조회", row_version: 1 },
+    { key: "document_manager", label: "문서관리", can_manage_documents: 1, can_move_documents: 1, row_version: 1 },
+    { key: "system_admin", label: "시스템관리", ...Object.fromEntries(PERMISSION_KEYS.map((key) => [key, 1])), row_version: 1 }
+  ];
   const response = userPermissionsPage({
     session: { role: "Admin", username: "admin", displayName: "관리자", csrfToken: "token".repeat(8) },
     user: {
       id: 7,
       username: "viewer<script>",
       display_name: "조회자",
+      role_template_key: null,
+      row_version: 3,
       can_manage_documents: 1
-    }
+    },
+    templates
   });
   const html = await response.text();
 
-  assert.match(html, /문서고 담당자/);
-  assert.match(html, /폐기 담당자/);
-  assert.match(html, /시스템 관리자/);
+  assert.match(html, />조회</);
+  assert.match(html, />문서관리</);
+  assert.match(html, />시스템관리</);
+  assert.match(html, /현재 구성: 사용자 지정/);
+  assert.match(html, /name="expectedRowVersion" value="3"/);
   for (const permission of PERMISSION_KEYS) {
     assert.match(html, new RegExp(`name="${permission}"`));
   }

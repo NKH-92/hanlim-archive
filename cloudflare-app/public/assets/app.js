@@ -1125,7 +1125,7 @@
       var toastKey = new URLSearchParams(location.search).get('toast');
       if (toastKey) {
         var toastParams = new URLSearchParams(location.search);
-        var toastMessages = {"created":"문서가 등록되었습니다.","document-created":"문서가 등록되어 세트에 추가되었습니다.","updated":"문서 정보가 수정되었습니다.","revised":"새 개정 문서가 등록되었습니다.","moved":"문서 위치가 이동되었습니다.","disposed":"폐기 처리되었습니다.","restored":"폐기가 해제되었습니다.","deleted":"문서가 완전 삭제되었습니다.","saved":"저장되었습니다.","bulk-disposed":"선택한 문서를 폐기 처리했습니다.","approved":"가입 요청을 승인했습니다.","rejected":"가입 요청을 거절했습니다.","enabled":"사용자 계정을 활성화했습니다.","disabled":"사용자 계정을 비활성화했습니다.","permissions-saved":"사용자 권한을 저장했습니다.","password-reset":"임시 비밀번호를 설정했습니다. 다음 로그인에서 비밀번호 변경이 강제됩니다.","password-changed":"비밀번호가 변경되었습니다.","set-locked":"준비 문서 세트를 잠갔습니다.","set-unlocked":"준비 문서 세트의 잠금을 해제했습니다.","error":"요청을 처리하지 못했습니다. 입력값을 확인하세요."};
+        var toastMessages = {"created":"문서가 등록되었습니다.","document-created":"문서가 등록되어 세트에 추가되었습니다.","updated":"문서 정보가 수정되었습니다.","revised":"새 개정 문서가 등록되었습니다.","moved":"문서 위치가 이동되었습니다.","disposed":"폐기 처리되었습니다.","restored":"폐기가 해제되었습니다.","deleted":"문서가 완전 삭제되었습니다.","saved":"저장되었습니다.","bulk-disposed":"선택한 문서를 폐기 처리했습니다.","approved":"가입 요청을 승인했습니다.","rejected":"가입 요청을 거절했습니다.","enabled":"사용자 계정을 활성화했습니다.","disabled":"사용자 계정을 비활성화했습니다.","permissions-saved":"사용자 권한을 저장했습니다.","template-saved":"역할 템플릿을 저장했습니다.","template-applied":"선택한 사용자에게 역할 템플릿을 반영했습니다.","password-reset":"임시 비밀번호를 설정했습니다. 다음 로그인에서 비밀번호 변경이 강제됩니다.","password-changed":"비밀번호가 변경되었습니다.","set-locked":"준비 문서 세트를 잠갔습니다.","set-unlocked":"준비 문서 세트의 잠금을 해제했습니다.","error":"요청을 처리하지 못했습니다. 입력값을 확인하세요."};
         var toastMessage = toastMessages[toastKey];
         if (toastKey === 'bulk-disposed') {
           var disposedCount = Number(toastParams.get('disposed') || 0);

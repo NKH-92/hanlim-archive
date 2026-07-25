@@ -2,7 +2,6 @@
 
 import { escapeHtml } from "../ui/html/escape.js";
 import { capabilitiesFromSession } from "../domains/identity/index.js";
-import { matchingPermissionPreset, PERMISSION_PRESETS } from "../permissions.js";
 import { secureHtmlDocument } from "../platform/web/htmlSecurity.js";
 import { createRenderContext } from "../platform/web/renderContext.js";
 import { htmlContentSecurityPolicy } from "../security.js";
@@ -51,16 +50,15 @@ export function page(title, body, session, status = 200) {
 function header(session) {
   const capabilities = capabilitiesFromSession(session);
   const documentLinks = [
-    ["/app", "fa-file-lines", "문서"],
-    ["/floor-plan", "fa-location-dot", "보관 위치"],
-    ["/sets", "fa-layer-group", "준비 문서 세트"]
+    ["/app", "fa-magnifying-glass", "문서 검색"],
+    ["/floor-plan", "fa-location-dot", "보관 위치"]
   ];
   const workLinks = [];
   if (capabilities.canManageDocuments) {
     workLinks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화"]);
   }
   if (capabilities.canManageDisposals) {
-    workLinks.push(["/documents/disposal", "fa-box-archive", "폐기 관리"]);
+    workLinks.push(["/documents/disposal", "fa-box-archive", "문서 폐기"]);
   }
 
   const masterLinks = [];
@@ -79,7 +77,6 @@ function header(session) {
   const evidenceLinks = [];
   if (capabilities.canViewAudit) {
     evidenceLinks.push(["/admin/audit", "fa-clock-rotate-left", "감사 이력"]);
-    evidenceLinks.push(["/admin/search-report", "fa-chart-line", "검색 리포트"]);
   }
   if (capabilities.canViewMovements) {
     evidenceLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
@@ -101,12 +98,12 @@ function header(session) {
     ...evidenceLinks,
     ...(capabilities.canManageDocuments ? [["/documents/new", "fa-file-circle-plus", "문서 등록"]] : [])
   ];
-  const mobileTabs = `${documentLinks.map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${text === "준비 문서 세트" ? "세트" : text === "보관 위치" ? "위치" : text}</span></a>`).join("")}<button type="button" class="archive-nav-item mobile-tab" data-mobile-more aria-controls="primary-navigation" aria-expanded="false"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>더보기</span></button>`;
+  const mobileTabs = `${documentLinks.map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${text === "보관 위치" ? "위치" : "검색"}</span></a>`).join("")}<button type="button" class="archive-nav-item mobile-tab" data-mobile-more aria-controls="primary-navigation" aria-expanded="false"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>더보기</span></button>`;
   const utilityLinks = [["/qa", "fa-circle-info", "도움말·문의"]];
   const commandLinks = [...allLinks, ...utilityLinks].map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
-  const roleLabel = session.role === "Admin"
-    ? PERMISSION_PRESETS.system_admin.label
-    : PERMISSION_PRESETS[matchingPermissionPreset(session)].label;
+  const roleLabel = session.roleTemplateKey && session.roleTemplateLabel
+    ? session.roleTemplateLabel
+    : session.role === "Admin" ? "시스템관리" : "사용자 지정";
 
   return `
     <header class="topbar">

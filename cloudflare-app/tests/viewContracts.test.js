@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { dataQualityPage } from "../src/domains/dataQuality/index.js";
 import { loginPage } from "../src/views/authViews.js";
-import { passwordPage, userPasswordResetPage } from "../src/views/adminViews.js";
+import { adminDashboardPage, passwordPage, userPasswordResetPage } from "../src/views/adminViews.js";
 import { disposalBatchFormPage, disposalBatchListPage, periodicDisposalPage } from "../src/views/disposalBatchViews.js";
 import { documentImportJobCreatePage, documentImportJobsPage } from "../src/views/importJobViews.js";
 import { canMoveDocuments, movementFormPage, movementsPage } from "../src/views/movementViews.js";
@@ -57,6 +57,34 @@ test("관리자 비밀번호 초기화 화면은 세션 종료와 다음 로그�
   assert.match(html, /minlength="6"/);
   assert.match(html, /target&lt;script&gt;@hanlim\.com/);
   assert.doesNotMatch(html, /target<script>@hanlim\.com/);
+});
+
+test("관리자 dashboard는 전문 도구를 권한별 고급 영역에 두고 엑셀 동기화를 일반 관리 영역에 유지한다", async () => {
+  const documentManager = { ...viewer, can_manage_documents: true };
+  const documentHtml = await htmlPage(adminDashboardPage({
+    session: documentManager,
+    pendingCount: 0
+  }), "운영 관리");
+  assert.match(documentHtml, /<section class="panel management-section is-advanced">/);
+  assert.match(documentHtml, /관리자 고급 도구[\s\S]*<span class="count-badge">고급<\/span>/);
+  assert.match(documentHtml, /href="\/document-import-jobs"[\s\S]*CSV 가져오기/);
+  assert.match(documentHtml, /href="\/admin\/data-quality"[\s\S]*데이터 품질/);
+  assert.match(documentHtml, /데이터 및 감사[\s\S]*href="\/documents\/import"[\s\S]*엑셀 대장 동기화/);
+  assert.doesNotMatch(documentHtml, /href="\/sets"|href="\/admin\/search-report"/);
+
+  const setHtml = await htmlPage(adminDashboardPage({
+    session: { ...viewer, can_manage_sets: true },
+    pendingCount: 0
+  }), "운영 관리");
+  assert.match(setHtml, /관리자 고급 도구[\s\S]*href="\/sets"[\s\S]*준비 문서 세트/);
+  assert.doesNotMatch(setHtml, /href="\/document-import-jobs"|href="\/admin\/data-quality"|href="\/admin\/search-report"/);
+
+  const auditHtml = await htmlPage(adminDashboardPage({
+    session: { ...viewer, can_view_audit: true },
+    pendingCount: 0
+  }), "운영 관리");
+  assert.match(auditHtml, /관리자 고급 도구[\s\S]*href="\/admin\/search-report"[\s\S]*검색 리포트/);
+  assert.doesNotMatch(auditHtml, /href="\/document-import-jobs"|href="\/admin\/data-quality"|href="\/sets"/);
 });
 
 test("랙 목록·설정·상세·폼은 위치 구조와 입력 계약을 공개 배럴에서 유지한다", async () => {

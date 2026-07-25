@@ -42,6 +42,34 @@ test("release smoke readiness gate rejects a healthy but operationally unready v
   );
 });
 
+test("release smoke readiness gate는 ok와 workerVersion만 있는 공개 body를 허용한다", async () => {
+  const responses = [
+    new Response(JSON.stringify({ ok: true, workerVersion: "version-1" }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    }),
+    new Response(JSON.stringify({ ok: true, workerVersion: "version-1" }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    }),
+    new Response('<form><input name="username"></form>', { status: 200 }),
+    new Response("not found", { status: 404 })
+  ];
+
+  const result = await runReleaseSmoke({
+    baseUrl: "https://archive.example",
+    publicOnly: true,
+    expectedWorkerVersion: "version-1",
+    requireReadiness: true,
+    healthAttempts: 1,
+    allowedHosts: ["archive.example"],
+    fetchImpl: async () => responses.shift()
+  });
+
+  assert.equal(result.readiness, 200);
+  assert.equal(result.workerVersion, "version-1");
+});
+
 test("smoke URL은 credential 사용 전에 host·protocol·path를 거부한다", () => {
   assert.throws(() => resolveSmokeTarget("http://evil.example"), /https만/);
   assert.throws(() => resolveSmokeTarget("https://evil.example/login"), /path 없는 origin/);

@@ -9,6 +9,7 @@ import {
   matchDocumentRoute,
   matchMasterRoute,
   matchRackRoute,
+  matchRoleTemplateRoute,
   matchSetRoute
 } from "../src/routes.js";
 
@@ -42,6 +43,15 @@ test("matchMasterRoute and matchAdminUserRoute resolve admin POST routes", () =>
   assert.deepEqual(matchAdminUserRoute("/admin/users/5/permissions"), { id: 5, action: "permissions" });
   assert.deepEqual(matchAdminUserRoute("/admin/users/5/reset-password"), { id: 5, action: "reset-password" });
   assert.equal(matchAdminUserRoute("/admin/users/5/delete"), null);
+  assert.deepEqual(matchRoleTemplateRoute("/admin/role-templates/document_manager/edit"), {
+    key: "document_manager",
+    action: "edit"
+  });
+  assert.deepEqual(matchRoleTemplateRoute("/admin/role-templates/viewer/apply"), {
+    key: "viewer",
+    action: "apply"
+  });
+  assert.equal(matchRoleTemplateRoute("/admin/role-templates/INVALID/edit"), null);
 });
 
 test("campaign and import job matchers resolve nested workflow routes", () => {

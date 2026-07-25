@@ -363,7 +363,7 @@ test("dashboard page renders search-first row results without a floor plan", asy
   assert.match(html, /href="\/app" class="brand"/);
   const viewerNav = html.match(/<nav[^>]*aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(viewerNav, /href="\/app"[^>]*>[\s\S]*?문서/);
-  assert.match(viewerNav, /href="\/sets"/);
+  assert.doesNotMatch(viewerNav, /href="\/sets"/);
   assert.doesNotMatch(viewerNav, /href="\/(documents|racks|categories|tags|admin|disposal-batches)/);
   assert.match(html, /class="mobile-tabs"[\s\S]*?href="\/app"/);
   assert.match(html, /data-command-palette/);
@@ -413,7 +413,7 @@ test("dashboard home mode uses a search-first operational hero without a floor p
   const mainNav = html.match(/<nav[^>]*aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(mainNav, /href="\/app"/);
   assert.match(mainNav, /href="\/floor-plan"[^>]*>[\s\S]*?보관 위치/);
-  assert.match(mainNav, /href="\/sets"/);
+  assert.doesNotMatch(mainNav, /href="\/sets"/);
   assert.doesNotMatch(mainNav, /href="\/(documents|racks|categories|tags|disposal-batches)"/);
 });
 
@@ -539,7 +539,7 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   assert.match(nav, /href="\/floor-plan"[^>]*>[\s\S]*?보관 위치/);
   assert.match(nav, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀 대장 동기화/);
   assert.match(nav, /href="\/documents\/new"[^>]*>[\s\S]*?문서 등록/);
-  assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?폐기 관리/);
+  assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?문서 폐기/);
   assert.match(nav, /class="nav-settings"/);
   assert.match(nav, />기준정보<\/summary>/);
   assert.match(nav, />이력·증적<\/summary>/);
@@ -565,7 +565,7 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   assert.match(html, /href="\/documents\/import"/);
   assert.match(html, /class="panel admin-tile" href="\/documents\/new"/);
   assert.match(html, /href="\/admin\/search-report"/);
-  assert.match(nav, /href="\/sets"[^>]*>[\s\S]*?준비 문서 세트/);
+  assert.doesNotMatch(nav, /href="\/sets"/);
   assert.doesNotMatch(html, /href="\/disposal-batches"|폐기 캠페인/);
 });
 
@@ -584,7 +584,7 @@ test("desktop navigation and mobile tabs hide every unauthorized work route", as
   assert.doesNotMatch(archiveManagerNav, /href="\/documents\/disposal"/);
   assert.match(archiveManagerTabs, /href="\/app"/);
   assert.match(archiveManagerTabs, /href="\/floor-plan"/);
-  assert.match(archiveManagerTabs, /href="\/sets"/);
+  assert.doesNotMatch(archiveManagerTabs, /href="\/sets"/);
   assert.match(archiveManagerTabs, />더보기</);
   assert.doesNotMatch(archiveManagerTabs, /href="\/documents\/import"|href="\/documents\/disposal"/);
 
@@ -599,7 +599,7 @@ test("desktop navigation and mobile tabs hide every unauthorized work route", as
   const disposalManagerTabs = disposalManagerHtml.match(/<nav class="mobile-tabs"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(disposalManagerTabs, /href="\/app"/);
   assert.match(disposalManagerTabs, /href="\/floor-plan"/);
-  assert.match(disposalManagerTabs, /href="\/sets"/);
+  assert.doesNotMatch(disposalManagerTabs, /href="\/sets"/);
   assert.match(disposalManagerTabs, />더보기</);
   assert.doesNotMatch(disposalManagerTabs, /href="\/documents\/disposal"|href="\/documents\/import"|기준정보/);
 });
@@ -831,6 +831,6 @@ test("document details page keeps core information and permission-scoped actions
   const coreViewerNav = coreViewerHtml.match(/<nav[^>]*aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(coreViewerNav, /href="\/app"/);
   assert.match(coreViewerNav, /href="\/floor-plan"/);
-  assert.match(coreViewerNav, /href="\/sets"/);
+  assert.doesNotMatch(coreViewerNav, /href="\/sets"/);
   assert.doesNotMatch(coreViewerNav, /href="\/(documents|admin|racks|categories|tags)/);
 });

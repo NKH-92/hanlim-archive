@@ -42,6 +42,34 @@ test("인증 화면 헤더와 브라우저 아이콘은 회사 로고를 사용�
   assert.doesNotMatch(html, /fa-building-columns/);
 });
 
+test("일반 navigation은 검색 중심이며 업무 권한별 등록·동기화·폐기만 노출한다", async () => {
+  const base = {
+    username: "user@hanlim.com",
+    displayName: "사용자",
+    role: "User",
+    csrfToken: "navigation-csrf-token-1234567890"
+  };
+  const viewerHtml = await page("조회", "<p>본문</p>", base).text();
+  assert.match(viewerHtml, /href="\/app"[^>]*>[\s\S]*?문서 검색/);
+  assert.match(viewerHtml, /href="\/floor-plan"/);
+  assert.doesNotMatch(viewerHtml, /href="\/sets"|href="\/documents\/new"|href="\/documents\/import"|href="\/documents\/disposal"/);
+
+  const documentManagerHtml = await page("문서 관리", "<p>본문</p>", {
+    ...base,
+    can_manage_documents: true
+  }).text();
+  assert.match(documentManagerHtml, /href="\/documents\/new"[\s\S]*문서 등록/);
+  assert.match(documentManagerHtml, /href="\/documents\/import"[\s\S]*엑셀 대장 동기화/);
+  assert.doesNotMatch(documentManagerHtml, /href="\/sets"|href="\/document-import-jobs"|href="\/admin\/data-quality"|href="\/admin\/search-report"/);
+
+  const disposalManagerHtml = await page("폐기 관리", "<p>본문</p>", {
+    ...base,
+    can_manage_disposals: true
+  }).text();
+  assert.match(disposalManagerHtml, /href="\/documents\/disposal"[\s\S]*문서 폐기/);
+  assert.doesNotMatch(disposalManagerHtml, /href="\/documents\/new"|href="\/documents\/import"/);
+});
+
 test("세트 인쇄 헤더에도 회사 로고를 표시한다", async () => {
   const html = await setDetailsPage({
     session: { username: "user", displayName: "사용자", role: "User", csrfToken: "csrf-token" },

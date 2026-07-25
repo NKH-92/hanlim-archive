@@ -12,3 +12,9 @@ export {
   resetUserPassword,
   updateUserPermissions
 } from "../../data/usersData.js";
+export {
+  applyRoleTemplateToUsers,
+  getRoleTemplate,
+  getRoleTemplates,
+  updateRoleTemplate
+} from "../../data/roleTemplatesData.js";
