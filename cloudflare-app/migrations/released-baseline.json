@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "releasedThrough": "0049_drop_search_outbox_and_clock.sql",
+  "releasedThrough": "0052_compact_snapshot_staging.sql",
   "checksums": {
     "0001_initial.sql": "78e8a85c74054df41e11d2f3ceaf259ebe78b37db9333cfeedbbdf01d92ccdca",
     "0002_app_users.sql": "a47068f668577b71e2f484362205c73a7a9774b6a2a5fba5bba35ad37bf550e7",
@@ -50,13 +50,14 @@
     "0046_app_user_team.sql": "d74673a101d17ceca984c80e3d8a7f8575510fd3ecad66e7576c719c65eba0fe",
     "0047_search_reference_change_scope.sql": "ca308e715ce9dad283e897a3fa5e852e1cac4b60a748727c3ae6244def322d15",
     "0048_core_search_projection.sql": "b8110d215e5abbb8fc18149032d7c2a2fe5e36739d047cd12a445d823e5bfdda",
-    "0049_drop_search_outbox_and_clock.sql": "d4be4f5f842c464ed64853fb2263cb32ff5203277622471d69ef36c12ef29984"
+    "0049_drop_search_outbox_and_clock.sql": "d4be4f5f842c464ed64853fb2263cb32ff5203277622471d69ef36c12ef29984",
+    "0050_initial_load_write_optimization.sql": "07c3538998841f50d7cc06d60cccb00a593ae21abcbbcc7dd8f471366ac82116",
+    "0051_drop_removed_mfa_and_legacy_bootstrap.sql": "b4cc5480cd1a48c36fdc95544c1bc33d3ddeb136404dbda8ba80c92190c821f7",
+    "0052_compact_snapshot_staging.sql": "9ec5edfa3f3f99cced5ce9f6b4468d90f122ac8416fc820792900d5639776383"
   },
   "schema": {
     "tables": [
       "app_users",
-      "bootstrap_chunks",
-      "bootstrap_runs",
       "bootstrap_runtime_control",
       "capacity_policy",
       "categories",
@@ -99,8 +100,6 @@
       "search_projection_state",
       "system_audit_logs",
       "tags",
-      "user_mfa",
-      "user_mfa_recovery_codes",
       "user_role_templates"
     ],
     "triggers": [
