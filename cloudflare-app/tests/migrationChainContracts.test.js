@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { createMigratedDatabase, migrationFiles } from "./helpers/migratedDatabase.js";
-
-const BASELINE_LAST_MIGRATION = 39;
 
 const CORE_TABLES = [
   "app_users",
@@ -120,18 +120,21 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_user_status_session_epoch_compat"
 ].sort();
 
-test("migration 파일 번호는 0001부터 중복·누락 없이 이어지고 0001~0039 이력을 보존한다", async () => {
+test("migration 번호는 연속이고 released baseline의 모든 공개 이력을 보존한다", async () => {
   const migrations = await validatedMigrationFiles();
-  assert.ok(migrations.length >= BASELINE_LAST_MIGRATION);
+  const baseline = JSON.parse(await readFile(new URL("../migrations/released-baseline.json", import.meta.url), "utf8"));
+  const releasedNumber = Number(String(baseline.releasedThrough).slice(0, 4));
 
   const numbers = migrations.map(({ number }) => number);
   const expected = Array.from({ length: migrations.at(-1).number }, (_, index) => index + 1);
   assert.deepEqual(numbers, expected, "migration 번호는 0001부터 연속이어야 한다");
+  assert.ok(releasedNumber > 0 && releasedNumber <= migrations.at(-1).number);
   assert.deepEqual(
-    numbers.slice(0, BASELINE_LAST_MIGRATION),
-    Array.from({ length: BASELINE_LAST_MIGRATION }, (_, index) => index + 1),
-    "기존 0001~0039 이력은 삭제하거나 번호를 바꿀 수 없다"
+    migrations.slice(0, releasedNumber).map(({ name }) => name),
+    Object.keys(baseline.checksums).slice(0, releasedNumber),
+    "released baseline에 공개된 migration은 삭제·재번호화할 수 없다"
   );
+  assert.equal(migrations[releasedNumber - 1].name, baseline.releasedThrough);
 });
 
 test("전체 migration을 순차 적용하면 핵심 schema와 FK 무결성이 유지된다", async () => {
@@ -175,3 +178,87 @@ async function validatedMigrationFiles() {
   assert.deepEqual(duplicateNumbers, [], "migration 번호 중복");
   return migrations;
 }
+
+test("권한 migration은 disabled 상태·업무 권한·전역 감사를 도입한 이력을 보존한다", async () => {
+  const sql = await readFile(new URL("../migrations/0021_permissions_and_system_audit.sql", import.meta.url), "utf8");
+  const permissionColumns = [
+    "can_manage_documents",
+    "can_move_documents",
+    "can_manage_disposals",
+    "can_manage_sets",
+    "can_manage_masters",
+    "can_manage_users",
+    "can_view_audit"
+  ];
+  assert.match(sql, /status IN \('pending', 'approved', 'rejected', 'disabled'\)/);
+  for (const column of permissionColumns) assert.match(sql, new RegExp(`${column} INTEGER NOT NULL DEFAULT 0`));
+  assert.match(sql, /CASE WHEN role = 'Admin' THEN 1 ELSE 0 END/);
+  assert.match(sql, /CREATE TABLE system_audit_logs/);
+  assert.match(sql, /CREATE INDEX idx_system_audit_entity/);
+  assert.match(sql, /CREATE TRIGGER trg_system_audit_logs_no_update/);
+  assert.match(sql, /CREATE TRIGGER trg_system_audit_logs_no_delete/);
+  assert.match(sql, /ALTER TABLE document_audit_logs ADD COLUMN actor_user_id INTEGER/);
+  assert.match(sql, /ALTER TABLE document_audit_logs ADD COLUMN actor_username TEXT/);
+  assert.doesNotMatch(sql, /actor_user_id[^;]*REFERENCES app_users/is);
+});
+
+test("권한 migration은 기존 Admin을 보존하고 disabled 사용자를 저장할 수 있다", async () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    for (const migration of [
+      "0001_initial.sql",
+      "0002_app_users.sql",
+      "0003_document_audit_logs.sql",
+      "0006_app_user_roles_and_admin.sql"
+    ]) {
+      database.exec(await readFile(new URL(`../migrations/${migration}`, import.meta.url), "utf8"));
+    }
+    database.prepare(`
+      INSERT INTO app_users (username, display_name, password_salt, password_hash, status, role)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run("admin", "관리자", "salt", "hash", "approved", "Admin");
+    database.exec(await readFile(new URL("../migrations/0021_permissions_and_system_audit.sql", import.meta.url), "utf8"));
+    database.prepare(`
+      INSERT INTO app_users (username, display_name, password_salt, password_hash, status, role)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run("disabled-user", "중지 사용자", "salt", "hash", "disabled", "User");
+
+    const admin = database.prepare(`
+      SELECT can_manage_documents, can_move_documents, can_manage_disposals,
+             can_manage_sets, can_manage_masters, can_manage_users, can_view_audit
+      FROM app_users WHERE username = 'admin'
+    `).get();
+    assert.deepEqual(Object.values(admin), [1, 1, 1, 1, 1, 1, 1]);
+    assert.equal(database.prepare("SELECT status FROM app_users WHERE username = 'disabled-user'").get().status, "disabled");
+    assert.ok(database.prepare("PRAGMA table_info(document_audit_logs)").all().some((column) => column.name === "actor_user_id"));
+  } finally {
+    database.close();
+  }
+});
+
+test("과거 영구 release-smoke 계정은 최종 schema에서 격리된 상태다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const user = database.prepare(`
+      SELECT status, role, must_change_password,
+             can_manage_documents, can_move_documents, can_manage_disposals,
+             can_manage_sets, can_manage_masters, can_manage_users, can_view_audit
+      FROM app_users
+      WHERE username = 'release-smoke@hanlim.internal'
+    `).get();
+    assert.deepEqual({ ...user }, {
+      status: "rejected",
+      role: "User",
+      must_change_password: 1,
+      can_manage_documents: 0,
+      can_move_documents: 0,
+      can_manage_disposals: 0,
+      can_manage_sets: 0,
+      can_manage_masters: 0,
+      can_manage_users: 0,
+      can_view_audit: 0
+    });
+  } finally {
+    database.close();
+  }
+});

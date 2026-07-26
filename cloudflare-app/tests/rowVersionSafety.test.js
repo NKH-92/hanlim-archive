@@ -3,7 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
-import { optimisticLockClause } from "../src/data/sqlShared.js";
+import { optimisticLockClause } from "../src/platform/d1/optimisticLock.js";
 
 test("0026은 같은 초의 문서 변경도 구분하는 단조 증가 버전을 추가한다", () => {
   const db = new DatabaseSync(":memory:");

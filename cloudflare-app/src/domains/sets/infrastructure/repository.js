@@ -3,9 +3,9 @@ import { createSystemAuditStatement } from "../../audit/index.js";
 import {
   DOCUMENT_CORE_COLUMNS,
   DOCUMENT_JOIN_TABLES,
-  DOCUMENT_LOCATION_COLUMNS,
-  uniqueViolationMessage
-} from "../../../data/sqlShared.js";
+  DOCUMENT_LOCATION_COLUMNS
+} from "./sql.js";
+import { uniqueViolationMessage } from "../../../platform/d1/constraints.js";
 import { actorDisplayName } from "../domain/policy.js";
 import { createSetMutationPlan } from "./mutationPlans.js";
 import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";

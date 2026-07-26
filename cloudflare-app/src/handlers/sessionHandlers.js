@@ -20,7 +20,6 @@ export function renderLogin(url, env) {
   return loginPage({
     returnUrl: url.searchParams.get("returnUrl") || "/app",
     error: clean(url.searchParams.get("error")),
-    signupSubmitted: url.searchParams.has("signup"),
     setupWarning: getMissingSetup(env),
     support: getAppConfig(env).support
   });

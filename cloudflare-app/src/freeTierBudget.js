@@ -11,7 +11,7 @@ export const FREE_TIER_BUDGET = Object.freeze({
   maxD1ValueBytes: 2_000_000,
   // JSON과 D1 내부 표현의 여유를 남긴 application payload 상한.
   maxD1ValuePayloadBytes: 1_900_000,
-  legacyBulkDisposeMaxItems: 10,
+  directBulkDisposeMaxItems: 10,
   disposalBatchMaxItems: 5000,
   disposalBatchPreviewItems: 100,
   disposalProcessChunkSize: 25,

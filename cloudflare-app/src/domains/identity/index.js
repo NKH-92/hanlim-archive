@@ -11,10 +11,10 @@ export {
   rejectUser,
   resetUserPassword,
   updateUserPermissions
-} from "../../data/usersData.js";
+} from "./infrastructure/users.js";
 export {
   applyRoleTemplateToUsers,
   getRoleTemplate,
   getRoleTemplates,
   updateRoleTemplate
-} from "../../data/roleTemplatesData.js";
+} from "./infrastructure/roleTemplates.js";

@@ -13,6 +13,11 @@ import {
   urlFor
 } from "../src/app/routeRegistry.js";
 
+function resolved(path, method = "GET") {
+  const route = resolveAuthenticatedRoute(path, method);
+  return route ? { id: route.descriptor.id, params: route.params } : null;
+}
+
 test("route registry는 id·method 충돌 없이 public/authenticated 경계를 완전하게 표현한다", () => {
   assert.equal(new Set(ROUTES.map((item) => item.id)).size, ROUTES.length);
   assert.deepEqual(routeCollisions(), []);
@@ -77,4 +82,54 @@ test("모든 인증 POST descriptor는 Origin·CSRF를 요구하고 permission k
     assert.equal(route.policy, "admin-only");
   }
   assert.equal(ROUTES.find((item) => item.id === "session.signup.blocked").policy, "always-404");
+});
+
+test("route registry는 문서 상세와 action parameter를 해석한다", () => {
+  assert.deepEqual(resolved("/documents/42"), { id: "documents.details", params: { id: 42 } });
+  assert.deepEqual(resolved("/documents/42/edit"), { id: "documents.edit.form", params: { id: 42 } });
+  assert.deepEqual(resolved("/documents/42/edit", "POST"), { id: "documents.edit", params: { id: 42 } });
+  assert.deepEqual(resolved("/documents/new"), { id: "documents.new", params: {} });
+});
+
+test("route registry는 rack과 set을 추가 정규식 없이 해석한다", () => {
+  assert.deepEqual(resolved("/racks/7"), { id: "racks.details", params: { id: 7 } });
+  assert.deepEqual(resolved("/racks/7/edit"), { id: "racks.edit.form", params: { id: 7 } });
+  assert.deepEqual(resolved("/sets/3"), { id: "sets.details", params: { id: 3 } });
+  assert.deepEqual(resolved("/sets/3/add", "POST"), { id: "sets.add", params: { id: 3 } });
+  assert.deepEqual(resolved("/sets/3/clone"), { id: "sets.clone.form", params: { id: 3 } });
+  assert.deepEqual(resolved("/sets/3/export.csv"), { id: "sets.export.csv", params: { id: 3 } });
+});
+
+test("route registry는 master, user, role-template parameter를 해석한다", () => {
+  assert.deepEqual(resolved("/categories/3/delete", "POST"), { id: "categories.delete", params: { id: 3 } });
+  assert.deepEqual(resolved("/tags/4/edit", "POST"), { id: "tags.edit", params: { id: 4 } });
+  assert.deepEqual(resolved("/admin/users/5/approve", "POST"), { id: "admin.user.approve", params: { id: 5 } });
+  assert.deepEqual(resolved("/admin/users/5/permissions"), { id: "admin.user.permissions.form", params: { id: 5 } });
+  assert.deepEqual(resolved("/admin/users/5/reset-password"), { id: "admin.user.password-reset.form", params: { id: 5 } });
+  assert.deepEqual(resolved("/admin/role-templates/document_manager/edit"), {
+    id: "admin.role-template.edit.form",
+    params: { key: "document_manager" }
+  });
+});
+
+test("route registry는 disposal과 import 중첩 route를 해석한다", () => {
+  assert.deepEqual(resolved("/disposal-batches/4"), { id: "disposal.details", params: { id: 4 } });
+  assert.deepEqual(resolved("/disposal-batches/4/export.csv"), { id: "disposal.export", params: { id: 4 } });
+  assert.deepEqual(resolved("/disposal-batches/4/items/9/exclude", "POST"), {
+    id: "disposal.item.exclude",
+    params: { id: 4, itemId: 9 }
+  });
+  assert.deepEqual(resolved("/document-import-jobs/8"), { id: "imports.details", params: { id: 8 } });
+  assert.deepEqual(resolved("/document-import-jobs/8/failures.csv"), { id: "imports.failures", params: { id: 8 } });
+});
+
+test("route registry는 snapshot staging/apply/export route를 해석한다", () => {
+  assert.deepEqual(resolved("/document-snapshots/8"), { id: "snapshots.details", params: { id: 8 } });
+  assert.deepEqual(resolved("/document-snapshots/8/rows", "POST"), { id: "snapshots.rows", params: { id: 8 } });
+  assert.deepEqual(resolved("/document-snapshots/8/prepare", "POST"), { id: "snapshots.prepare", params: { id: 8 } });
+  assert.deepEqual(resolved("/document-snapshots/8/apply", "POST"), { id: "snapshots.apply", params: { id: 8 } });
+  assert.deepEqual(resolved("/document-snapshot-exports/EXP-abc-123/rows"), {
+    id: "documents.snapshot.export.rows",
+    params: { manifestId: "EXP-abc-123" }
+  });
 });

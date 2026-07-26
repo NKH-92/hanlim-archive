@@ -565,6 +565,212 @@ test("개별 등록·개정·CSV 생성 경로는 응답 직후 실제 검색 AP
   }
 });
 
+test("정보 수정·위치 이동·폐기·복구는 응답 전에 해당 문서 projection을 배출한다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), SESSION_SECRET };
+  try {
+    await readyProjection(env);
+    database.prepare(`
+      INSERT INTO app_users (
+        username, display_name, password_salt, password_hash,
+        status, role, approved_at, approved_by, must_change_password,
+        security_review_required, session_epoch
+      )
+      VALUES (?, ?, ?, ?, 'approved', 'Admin', CURRENT_TIMESTAMP, 'test-fixture', 0, 0, 0)
+    `).run("projection-mutation-admin@example.com", "검색 동기화 관리자", "s".repeat(32), "h".repeat(64));
+    const session = {
+      username: "projection-mutation-admin@example.com",
+      displayName: "검색 동기화 관리자",
+      role: "Admin"
+    };
+    const cookie = await createSessionCookie(session, env, false);
+    const csrfToken = csrfFromCookie(cookie);
+    const source = database.prepare(`
+      SELECT d.category_id, d.rack_slot_id, d.rack_face, rs.rack_id
+      FROM documents d
+      JOIN rack_slots rs ON rs.id = d.rack_slot_id
+      WHERE d.sync_state = 'current'
+      ORDER BY d.id
+      LIMIT 1
+    `).get();
+    const target = database.prepare(`
+      SELECT rs.id AS rack_slot_id, rs.rack_id, rs.column_number, rs.shelf_number
+      FROM rack_slots rs
+      JOIN racks r ON r.id = rs.rack_id
+      WHERE rs.is_active = 1 AND r.is_active = 1 AND rs.rack_id != ?
+      ORDER BY r.zone_number, r.rack_number, rs.column_number, rs.shelf_number
+      LIMIT 1
+    `).get(source.rack_id);
+    assert.ok(target, "이동 검증용 다른 랙 슬롯이 필요합니다.");
+    const tag = database.prepare("SELECT id FROM tags WHERE is_active = 1 ORDER BY id LIMIT 1").get();
+
+    const createBody = new URLSearchParams({
+      csrf_token: csrfToken,
+      categoryId: String(source.category_id),
+      documentNumber: "IMM-MUTATION-2026-001",
+      revisionNumber: "Rev.0",
+      revisionDate: "2026-07-26",
+      disposalDueYear: "2031",
+      documentName: "변경 전 즉시 검색 문서",
+      rackSlotId: String(source.rack_slot_id),
+      rackFace: source.rack_face,
+      note: ""
+    });
+    createBody.append("tagIds", String(tag.id));
+    const created = await worker.fetch(new Request("https://archive.example.com/documents", {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: "https://archive.example.com" },
+      body: createBody
+    }), env);
+    assert.equal(created.status, 302);
+    const documentId = Number((created.headers.get("Location") || "").match(/\/documents\/(\d+)/)?.[1] || 0);
+    assert.ok(documentId > 0);
+    assert.deepEqual(dirtyRows(database), []);
+
+    const beforeUpdate = database.prepare(
+      "SELECT updated_at, row_version FROM documents WHERE id = ?"
+    ).get(documentId);
+    const editBody = new URLSearchParams({
+      csrf_token: csrfToken,
+      categoryId: String(source.category_id),
+      documentNumber: "IMM-MUTATION-2026-001",
+      documentName: "정보 수정 즉시 검색 문서",
+      disposalDueYear: "2031",
+      note: "수정 후 projection 즉시 반영",
+      expectedUpdatedAt: beforeUpdate.updated_at,
+      expectedRowVersion: String(beforeUpdate.row_version)
+    });
+    editBody.append("tagIds", String(tag.id));
+    const edited = await worker.fetch(new Request(`https://archive.example.com/documents/${documentId}/edit`, {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: "https://archive.example.com" },
+      body: editBody
+    }), env);
+    assert.equal(edited.status, 302);
+    assert.equal(
+      database.prepare("SELECT document_name FROM search_projection_documents WHERE document_id = ?").get(documentId).document_name,
+      "정보 수정 즉시 검색 문서"
+    );
+    assert.deepEqual(dirtyRows(database), []);
+
+    const beforeMove = database.prepare(
+      "SELECT updated_at, row_version FROM documents WHERE id = ?"
+    ).get(documentId);
+    const moved = await worker.fetch(new Request(`https://archive.example.com/documents/${documentId}/move`, {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: "https://archive.example.com" },
+      body: new URLSearchParams({
+        csrf_token: csrfToken,
+        rackSlotId: String(target.rack_slot_id),
+        rackFace: "A",
+        reason: "즉시 검색 위치 반영 검증",
+        expectedUpdatedAt: beforeMove.updated_at,
+        expectedRowVersion: String(beforeMove.row_version)
+      })
+    }), env);
+    assert.equal(moved.status, 302);
+    const movedProjection = database.prepare(`
+      SELECT rack_id, column_number, shelf_number
+      FROM search_projection_documents
+      WHERE document_id = ?
+    `).get(documentId);
+    assert.equal(movedProjection.rack_id, target.rack_id);
+    assert.equal(movedProjection.column_number, target.column_number);
+    assert.equal(movedProjection.shelf_number, target.shelf_number);
+    assert.deepEqual(dirtyRows(database), []);
+
+    const disposed = await worker.fetch(new Request(`https://archive.example.com/documents/${documentId}/dispose`, {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: "https://archive.example.com" },
+      body: new URLSearchParams({ csrf_token: csrfToken, reason: "즉시 검색 폐기 반영 검증" })
+    }), env);
+    assert.equal(disposed.status, 302);
+    assert.equal(
+      database.prepare("SELECT status FROM search_projection_documents WHERE document_id = ?").get(documentId).status,
+      "disposed"
+    );
+    assert.deepEqual(dirtyRows(database), []);
+
+    const restored = await worker.fetch(new Request(`https://archive.example.com/documents/${documentId}/restore`, {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: "https://archive.example.com" },
+      body: new URLSearchParams({ csrf_token: csrfToken, reason: "즉시 검색 복구 반영 검증" })
+    }), env);
+    assert.equal(restored.status, 302);
+    assert.equal(
+      database.prepare("SELECT status FROM search_projection_documents WHERE document_id = ?").get(documentId).status,
+      "active"
+    );
+    assert.deepEqual(dirtyRows(database), []);
+  } finally {
+    database.close();
+  }
+});
+
+test("projection 위치순은 rack code가 아니라 실제 rack number와 선반 내림차순을 따른다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  try {
+    const firstRack = database.prepare(`
+      SELECT
+        r.id AS rack_id, r.zone_number, r.rack_number,
+        rs.id AS rack_slot_id, rs.column_number, rs.shelf_number
+      FROM racks r
+      JOIN rack_slots rs ON rs.rack_id = r.id
+      WHERE r.is_active = 1 AND rs.is_active = 1
+      ORDER BY r.zone_number, r.rack_number, rs.column_number, rs.shelf_number
+      LIMIT 1
+    `).get();
+    const secondRack = database.prepare(`
+      SELECT r.id AS rack_id, r.zone_number, r.rack_number, rs.id AS rack_slot_id
+      FROM racks r
+      JOIN rack_slots rs ON rs.rack_id = r.id
+      WHERE r.is_active = 1 AND rs.is_active = 1
+        AND r.zone_number = ? AND r.rack_number > ?
+      ORDER BY r.rack_number, rs.column_number, rs.shelf_number
+      LIMIT 1
+    `).get(firstRack.zone_number, firstRack.rack_number);
+    assert.ok(secondRack, "같은 구역의 두 번째 랙이 필요합니다.");
+    const higherShelf = database.prepare(`
+      SELECT id AS rack_slot_id, column_number, shelf_number
+      FROM rack_slots
+      WHERE rack_id = ? AND is_active = 1
+        AND column_number = ? AND shelf_number > ?
+      ORDER BY shelf_number DESC
+      LIMIT 1
+    `).get(firstRack.rack_id, firstRack.column_number, firstRack.shelf_number);
+    assert.ok(higherShelf, "같은 랙·열의 더 높은 선반이 필요합니다.");
+
+    database.prepare("UPDATE racks SET code = ? WHERE id = ?").run("ZZ-LOCATION-ORDER", firstRack.rack_id);
+    database.prepare("UPDATE racks SET code = ? WHERE id = ?").run("AA-LOCATION-ORDER", secondRack.rack_id);
+    const category = database.prepare("SELECT id FROM categories WHERE is_active = 1 ORDER BY id LIMIT 1").get();
+    const insert = database.prepare(`
+      INSERT INTO documents (
+        storage_code, category_id, document_number, revision_number, revision_date,
+        disposal_due_year, document_name, rack_slot_id, rack_face, status, sync_state
+      ) VALUES (?, ?, ?, 'Rev.0', '2026-07-26', 2031, ?, ?, 'A', 'active', 'current')
+    `);
+    insert.run("ARC-LOC-ORDER-LOW", category.id, "LOC-ORDER-LOW", "위치정렬검증 낮은선반", firstRack.rack_slot_id);
+    insert.run("ARC-LOC-ORDER-HIGH", category.id, "LOC-ORDER-HIGH", "위치정렬검증 높은선반", higherShelf.rack_slot_id);
+    insert.run("ARC-LOC-ORDER-2", category.id, "LOC-ORDER-2", "위치정렬검증 두번째랙", secondRack.rack_slot_id);
+    await readyProjection(env);
+
+    const result = await getViewerSearchPayload(env, {
+      q: "위치정렬검증",
+      sort: "location",
+      status: "active",
+      pageSize: 30
+    });
+    assert.deepEqual(
+      result.items.map((item) => item.documentNumber),
+      ["LOC-ORDER-HIGH", "LOC-ORDER-LOW", "LOC-ORDER-2"],
+      "rack code가 역순이어도 rack_number를 따르고 같은 열에서는 높은 선반부터 정렬해야 한다"
+    );
+  } finally {
+    database.close();
+  }
+});
+
 test("Cron 유지보수는 dirty 배출과 재색인을 예산 안에서 ready까지 전진시킨다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database) };

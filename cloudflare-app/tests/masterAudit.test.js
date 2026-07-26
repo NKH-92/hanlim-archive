@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { upsertCategory } from "../src/data/mastersData.js";
-import { upsertRack } from "../src/data/racksData.js";
+import { upsertCategory } from "../src/domains/masters/index.js";
+import { upsertRack } from "../src/domains/racks/index.js";
 
 const actor = {
   userId: 4,

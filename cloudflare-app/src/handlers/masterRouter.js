@@ -1,5 +1,4 @@
-// 세트와 문서고 기준정보 라우트. 미매칭은 상위 라우터에 null로 넘긴다.
-import { matchMasterRoute, matchRackRoute, matchSetRoute } from "../routes.js";
+// 세트·랙·기준정보 라우트. routeRegistry가 해석한 route id와 params만 사용한다.
 import {
   handleCategoryAction,
   handleSaveCategory,
@@ -19,76 +18,70 @@ import {
 } from "./rackHandlers.js";
 import { handleSaveSet, handleSetRoute, handleSets, renderNewSetForm } from "./setHandlers.js";
 
-export async function routeMasterRequest(request, env, session, url, path) {
-  if (path === "/sets" && request.method === "GET") {
-    return handleSets(request, env, session);
+export async function routeMasterRequest(request, env, session, url, resolved) {
+  const routeId = resolved?.descriptor?.id || "";
+  const params = resolved?.params || {};
+
+  if (routeId === "sets.list") return handleSets(request, env, session);
+  if (routeId === "sets.create.form") return requireManageSets(session) ?? renderNewSetForm(session);
+  if (routeId === "sets.create") return requireManageSets(session) ?? handleSaveSet(request, env, session);
+  if (routeId.startsWith("sets.")) {
+    const action = setAction(routeId);
+    return action ? handleSetRoute(request, env, session, { id: Number(params.id), action }) : null;
   }
 
-  if (path === "/sets/new" && request.method === "GET") {
-    return requireManageSets(session) ?? renderNewSetForm(session);
-  }
-
-  if (path === "/sets" && request.method === "POST") {
-    return requireManageSets(session) ?? handleSaveSet(request, env, session);
-  }
-
-  const setRoute = matchSetRoute(path);
-  if (setRoute) {
-    return handleSetRoute(request, env, session, setRoute);
-  }
-
-  if (path === "/racks" && request.method === "GET") {
-    return requireManageMasters(session) ?? handleRacks(env, session);
-  }
-
-  if (path === "/racks/new" && request.method === "GET") {
-    return requireManageMasters(session) ?? renderNewRackForm(session);
-  }
-
-  if (path === "/racks/configure" && request.method === "GET") {
+  if (routeId === "racks.list") return requireManageMasters(session) ?? handleRacks(env, session);
+  if (routeId === "racks.new") return requireManageMasters(session) ?? renderNewRackForm(session);
+  if (routeId === "racks.configure.form") {
     return requireManageMasters(session) ?? renderRackConfigure(env, session);
   }
-
-  if (path === "/racks/configure" && request.method === "POST") {
+  if (routeId === "racks.configure") {
     return requireManageMasters(session) ?? handleRackConfigure(request, env, session);
   }
-
-  if (path === "/racks" && request.method === "POST") {
-    return requireManageMasters(session) ?? handleSaveRack(request, env, session);
+  if (routeId === "racks.create") return requireManageMasters(session) ?? handleSaveRack(request, env, session);
+  if (routeId.startsWith("racks.")) {
+    const action = routeId === "racks.details" ? "details" : "edit";
+    return requireManageMasters(session) ?? handleRackRoute(request, env, session, {
+      id: Number(params.id),
+      action
+    });
   }
 
-  const rackRoute = matchRackRoute(path);
-  if (rackRoute) {
-    return requireManageMasters(session) ?? handleRackRoute(request, env, session, rackRoute);
+  if (routeId === "categories.list") return requireManageMasters(session) ?? renderCategories(env, session);
+  if (routeId === "categories.save") return requireManageMasters(session) ?? handleSaveCategory(request, env, session);
+  if (routeId === "categories.edit" || routeId === "categories.delete") {
+    return requireManageMasters(session) ?? handleCategoryAction(request, env, session, {
+      id: Number(params.id),
+      action: routeId === "categories.edit" ? "edit" : "delete"
+    });
   }
 
-  if (path === "/categories" && request.method === "GET") {
-    return requireManageMasters(session) ?? renderCategories(env, session);
-  }
-
-  if (path === "/categories" && request.method === "POST") {
-    return requireManageMasters(session) ?? handleSaveCategory(request, env, session);
-  }
-
-  const categoryRoute = matchMasterRoute(path, "categories");
-  if (categoryRoute && request.method === "POST") {
-    return requireManageMasters(session) ?? handleCategoryAction(request, env, session, categoryRoute);
-  }
-
-  if (path === "/tags" && request.method === "GET") {
+  if (routeId === "tags.list") {
     return requireManageMasters(session) ?? renderTags(env, session, "", {
       name: url.searchParams.get("name") || ""
     });
   }
-
-  if (path === "/tags" && request.method === "POST") {
-    return requireManageMasters(session) ?? handleSaveTag(request, env, session);
-  }
-
-  const tagRoute = matchMasterRoute(path, "tags");
-  if (tagRoute && request.method === "POST") {
-    return requireManageMasters(session) ?? handleTagAction(request, env, session, tagRoute);
+  if (routeId === "tags.save") return requireManageMasters(session) ?? handleSaveTag(request, env, session);
+  if (routeId === "tags.edit" || routeId === "tags.delete") {
+    return requireManageMasters(session) ?? handleTagAction(request, env, session, {
+      id: Number(params.id),
+      action: routeId === "tags.edit" ? "edit" : "delete"
+    });
   }
 
   return null;
+}
+
+function setAction(routeId) {
+  if (routeId === "sets.details") return "details";
+  if (routeId === "sets.export") return "export";
+  if (routeId === "sets.export.csv") return "export.csv";
+  if (routeId === "sets.edit.form" || routeId === "sets.edit") return "edit";
+  if (routeId === "sets.clone.form" || routeId === "sets.clone") return "clone";
+  if (routeId === "sets.delete") return "delete";
+  if (routeId === "sets.add") return "add";
+  if (routeId === "sets.remove") return "remove";
+  if (routeId === "sets.lock") return "lock";
+  if (routeId === "sets.unlock") return "unlock";
+  return "";
 }

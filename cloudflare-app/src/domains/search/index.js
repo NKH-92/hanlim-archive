@@ -13,8 +13,8 @@ export const {
 } = repository;
 export { documentToViewerItem, buildViewerFacets } from "./web/presenters.js";
 export { createSearchCore, sharedSearchCore } from "../../searchCore.js";
-export { MAX_SEARCH_RESULTS, parseSearchQuery } from "../../data/searchData.js";
-export { buildSearchIndexTerms } from "../../data/searchIndexTerms.js";
+export { MAX_SEARCH_RESULTS, parseSearchQuery } from "./infrastructure/repository.js";
+export { buildSearchIndexTerms } from "./domain/indexTerms.js";
 export {
   drainSearchProjectionDirty,
   getSearchProjectionState,

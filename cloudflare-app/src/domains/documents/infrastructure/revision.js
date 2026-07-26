@@ -1,4 +1,4 @@
-import { AUDIT_LOG_INSERT_WITH_ACTOR } from "../../../data/sqlShared.js";
+import { AUDIT_LOG_INSERT_WITH_ACTOR } from "./sql.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";

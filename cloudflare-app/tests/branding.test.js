@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { loginPage, signupPage } from "../src/views/authViews.js";
+import { loginPage } from "../src/views/authViews.js";
 import { page } from "../src/views/layout.js";
 import { setDetailsPage } from "../src/views/setViews.js";
 
@@ -19,14 +19,10 @@ test("한림제약 CI 자산은 전달받은 투명 PNG 바이트를 그대로 �
   assert.match(svg, /viewBox="0 0 295 211"/);
 });
 
-test("로그인과 가입 화면은 문자 임시 마크 대신 회사 로고를 사용한다", async () => {
+test("로그인 화면은 문자 임시 마크 대신 회사 로고를 사용한다", async () => {
   const loginHtml = await loginPage({ returnUrl: "/app" }).text();
-  const signupHtml = await signupPage({}).text();
-
-  for (const html of [loginHtml, signupHtml]) {
-    assert.match(html, new RegExp(`<img class="login-logo" src="${LOGO_URL}" alt="한림제약">`));
-    assert.doesNotMatch(html, /class="login-logo">HA</);
-  }
+  assert.match(loginHtml, new RegExp(`<img class="login-logo" src="${LOGO_URL}" alt="한림제약">`));
+  assert.doesNotMatch(loginHtml, /class="login-logo">HA</);
 });
 
 test("인증 화면 헤더와 브라우저 아이콘은 회사 로고를 사용한다", async () => {

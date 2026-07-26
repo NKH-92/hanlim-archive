@@ -12,7 +12,7 @@ src/index.js                 공개 경로, 세션, CSRF, 보안 헤더, 전역 
   └─ src/handlers/           route registry 결과를 use case와 view에 연결
        ├─ src/domains/<name>/index.js
        │    ├─ domain/       순수 정책, 상태 machine, 값 규칙
-       │    ├─ application/  use case와 port
+       │    ├─ application/  실제 orchestration·policy가 필요한 use case만
        │    ├─ infrastructure/ D1 query, command, BatchPlan
        │    └─ web/          parser, presenter, 도메인 전용 view
        ├─ src/readModels/    여러 도메인을 조합하는 명시적 read model
@@ -25,6 +25,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 - cross-domain dashboard/report는 `src/readModels/`에서 조합한다.
 - `platform/`은 업무 도메인을 import하지 않는다.
 - 삭제된 전역 façade `db.js`, `html.js`, `utils.js`를 다시 만들거나 import하지 않는다.
+- 과거 `src/data/*` 구현은 각 domain으로 이관했다. production 코드는 `src/data`를 import하지 않는다. D1 결과/OCC helper는 `platform/d1`, 문서·검색·랙·세트 SQL shape는 사용하는 도메인이 직접 소유한다.
+- `application/`은 실제 orchestration·policy·port가 있을 때만 둔다. repository 함수를 그대로 전달하는 factory/service wrapper는 만들지 않는다.
 - Workers 배포 소스에서 Node API를 사용하지 않는다.
 - 코드 주석은 한국어로 작성한다.
 
@@ -39,19 +41,20 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 | `src/domains/documents/` | 문서 검증·폼·조회·명령·낙관적 잠금·BatchPlan |
 | `src/domains/disposal/` | 폐기 작업 상태 machine, 동결 snapshot, 재개 처리 |
 | `src/domains/imports/` | CSV 작업 상태 machine, staging, 재개 처리 |
-| `src/domains/snapshots/` | 엑셀 전체 대장 staging, 검증·diff, 원자 반영, 버전 충돌 방지 |
+| `src/domains/snapshots/` | 엑셀 전체 대장 query/lifecycle/staging/prepare/apply/export. `repository.js`는 공개 조립점이며 원자 반영은 `apply.js` + `applyPlan.js`가 소유 |
 | `src/domains/identity/` | Actor, 사용자 상태, 비밀번호 policy, capability, 사용자 command/query |
 | `src/domains/masters/` | 대분류·태그 query/command/view |
 | `src/domains/racks/` | 랙 규격, 면·열 방향, 도면 geometry, slot, query/command |
 | `src/domains/search/` | 검색 repository/presenter, 고수준 동기화·유지보수 계약, browser/server 공통 공개 API |
 | `src/domains/search/infrastructure/projection.js` | Core D1 검색 projection 쓰기, dirty 배출, in-place 재색인 |
-| `src/data/searchIndexTerms.js` | FTS 색인 term(2·3-gram, 한글 초성) 단일 출처 |
+| `src/domains/search/domain/indexTerms.js` | FTS 색인 term(2·3-gram, 한글 초성) 단일 출처 |
 | `src/domains/sets/` | 세트 query/command, 잠금, 이력, presenter |
 | `src/domains/audit/` | 시스템 감사 INSERT, filter query, audit presenter |
 | `src/domains/dataQuality/` | 품질 issue catalog, 상세 query, 작업목록 view |
 | `src/readModels/adminDashboard.js` | 권한별 사용자·품질·검색 통계를 조합하는 관리자 read model |
 | `src/views/layout.js` | 공용 HTML shell, navigation, `page()` |
 | `src/platform/web/` | RenderContext, safe embedded JSON, 구조적 HTML 보안 렌더링 |
+| `src/platform/d1/` | 요청 예산, BatchPlan, expected-change, 결과 변경 판정, optimistic-lock SQL helper와 제약 오류 변환 |
 | `migrations/` | append-only D1 schema 이력 |
 
 ## 절대 깨면 안 되는 불변식
@@ -120,7 +123,7 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     재검증한 뒤 최대 30건과 opaque cursor만 응답한다. cursor 무효화는 projection과 같은 소유권에 있는
     `search_projection_state.generation`을 사용한다. migration 0050의 expand 기간에는 이전 Worker rollback을 위해
     `search_index_state.generation`도 같은 trigger에서 함께 증가시킨다. 색인 본문(`normalized_text`)은 n-gram과 한글 초성을 만드는
-    `data/searchIndexTerms.js`가 유일한 출처다. SQL trigger로 재현할 수 없으므로 trigger는 재색인 대상만
+    `domains/search/domain/indexTerms.js`가 유일한 출처다. SQL trigger로 재현할 수 없으므로 trigger는 재색인 대상만
     `search_projection_dirty`에 표시하고, 색인 쓰기는 항상 애플리케이션이 수행한다. projection 쓰기와 dirty 행
     삭제는 하나의 `env.DB.batch()`에 두므로 **"projection 최신 OR 문서가 dirty"가 트랜잭션으로 보장된다.**
     경합 처리는 lease가 아니라 `(document_id, event_version)` 삭제 건수 assertion 하나로 끝난다. 오래된 내용을
@@ -138,10 +141,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     `search_index_outbox`와 전역 `search_event_clock`, 그리고 그 둘에 쓰던 17개 trigger도 제거했으므로
     파생 색인 신호는 `search_projection_dirty` 하나로 모인다. migration 0050부터 runtime cursor는
     `search_projection_state.generation`을 사용하며 `search_index_state`는 이전 Worker rollback용 mirror로만 남긴다.
-    충분한 rollback 관찰 기간 뒤 별도 contract migration에서 제거한다. 통합 근거와 단계는
-    [무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)에 있다.
+    충분한 rollback 관찰 기간 뒤 별도 contract migration에서 제거한다. 제거 조건은 [ROADMAP.md](./ROADMAP.md)에 기록한다.
 24. **인증 재검증과 임시 계정 수명**: 비밀번호 최소 길이는 6자이며 신규 PBKDF2-SHA256 record는
-    Cloudflare Workers Web Crypto 상한인 100,000회 반복을 사용한다. legacy raw digest는 성공한 로그인에서
+    현재 구현 정책인 PBKDF2-SHA256 100,000회 반복을 사용한다. legacy raw digest는 성공한 로그인에서
     CAS 방식으로 반복 횟수를 명시하는 self-describing record로 전환하며, 런타임 상한을 넘는 record는
     PBKDF2 실행 전에 fail-closed한다. 계정 상태와
     session epoch는 매 요청 DB에서 재검증하고, 반복 로그인 실패는 HMAC 기반 계정·IP 제한으로 차단한다.
@@ -155,10 +157,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 - audit/history INSERT는 상태 UPDATE/DELETE보다 먼저 같은 `env.DB.batch()`에서 실행한다.
 - 선행 INSERT도 application 사전조회가 아니라 같은 pre-state SQL guard를 사용한다.
 - batch 마지막 mutation의 변경 행 수로 no-op과 낙관적 잠금 경합을 감지한다.
-- 모든 SQL 값은 bind parameter로 전달한다. 권위 데이터와 검색 projection을 합친 요청당 D1 statement
-  예산은 Cloudflare Free의 50개보다 2개 낮은 48개, 원자 mutation `BatchPlan`은 40개,
-  statement당 bind parameter는 100개를 넘지 않는다. LIKE pattern은 UTF-8 50 bytes,
-  JSON value payload는 플랫폼 2,000,000 bytes보다 낮은 1,900,000 bytes에서 분할한다.
+- 모든 SQL 값은 bind parameter로 전달한다. 권위 데이터와 검색 projection을 합친 요청당 내부 D1 statement
+  예산은 48개, 원자 mutation `BatchPlan`은 40개다. statement당 bind parameter, LIKE pattern과
+  JSON value payload 상한은 `FREE_TIER_BUDGET`과 D1 request gateway를 단일 출처로 사용한다.
   최대 200개 ID를 다루는 세트 작업은 JSON 한 bind와 `json_each()`를 사용한다.
 - 폐기·CSV 작업은 claim token과 terminal 상태를 보존해 재호출 시 중복 기록을 만들지 않는다.
 - 감사·이동·세트 이력은 append-only trigger를 유지하고, 내부 `storage_code`는 DB·감사 내부에서만 사용한다.
@@ -176,12 +177,16 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 | migration 연속성·schema·FK | `migrationChainContracts.test.js` |
 | D1 순서·guard·rollback | `criticalMutationContracts.test.js`, `dataIntegrity.test.js` |
 | 인증·권한·CSP·CSRF | `auth.test.js`, `permissions.test.js`, `security.test.js` |
+| 문서 query·mutation·OCC·직접 폐기 | `documentsQueryDomain.test.js`, `documentPersistenceContracts.test.js`, `documentCommandPlans.test.js` |
+| 세트·랙 persistence와 geometry | `setsPersistenceContracts.test.js`, `setsDomain.test.js`, `racksDomain.test.js` |
+| identity 상태·역할 템플릿 persistence | `identityPersistence.test.js`, `identityDomain.test.js` |
 | 폐기·CSV 재개와 예산 | `batchJobs.test.js`, `freeTierBudget.test.js` |
+| 초기 적재·용량·rollback shape | `initialLoadContracts.test.js` |
 | 엑셀 300건 교체·diff·구버전 차단 | `excelSnapshotSync.test.js` |
 | 실제 XLSX export→parse 무수정 0-diff | `excelSnapshotWorkbookE2E.test.js` |
 | manifest·bootstrap·ZIP·감사 보강 | `excelSnapshotCompletion.test.js`, `excelOpenXmlCompatibility.test.js` |
 | 웹 개별 변경 export 포함·개정 이력 경계 | `documentLedgerIntegration.test.js` |
-| 검색 server/browser 일치 | `searchParity.test.js`, `searchBehavior.test.js` |
+| 검색 query/presenter와 server/browser 일치 | `searchRepositoryContracts.test.js`, `searchParity.test.js`, `searchBehavior.test.js` |
 | Core projection dirty·재색인·읽기 parity | `searchProjection.test.js` |
 | 파생 색인이 `/readyz`를 닫지 않음 | `readinessContracts.test.js` |
 
@@ -202,8 +207,8 @@ npm run verify
 npx wrangler deploy --dry-run
 ```
 
-무료 티어 최적화의 정적 자산 경계, 배포 분류, 검색 단일 D1 통합 단계는
-[무료 티어 최적화 결정과 운영 계획](./FREE_TIER_OPTIMIZATION.md)을 따른다.
+운영·배포·용량과 현재 rollback compatibility 제거 조건은 [OPERATIONS.md](./OPERATIONS.md)와
+[ROADMAP.md](./ROADMAP.md)를 따른다.
 
 `main` 푸시는 GitHub Actions가 운영 migration과 배포를 수행하므로 로컬 작업에서는 명시적 요청 없이
 push, 원격 migration, production deploy를 실행하지 않는다.

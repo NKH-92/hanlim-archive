@@ -1,50 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import * as documentHandlers from "../src/handlers/documentHandlers.js";
 import * as browseHandlers from "../src/handlers/documents/browse.js";
 import * as crudHandlers from "../src/handlers/documents/crud.js";
 import * as disposalHandlers from "../src/handlers/documents/disposal.js";
 import { routeDocumentRequest } from "../src/handlers/documentRouter.js";
 
-const expectedExports = [
-  "handleBulkDispose",
-  "handleCreateDocument",
-  "handleDisposalWorkspace",
-  "handleDocumentExport",
-  "handleDocumentRoute",
-  "handleDocuments",
-  "handleDuplicateDocumentCheck",
-  "handleFilteredDispose",
-  "handleSelectedDisposal",
-  "renderCreateDocument"
-];
-
-test("문서 핸들러 호환 배럴은 기존 공개 표면을 그대로 유지한다", () => {
-  assert.deepEqual(Object.keys(documentHandlers).sort(), expectedExports);
-  assert.equal(documentHandlers.handleDocuments, browseHandlers.handleDocuments);
-  assert.equal(documentHandlers.handleDocumentExport, browseHandlers.handleDocumentExport);
-  assert.equal(documentHandlers.handleCreateDocument, crudHandlers.handleCreateDocument);
-  assert.equal(documentHandlers.handleDuplicateDocumentCheck, crudHandlers.handleDuplicateDocumentCheck);
-  assert.equal(documentHandlers.handleDocumentRoute, crudHandlers.handleDocumentRoute);
-  assert.equal(documentHandlers.renderCreateDocument, crudHandlers.renderCreateDocument);
-  assert.equal(documentHandlers.handleBulkDispose, disposalHandlers.handleBulkDispose);
-  assert.equal(documentHandlers.handleDisposalWorkspace, disposalHandlers.handleDisposalWorkspace);
-  assert.equal(documentHandlers.handleFilteredDispose, disposalHandlers.handleFilteredDispose);
-  assert.equal(documentHandlers.handleSelectedDisposal, disposalHandlers.handleSelectedDisposal);
+test("문서 핸들러는 browse·crud·disposal 책임으로 분리되어 공개된다", () => {
+  for (const handler of [
+    browseHandlers.handleDocuments,
+    browseHandlers.handleDocumentExport,
+    crudHandlers.handleCreateDocument,
+    crudHandlers.handleDuplicateDocumentCheck,
+    crudHandlers.handleDocumentRoute,
+    crudHandlers.renderCreateDocument,
+    disposalHandlers.handleBulkDispose,
+    disposalHandlers.handleDisposalWorkspace,
+    disposalHandlers.handleFilteredDispose,
+    disposalHandlers.handleSelectedDisposal
+  ]) assert.equal(typeof handler, "function");
 });
 
 test("GET /documents는 쿼리를 보존해 표준 문서 작업 공간으로 연결한다", async () => {
   const request = new Request("https://archive.example.com/documents?rack=7&status=active&sort=location");
   const url = new URL(request.url);
-  const response = await routeDocumentRequest(request, {}, { role: "User" }, url, "/documents");
+  const response = await routeDocumentRequest(request, {}, { role: "User" }, url, {
+    descriptor: { id: "documents.list" },
+    params: {}
+  });
 
   assert.equal(response.status, 302);
   assert.equal(response.headers.get("Location"), "/app?rack=7&status=active&sort=location");
 });
 
 test("POST /documents/:id/delete-permanent는 DB를 조회하지 않고 404를 반환한다", async () => {
-  const response = await documentHandlers.handleDocumentRoute(
+  const response = await crudHandlers.handleDocumentRoute(
     new Request("https://archive.example.com/documents/7/delete-permanent", { method: "POST" }),
     {},
     { role: "Admin", displayName: "관리자", csrfToken: "csrf" },
@@ -81,7 +71,7 @@ test("기존 문서 폐기와 Admin 폐기 해제 경로는 유지한다", async
   for (const item of cases) {
     await t.test(item.name, async () => {
       const env = documentStatusEnv(item.status);
-      const response = await documentHandlers.handleDocumentRoute(
+      const response = await crudHandlers.handleDocumentRoute(
         new Request(`https://archive.example.com/documents/7/${item.action}`, {
           method: "POST",
           body: new URLSearchParams({ reason: item.reason })
@@ -147,7 +137,7 @@ test("문서 개정은 동일 바인더 정보를 잠그고 개정번호와 일�
       }
     }
   };
-  const response = await documentHandlers.handleDocumentRoute(
+  const response = await crudHandlers.handleDocumentRoute(
     new Request("https://archive.example.com/documents/7/revise"),
     env,
     { role: "Admin", displayName: "관리자", csrfToken: "csrf" },
@@ -202,7 +192,7 @@ test("필터 전체 폐기 경로는 총 건수 확인이 다르면 캠페인을
     })
   });
 
-  const response = await documentHandlers.handleFilteredDispose(request, env, {
+  const response = await disposalHandlers.handleFilteredDispose(request, env, {
     userId: 4,
     username: "disposal",
     displayName: "폐기 담당자",

@@ -57,7 +57,7 @@ export function disposalWorkspacePage({
   years = [],
   filters = {},
   capped = false,
-  legacyLimit = 10,
+  directBulkDisposeLimit = 10,
   history = [],
   campaigns = [],
   pagination = { page: 1, totalPages: 1, totalItems: 0 },
@@ -86,7 +86,7 @@ export function disposalWorkspacePage({
       ? disposalCampaignHistoryView(campaigns)
       : tab === "documents"
         ? disposalHistoryView(history, pagination, filters)
-        : disposalTargetsView({ documents, categories, racks, years, filters, capped, limit: legacyLimit })}
+        : disposalTargetsView({ documents, categories, racks, years, filters, capped, limit: directBulkDisposeLimit })}
   `, session);
 }
 

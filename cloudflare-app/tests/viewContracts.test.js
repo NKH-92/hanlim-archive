@@ -21,7 +21,6 @@ test("로그인과 최초 비밀번호 변경 화면은 등록 이메일·보안
     returnUrl: `/app?next="><script>alert(1)</script>`,
     error: "",
     setupWarning: `<img src=x onerror=alert(1)>`,
-    signupSubmitted: false
   }), "로그인");
 
   assert.match(login, /등록된 사내 이메일 계정만 로그인할 수 있습니다/);

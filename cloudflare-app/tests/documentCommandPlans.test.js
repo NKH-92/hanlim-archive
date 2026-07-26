@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { D1BudgetExceededError } from "../src/platform/d1/batchPlan.js";
 
-import * as legacyMutations from "../src/data/documentMutations.js";
-import { moveDocument as legacyMoveDocument } from "../src/data/movementData.js";
 import * as documents from "../src/domains/documents/index.js";
 import { MAX_DOCUMENT_TAGS } from "../src/domains/documents/domain/limits.js";
 import {
@@ -104,14 +102,13 @@ test("대량 폐기 plan은 조회 2문장을 제외한 38문장 예산을 강�
   assert.doesNotThrow(() => plan.execution());
 });
 
-test("도메인 command service와 infrastructure adapter는 동일 구현에 위임한다", () => {
+test("문서 command 공개 API는 현재 도메인 표면에서 제공된다", () => {
   for (const name of [
-    "createDocument", "updateDocument", "disposeDocument", "disposeDocumentsBulk",
-    "restoreDocument", "permanentlyDeleteDocument"
+    "createDocument", "updateDocument", "reviseDocument", "moveDocument", "disposeDocument",
+    "disposeDocumentsBulk", "restoreDocument", "permanentlyDeleteDocument"
   ]) {
-    assert.equal(documents[name], legacyMutations[name], name);
+    assert.equal(typeof documents[name], "function", name);
   }
-  assert.equal(documents.moveDocument, legacyMoveDocument);
 });
 
 function step(name, guard, auditEventId = null, expectChanged = false) {

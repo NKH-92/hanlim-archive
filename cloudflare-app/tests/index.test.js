@@ -224,7 +224,7 @@ test("bulk disposal redirect preserves filters and reports disposed and skipped 
   assert.equal(env.state.batches[0].filter((statement) => statement.sql.includes("UPDATE documents")).length, 1);
 });
 
-test("legacy bulk disposal rejects missing or mismatched count confirmation before mutation", async () => {
+test("직접 소량 폐기는 누락되거나 불일치한 건수 확인을 mutation 전에 거부한다", async () => {
   const cases = [
     { confirmedTargetCount: "2", confirmDisposal: "" },
     { confirmedTargetCount: "1", confirmDisposal: "1" }

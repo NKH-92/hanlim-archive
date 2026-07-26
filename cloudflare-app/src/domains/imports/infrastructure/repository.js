@@ -1,7 +1,7 @@
 import { FREE_TIER_BUDGET } from "../../../config.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
-import { hasChanged } from "../../../data/sqlShared.js";
+import { hasChanged } from "../../../platform/d1/result.js";
 import { hasPermission, PERMISSIONS } from "../../../permissions.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 import { createImportPlan } from "./plans.js";
