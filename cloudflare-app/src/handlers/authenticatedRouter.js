@@ -70,7 +70,7 @@ export async function routeAuthenticatedRequest(request, env, session, url, path
   }
 
   if (path === "/api/search-index" && request.method === "GET") {
-    return handleSearchIndex(request, env);
+    return handleSearchIndex();
   }
 
   if (path === "/api/search-click" && request.method === "POST") {

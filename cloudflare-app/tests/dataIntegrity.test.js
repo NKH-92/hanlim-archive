@@ -15,7 +15,6 @@ import {
 import { configureRackCounts, getRackConfigurationVersion, upsertRack } from "../src/domains/racks/index.js";
 import { upsertCategory, upsertTag } from "../src/domains/masters/index.js";
 import { DATA_QUALITY_ISSUES, getDataQualityPage, normalizeDataQualityIssue } from "../src/domains/dataQuality/index.js";
-import { getSearchIndexMeta } from "../src/domains/search/index.js";
 import { FREE_TIER_BUDGET } from "../src/freeTierBudget.js";
 
 const actor = {
@@ -274,17 +273,13 @@ test("실제 SQLite에서 excluded 이력은 현재 대장 중복으로 집계�
   }
 });
 
-test("0038 호환 trigger는 구버전 UPDATE의 버전과 검색 ETag를 단조 증가시킨다", async () => {
+test("0038 호환 trigger는 구버전 UPDATE의 row_version을 단조 증가시킨다", async () => {
   const { database, env } = await migratedSqliteEnv();
   try {
-    const searchMetaBefore = await getSearchIndexMeta(env);
     const category = database.prepare("SELECT id, row_version FROM categories ORDER BY id LIMIT 1").get();
     database.prepare("UPDATE categories SET description = ? WHERE id = ?").run("구버전 category 수정", category.id);
     const categoryAfterLegacy = database.prepare("SELECT row_version FROM categories WHERE id = ?").get(category.id);
     assert.equal(categoryAfterLegacy.row_version, category.row_version + 1);
-
-    const searchMetaAfter = await getSearchIndexMeta(env);
-    assert.notEqual(searchMetaAfter.versionKey, searchMetaBefore.versionKey);
 
     database.prepare(`
       UPDATE categories

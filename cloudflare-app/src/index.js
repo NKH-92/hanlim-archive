@@ -133,7 +133,7 @@ async function route(request, env, effects = {}) {
     return headOnly ? headResponse(response) : response;
   }
 
-  // 배포 준비 상태는 양쪽 D1 migration과 Search 파생 인덱스의 동기화까지 확인한다.
+  // 배포 준비 상태는 Core D1 migration을 필수 판정하고 검색 projection 지연은 경고로만 노출한다.
   if (publicRoute?.descriptor.id === "readiness.read") {
     const response = await handleReadinessCheck(env);
     return headOnly ? headResponse(response) : response;

@@ -28,7 +28,7 @@ test("PR required CI는 verify, audit, Worker dry-run과 증빙 보존을 강제
 test("free-tier production deploy는 복구 지점, migration, 직접 배포, smoke, Worker rollback 순서를 고정한다", () => {
   assert.match(
     deploy,
-    /push:\s+branches: \[main\]\s+paths:\s+- "cloudflare-app\/\*\*"\s+- "\.github\/workflows\/deploy\.yml"/
+    /push:\s+branches: \[main\]\s+paths:\s+- "cloudflare-app\/\*\*"\s+- "!cloudflare-app\/tests\/\*\*"\s+- "!cloudflare-app\/migrations\/released-baseline\.json"\s+- "\.github\/workflows\/deploy\.yml"/
   );
   assert.match(deploy, /workflow_dispatch: \{\}/);
   assert.doesNotMatch(deploy.slice(0, deploy.indexOf("permissions:")), /docs\/\*\*|README\.md/);

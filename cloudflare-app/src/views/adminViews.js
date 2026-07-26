@@ -10,7 +10,7 @@ export { categoriesPage, tagsPage } from "../domains/masters/index.js";
 export function adminDashboardPage({ session, pendingCount, quality = null, capacity = null, searchIndex = null }) {
   const pending = Number(pendingCount || 0);
   const qualityIssues = qualityIssueCount(quality);
-  const searchAttention = searchIndex && ["warning", "review"].includes(searchIndex.level) ? 1 : 0;
+  const searchAttention = searchIndex?.level === "warning" ? 1 : 0;
   const capacityAttention = capacity && capacity.level !== "ok" ? 1 : 0;
   const attentionCount = pending + qualityIssues + searchAttention + capacityAttention;
   const groups = [];
@@ -65,7 +65,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
       <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>운영 관리</span></nav><h1>운영 관리</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 확인합니다.</p></div>
     </section>
     <section class="panel admin-status-panel ${attentionCount ? "is-attention" : "is-stable"}" aria-label="운영 상태 요약">
-      <div class="admin-status-copy"><h2>${attentionCount ? `오늘 확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있습니다.` : "문서고 운영 상태가 안정적입니다."}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 인덱스 ${Number(searchIndex.documentCount || 0).toLocaleString("ko-KR")}건` : ""}</p>${heroAction}</div>
+      <div class="admin-status-copy"><h2>${attentionCount ? `오늘 확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있습니다.` : "문서고 운영 상태가 안정적입니다."}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 인덱스 ${Number(searchIndex.indexedDocumentCount || 0).toLocaleString("ko-KR")}건` : ""}</p>${heroAction}</div>
       <div class="admin-status-count"><strong>${attentionCount.toLocaleString("ko-KR")}</strong><span>확인 필요</span></div>
     </section>
     ${quality ? dataQualityPanel(quality) : ""}
@@ -130,7 +130,6 @@ function dataQualityPanel(quality) {
 }
 
 function searchIndexPanel(stats) {
-  const estimated = formatBytes(stats.estimatedJsonBytes);
   const readiness = stats.readiness;
   // 검색 색인 동기화는 /readyz 실패가 아니라 이 화면의 경고로 노출한다(파생 데이터 격리).
   const migrationStatus = readiness
@@ -142,18 +141,11 @@ function searchIndexPanel(stats) {
   const message = readiness
     ? `${readiness.ok && !readiness.degraded ? "검색 운영 준비 완료" : "검색 운영 확인 필요"} · ${migrationStatus} · ${projectionStatus}`
     : `색인 ${Number(stats.indexedDocumentCount || 0).toLocaleString("ko-KR")}건`;
-  // 표시 등급은 read model이 readiness와 용량 경고를 이미 합쳐 계산한 값을 그대로 사용한다.
+  // 표시 등급은 read model이 Core schema와 projection 동기화 상태를 합쳐 계산한 값을 그대로 사용한다.
   const level = stats.level;
   return `<section class="panel search-index-health ${escapeHtml(level)}">
-    <div><strong>서버 검색 인덱스</strong><span>${Number(stats.documentCount).toLocaleString("ko-KR")}건 · Core 예상 ${escapeHtml(estimated)}</span></div><p class="${escapeHtml(level)}">${escapeHtml(message)}</p>
+    <div><strong>서버 검색 인덱스</strong><span>Core projection · 색인 ${Number(stats.indexedDocumentCount || 0).toLocaleString("ko-KR")}건</span></div><p class="${escapeHtml(level)}">${escapeHtml(message)}</p>
   </section>`;
-}
-
-function formatBytes(bytes) {
-  const size = Number(bytes || 0);
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(2)} MB`;
 }
 
 export function adminSettingsPage({ session, users }) {

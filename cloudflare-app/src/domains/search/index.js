@@ -8,8 +8,8 @@ import { FREE_TIER_BUDGET } from "../../freeTierBudget.js";
 
 export const {
   searchDocuments, searchDocumentsWithSuggestions, buildSearchSuggestions, getDidYouMeanSuggestions,
-  getSearchIndexMeta, getSearchIndexDocuments, getSearchSuggestions, getSearchIndexStats,
-  getViewerSearchPayload, parseDocumentFilters, recordSearchClick, recordSearchLog, getSearchReport
+  getSearchSuggestions, getViewerSearchPayload, parseDocumentFilters, recordSearchClick, recordSearchLog,
+  getSearchReport
 } = repository;
 export { documentToViewerItem, buildViewerFacets } from "./web/presenters.js";
 export { createSearchCore, sharedSearchCore } from "../../searchCore.js";

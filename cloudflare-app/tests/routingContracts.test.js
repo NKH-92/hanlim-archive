@@ -2,10 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createSessionCookie } from "../src/auth.js";
+import { handleSearchIndex } from "../src/handlers/viewerHandlers.js";
 import worker from "../src/index.js";
 
 const ORIGIN = "https://archive.example.com";
 const SESSION_SECRET = "test-session-secret-with-at-least-32-characters";
+
+test("폐기된 브라우저 전체 검색 인덱스 endpoint는 D1 조회 없이 410을 반환한다", async () => {
+  const response = handleSearchIndex();
+  const payload = await response.json();
+
+  assert.equal(response.status, 410);
+  assert.equal(response.headers.get("Cache-Control"), "private, no-store");
+  assert.deepEqual(payload, {
+    ok: false,
+    code: "SEARCH_INDEX_RETIRED",
+    message: "브라우저 전체 검색 인덱스는 종료되었습니다. /api/viewer/search를 사용하세요."
+  });
+});
 
 test("전역 CSS와 JS asset은 인증 없이 정적 asset binding에서 제공한다", async (t) => {
   const contentTypes = new Map([

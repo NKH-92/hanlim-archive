@@ -1,7 +1,6 @@
 import { getAppConfig } from "../config.js";
 import {
   parseDocumentFilters,
-  getSearchIndexMeta,
   getSearchReport,
   getSearchSuggestions,
   getViewerSearchPayload,
@@ -112,13 +111,11 @@ export async function handleViewerSearch(request, env) {
   return jsonResponse(filters.status === "disposed" ? { ...payload, suggestions: [] } : payload);
 }
 
-export async function handleSearchIndex(request, env) {
-  const meta = await getSearchIndexMeta(env);
+export function handleSearchIndex() {
   return jsonResponse({
     ok: false,
     code: "SEARCH_INDEX_RETIRED",
-    message: "브라우저 전체 검색 인덱스는 종료되었습니다. /api/viewer/search를 사용하세요.",
-    updated: meta.updated
+    message: "브라우저 전체 검색 인덱스는 종료되었습니다. /api/viewer/search를 사용하세요."
   }, { status: 410, cacheControl: "private, no-store" });
 }
 
