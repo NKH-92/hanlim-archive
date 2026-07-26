@@ -2,171 +2,85 @@
 
 [![CI](https://github.com/NKH-92/hanlim-archive/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NKH-92/hanlim-archive/actions/workflows/ci.yml)
 
-한림 문서고 관리 시스템은 종이 문서의 등록, 검색, 보관 위치, 개정, 폐기와 감사이력을 한곳에서 관리하는
-사내 웹 애플리케이션입니다. Cloudflare Workers와 D1을 사용하며 실제 배포 대상은
-[`cloudflare-app/`](./cloudflare-app/)입니다.
+종이 문서의 검색·보관 위치 확인, 등록·수정·개정, 폐기, Excel 문서대장 동기화와 감사이력을 관리하는 사내 웹 애플리케이션입니다. Cloudflare Workers + D1 + 정적 Assets로 운영하며 실제 배포 소스는 [`cloudflare-app/`](./cloudflare-app/)입니다.
 
-## 시스템 지위와 운영 결정
+공식 원본(system of record)은 업무 책임자가 서명해 보관하는 **Excel 문서대장**입니다. Worker/D1은 검색·위치 확인과 운영 업무를 지원하며, 웹 데이터와 서명 대장이 다르면 서명 대장을 기준으로 정정·복구합니다.
 
-이 시스템은 **보조 위치검색 시스템**이며 공식 원본(system of record)은 업무 책임자가 서명해 보관하는
-**Excel 문서대장**입니다. 웹의 데이터와 검색 결과는 공식 원본을 대체하지 않습니다. 운영자는 매월 1회와
-대량·중요 변경 직후 현재 대장을 Excel로 추출해 문서 수·canonical hash를 확인하고, 업무 책임자의 서명을
-받아 접근 통제된 사내 보관 위치에 보존합니다. 장애 복구는 먼저 D1 Time Travel의 최근 7일 복구 지점을
-사용하고, 범위를 벗어나거나 D1 복구가 부적합하면 마지막 서명 Excel 대장을 빈 환경에 재적재합니다.
-
-| 결정 | 근거 | 승인·일자 |
-|---|---|---|
-| `workers.dev` 운영 주소 유지, Cloudflare Access 미적용 | 별도 도메인·Access 운영 복잡도를 현재 범위에서 수용하고 앱 로그인을 경계로 사용 | 문서대장 업무 소유자 및 production Environment 승인자, 2026-07-25 (PR 승인 기록) |
-| 비밀번호 최소 6자 유지 | 기존 업무 정책과 호환성을 유지하되 실패 제한·PBKDF2 100,000회·session epoch를 보완 통제로 사용 | 동일, 2026-07-25 |
-| D1 Time Travel 7일 + 서명 Excel 장기 복구 | 무료 운영 범위에서 단기 시점 복구와 공식 원본 기반 장기 복구를 분리 | 동일, 2026-07-25 |
-| 사용자 일괄 등록 시 공용 초기 비밀번호 사용 | 최초 배포 시점의 전달 비용을 줄이고 최초 로그인 강제 변경으로 보완. 미사용 계정 점검을 함께 운영 | 동일, 2026-07-26 |
-
-운영 URL이 인터넷에서 접근 가능하고 최소 6자 비밀번호를 허용한다는 잔여 위험은 의식적으로 수용합니다.
-`exceededCpu`, 로그인 자동 시도 또는 한도 접근이 확인되면 다음 break-glass 순서로 전환합니다.
-
-1. Cloudflare Dashboard에서 운영 Worker에 Access를 즉시 적용한다.
-2. release smoke 요청에 승인된 service token 헤더를 추가해 배포 검증을 복구한다.
-3. 검증된 커스텀 도메인으로 운영 주소를 전환하고 `workers.dev` 직접 접근을 차단한다.
-
-상세 운영과 복구 절차는 [OPERATIONS](./docs/OPERATIONS.md)와
-[BACKUP_RESTORE](./docs/BACKUP_RESTORE.md)를 따릅니다.
-
-- 운영 서비스: [한림 문서고](https://hanlim-archive.skarhkdgus7.workers.dev)
+- 런타임: Cloudflare Workers + 단일 Core D1
+- 개발: Node.js 24, JavaScript ESM
 - 기본 브랜치: `main`
-- 런타임: Cloudflare Workers + D1 + 정적 Assets
-- 개발 환경: Node.js 24, 순수 JavaScript ESM
-- 배포 방식: GitHub Actions + `production` Environment 승인
+- 배포: GitHub Actions + `production` Environment 승인
+- 검색: Core D1 내부 FTS projection + dirty queue
+- 용량 정책: 11,000건 경고, 12,000건 하드 상한
 
-공개 회원가입은 제공하지 않습니다. 승인된 계정만 로그인할 수 있으며 초기 비밀번호 또는 관리자가 초기화한
-임시 비밀번호로 로그인한 사용자는 새 비밀번호를 설정하기 전까지 업무 화면에 접근할 수 없습니다.
-비밀번호는 사내 정책에 따라 최소 6자이며, 새로 저장하는 PBKDF2-SHA256 hash는 Cloudflare Workers Web Crypto 상한인 100,000회 반복을 사용합니다.
-기존 100,000회 hash는 정상 로그인 시 자동으로 현재 형식으로 승격됩니다.
+## 주요 업무
 
-## 주요 업무 흐름
+### 검색·위치 확인
 
-### 문서 검색과 위치 확인
+문서명, 문서번호, 개정번호, 대분류와 태그로 현재 문서를 검색하고 구역·랙·면·열·선반 위치를 확인합니다. 내부 식별자인 `storage_code`/`ARC-*`는 사용자 검색 결과와 내보내기 파일에 노출하지 않습니다.
 
-- 문서명, 문서번호, 개정번호, 대분류와 태그를 기준으로 현재 문서를 검색합니다.
-- 검색 결과에서 구역, 랙, 면, 열, 선반의 실제 보관 위치를 확인합니다.
-- 문서고 도면과 랙의 7열 × 6선반 시각화를 이용해 보관 위치를 확인합니다.
-- 내부 식별자인 `storage_code`와 `ARC-*` 값은 검색 결과나 내보내기 파일에 노출하지 않습니다.
-- 랙 번호는 구역별로 독립 운영합니다. 예를 들어 1구역 1번 랙과 2구역 1번 랙을 함께 사용할 수 있습니다.
+### 문서 관리
 
-### 문서 등록과 개별 관리
+권한에 따라 신규 등록, 일반정보 수정, 위치 이동, 개정, 폐기와 복구를 수행합니다. 문서 수정·이동은 `updated_at`과 단조 증가 `row_version`을 함께 검사하고, 다중 변경은 감사·이력과 상태 변경을 하나의 D1 batch에 둡니다.
 
-- 신규 문서를 등록하고 문서정보, 보존정보, 대분류, 태그와 위치를 관리합니다.
-- 정보 수정, 위치 이동, 문서 개정, 폐기와 복구를 각각의 권한에 따라 수행합니다.
-- 문서 수정과 이동은 `updated_at`과 단조 증가하는 `row_version`을 함께 검사해 동시 수정 충돌을 막습니다.
-- 문서 개정은 이전본과 현재본의 연결 이력을 보존하고 이전본을 정책에 따라 처리합니다.
-- 개별 변경은 즉시 현재 문서대장에 반영되며 다음 엑셀 추출에도 포함됩니다.
+### Excel 전체 동기화
 
-### 엑셀 문서대장 전체 동기화
+현재 대장을 XLSX로 추출하고 편집한 한 파일을 완전한 현재 대장 snapshot으로 검증합니다. 신규·변경·위치·폐기·복구·유지·제외 diff를 확인한 뒤 명시적으로 반영하며, 파일에서 빠진 문서는 hard delete하지 않고 `excluded`로 보존합니다.
 
-- 현재 대장을 XLSX로 추출하고, 편집한 한 파일을 문서고 전체의 새로운 현재 대장으로 검토합니다.
-- 동기화 시작 전에 10~500자의 사유를 필수로 입력하며 snapshot과 감사로그에 저장합니다.
-- 신규, 일반정보 변경, 위치 변경, 폐기, 폐기 해제, 유지와 제외 항목을 반영 전에 구분해 보여줍니다.
-- 최종 반영 시 저장된 동기화 사유와 최신 대장 버전을 다시 확인합니다.
-- 파일에서 빠진 문서는 삭제하지 않고 `excluded` 상태로 전환해 기존 감사·이동·세트 이력을 보존합니다.
-- 최종 반영은 전용 권한과 diff에 필요한 추가 권한을 모두 검사하며 D1의 한 batch에서 확정됩니다.
+### 정기폐기
 
-자세한 운영 순서는 [배포 및 운영 절차](./docs/OPERATIONS.md#엑셀-전체-동기화-운영)를 따릅니다.
+폐기 예정 연도·대분류 등의 조건으로 대상을 동결해 하나의 캠페인으로 관리합니다. 서버는 재개 가능한 chunk로 처리하고, 동결 후 변경된 문서는 자동 폐기하지 않습니다. 캠페인 집계, 결과 CSV와 문서별 감사이력을 함께 보존합니다.
 
-### 정기폐기 캠페인
+### 계정·권한·감사
 
-- 폐기 예정 연도와 대분류 조건으로 현재 보관 중인 전체 대상을 조회합니다.
-- 화면에 표시된 검토 표본과 별개로 필터 결과 전체를 하나의 캠페인 대상으로 선택할 수 있습니다.
-- 폐기 사유와 외부 승인 참조를 기록하고, 정확한 총 문서 수를 최종 확인한 뒤 실행합니다.
-- 서버는 안전성과 재개 가능성을 위해 25건씩 처리하지만 운영 화면에서는 하나의 캠페인 이력으로 추적합니다.
-- 네트워크 중단 후 같은 캠페인에서 재개할 수 있으며, 동결 후 변경된 문서는 자동 폐기하지 않습니다.
-- 문서별 불변 감사이력과 캠페인 집계·결과 CSV를 함께 보존합니다.
+공개 회원가입은 제공하지 않습니다. 일반 User는 `can_*` 권한을 매 요청 DB에서 재검증하며 Admin은 전체 권한을 가집니다. 로그아웃·비밀번호 변경·사용중지·재활성화는 `session_epoch`를 회전시켜 기존 세션을 폐기합니다.
 
-자세한 절차는 [폐기 캠페인 운영 절차](./docs/DISPOSAL_WORKFLOW.md)를 확인합니다.
-
-### 사용자, 권한과 감사
-
-- Admin과 일반 User를 구분하고 일반 User는 `can_*` 권한을 매 요청 DB에서 다시 확인합니다.
-- 사용자 승인, 사용중지, 재활성화, 권한 변경과 비밀번호 초기화는 감사로그에 남습니다.
-- 로그아웃, 비밀번호 변경, 사용중지와 재활성화 시 `session_epoch`를 증가시켜 복사된 세션도 무효화합니다.
-- 반복된 로그인 실패는 계정·IP 조합별 제한으로 차단합니다.
-- 비밀번호 또는 hash는 감사로그, 저장소, Actions 로그에 기록하지 않습니다.
-- 기준정보, 문서, 이동, 세트, 폐기와 대량 작업의 이력을 추적할 수 있습니다.
-
-## 권한 개요
-
-Admin은 모든 권한을 가지며 일반 User는 필요한 업무 권한만 부여받습니다.
-
-| 권한 | 대표 업무 |
-|---|---|
-| 기본 인증 사용자 | 검색, 문서 조회, 도면과 세트 조회 |
-| `can_manage_documents` | 문서 등록·수정, 엑셀 대장 추출·검증, 데이터 품질 관리 |
-| `can_move_documents` | 위치 이동과 이동 이력 |
-| `can_manage_disposals` | 정기폐기 캠페인과 개별 폐기 |
-| `can_manage_sets` | 문서 세트 생성·수정·잠금 |
-| `can_manage_masters` | 랙, 대분류와 태그 관리 |
-| `can_manage_users` | 계정 상태와 권한 관리 |
-| `can_view_audit` | 전역 감사와 검색 리포트 |
-| `can_apply_document_snapshots` | 엑셀 전체 대장의 최종 반영 |
-| Admin | 비밀번호 초기화, 폐기 해제와 전체 시스템 관리 |
-
-정확한 route별 권한은 [권한 운영 가이드](./docs/PERMISSIONS.md)와 자동 생성되는
-[route catalog](./docs/generated/ROUTE_PERMISSION_CATALOG.md)를 사용합니다.
+정확한 권한과 route 정책은 [권한 운영 가이드](./docs/PERMISSIONS.md)와 [자동 생성 route catalog](./docs/generated/ROUTE_PERMISSION_CATALOG.md)를 사용합니다.
 
 ## 아키텍처
 
-요청은 공개 route에서 handler, domain/application, D1 infrastructure와 view 방향으로만 흐릅니다.
-
 ```text
 src/index.js
-  └─ src/handlers/
-       ├─ src/domains/<name>/
+  └─ handlers/
+       ├─ domains/<name>/
        │    ├─ domain/
-       │    ├─ application/
+       │    ├─ application/   # 실제 orchestration/policy가 있을 때만
        │    ├─ infrastructure/
        │    └─ web/
-       ├─ src/readModels/
-       └─ src/views/
-src/platform/
-src/shared/
+       ├─ readModels/
+       └─ views/
+platform/
+shared/
 ```
 
-주요 설계 원칙은 다음과 같습니다.
+핵심 원칙:
 
-- 다른 도메인의 내부 구현 대신 해당 도메인의 공개 `index.js`만 사용합니다.
-- 여러 도메인의 조회 조합은 `src/readModels/`에서 수행합니다.
-- 모든 다중 쓰기는 감사·이력과 상태 변경을 같은 D1 batch에 둡니다.
-- CSP nonce, CSRF token, trusted Origin과 서버 권한 검사를 모든 쓰기 경로에서 유지합니다.
-- 검색 로직은 서버와 브라우저가 같은 `src/searchCore.js`를 사용합니다.
-- 이미 공개된 migration은 수정하거나 삭제하지 않고 다음 번호의 migration만 추가합니다.
+- route 해석의 단일 출처는 `src/app/routeRegistry.js`입니다.
+- 업무 규칙과 SQL은 각 domain이 소유하며 과거 `src/data` 계층을 사용하지 않습니다.
+- `application/`은 실제 use-case orchestration이나 policy가 있을 때만 둡니다. 단순 forwarding wrapper는 만들지 않습니다.
+- 검색 projection은 권위 데이터가 아니라 Core D1에서 재생성 가능한 파생 데이터입니다.
+- migration은 append-only이며 이미 공개된 SQL과 checksum을 수정하거나 삭제하지 않습니다.
+- CSP nonce, CSRF, trusted Origin, 서버 권한 검사와 D1 원자성/OCC 계약을 유지합니다.
 
-상세한 의존성 방향과 데이터 무결성 계약은 [아키텍처 및 유지보수 가이드](./docs/ARCHITECTURE.md)를
-먼저 읽습니다.
+세부 불변식과 소유권은 [ARCHITECTURE.md](./docs/ARCHITECTURE.md)를 따릅니다.
 
 ## 저장소 구조
 
 | 위치 | 역할 |
 |---|---|
-| `cloudflare-app/src/` | Worker runtime, domain, handler, view와 platform 코드 |
-| `cloudflare-app/public/` | 배포되는 정적 CSS·JavaScript, 로고와 문서고 도면 |
-| `cloudflare-app/migrations/` | append-only D1 schema와 released baseline |
-| `cloudflare-app/scripts/` | 검증, browser asset build, 배포·migration guard |
-| `cloudflare-app/tests/` | Node.js 계약·회귀·통합 테스트 |
-| `.github/workflows/ci.yml` | PR 및 `main` 검증 |
-| `.github/workflows/deploy.yml` | 승인된 D1 복구 지점·migration·Worker 배포·smoke·rollback |
-| `docs/` | 아키텍처, 디자인, 권한, 운영과 복구 절차 |
+| `cloudflare-app/src/` | Worker runtime, domain, handler, view, platform 코드 |
+| `cloudflare-app/public/` | 배포 정적 자산 |
+| `cloudflare-app/migrations/` | append-only D1 migration, manifest, released baseline |
+| `cloudflare-app/scripts/` | 검증·배포·migration·복구 guard |
+| `cloudflare-app/tests/` | 현재 계약 기준 회귀·통합 테스트 |
+| `.github/workflows/` | CI, 운영 배포, 사용자/Admin provisioning |
+| `docs/` | 현재 아키텍처·운영·복구·권한·디자인·향후 작업 |
 
-`public/assets/app.css`, `app.js`, `search-core.js`, `exceljs.min.js`, `jszip.min.js`는 배포 자산입니다.
-일부는 소스와 의존성에서 생성되며 `npm run check:browser`가 byte drift를 차단하므로 임의로 삭제하거나 직접
-수정하지 않습니다.
+`public/assets/app.css`, `app.js`, `search-core.js`, `exceljs.min.js`, `jszip.min.js`는 배포 자산입니다. 생성 자산은 `npm run check:browser`가 source/dependency와의 drift를 검사하므로 직접 수정하거나 임의 삭제하지 않습니다.
 
 ## 로컬 개발
 
-### 준비 사항
-
-- Node.js `>=24 <25`
-- npm lockfile을 사용하는 npm
-- 로컬 D1을 실행할 수 있는 Wrangler
-
-Windows PowerShell 기준:
+필수 환경은 Node.js `>=24 <25`, npm lockfile, Wrangler입니다.
 
 ```powershell
 cd .\cloudflare-app
@@ -176,111 +90,53 @@ npm run db:migrate:local
 npm run dev
 ```
 
-Bash에서는 `Copy-Item` 대신 다음 명령을 사용합니다.
+`.dev.vars`의 `SESSION_SECRET`, `AUTH_HMAC_SECRET`은 서로 다른 최소 32자의 무작위 값으로 설정하고 commit하지 않습니다.
 
-```bash
-cp .dev.vars.example .dev.vars
-```
-
-`.dev.vars`의 `SESSION_SECRET`, `AUTH_HMAC_SECRET`을 서로 다른 최소 32자의 무작위 값으로
-교체합니다. `.dev.vars`와 실제 운영 secret은 commit하지 않습니다. 로컬 기본 주소는 Wrangler가
-출력하는 URL을 사용합니다.
-
-## 주요 명령어
+## 검증
 
 명령은 `cloudflare-app/`에서 실행합니다.
 
 | 명령 | 용도 |
 |---|---|
-| `npm run dev` | 로컬 Worker와 D1 실행 |
-| `npm run db:migrate:local` | 로컬 D1에 전체 migration 순차 적용 |
-| `npm run check` | Worker와 script JavaScript 문법 검사 |
-| `npm run typecheck` | `jsconfig.check.json` 기반 정적 타입 검사 |
-| `npm run lint` | ESLint, warning 0 기준 검사 |
-| `npm run format:check` | 저장소 형식 규칙 검사 |
-| `npm run check:migrations` | migration 순서, checksum, schema와 FK 검사 |
-| `npm run check:routes` | route/permission catalog drift 검사 |
-| `npm run build:browser` | 브라우저 정적 자산 생성 |
-| `npm run check:browser` | 생성된 브라우저 자산과 소스 일치 검사 |
-| `npm test` | 전체 Node.js 테스트 실행 |
-| `npm run verify` | type, lint, format, migration, route, asset와 테스트 전체 검증 |
+| `npm run check` | JavaScript 문법 검사 |
+| `npm run typecheck` | 정적 타입 검사 |
+| `npm run lint` | ESLint |
+| `npm run format:check` | 형식 검사 |
+| `npm run check:migrations` | migration·checksum·schema·FK 검사 |
+| `npm run check:routes` | route catalog drift 검사 |
+| `npm run check:browser` | 생성 browser asset drift 검사 |
+| `npm test` | 전체 Node.js 테스트 |
+| `npm run verify` | 위 핵심 검증 통합 실행 |
 | `npm run audit:dependencies` | high 이상 dependency 취약점 검사 |
-| `npm run release:evidence` | migration·schema release evidence 생성 |
-| `npm run deploy:dry` | 운영 대상과 bundle을 검증하되 실제 배포하지 않음 |
+| `npm run deploy:dry` | 실제 배포 없이 production bundle/target 검증 |
 
 일반 변경의 최종 확인:
 
 ```powershell
-cd .\cloudflare-app
 npm run verify
 npm run audit:dependencies
 ```
 
-## 변경과 PR 규칙
+## 변경 규칙
 
-1. 최신 `main`에서 `agent/<짧은-설명>` 기능 브랜치를 만듭니다.
-2. 커밋과 PR 제목은 `feat:`, `fix:`, `docs:`, `test:`, `chore:` 중 변경 성격에 맞는 접두사를 사용합니다.
-3. migration은 항상 append-only이며 기존 SQL, checksum과 released baseline 이력을 임의로 바꾸지 않습니다.
-4. 변경한 소스에 맞춰 테스트, 생성 자산과 운영 문서를 함께 갱신합니다.
-5. PR에서 `required / verify`가 통과한 뒤 squash merge합니다.
-6. 병합된 작업 브랜치는 삭제하고 PR은 변경·승인·배포 근거로 보존합니다.
+1. `main`에 직접 push하지 않고 기능 브랜치와 PR을 사용합니다.
+2. 과거 migration SQL·checksum·released baseline 이력을 임의 수정하지 않습니다.
+3. 현재 계약이 바뀌면 source, 테스트, 생성 자산과 권위 문서를 함께 갱신합니다.
+4. 완료된 구현 과정과 과거 의사결정의 상세 이력은 중복 문서로 남기지 않고 Git commit·PR·migration·release evidence를 사용합니다.
+5. 로컬에서 원격 migration 또는 production deploy를 실행하지 않습니다.
 
-PR 작성 시 [pull request template](./.github/pull_request_template.md)의 영향, 보안, migration, 검증과
-rollback 항목을 작성합니다. `main`에 직접 push하거나 force push하지 않습니다.
-
-## CI와 운영 배포
-
-PR과 `main`의 변경은 CI에서 다음 항목을 검사합니다.
-
-- released migration 기준선과 과거 migration 불변성
-- 문법, 타입, lint, format, route와 browser asset
-- 전체 테스트와 dependency audit
-- Worker production dry-run과 release evidence
-
-`main`에 병합된 `cloudflare-app/**` 또는 운영 배포 workflow 변경은 `production` Environment 승인을 거쳐
-다음 순서로 처리됩니다.
-
-1. release source 재검증과 migration evidence 생성
-2. 현재 100% traffic Worker와 독립 Admin 확인
-3. Core D1 Time Travel 복구 지점 기록
-4. 현재 운영 로그인·검색 smoke
-5. append-only migration 적용
-6. Worker를 production에 직접 배포
-7. 운영 URL의 readiness·asset·로그인·검색·사용자 관리 smoke
-8. 실패 시 기록된 이전 Worker version으로 rollback
-9. 복구 지점·배포·smoke·rollback evidence 보존
-
-README와 `docs/**`처럼 실행 코드에 영향을 주지 않는 변경만 병합하면 운영 배포는 실행하지 않습니다.
-로컬에서 원격 migration 또는 production 배포를 실행하지 않습니다.
-
-## 복구와 장애 대응
-
-- 운영 migration 전에 같은 실행에서 생성한 Core D1 Time Travel bookmark가 반드시 존재해야 합니다.
-- Worker 오류이면서 migration이 호환되면 기록된 정확한 이전 Worker version으로 rollback합니다.
-- 데이터 손상이나 비호환 schema 문제는 Worker rollback만으로 완료하지 않고 복구 절차를 시작합니다.
-- 복구 bookmark, release SHA와 Worker version을 운영 증거로 보존합니다.
-
-상세 절차:
-
-- [배포 및 운영 절차](./docs/OPERATIONS.md)
-- [D1 복구 절차](./docs/BACKUP_RESTORE.md)
-
-## 문서
+## 운영·복구 문서
 
 - [아키텍처 및 유지보수 가이드](./docs/ARCHITECTURE.md)
-- [UI 디자인 규칙](./docs/DESIGN.md)
 - [배포 및 운영 절차](./docs/OPERATIONS.md)
-- [D1 백업·복구 절차](./docs/BACKUP_RESTORE.md)
+- [D1 및 공식 Excel 대장 복구 절차](./docs/BACKUP_RESTORE.md)
 - [권한 운영 가이드](./docs/PERMISSIONS.md)
-- [폐기 캠페인 운영 절차](./docs/DISPOSAL_WORKFLOW.md)
+- [UI 디자인 규칙](./docs/DESIGN.md)
 - [개선 백로그](./docs/ROADMAP.md)
 - [자동 생성 route/permission catalog](./docs/generated/ROUTE_PERMISSION_CATALOG.md)
 
-## 보안 주의사항
+운영 위험 수용, 배포 순서, 초기 10,000건 전환, 정기폐기, 사용자 등록과 월별 무료티어 점검은 `OPERATIONS.md`를 단일 출처로 사용합니다. 데이터 손상·Time Travel·서명 Excel 기반 재적재는 `BACKUP_RESTORE.md`를 따릅니다.
 
-- 기본·임시 비밀번호, 실제 계정, token, cookie, D1 export와 `.dev.vars`를 저장소·issue·PR에 기록하지 않습니다.
-- 비밀번호 초기화 값은 서버에서만 hash하고 감사로그에는 작업자·대상·세션 상태만 기록합니다.
-- 운영 계정은 최소권한으로 관리하고 승인 사용자·권한을 정기 검토합니다.
-- `security_review_required` 계정은 일반 승인으로 복구하지 않고 별도의 보안 검토·credential 재발급 절차를
-  사용합니다.
-- 저장소가 공개되어 있어도 운영 데이터와 자격증명은 공개 대상이 아닙니다.
+## 보안
+
+기본·임시 비밀번호, 실제 사용자 정보, API token, cookie, D1 export와 `.dev.vars`를 저장소·issue·PR에 기록하지 않습니다. `security_review_required` 계정은 일반 승인으로 복구하지 않고 별도 보안 검토와 credential 재발급 절차를 사용합니다.

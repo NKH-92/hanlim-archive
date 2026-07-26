@@ -2,7 +2,7 @@ import { FREE_TIER_BUDGET } from "../../../config.js";
 import { readBoolean } from "../../../shared/coercion.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
-import { hasChanged } from "../../../data/sqlShared.js";
+import { hasChanged } from "../../../platform/d1/result.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 import { d1ContainsPattern } from "../../../platform/d1/likePattern.js";
 import { createDisposalPlan } from "./plans.js";

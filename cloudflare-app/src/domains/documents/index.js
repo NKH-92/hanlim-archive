@@ -7,3 +7,4 @@ export { documentRowToPublicReadModel, documentToFormValues } from "./web/presen
 export { getDocumentMovementPage, getDocumentMovements } from "./infrastructure/movement.js";
 export { validateDocumentRevisionInput } from "./infrastructure/revision.js";
 export { getDocumentCapacity, isDocumentCapacityError } from "./infrastructure/capacity.js";
+export { buildDocumentFilterWhere, parseDocumentFilters } from "./infrastructure/filters.js";

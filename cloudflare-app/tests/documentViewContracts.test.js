@@ -61,7 +61,7 @@ test("대표 문서 목록·폐기·폼·상세는 응답·보안·업무 계약
       years: [2030, 2031],
       filters: { categoryId: 1, rackId: 3, disposalDueYear: 2031 },
       capped: true,
-      legacyLimit: 10,
+      directBulkDisposeLimit: 10,
       feedback: { type: "success", message: "1건 처리됨" }
     }),
     form: documentViews.documentFormPage({

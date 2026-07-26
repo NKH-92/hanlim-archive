@@ -45,6 +45,25 @@ test("floor plan geometry와 slot presenter는 운영 좌표·label을 유지한
   assert.equal(presentSlotOption({ zone_number: 1, rack_number: 2, column_number: 7, shelf_number: 6, is_single_sided: 1 }).label, "1구역 / 2번랙 / 7열 / 6선반 / 단면");
 });
 
+test("floor plan layout은 영역 범위를 보정하고 문서가 있는 rack만 구역별로 자동 배치한다", () => {
+  const layout = buildFloorPlanLayout([
+    { id: 1, code: "1-01", zone_number: 1, rack_number: 1, active_document_count: 3, is_single_sided: 0 },
+    { id: 2, code: "1-02", zone_number: 1, rack_number: 2, active_document_count: 1, is_single_sided: 1 },
+    { id: 3, code: "3-01", zone_number: 3, rack_number: 1, active_document_count: 2, is_single_sided: 0 }
+  ], [
+    { region_key: "zone-1", label: "1구역", description: "", top_pct: -5, left_pct: 12, width_pct: 38, height_pct: 40, default_rack_count: 4 },
+    { region_key: "zone-2", label: "2구역", description: "", top_pct: 55, left_pct: 5, width_pct: 40, height_pct: 38, default_rack_count: 10 },
+    { region_key: "zone-3", label: "3구역", description: "", top_pct: 55, left_pct: 52, width_pct: 160, height_pct: 38, default_rack_count: 2 }
+  ]);
+
+  assert.deepEqual(layout.map((region) => region.key), ["zone-1", "zone-3"]);
+  assert.equal(layout[0].topPct, 0);
+  assert.equal(layout[1].widthPct, 100);
+  assert.deepEqual(layout[0].racks.map((rack) => rack.code), ["1-01", "1-02"]);
+  assert.ok(layout[0].racks[0].leftPct < layout[0].racks[1].leftPct);
+  assert.equal(layout[1].racks[0].documentCount, 2);
+});
+
 test("rack resize/create/config plan은 고정 statement 순서와 무료티어 예산을 표현한다", () => {
   const statements = Array.from({ length: 4 }, (_, index) => ({ index }));
   const resize = createRackResizePlan(statements, "rack:1:7x6");

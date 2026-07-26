@@ -9,11 +9,11 @@ import {
   normalizeDisposalCriteria,
   processDisposalBatch,
   validateDisposalBatchDraft
-} from "../src/data/disposalBatchData.js";
+} from "../src/domains/disposal/index.js";
 import {
   createDocumentImportJob,
   processDocumentImportJob
-} from "../src/data/importJobData.js";
+} from "../src/domains/imports/index.js";
 import { disposalBatchDetailPage } from "../src/views/disposalBatchViews.js";
 import { documentImportJobDetailPage } from "../src/views/importJobViews.js";
 

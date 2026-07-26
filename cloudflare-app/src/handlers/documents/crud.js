@@ -265,6 +265,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo, effe
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
+    await syncSearchDocumentBestEffort(effects, id, "documents.update.search-index-immediate");
 
     return redirect(`/documents/${id}?toast=updated`);
   }
@@ -280,6 +281,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo, effe
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
+    await syncSearchDocumentBestEffort(effects, id, "documents.dispose.search-index-immediate");
     return redirect(`/documents/${id}?toast=disposed`);
   }
 
@@ -291,10 +293,21 @@ export async function handleDocumentRoute(request, env, session, routeInfo, effe
     if (!result.ok) {
       return errorPage(result.message, session, 400);
     }
+    await syncSearchDocumentBestEffort(effects, id, "documents.restore.search-index-immediate");
     return redirect(`/documents/${id}?toast=restored`);
   }
 
   return notFoundPage(session);
+}
+
+async function syncSearchDocumentBestEffort(effects, documentId, event) {
+  if (typeof effects.syncSearchDocument !== "function") return;
+  try {
+    await effects.syncSearchDocument(documentId);
+  } catch (error) {
+    // Core mutation은 이미 확정됐다. dirty 행을 남겨 Cron 복구가 가능하도록 검색 실패만 기록한다.
+    logError(event, error, { documentId });
+  }
 }
 
 function duplicateValidation(duplicate) {

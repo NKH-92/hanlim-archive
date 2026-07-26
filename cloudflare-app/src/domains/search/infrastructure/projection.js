@@ -13,8 +13,8 @@ import {
   DOCUMENT_LOCATION_COLUMNS,
   DOCUMENT_TAG_CONCAT,
   DOCUMENT_TAG_JOINS
-} from "../../../data/sqlShared.js";
-import { buildSearchIndexTerms, normalizeSearchText } from "../../../data/searchIndexTerms.js";
+} from "./sql.js";
+import { buildSearchIndexTerms, normalizeSearchText } from "../domain/indexTerms.js";
 import { BatchPlan } from "../../../platform/d1/batchPlan.js";
 import {
   exactChangeCountAssertionSql,

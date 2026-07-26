@@ -19,5 +19,9 @@ cloudflare-app/release-backup/
 cloudflare-app/backup-artifact/
 cloudflare-app/reports/
 hl-archive-github-deploy.txt
+.vscode/
+nul
+**/nul
+s2.txt
 .DS_Store
 Thumbs.db

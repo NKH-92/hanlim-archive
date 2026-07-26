@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import * as documents from "../src/domains/documents/index.js";
-import * as documentRulesAdapter from "../src/documentRules.js";
 import { prepareDocumentImportRows } from "../src/documentCsv.js";
 
 test("문서 폼 파서는 입력 정규화와 낙관적 잠금 값을 한 경계에서 처리한다", () => {
@@ -57,7 +56,7 @@ test("문서 조회와 폼은 도메인 공개 API에서 제공된다", () => {
 });
 
 test("문서 infrastructure에는 FormData 처리 코드가 없다", async () => {
-  for (const file of ["queries.js", "referenceValidation.js", "rows.js"]) {
+  for (const file of ["queries.js", "rows.js"]) {
     const source = await readFile(new URL(`../src/domains/documents/infrastructure/${file}`, import.meta.url), "utf8");
     assert.doesNotMatch(source, /\bFormData\b|\.formData\s*\(/, file);
   }
@@ -65,7 +64,33 @@ test("문서 infrastructure에는 FormData 처리 코드가 없다", async () =>
 
 test("CSV 가져오기와 UI는 동일한 문서 필드 검증 함수를 사용한다", () => {
   assert.equal(typeof documents.validateDocumentInput, "function");
-  assert.equal(documentRulesAdapter.validateDocumentTextFields, documents.validateDocumentTextFields);
-  assert.equal(documentRulesAdapter.validateDocumentRecordFields, documents.validateDocumentRecordFields);
+  assert.equal(typeof documents.validateDocumentTextFields, "function");
+  assert.equal(typeof documents.validateDocumentRecordFields, "function");
   assert.equal(typeof prepareDocumentImportRows, "function");
+});
+
+test("등록 화면 검증은 누락된 필드와 잘못된 형식을 한 번에 반환한다", () => {
+  const errors = documents.collectDocumentFieldErrors({
+    documentNumber: "",
+    revisionNumber: "",
+    documentName: "",
+    revisionDate: "2026-02-30",
+    disposalDueYear: "20.5",
+    categoryId: 0,
+    rackSlotId: 0,
+    rackFace: ""
+  });
+
+  assert.deepEqual(Object.keys(errors), [
+    "documentNumber",
+    "revisionNumber",
+    "documentName",
+    "revisionDate",
+    "disposalDueYear",
+    "categoryId",
+    "rackSlotId",
+    "rackFace"
+  ]);
+  assert.match(errors.revisionDate, /유효한 날짜/);
+  assert.match(errors.disposalDueYear, /정수/);
 });

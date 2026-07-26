@@ -1,1 +1,1 @@
-export { documentToViewerItem, buildViewerFacets } from "../../../data/searchData.js";
+export { documentToViewerItem, buildViewerFacets } from "../infrastructure/repository.js";

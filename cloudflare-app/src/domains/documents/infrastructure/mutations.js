@@ -1,13 +1,13 @@
 import {
   AUDIT_LOG_INSERT_WITH_ACTOR,
   DOCUMENT_BASE_JOINS,
-  DOCUMENT_LOCATION_COLUMNS,
-  hasChanged,
-  optimisticLockClause
-} from "../../../data/sqlShared.js";
+  DOCUMENT_LOCATION_COLUMNS
+} from "./sql.js";
+import { hasChanged } from "../../../platform/d1/result.js";
+import { optimisticLockClause } from "../../../platform/d1/optimisticLock.js";
 import { FREE_TIER_BUDGET } from "../../../config.js";
 import { clean } from "../../../shared/text/normalize.js";
-import { getDocument, getDocumentTags, getDisposalLogs } from "../../../data/documentsData.js";
+import { getDocument, getDocumentTags, getDisposalLogs } from "./queries.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
 import {
   createDocumentBulkDisposePlan,
@@ -466,12 +466,12 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
   if (!uniqueIds.length) {
     return { ok: true, disposed: 0, skipped: 0, failures: [] };
   }
-  if (uniqueIds.length > FREE_TIER_BUDGET.legacyBulkDisposeMaxItems) {
+  if (uniqueIds.length > FREE_TIER_BUDGET.directBulkDisposeMaxItems) {
     return {
       ok: false,
       disposed: 0,
       skipped: 0,
-      failures: [`소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.legacyBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`]
+      failures: [`소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.directBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`]
     };
   }
 

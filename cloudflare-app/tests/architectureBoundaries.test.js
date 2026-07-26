@@ -20,17 +20,42 @@ test("목표 modular-monolith 계층은 역방향·도메인 내부 결합을 �
   assert.deepEqual(violations, []);
 });
 
-test("production source는 전역 legacy façade를 import하지 않는다", async () => {
-  const legacyImporters = [];
+test("snapshot repository는 조립점만 남기고 DB 작업을 책임 파일에 둔다", async () => {
+  const source = await readFile(path.join(SOURCE_ROOT, "domains/snapshots/infrastructure/repository.js"), "utf8");
+  assert.doesNotMatch(source, /\benv\.DB\b|executeMutationBatch|createBatchPlan/);
+  for (const name of ["queries", "lifecycle", "staging", "prepare", "apply", "export"]) {
+    const moduleSource = await readFile(path.join(SOURCE_ROOT, `domains/snapshots/infrastructure/${name}.js`), "utf8");
+    assert.ok(moduleSource.length > 0, name);
+  }
+});
+
+test("production source는 retired compatibility 경로를 import하지 않는다", async () => {
+  const violations = [];
   for (const file of await javascriptFiles(SOURCE_ROOT)) {
     const importer = slash(path.relative(SOURCE_ROOT, file));
-    if (["db.js", "html.js", "utils.js"].includes(importer)) continue;
     const source = await readFile(file, "utf8");
-    const importsLegacy = moduleSpecifiers(source).some((specifier) => /(?:^|\/)(?:db|html|utils)\.js$/.test(specifier));
-    if (importsLegacy) legacyImporters.push(importer);
+    for (const specifier of moduleSpecifiers(source)) {
+      if (!specifier.startsWith(".")) continue;
+      const target = slash(path.relative(SOURCE_ROOT, path.resolve(path.dirname(file), specifier)));
+      if (retiredCompatibilityTarget(target)) violations.push(`${importer} -> ${target}`);
+    }
   }
-  assert.deepEqual(legacyImporters, []);
+  assert.deepEqual(violations, []);
 });
+
+function retiredCompatibilityTarget(target) {
+  if (["db.js", "html.js", "utils.js", "routes.js", "documentRules.js"].includes(target)) return true;
+  if (["handlers/documentHandlers.js", "app/requestContext.js"].includes(target)) return true;
+  if ([
+    "domains/documents/application/commandService.js",
+    "domains/documents/application/queries.js",
+    "domains/documents/application/validation.js",
+    "domains/documents/infrastructure/referenceValidation.js",
+    "domains/sets/application/service.js"
+  ].includes(target)) return true;
+  if (target.startsWith("shared/contracts/")) return true;
+  return target.startsWith("data/");
+}
 
 function targetArchitectureViolation(importer, target) {
   if (importer.startsWith("platform/") && target.startsWith("domains/")) {

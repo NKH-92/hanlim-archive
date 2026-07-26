@@ -10,6 +10,7 @@ import { getSlotOptions } from "../domains/racks/index.js";
 import { movementFormPage, movementsPage } from "../views/movementViews.js";
 import { notFoundPage } from "../views/authViews.js";
 import { redirect } from "../platform/http/responses.js";
+import { logError } from "../platform/observability/logger.js";
 import { clean } from "../shared/text/normalize.js";
 import { requireAnyPermission, requireMoveDocuments } from "./permissionGuards.js";
 import { PERMISSIONS } from "../permissions.js";
@@ -28,7 +29,7 @@ export async function renderDocumentMove(env, session, documentId, error = "", v
   return movementFormPage({ session, document, slots, movements, error, values });
 }
 
-export async function handleDocumentMove(request, env, session, documentId) {
+export async function handleDocumentMove(request, env, session, documentId, effects = {}) {
   const denied = requireMoveDocuments(session);
   if (denied) return denied;
 
@@ -43,6 +44,14 @@ export async function handleDocumentMove(request, env, session, documentId) {
   const result = await moveDocument(env, documentId, values, session);
   if (!result.ok) {
     return renderDocumentMove(env, session, documentId, result.message, values);
+  }
+  if (typeof effects.syncSearchDocument === "function") {
+    try {
+      await effects.syncSearchDocument(documentId);
+    } catch (error) {
+      // 이동은 이미 확정됐다. 검색 dirty 행은 Cron이 재처리하므로 사용자 작업은 성공으로 유지한다.
+      logError("documents.move.search-index-immediate", error, { documentId });
+    }
   }
   return redirect(`/documents/${documentId}?toast=moved`);
 }

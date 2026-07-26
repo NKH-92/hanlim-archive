@@ -1,7 +1,6 @@
-// 인증 이후의 애플리케이션 라우트. dispatcher 호출 순서가 응답 우선순위다.
+// 인증 이후 애플리케이션 라우트. path를 다시 해석하지 않고 routeRegistry 결과로 dispatch한다.
 import { accessDeniedPage, notFoundPage } from "../views/authViews.js";
 import { sessionHasManagementAccess } from "../permissions.js";
-import { matchAdminUserRoute, matchRoleTemplateRoute } from "../routes.js";
 import { redirect } from "../platform/http/responses.js";
 import { resolveAuthenticatedRoute } from "../app/routeRegistry.js";
 import { requireAdmin } from "./guards.js";
@@ -42,126 +41,93 @@ import {
 import { routeWorkflowRequest } from "./workflowRouter.js";
 
 export async function routeAuthenticatedRequest(request, env, session, url, path, effects = {}) {
-  // compatibility dispatcher는 공개 동작을 유지하되 registry에 없는 route는 실행하지 않는다.
-  if (!resolveAuthenticatedRoute(path, request.method)) return notFoundPage(session);
+  const resolved = resolveAuthenticatedRoute(path, request.method);
+  if (!resolved) return notFoundPage(session);
 
-  if (path === "/" && request.method === "GET") {
-    return redirect("/app");
-  }
+  const routeId = resolved.descriptor.id;
+  const params = resolved.params;
 
-  if (path === "/app" && request.method === "GET") {
-    return handleDashboard(request, env, session);
-  }
+  if (routeId === "home.redirect") return redirect("/app");
+  if (routeId === "search.home") return handleDashboard(request, env, session);
+  if (routeId === "floor-plan.read") return handleFloorPlan(env, session);
+  if (routeId === "qa.read") return renderQa(session, env);
+  if (routeId === "search.suggestions") return handleSearchSuggestions(request, env);
+  if (routeId === "search.viewer") return handleViewerSearch(request, env);
+  if (routeId === "search.index") return handleSearchIndex();
+  if (routeId === "search.click") return handleSearchClick(request, env);
 
-  if (path === "/floor-plan" && request.method === "GET") {
-    return handleFloorPlan(env, session);
-  }
+  if (routeId === "session.password.form") return renderPasswordPage(session);
+  if (routeId === "session.password.change") return handleChangePassword(request, env, session);
 
-  if (path === "/qa" && request.method === "GET") {
-    return renderQa(session, env);
-  }
-
-  if (path === "/api/search-suggestions" && request.method === "GET") {
-    return handleSearchSuggestions(request, env);
-  }
-
-  if (path === "/api/viewer/search" && request.method === "GET") {
-    return handleViewerSearch(request, env);
-  }
-
-  if (path === "/api/search-index" && request.method === "GET") {
-    return handleSearchIndex();
-  }
-
-  if (path === "/api/search-click" && request.method === "POST") {
-    return handleSearchClick(request, env);
-  }
-
-  if (path === "/account/password" && request.method === "GET") {
-    return renderPasswordPage(session);
-  }
-
-  if (path === "/account/password" && request.method === "POST") {
-    return handleChangePassword(request, env, session);
-  }
-
-  if (path === "/admin" && request.method === "GET") {
+  if (routeId === "admin.dashboard") {
     return sessionHasManagementAccess(session) ? handleAdminDashboard(env, session) : accessDeniedPage(session);
   }
-
-  if (path === "/admin/settings" && request.method === "GET") {
-    return requireManageUsers(session) ?? handleAdminSettings(env, session);
-  }
-
-  if (path === "/admin/role-templates" && request.method === "GET") {
+  if (routeId === "admin.settings") return requireManageUsers(session) ?? handleAdminSettings(env, session);
+  if (routeId === "admin.role-templates") {
     return requireManageUsers(session) ?? requireAdmin(session) ?? renderRoleTemplates(env, session);
   }
-
-  const roleTemplateRoute = matchRoleTemplateRoute(path);
-  if (roleTemplateRoute) {
-    const denied = requireManageUsers(session) ?? requireAdmin(session);
-    if (denied) return denied;
-    if (request.method === "GET" && roleTemplateRoute.action === "edit") {
-      return renderRoleTemplateEdit(env, session, roleTemplateRoute.key);
-    }
-    if (request.method === "POST" && roleTemplateRoute.action === "edit") {
-      return handleRoleTemplateUpdate(request, env, session, roleTemplateRoute.key);
-    }
-    if (request.method === "POST" && roleTemplateRoute.action === "apply") {
-      return handleRoleTemplateBulkApply(request, env, session, roleTemplateRoute.key);
-    }
+  if (routeId === "admin.role-template.edit.form") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? renderRoleTemplateEdit(env, session, params.key);
+  }
+  if (routeId === "admin.role-template.edit") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? handleRoleTemplateUpdate(request, env, session, params.key);
+  }
+  if (routeId === "admin.role-template.apply") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? handleRoleTemplateBulkApply(request, env, session, params.key);
   }
 
-  if (path === "/admin/search-report" && request.method === "GET") {
-    return requireViewAudit(session) ?? handleAdminSearchReport(env, session);
+  if (routeId === "admin.search-report") return requireViewAudit(session) ?? handleAdminSearchReport(env, session);
+  if (routeId === "admin.audit") return requireViewAudit(session) ?? handleSystemAudit(request, env, session);
+  if (routeId === "admin.movements") return handleMovementHistory(request, env, session);
+  if (routeId === "admin.data-quality") return handleDataQuality(request, env, session);
+
+  if (routeId === "admin.user.permissions.form") {
+    return requireManageUsers(session) ?? renderUserPermissions(env, session, params.id);
   }
-
-  if (path === "/admin/audit" && request.method === "GET") {
-    return requireViewAudit(session) ?? handleSystemAudit(request, env, session);
+  if (routeId === "admin.user.password-reset.form") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? renderUserPasswordReset(env, session, params.id);
   }
-
-  if (path === "/admin/movements" && request.method === "GET") {
-    return handleMovementHistory(request, env, session);
+  if (routeId === "admin.user.password-reset") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? handleUserPasswordReset(request, env, session, params.id);
   }
-
-  if (path === "/admin/data-quality" && request.method === "GET") {
-    return handleDataQuality(request, env, session);
+  if (routeId === "admin.user.permissions") {
+    return requireManageUsers(session) ?? handleUserPermissions(request, env, session, params.id);
   }
-
-  const adminUserRoute = matchAdminUserRoute(path);
-
-  if (adminUserRoute && request.method === "GET" && adminUserRoute.action === "permissions") {
-    return requireManageUsers(session) ?? renderUserPermissions(env, session, adminUserRoute.id);
-  }
-
-  if (adminUserRoute && request.method === "GET" && adminUserRoute.action === "reset-password") {
-    return requireManageUsers(session) ?? requireAdmin(session) ?? renderUserPasswordReset(env, session, adminUserRoute.id);
-  }
-
-  if (adminUserRoute && request.method === "POST") {
+  if (routeId === "admin.user.disable" || routeId === "admin.user.enable") {
     const denied = requireManageUsers(session);
     if (denied) return denied;
-    if (adminUserRoute.action === "reset-password") {
-      return requireAdmin(session) ?? handleUserPasswordReset(request, env, session, adminUserRoute.id);
-    }
-    if (adminUserRoute.action === "permissions") {
-      return handleUserPermissions(request, env, session, adminUserRoute.id);
-    }
-    if (adminUserRoute.action === "disable" || adminUserRoute.action === "enable") {
-      return handleUserStatusAction(env, session, adminUserRoute.id, adminUserRoute.action);
-    }
-    return handleAdminUserAction(env, session, adminUserRoute);
+    return handleUserStatusAction(env, session, params.id, routeId === "admin.user.disable" ? "disable" : "enable");
+  }
+  if (routeId === "admin.user.approve" || routeId === "admin.user.reject") {
+    const denied = requireManageUsers(session);
+    if (denied) return denied;
+    return handleAdminUserAction(env, session, {
+      id: params.id,
+      action: routeId === "admin.user.approve" ? "approve" : "reject"
+    });
   }
 
-  const workflowResponse = await routeWorkflowRequest(request, env, session, path, effects);
-  if (workflowResponse) return workflowResponse;
+  if (resolved.descriptor.family === "documents") {
+    return await routeDocumentRequest(request, env, session, url, resolved, effects) ?? notFoundPage(session);
+  }
+  if (resolved.descriptor.family === "snapshots") {
+    if (routeId === "documents.snapshot.export") {
+      return await routeDocumentRequest(request, env, session, url, resolved, effects) ?? notFoundPage(session);
+    }
+    return await routeWorkflowRequest(request, env, session, resolved, effects) ?? notFoundPage(session);
+  }
+  if (resolved.descriptor.family === "imports") {
+    if (routeId === "documents.import.form") {
+      return await routeDocumentRequest(request, env, session, url, resolved, effects) ?? notFoundPage(session);
+    }
+    return await routeWorkflowRequest(request, env, session, resolved, effects) ?? notFoundPage(session);
+  }
+  if (resolved.descriptor.family === "disposal") {
+    return await routeWorkflowRequest(request, env, session, resolved, effects) ?? notFoundPage(session);
+  }
+  if (["sets", "racks", "masters"].includes(resolved.descriptor.family)) {
+    return await routeMasterRequest(request, env, session, url, resolved) ?? notFoundPage(session);
+  }
 
-  const documentResponse = await routeDocumentRequest(request, env, session, url, path, effects);
-  if (documentResponse) return documentResponse;
-
-  const masterResponse = await routeMasterRequest(request, env, session, url, path);
-  if (masterResponse) return masterResponse;
-
-  // 최종 dispatcher이므로 미매칭을 null로 넘기지 않고 여기서 404를 확정한다.
   return notFoundPage(session);
 }

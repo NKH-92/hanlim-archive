@@ -57,7 +57,7 @@ async function renderDisposalWorkspace(env, session, filters, feedback = null, {
     filters,
     documents: candidates.slice(0, FREE_TIER_BUDGET.disposalProcessChunkSize),
     capped: candidates.length > FREE_TIER_BUDGET.disposalProcessChunkSize,
-    legacyLimit: FREE_TIER_BUDGET.disposalProcessChunkSize,
+    directBulkDisposeLimit: FREE_TIER_BUDGET.disposalProcessChunkSize,
     history: history.items,
     campaigns,
     pagination: history.pagination,
@@ -78,11 +78,11 @@ export async function handleSelectedDisposal(request, env, session) {
     }),
     query: clean(form.get("q"))
   };
-  if (!ids.length || ids.length > FREE_TIER_BUDGET.legacyBulkDisposeMaxItems) {
+  if (!ids.length || ids.length > FREE_TIER_BUDGET.directBulkDisposeMaxItems) {
     if (returnTo) return redirect(withToast(returnTo, "error"));
     return renderDisposalWorkspace(env, session, filters, {
       type: "error",
-      message: `선택 폐기는 한 번에 ${FREE_TIER_BUDGET.legacyBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`
+      message: `선택 폐기는 한 번에 ${FREE_TIER_BUDGET.directBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`
     });
   }
   let created;
@@ -148,10 +148,10 @@ export async function handleBulkDispose(request, env, session) {
     });
   }
 
-  if (ids.length > FREE_TIER_BUDGET.legacyBulkDisposeMaxItems) {
+  if (ids.length > FREE_TIER_BUDGET.directBulkDisposeMaxItems) {
     return renderDisposalWorkspace(env, session, disposalFiltersFromReturn(returnTo), {
       type: "error",
-      message: `소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.legacyBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`
+      message: `소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.directBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`
     });
   }
 

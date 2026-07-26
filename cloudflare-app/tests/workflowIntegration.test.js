@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { processDisposalBatch } from "../src/domains/disposal/index.js";
-import { handleFilteredDispose } from "../src/handlers/documentHandlers.js";
+import { handleFilteredDispose } from "../src/handlers/documents/disposal.js";
 import { handleDisposalBatches } from "../src/handlers/disposalBatchHandlers.js";
 import { handleSetRoute } from "../src/handlers/setHandlers.js";
 import { documentFormPage } from "../src/views/documentViews.js";

@@ -2,8 +2,9 @@
 
 import { locationLabel } from "../../racks/index.js";
 import { clean } from "../../../shared/text/normalize.js";
-import { getDocument } from "../../../data/documentsData.js";
-import { AUDIT_LOG_INSERT_WITH_ACTOR, hasChanged } from "../../../data/sqlShared.js";
+import { getDocument } from "./queries.js";
+import { AUDIT_LOG_INSERT_WITH_ACTOR } from "./sql.js";
+import { hasChanged } from "../../../platform/d1/result.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
 import { createDocumentMovePlan } from "./mutationPlans.js";
 import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";

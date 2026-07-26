@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Core/Search D1 통합 게이트 판정.
+ * 단일 Core D1 검색·용량 운영 게이트 판정.
  *
- * docs/FREE_TIER_OPTIMIZATION.md 의 통합 게이트를 실측값으로 평가한다. 판정 로직은
+ * docs/OPERATIONS.md의 무료티어·용량 점검에 사용할 실측값을 평가한다. 판정 로직은
  * evaluateConsolidationGates()에 모여 있고 CLI는 측정 JSON을 읽어 표로 출력한다.
  *
  * 사용:
  *   node scripts/measure-search-consolidation.mjs --input measurement.json
  *   node scripts/measure-search-consolidation.mjs --input measurement.json --json
  *
- * 측정 JSON 수집 방법은 docs/OPERATIONS.md 의 "검색 통합 측정" 절을 따른다.
+ * 측정 JSON 수집·판정 방식은 docs/OPERATIONS.md의 "무료티어·용량 점검" 절을 따른다.
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";

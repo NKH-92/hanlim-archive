@@ -1,23 +1,27 @@
-// 문서 조회·등록·폐기·이동 라우트. 미매칭은 상위 라우터에 null로 넘긴다.
-import { matchDocumentRoute } from "../routes.js";
+// 문서 조회·등록·폐기·이동 라우트. routeRegistry가 해석한 route id와 params만 사용한다.
+import { handleDocumentExport } from "./documents/browse.js";
 import {
-  handleBulkDispose,
   handleCreateDocument,
   handleDuplicateDocumentCheck,
-  handleDocumentExport,
   handleDocumentRoute,
+  renderCreateDocument
+} from "./documents/crud.js";
+import {
+  handleBulkDispose,
   handleDisposalWorkspace,
   handleFilteredDispose,
-  handleSelectedDisposal,
-  renderCreateDocument
-} from "./documentHandlers.js";
+  handleSelectedDisposal
+} from "./documents/disposal.js";
 import { handleDocumentSnapshotExport, renderDocumentSnapshotManager } from "./snapshotHandlers.js";
 import { handleDocumentMove, renderDocumentMove } from "./movementHandlers.js";
 import { requireManageDisposals, requireManageDocuments } from "./permissionGuards.js";
 import { redirect } from "../platform/http/responses.js";
 
-export async function routeDocumentRequest(request, env, session, url, path, effects = {}) {
-  if (path === "/api/documents/duplicate" && request.method === "GET") {
+export async function routeDocumentRequest(request, env, session, url, resolved, effects = {}) {
+  const routeId = resolved?.descriptor?.id || "";
+  const params = resolved?.params || {};
+
+  if (routeId === "documents.duplicate") {
     return requireManageDocuments(session) ?? handleDuplicateDocumentCheck(
       env,
       url.searchParams.get("documentNumber"),
@@ -26,60 +30,52 @@ export async function routeDocumentRequest(request, env, session, url, path, eff
     );
   }
 
-  if (path === "/documents" && request.method === "GET") {
-    return redirect(`/app${url.search}`);
-  }
-
-  if (path === "/documents/disposal" && request.method === "GET") {
+  if (routeId === "documents.list") return redirect(`/app${url.search}`);
+  if (routeId === "documents.disposal") {
     return requireManageDisposals(session) ?? handleDisposalWorkspace(request, env, session);
   }
-
-  if (path === "/documents/bulk-dispose" && request.method === "POST") {
+  if (routeId === "documents.bulk-dispose") {
     return requireManageDisposals(session) ?? handleBulkDispose(request, env, session);
   }
-
-  if (path === "/documents/disposal/process" && request.method === "POST") {
+  if (routeId === "documents.disposal.process") {
     return requireManageDisposals(session) ?? handleSelectedDisposal(request, env, session);
   }
-
-  if (path === "/documents/dispose-filtered" && request.method === "POST") {
+  if (routeId === "documents.dispose-filtered") {
     return requireManageDisposals(session) ?? handleFilteredDispose(request, env, session);
   }
-
-  if (path === "/documents/export.csv" && request.method === "GET") {
+  if (routeId === "documents.export") {
     return requireManageDocuments(session) ?? handleDocumentExport(env);
   }
-
-  if (path === "/api/document-snapshot/export" && request.method === "GET") {
-    return handleDocumentSnapshotExport(env, session);
-  }
-
-  if (path === "/documents/import" && request.method === "GET") {
+  if (routeId === "documents.snapshot.export") return handleDocumentSnapshotExport(env, session);
+  if (routeId === "documents.import.form") {
     return requireManageDocuments(session) ?? renderDocumentSnapshotManager(env, session);
   }
-
-  if (path === "/documents/new" && request.method === "GET") {
+  if (routeId === "documents.new") {
     return requireManageDocuments(session) ?? renderCreateDocument(env, session, {
       documentNumber: url.searchParams.get("documentNumber") || "",
       returnTo: url.searchParams.get("returnTo") || ""
     });
   }
-
-  if (path === "/documents" && request.method === "POST") {
+  if (routeId === "documents.create") {
     return requireManageDocuments(session) ?? handleCreateDocument(request, env, session, effects);
   }
 
-  const documentRoute = matchDocumentRoute(path);
+  const documentId = Number(params.id);
+  if (!Number.isInteger(documentId) || documentId < 1) return null;
 
-  if (documentRoute) {
-    if (documentRoute.action === "move" && request.method === "GET") {
-      return renderDocumentMove(env, session, documentRoute.id);
-    }
-    if (documentRoute.action === "move" && request.method === "POST") {
-      return handleDocumentMove(request, env, session, documentRoute.id);
-    }
-    return handleDocumentRoute(request, env, session, documentRoute, effects);
-  }
+  if (routeId === "documents.move.form") return renderDocumentMove(env, session, documentId);
+  if (routeId === "documents.move") return handleDocumentMove(request, env, session, documentId, effects);
 
-  return null;
+  const action = documentAction(routeId);
+  if (!action) return null;
+  return handleDocumentRoute(request, env, session, { id: documentId, action }, effects);
+}
+
+function documentAction(routeId) {
+  if (routeId === "documents.details") return "details";
+  if (routeId === "documents.edit.form" || routeId === "documents.edit") return "edit";
+  if (routeId === "documents.revise.form" || routeId === "documents.revise") return "revise";
+  if (routeId === "documents.dispose") return "dispose";
+  if (routeId === "documents.restore") return "restore";
+  return "";
 }
