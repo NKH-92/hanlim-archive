@@ -6,7 +6,6 @@ import { readBoolean } from "../shared/coercion.js";
 import { clean } from "../shared/text/normalize.js";
 import { getDocumentCount, getDocumentPage } from "./documentsData.js";
 import {
-  getDocumentClickPopularity,
   getSearchClickHits,
   getSearchReport,
   recordSearchClick,
@@ -488,105 +487,6 @@ export async function getDidYouMeanSuggestions(env, query, limit = 3) {
     .filter((document) => document.relevance_score > 0)
     .sort((left, right) => right.relevance_score - left.relevance_score)
     .slice(0, Math.max(1, Math.min(Math.floor(Number(limit) || 3), 8)));
-}
-
-// 즉시 검색용 경량 인덱스. ETag는 문서 수·최대 ID와 함께
-// 인덱스에 들어가는 각 테이블(문서·대분류·태그·랙·슬롯)의 변경 시각을 따로 반영한다.
-export async function getSearchIndexMeta(env) {
-  const row = await env.DB.prepare(`
-    SELECT
-      (SELECT COUNT(*) FROM documents WHERE sync_state = 'current') AS count,
-      (SELECT MAX(id) FROM documents WHERE sync_state = 'current') AS max_id,
-      (SELECT current_version FROM document_sync_state WHERE id = 1) AS sync_version,
-      (SELECT COALESCE(SUM(row_version), 0) FROM documents WHERE sync_state = 'current') AS documents_version,
-      (SELECT MAX(updated_at) FROM documents WHERE sync_state = 'current') AS documents_updated,
-      (SELECT MAX(updated_at) FROM categories) AS categories_updated,
-      (SELECT MAX(updated_at) FROM tags) AS tags_updated,
-      (SELECT MAX(updated_at) FROM racks) AS racks_updated,
-      (SELECT MAX(updated_at) FROM rack_slots) AS slots_updated
-  `).first();
-
-  const stamps = [
-    clean(row?.documents_updated),
-    clean(row?.categories_updated),
-    clean(row?.tags_updated),
-    clean(row?.racks_updated),
-    clean(row?.slots_updated)
-  ];
-  // SQLite CURRENT_TIMESTAMP는 'YYYY-MM-DD HH:MM:SS'라 문자열 최댓값으로 최신 시각을 고른다.
-  // versionKey는 최댓값 하나가 아니라 테이블별 시각을 순서대로 보존해야 한다. 예를 들어
-  // 문서가 더 최신이어도 태그만 바뀌면 해당 구간이 달라져 ETag가 반드시 갱신된다.
-  const updated = stamps.reduce((latest, stamp) => (stamp > latest ? stamp : latest), "");
-  const versionKey = [
-    String(Number(row?.sync_version || 0)),
-    String(Number(row?.documents_version || 0)),
-    ...stamps.map((stamp) => stamp.replace(/[^0-9]/g, "") || "0")
-  ].join("-");
-
-  return {
-    count: Number(row?.count || 0),
-    updated,
-    maxId: Number(row?.max_id || 0),
-    versionKey
-  };
-}
-
-export async function getSearchIndexDocuments(env) {
-  const [result, popularity] = await Promise.all([
-    env.DB.prepare(`
-      SELECT
-        d.id,
-        ${DOCUMENT_CORE_COLUMNS}
-        d.updated_at,
-        d.category_id,
-        ${DOCUMENT_LOCATION_COLUMNS}
-        rs.column_number,
-        rs.shelf_number,
-        ${DOCUMENT_TAG_CONCAT}
-      ${DOCUMENT_BASE_JOINS}
-      ${DOCUMENT_TAG_JOINS}
-      WHERE d.sync_state = 'current'
-      GROUP BY d.id
-    `).all(),
-    getDocumentClickPopularity(env)
-  ]);
-
-  return (result.results ?? []).map((row) => {
-    // 보관코드는 DB 내부 식별자로만 사용하며 브라우저 검색 인덱스에는 전달하지 않는다.
-    const { storage_code: _storageCode, ...document } = row;
-    document.popularity = popularity.get(Number(row.id)) || 0;
-    return document;
-  });
-}
-
-export async function getSearchIndexStats(env) {
-  const row = await env.DB.prepare(`
-    SELECT
-      COUNT(*) AS document_count,
-      COALESCE(SUM(
-        LENGTH(IFNULL(d.document_number, '')) +
-        LENGTH(IFNULL(d.revision_number, '')) +
-        LENGTH(IFNULL(d.document_name, '')) +
-        LENGTH(IFNULL(d.note, '')) +
-        LENGTH(IFNULL(c.name, '')) +
-        LENGTH(IFNULL(r.code, '')) + 220
-      ), 0) AS estimated_json_bytes
-    ${DOCUMENT_BASE_JOINS}
-    WHERE d.sync_state = 'current'
-  `).first();
-  const documentCount = Number(row?.document_count || 0);
-  const estimatedJsonBytes = Number(row?.estimated_json_bytes || 0);
-  return {
-    documentCount,
-    estimatedJsonBytes,
-    warningCount: FREE_TIER_BUDGET.searchIndexWarningCount,
-    reviewCount: FREE_TIER_BUDGET.searchIndexReviewCount,
-    level: documentCount >= FREE_TIER_BUDGET.searchIndexReviewCount
-      ? "review"
-      : documentCount >= FREE_TIER_BUDGET.searchIndexWarningCount
-        ? "warning"
-        : "ok"
-  };
 }
 
 // 이미 로드한 검색 결과에서 자동완성 후보를 만든다(추가 D1 왕복 없이).

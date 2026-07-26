@@ -1,32 +1,30 @@
 import { getDocumentCapacity, getDocumentQualitySummary } from "../domains/documents/index.js";
 import { getAppUsers } from "../domains/identity/index.js";
-import { getSearchIndexStats, getSearchProjectionState } from "../domains/search/index.js";
+import { getSearchProjectionState } from "../domains/search/index.js";
 import { hasPermission, PERMISSIONS } from "../permissions.js";
 
 const EXPECTED_CORE_MIGRATION = "0048_core_search_projection.sql";
 
 export async function loadAdminDashboardReadModel(env, session) {
   const canViewAudit = hasPermission(session, PERMISSIONS.VIEW_AUDIT);
-  const [users, quality, capacity, searchIndex, readiness] = await Promise.all([
+  const [users, quality, capacity, readiness] = await Promise.all([
     hasPermission(session, PERMISSIONS.MANAGE_USERS) ? getAppUsers(env) : Promise.resolve([]),
     hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS) ? getDocumentQualitySummary(env) : Promise.resolve(null),
     hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS) ? getDocumentCapacity(env) : Promise.resolve(null),
-    canViewAudit ? getSearchIndexStats(env) : Promise.resolve(null),
     canViewAudit ? loadOperationalReadinessReadModel(env) : Promise.resolve(null)
   ]);
 
   const result = {
     pendingCount: users.filter((user) => user.status === "pending").length,
     quality,
-    searchIndex: searchIndex && readiness
+    searchIndex: readiness
       ? {
-          ...searchIndex,
           ...readiness.projection,
           readiness,
-          // 배포 준비 판정과 파생 색인 경고를 하나의 표시 등급으로 합친다(화면은 이 값을 그대로 쓴다).
-          level: readiness.ok && !readiness.degraded ? searchIndex.level : "warning"
+          // 검색 상태는 이미 조회한 projection read model만 재사용하며 별도 문서 전체 집계를 만들지 않는다.
+          level: readiness.ok && !readiness.degraded ? "ok" : "warning"
         }
-      : searchIndex
+      : null
   };
   if (capacity) result.capacity = capacity;
   if (readiness) result.readiness = readiness;

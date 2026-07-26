@@ -103,15 +103,3 @@ export async function getSearchReport(env) {
     return { topQueries: [], failedQueries: [], topDocuments: [], unavailable: true };
   }
 }
-
-export async function getDocumentClickPopularity(env) {
-  try {
-    const result = await env.DB.prepare(
-      "SELECT document_id, SUM(hits) AS total FROM search_clicks GROUP BY document_id"
-    ).all();
-    return new Map((result.results ?? []).map((row) => [Number(row.document_id), Number(row.total) || 0]));
-  } catch (error) {
-    logError("db.getDocumentClickPopularity", error);
-    return new Map();
-  }
-}

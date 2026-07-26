@@ -40,9 +40,11 @@ migration 0051은 이미 제거된 MFA 저장소와 현재 runtime이 사용하�
 전환 시각, 실행자, 사유, Access 정책, token 폐기와 smoke 결과를 incident 기록에 남긴다. 정상화는 원인과
 잔여 위험을 재승인한 뒤 역순으로 수행한다.
 
-`main`에 병합된 `cloudflare-app/**` 또는 `.github/workflows/deploy.yml` 변경만 자동 운영 배포를 시작한다.
-README, `docs/**`, PR template와 Git 관리 파일만 바뀐 문서·저장소 정리 commit은 CI로 검증하되 운영 D1
-migration·Worker 배포를 실행하지 않는다. 수동 `workflow_dispatch`는 위 경로와 관계없이 production
+`main`에 병합된 `cloudflare-app/**` 또는 `.github/workflows/deploy.yml` 변경은 자동 운영 배포 대상이지만,
+`cloudflare-app/tests/**`와 `cloudflare-app/migrations/released-baseline.json`만 바뀐 commit은 배포 trigger에서 제외한다.
+따라서 test-only, released-baseline-only, README, `docs/**`, PR template와 Git 관리 파일 정리는 CI로 검증하되 운영 D1
+migration·Worker 배포를 실행하지 않는다. 실제 `src/**`, `public/**`, migration SQL, package·script 등 배포 소스가
+테스트나 baseline과 함께 변경되면 정상적으로 배포한다. 수동 `workflow_dispatch`는 위 경로와 관계없이 production
 Environment 승인 후 실행할 수 있다.
 
 ## 로컬 준비와 실행
@@ -103,7 +105,8 @@ npm run deploy:dry
    release artifact로 보존한다.
 11. migration이 포함된 release였다면 다음 PR에서 `migrations/released-baseline.json`을 이번에 배포한
    migration까지 전진시킨다. `checksums`에 항목을 추가하고 `releasedThrough`와 `schema`를
-   `manifest.json`의 값과 맞춘다. 과거 migration SQL과 기존 checksum은 바꾸지 않는다.
+   `manifest.json`의 값과 맞춘다. 과거 migration SQL과 기존 checksum은 바꾸지 않는다. baseline과 그 계약 테스트·문서만
+   수정하는 후속 PR은 CI만 수행하고 Production deploy를 다시 만들지 않는다.
    이 전진을 빼먹으면 `check-released-baseline-history.mjs`가 "released baseline must retain every
    migration from the trusted base"로 이후 **모든 PR**의 `required / verify`를 fail-closed한다.
 

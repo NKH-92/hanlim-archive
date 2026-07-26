@@ -24,8 +24,6 @@ import {
   buildViewerFacets,
   compactSearchText,
   documentToViewerItem,
-  getSearchIndexDocuments,
-  getSearchIndexMeta,
   levenshteinDistance,
   MAX_SEARCH_RESULTS,
   parseDocumentFilters,
@@ -305,56 +303,6 @@ test("authoritative searches score the full configured result window determinist
   assert.match(documentQuery.sql, /ORDER BY d\.updated_at DESC, d\.id DESC\s+LIMIT \?/);
 });
 
-test("getSearchIndexMeta preserves every master and rack update stamp in the version key", async () => {
-  let sql = "";
-  const row = {
-    count: 3,
-    max_id: 9,
-    sync_version: 41,
-    documents_version: 3,
-    documents_updated: "2026-07-10 10:00:00",
-    categories_updated: "2026-07-02 11:00:00",
-    tags_updated: "2026-06-30 09:00:00",
-    racks_updated: "2026-07-01 12:00:00",
-    slots_updated: "2026-07-01 08:00:00"
-  };
-  const env = {
-    DB: {
-      prepare(query) {
-        sql = query;
-        return { first: async () => row };
-      }
-    }
-  };
-
-  const before = await getSearchIndexMeta(env);
-  row.tags_updated = "2026-06-30 09:01:00";
-  const after = await getSearchIndexMeta(env);
-
-  assert.equal(before.count, 3);
-  assert.equal(before.maxId, 9);
-  // 문서가 가장 최신이어도 더 오래된 태그 시각 변경이 버전 키를 바꿔야 한다.
-  assert.equal(before.updated, "2026-07-10 10:00:00");
-  assert.equal(after.updated, before.updated);
-  assert.equal(before.versionKey, "41-3-20260710100000-20260702110000-20260630090000-20260701120000-20260701080000");
-  assert.equal(after.versionKey, "41-3-20260710100000-20260702110000-20260630090100-20260701120000-20260701080000");
-  assert.notEqual(after.versionKey, before.versionKey);
-  row.tags_updated = "2026-06-30 09:00:00";
-  row.documents_version = 4;
-  const sameSecondDocumentChange = await getSearchIndexMeta(env);
-  assert.notEqual(sameSecondDocumentChange.versionKey, before.versionKey);
-  row.documents_version = 3;
-  row.sync_version = 42;
-  const monotonicSyncChange = await getSearchIndexMeta(env);
-  assert.notEqual(monotonicSyncChange.versionKey, before.versionKey);
-  assert.match(sql, /FROM document_sync_state WHERE id = 1/);
-  assert.match(sql, /SUM\(row_version\)/);
-  assert.match(sql, /FROM categories/);
-  assert.match(sql, /FROM tags/);
-  assert.match(sql, /FROM racks/);
-  assert.match(sql, /FROM rack_slots/);
-});
-
 test("validateDocumentInput rejects missing or inactive tags", async () => {
   const env = recordingEnv({
     first: (sql) => {
@@ -533,28 +481,6 @@ test("exact document numbers use the direct SQL path without internal storage co
   assert.equal(env.state.calls.filter((call) => call.type === "all").length, 1);
   assert.match(env.state.calls[0].sql, /UPPER\(d\.document_number\)/);
   assert.doesNotMatch(env.state.calls[0].sql, /UPPER\(d\.storage_code\)/);
-});
-
-test("browser search index omits internal storage codes", async () => {
-  const env = {
-    DB: {
-      prepare(sql) {
-        return {
-          async all() {
-            if (sql.includes("FROM documents d")) {
-              return { results: [{ id: 7, storage_code: "ARC-000007", document_number: "PV-2026-014" }] };
-            }
-            return { results: [{ document_id: 7, total: 3 }] };
-          }
-        };
-      }
-    }
-  };
-
-  const documents = await getSearchIndexDocuments(env);
-
-  assert.deepEqual(documents, [{ id: 7, document_number: "PV-2026-014", popularity: 3 }]);
-  assert.equal("storage_code" in documents[0], false);
 });
 
 test("viewer search item labels single-sided racks without a face suffix", () => {

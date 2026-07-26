@@ -45,9 +45,6 @@ test("감사조회 권한은 readiness 상세 상태를 관리자 read model과 
   const env = {
     DB: fakeDatabase(coreSql, (statement) => {
       if (/FROM d1_migrations/.test(statement)) return { name: "0043_application_mfa.sql" };
-      if (/COUNT\(\*\) AS document_count/.test(statement)) {
-        return { document_count: 2, estimated_json_bytes: 4096 };
-      }
       if (/FROM search_projection_state/.test(statement)) {
         return {
           indexed_document_count: 2,
@@ -91,7 +88,8 @@ test("감사조회 권한은 readiness 상세 상태를 관리자 read model과 
   assert.equal("search" in result.readiness, false, "legacy Search D1 상태는 더 이상 노출하지 않는다");
   assert.equal(result.searchIndex.readiness, result.readiness);
   assert.equal(result.searchIndex.level, "warning");
-  assert.equal(coreSql.length, 4);
+  assert.equal(coreSql.length, 3);
+  assert.equal(coreSql.some((statement) => /FROM documents\b/.test(statement)), false, "검색 상태 패널이 문서 전체 scan을 추가하면 안 된다");
 
   const html = await adminDashboardPage({ session, ...result }).text();
   assert.match(html, /검색 운영 확인 필요/);

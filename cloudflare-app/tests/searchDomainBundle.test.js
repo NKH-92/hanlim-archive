@@ -7,8 +7,7 @@ import { searchCoreScript } from "../src/views/clientScript.js";
 
 test("검색 repository/service/presenter 공개 API는 도메인에서 제공된다", () => {
   for (const name of [
-    "searchDocuments", "searchDocumentsWithSuggestions", "getSearchIndexMeta",
-    "getSearchIndexDocuments", "getSearchSuggestions", "recordSearchClick",
+    "searchDocuments", "searchDocumentsWithSuggestions", "getSearchSuggestions", "recordSearchClick",
     "recordSearchLog", "getSearchReport", "documentToViewerItem", "buildViewerFacets"
   ]) assert.equal(typeof search[name], "function", name);
 });

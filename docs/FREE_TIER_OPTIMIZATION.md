@@ -19,8 +19,11 @@ Worker 엔트리포인트는 검색 구현의 outbox·generation·rebuild 함수
 2. 대기 문서의 bounded 동기화
 3. Cron의 bounded 검색 유지보수
 
-구현이 하나뿐이고 정책이 없던 search service 복사 wrapper는 제거한다. 기존 domain export는
-운영 도구와 characterization test의 호환성을 위해 유지한다.
+구현이 하나뿐이고 정책이 없던 search service 복사 wrapper는 제거한다. 도메인 공개 API도 현재 서버 검색,
+자동완성, 클릭 학습, 리포트와 projection 유지보수 계약만 남기고 폐기된 브라우저 전체 인덱스 surface는 제거한다.
+`/api/search-index` URL 자체는 열린 탭·구형 클라이언트에 명확한 종료 신호를 주기 위해 유지하되 D1 조회 없이
+항상 `410 SEARCH_INDEX_RETIRED`를 반환한다. 관리자 검색 상태는 별도 문서 전체 `COUNT/SUM(LENGTH)`를 수행하지 않고
+기존 문서 용량 read model과 `search_projection_state`/dirty 상태를 재사용한다.
 
 ### 정적 자산
 
@@ -37,9 +40,12 @@ HTML, 로그인, API, XLSX 경로는 계속 Worker를 통과한다. 직접 응�
 |---|---|---|
 | `asset-only` | `public/`만 변경 | D1 bookmark·migration·임시 계정 없이 공개 자산과 version smoke |
 | `runtime-only` | `src/`, `scripts/`, `tests/`, package 파일 | 임시 smoke 계정을 위한 Core bookmark, migration 생략, 인증 smoke |
-| `database` | migration, `wrangler.jsonc`, 배포 workflow, 미분류 경로 | Core·Search bookmark, migration, 구 Worker 호환성, 전체 smoke |
+| `database` | migration, `wrangler.jsonc`, 배포 workflow, 미분류 경로 | Core bookmark, migration, 구 Worker 호환성, 전체 smoke |
 
-모든 분류에서 배포 version 확인과 실패 시 Worker rollback은 유지한다. `runtime-only`는 임시 smoke
+자동 trigger는 `tests/**`와 `migrations/released-baseline.json`만 변경된 push를 제외한다. 이 두 경로가
+`src/**`·실제 migration SQL 등 배포 소스와 함께 바뀌면 배포는 정상 실행된다. 따라서 migration 배포 뒤 baseline을
+확정하는 후속 PR은 required CI만 수행하고 같은 Worker/D1 release를 한 번 더 만들지 않는다.
+모든 실제 배포 분류에서 version 확인과 실패 시 Worker rollback은 유지한다. `runtime-only`는 임시 smoke
 계정을 Core에 쓰므로 Core recovery point를 생략하지 않는다.
 
 Static Assets 직접 응답은 ETag를 유지하지만 edge에 따라 `If-None-Match` 요청을 304가 아니라

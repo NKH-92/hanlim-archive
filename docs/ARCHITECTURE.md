@@ -101,9 +101,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 16. **세션 즉시 폐기**: signed cookie에는 `sessionEpoch`를 포함하고 매 요청 DB의 `session_epoch`와 비교한다.
     로그아웃·비밀번호 변경·사용중지·재활성화는 epoch를 단조 증가시켜 복사된 cookie도 즉시 무효화한다.
     `security_review_required` 계정은 status·비밀번호와 무관하게 로그인과 기존 session을 모두 거부한다.
-17. **검색 cache 단조성**: 즉시 검색 ETag는 초 단위 timestamp만 사용하지 않는다. 문서 변경마다 증가하는
-    `document_sync_state.current_version`, current 문서의 `row_version`, 기준정보 변경 신호를 조합해 같은 초의
-    수정도 다른 ETag를 만든다.
+17. **검색 cursor 단조성**: 브라우저 전체 검색 인덱스와 그 ETag 계약은 종료했다. 텍스트 검색의 `더보기` cursor는
+    `search_projection_state.generation`을 포함하며 문서·태그·기준정보 변경 trigger가 generation을 증가시킨다.
+    오래된 cursor는 fingerprint 또는 generation 불일치 시 `SEARCH_CURSOR_STALE`로 거부한다.
 18. **CSV 수식 비활성화**: 모든 CSV writer는 선행 공백·제어문자 뒤의 `=`, `+`, `-`, `@`까지 검사해
     스프레드시트 수식으로 실행되지 않도록 apostrophe를 붙인 뒤 RFC 4180 quoting을 적용한다.
 19. **rollback 호환성**: migration은 이전 Worker와 함께 동작하는 additive 변경을 먼저 적용한다.
