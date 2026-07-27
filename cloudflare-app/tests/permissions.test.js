@@ -230,3 +230,31 @@ test("사용자 관리 화면은 반려와 사용중지를 분리한다", async 
   assert.doesNotMatch(html, /href="\/admin\/users\/10\/permissions"/);
   assert.doesNotMatch(html, /href="\/admin\/users\/10\/reset-password"/);
 });
+
+test("사용자 관리 화면은 세 그룹을 접힌 행으로 쌓고 완전삭제 경로를 제공한다", async () => {
+  const session = { role: "Admin", username: "admin", userId: 1, displayName: "관리자", csrfToken: "token".repeat(8) };
+  const html = await adminSettingsPage({
+    session,
+    users: [
+      { id: 1, username: "admin", display_name: "관리자", role: "Admin", status: "approved" },
+      { id: 7, username: "active", display_name: "사용자", role: "User", status: "approved" },
+      { id: 8, username: "disabled", display_name: "중지", role: "User", status: "disabled" },
+      { id: 10, username: "review-locked", display_name: "보안 검토", role: "User", status: "rejected", security_review_required: 1 }
+    ]
+  }).text();
+
+  // 3열 병렬 배치를 3행 접힘 그룹으로 바꾼다. 기본 상태는 접힘이므로 open 속성이 없다.
+  assert.doesNotMatch(html, /<section class="two-col">/);
+  assert.match(html, /class="user-group-stack"/);
+  assert.equal((html.match(/<details class="panel user-group">/g) || []).length, 3);
+  assert.doesNotMatch(html, /<details class="panel user-group" open>/);
+  for (const label of ["승인된 사용자", "사용중지 사용자", "반려된 요청"]) {
+    assert.match(html, new RegExp(`user-group-title">${label}<`));
+  }
+
+  // 완전삭제는 목록에서 즉시 실행하지 않고 확인 화면으로 이동한다.
+  assert.match(html, /href="\/admin\/users\/7\/delete"/);
+  assert.match(html, /href="\/admin\/users\/10\/delete"/, "보안 검토 대상도 정리할 수 있다");
+  assert.doesNotMatch(html, /action="\/admin\/users\/\d+\/delete"/);
+  assert.doesNotMatch(html, /href="\/admin\/users\/1\/delete"/, "현재 로그인 계정은 삭제 경로를 노출하지 않는다");
+});

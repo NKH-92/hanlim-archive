@@ -20,11 +20,13 @@ import { requireManageUsers, requireViewAudit } from "./permissionGuards.js";
 import {
   handleRoleTemplateBulkApply,
   handleRoleTemplateUpdate,
+  handleUserDelete,
   handleUserPermissions,
   handleUserPasswordReset,
   handleUserStatusAction,
   renderRoleTemplateEdit,
   renderRoleTemplates,
+  renderUserDelete,
   renderUserPasswordReset,
   renderUserPermissions
 } from "./userPermissionHandlers.js";
@@ -89,6 +91,12 @@ export async function routeAuthenticatedRequest(request, env, session, url, path
   }
   if (routeId === "admin.user.password-reset") {
     return requireManageUsers(session) ?? requireAdmin(session) ?? handleUserPasswordReset(request, env, session, params.id);
+  }
+  if (routeId === "admin.user.delete.form") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? renderUserDelete(env, session, params.id);
+  }
+  if (routeId === "admin.user.delete") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? handleUserDelete(request, env, session, params.id);
   }
   if (routeId === "admin.user.permissions") {
     return requireManageUsers(session) ?? handleUserPermissions(request, env, session, params.id);

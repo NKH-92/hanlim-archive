@@ -24,3 +24,13 @@ export function createUserPasswordResetMutationPlan(auditStatement, clearThrottl
     .expectChanged("user.password.reset")
     .withBudget(3);
 }
+
+// 계정 행은 사라지지만 감사 이력은 actor_user_id FK 없이 보존되므로 삭제 사건을 먼저 기록한다.
+export function createUserDeleteMutationPlan(auditStatement, clearThrottleStatement, deleteStatement, guard) {
+  return createBatchPlan("identity.user.delete")
+    .step("user.audit.delete", auditStatement, { guard, auditEventId: "user.delete" })
+    .step("user.login_throttle.clear", clearThrottleStatement, { guard })
+    .step("user.delete", deleteStatement, { guard })
+    .expectChanged("user.delete")
+    .withBudget(3);
+}

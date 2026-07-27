@@ -66,6 +66,14 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
     permission: PERMISSIONS.MANAGE_USERS,
     policy: "admin-only"
   }),
+  route("admin.user.delete.form", "identity", "GET", "/admin/users/:id/delete", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
+  route("admin.user.delete", "identity", "POST", "/admin/users/:id/delete", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
   ...["approve", "reject", "disable", "enable"].map((action) => route(`admin.user.${action}`, "identity", "POST", `/admin/users/:id/${action}`, { permission: PERMISSIONS.MANAGE_USERS })),
   route("documents.duplicate", "documents", "GET", "/api/documents/duplicate", { permission: PERMISSIONS.MANAGE_DOCUMENTS }),
   route("documents.list", "documents", "GET", "/documents"),
