@@ -214,6 +214,7 @@ export function experienceStyles() {
       .detail-section dl div { grid-template-columns: minmax(88px, .35fr) minmax(0, 1fr); }
       .detail-actions { padding: var(--sp-4); }
       .detail-action-groups, .detail-action-groups > div { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
+      .detail-state-actions { padding: var(--sp-3) 0 0; border-left: 0; border-top: 1px solid var(--danger); }
       .detail-action-groups .button, .detail-action-groups button { width: 100%; justify-content: center; min-height: 44px; }
       .doc-floor-plan .floor-plan-tools { align-items: stretch; flex-direction: column; }
       .doc-floor-plan .floor-plan-tools .button { width: 100%; justify-content: center; min-height: 44px; }

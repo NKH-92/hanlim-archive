@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 import { styles } from "../src/views/styles.js";
+import { iconStyles } from "../src/views/icons.js";
 import { tokenStyles } from "../src/views/styles/tokens.js";
 
 const expectedTokens = {
@@ -136,4 +137,31 @@ test("원시 hex는 토큰 조각에만 있고 rgba는 승인된 예외만 사�
     sources.flatMap(([, source]) => source.match(/rgba\([^)]*\)/g) || [])
   )].sort();
   assert.deepEqual(rgbaValues, [...approvedRgbaValues].sort());
+});
+
+// 마스크가 없는 fa-* 이름은 배경색 사각형으로 렌더되므로 사용 이름 전체를 정의와 대조한다.
+test("모든 fa-* 아이콘 이름은 로컬 SVG 마스크 정의를 가진다", () => {
+  const viewsDirectory = new URL("../src/views/", import.meta.url);
+  const sourceFiles = [];
+  const collect = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const target = new URL(`${entry.name}${entry.isDirectory() ? "/" : ""}`, directory);
+      if (entry.isDirectory()) collect(target);
+      else if (entry.name.endsWith(".js")) sourceFiles.push(readFileSync(target, "utf8"));
+    }
+  };
+  collect(viewsDirectory);
+
+  const usedNames = new Set();
+  for (const source of sourceFiles) {
+    for (const [name] of source.matchAll(/fa-[a-z0-9-]+/g)) usedNames.add(name);
+  }
+  usedNames.delete("fa-solid");
+  usedNames.delete("fa-regular");
+
+  const css = iconStyles();
+  const missing = [...usedNames]
+    .filter((name) => !css.includes(`.${name}{`) && !css.includes(`.${name},`))
+    .sort();
+  assert.deepEqual(missing, [], `마스크가 없는 아이콘: ${missing.join(", ")}`);
 });

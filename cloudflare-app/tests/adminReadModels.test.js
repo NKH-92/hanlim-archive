@@ -92,10 +92,13 @@ test("감사조회 권한은 readiness 상세 상태를 관리자 read model과 
   assert.equal(coreSql.some((statement) => /FROM documents\b/.test(statement)), false, "검색 상태 패널이 문서 전체 scan을 추가하면 안 된다");
 
   const html = await adminDashboardPage({ session, ...result }).text();
-  assert.match(html, /검색 운영 확인 필요/);
-  assert.match(html, /Core migration 미충족/);
-  assert.match(html, /projection ready · 색인 2건 · dirty 0건/);
+  assert.match(html, /검색 결과가 제한될 수 있습니다/);
+  assert.match(html, /데이터베이스 업데이트 필요/);
+  assert.match(html, /색인 최신 상태/);
+  assert.match(html, /색인 완료 2건/);
   assert.doesNotMatch(html, /outbox/);
+  // 내부 상태 문자열은 운영자 화면에 그대로 노출하지 않는다.
+  assert.doesNotMatch(html, /Core migration|projection (ready|building|pending)|dirty \d/);
 });
 
 function fakeDatabase(sql, first) {

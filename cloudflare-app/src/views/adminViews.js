@@ -30,7 +30,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
   const dataLinks = [];
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
     dataLinks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화", "엑셀 전체 동기화·검증·인쇄용 추출"]);
-    dataLinks.push(["/documents/new", "fa-file-circle-plus", "문서 추가", "신규 문서를 현재 리스트에 즉시 등록"]);
+    dataLinks.push(["/documents/new", "fa-file-circle-plus", "문서 등록", "신규 문서를 현재 리스트에 즉시 등록"]);
   }
   if (hasPermission(session, PERMISSIONS.VIEW_AUDIT)) {
     dataLinks.push(["/admin/audit", "fa-list-check", "감사 이력", "전역 변경 이력"]);
@@ -65,7 +65,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
       <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>운영 관리</span></nav><h1>운영 관리</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 확인합니다.</p></div>
     </section>
     <section class="panel admin-status-panel ${attentionCount ? "is-attention" : "is-stable"}" aria-label="운영 상태 요약">
-      <div class="admin-status-copy"><h2>${attentionCount ? `오늘 확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있습니다.` : "문서고 운영 상태가 안정적입니다."}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 인덱스 ${Number(searchIndex.indexedDocumentCount || 0).toLocaleString("ko-KR")}건` : ""}</p>${heroAction}</div>
+      <div class="admin-status-copy"><h2>${attentionCount ? `오늘 확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있습니다.` : "문서고 운영 상태가 안정적입니다."}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 색인 ${searchIndex.level === "ok" ? "정상" : "확인 필요"}` : ""}</p>${heroAction}</div>
       <div class="admin-status-count"><strong>${attentionCount.toLocaleString("ko-KR")}</strong><span>확인 필요</span></div>
     </section>
     ${quality ? dataQualityPanel(quality) : ""}
@@ -132,20 +132,36 @@ function dataQualityPanel(quality) {
 function searchIndexPanel(stats) {
   const readiness = stats.readiness;
   // 검색 색인 동기화는 /readyz 실패가 아니라 이 화면의 경고로 노출한다(파생 데이터 격리).
-  const migrationStatus = readiness
-    ? `Core migration ${readiness.checks.coreDatabase ? "충족" : "미충족"}`
-    : "";
-  const projectionStatus = readiness
-    ? `projection ${readiness.projection.reindexStatus} · 색인 ${Number(readiness.projection.indexedDocumentCount || 0).toLocaleString("ko-KR")}건 · dirty ${Number(readiness.projection.pendingDirtyCount || 0).toLocaleString("ko-KR")}건`
-    : "";
-  const message = readiness
-    ? `${readiness.ok && !readiness.degraded ? "검색 운영 준비 완료" : "검색 운영 확인 필요"} · ${migrationStatus} · ${projectionStatus}`
-    : `색인 ${Number(stats.indexedDocumentCount || 0).toLocaleString("ko-KR")}건`;
+  const message = readiness ? searchIndexMessage(readiness) : `색인 ${count(stats.indexedDocumentCount)}건`;
   // 표시 등급은 read model이 Core schema와 projection 동기화 상태를 합쳐 계산한 값을 그대로 사용한다.
   const level = stats.level;
   return `<section class="panel search-index-health ${escapeHtml(level)}">
-    <div><strong>서버 검색 인덱스</strong><span>Core projection · 색인 ${Number(stats.indexedDocumentCount || 0).toLocaleString("ko-KR")}건</span></div><p class="${escapeHtml(level)}">${escapeHtml(message)}</p>
+    <div><strong>문서 검색 색인</strong><span>색인 완료 ${count(stats.indexedDocumentCount)}건</span></div><p class="${escapeHtml(level)}">${escapeHtml(message)}</p>
   </section>`;
+}
+
+function count(value) {
+  return Number(value || 0).toLocaleString("ko-KR");
+}
+
+// 내부 상태값(projection/reindex_status/dirty)을 운영자가 읽을 수 있는 한국어 상태와 다음 행동으로 옮긴다.
+const SEARCH_INDEX_STATE_LABELS = Object.freeze({
+  ready: "색인 최신 상태",
+  building: "색인 재구성 중",
+  pending: "색인 재구성 대기",
+  unavailable: "색인 사용 불가"
+});
+
+function searchIndexMessage(readiness) {
+  const projection = readiness.projection || {};
+  const stateLabel = SEARCH_INDEX_STATE_LABELS[projection.reindexStatus] || "색인 상태 확인 필요";
+  const parts = [stateLabel];
+  const remaining = Number(projection.pendingDirtyCount || 0);
+  if (remaining > 0) parts.push(`반영 대기 ${count(remaining)}건`);
+  if (!readiness.checks?.coreDatabase) parts.push("데이터베이스 업데이트 필요");
+  if (readiness.ok && !readiness.degraded) return `검색이 정상 동작합니다 · ${parts.join(" · ")}`;
+  parts.push("자동 재구성이 진행되며 완료 후 다시 확인하세요");
+  return `검색 결과가 제한될 수 있습니다 · ${parts.join(" · ")}`;
 }
 
 export function adminSettingsPage({ session, users }) {

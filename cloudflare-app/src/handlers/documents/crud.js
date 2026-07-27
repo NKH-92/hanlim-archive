@@ -32,7 +32,7 @@ import { logError } from "../../platform/observability/logger.js";
 import { clean } from "../../shared/text/normalize.js";
 import { requireManageDisposals, requireManageDocuments } from "../permissionGuards.js";
 
-export async function renderCreateDocument(env, session, values = {}, validation = null, title = "문서 추가") {
+export async function renderCreateDocument(env, session, values = {}, validation = null, title = "문서 등록") {
   const { categories, tags, slots } = await loadDocumentFormOptions(env, { activeOnly: true });
   const safeValues = { ...values, returnTo: safeDocumentReturn(values.returnTo) };
 

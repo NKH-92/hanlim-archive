@@ -3,6 +3,8 @@
 export function workflowStyles() {
   return `    .bulk-bar { position: sticky; bottom: var(--sp-4); z-index: 20; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); margin-top: var(--sp-3); background: var(--gray-900); color: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-2); font-size: 13px; }
     .bulk-bar[hidden] { display: none; }
+    .bulk-limit-notice { color: var(--action); font-weight: 600; }
+    .bulk-limit-notice[hidden] { display: none; }
     .bulk-bar form { display: flex; flex: 1; flex-wrap: wrap; gap: var(--sp-2); min-width: 0; }
     .bulk-bar input { background: rgba(255, 255, 255, .12); color: var(--surface); border-color: transparent; min-height: 32px; }
     .bulk-bar input::placeholder { color: rgba(255, 255, 255, .55); }
@@ -19,8 +21,10 @@ export function workflowStyles() {
     .disposal-count-confirmation strong { display: block; margin-top: var(--sp-1); color: var(--danger); font-size: 24px; line-height: 1.2; }
     .disposal-review-list { max-height: 220px; overflow-y: auto; margin: 0; padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-7); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--gray-50); }
     .disposal-review-list li { padding: var(--sp-1) 0; font-size: 13px; }
-    .disposal-safety-panel { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); border-color: var(--danger); background: var(--danger-soft); }
+    .disposal-safety-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-4); border-color: var(--danger); background: var(--danger-soft); }
     .disposal-safety-panel p { margin: var(--sp-1) 0 0; color: var(--gray-700); }
+    /* 폐기 경고 배지는 좁은 폭에서도 줄바꿈 없이 한 덩어리로 읽혀야 한다. */
+    .disposal-safety-panel > .status { flex: none; white-space: nowrap; }
     .disposal-history-table small { display: block; margin-top: var(--sp-1); color: var(--gray-500); white-space: nowrap; }
     .results-panel .doc-table td small { display: block; margin-top: var(--sp-1); color: var(--gray-500); white-space: nowrap; }
     .disposal-complete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); }

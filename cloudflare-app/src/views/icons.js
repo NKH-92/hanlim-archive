@@ -12,7 +12,15 @@ const ICONS = Object.freeze({
   download: `<path d="M11 3h2v10l3.5-3.5 1.4 1.4L12 16.8 6.1 10.9l1.4-1.4L11 13V3ZM4 19h16v2H4v-2Z"/>`,
   spreadsheet: `<path d="M5 3h14v18H5V3Zm2 2v4h10V5H7Zm0 6v3h4v-3H7Zm6 0v3h4v-3h-4Zm-6 5v3h4v-3H7Zm6 0v3h4v-3h-4Z"/>`,
   add: `<path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/>`,
-  user: `<path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10ZM3 22a9 9 0 0 1 18 0H3Z"/>`
+  user: `<path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10ZM3 22a9 9 0 0 1 18 0H3Z"/>`,
+  database: `<path d="M12 2c4.4 0 8 1.3 8 3v14c0 1.7-3.6 3-8 3s-8-1.3-8-3V5c0-1.7 3.6-3 8-3Zm0 2c-3.6 0-6 1-6 1s2.4 1 6 1 6-1 6-1-2.4-1-6-1ZM6 8.6V12c0 .3 2.2 1.4 6 1.4s6-1.1 6-1.4V8.6c-1.6.7-3.8 1-6 1s-4.4-.3-6-1Zm0 6V19c0 .3 2.2 1.4 6 1.4s6-1.1 6-1.4v-4.4c-1.6.7-3.8 1-6 1s-4.4-.3-6-1Z"/>`,
+  tree: `<path d="M3 3h7v5H3V3Zm2 2v1h3V5H5Zm1 4h2v4h6v-2h7v6h-7v-2H8v6h6v-2h7v6h-7v-2H6V9Zm10 6v2h3v-2h-3Zm0 8v2h3v-2h-3Z"/>`,
+  columns: `<path d="M3 4h18v16H3V4Zm2 2v12h4V6H5Zm6 0v12h2V6h-2Zm4 0v12h4V6h-4Z"/>`,
+  more: `<path d="M6 10a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm6 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm6 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/>`,
+  history: `<path d="M12 3a9 9 0 1 0 8.5 12h-2.2A6.8 6.8 0 1 1 12 5.2c1.8 0 3.4.7 4.6 1.9L14 9.7h6V3.7l-2 2A9 9 0 0 0 12 3Zm-1 4h2v5.4l3.7 2.2-1 1.7L11 13.6V7Z"/>`,
+  close: `<path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5Z"/>`,
+  bullets: `<path d="M4 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm4 .5h12v2H8V6ZM4 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm4 .5h12v2H8v-2ZM4 15.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm4 .5h12v2H8v-2Z"/>`,
+  external: `<path d="M14 3h7v7h-2V6.4l-8.3 8.3-1.4-1.4L17.6 5H14V3ZM5 5h5v2H6v11h11v-4h2v6H4V5h1Z"/>`
 });
 
 function dataUrl(body) {
@@ -31,7 +39,15 @@ export function iconStyles() {
     info: ["circle-info", "chart-simple"],
     copy: ["copy", "print"],
     location: ["location-dot", "location-crosshairs"],
-    list: ["list-check", "table-cells-large", "layer-group", "tags"]
+    list: ["list-check", "table-cells-large", "layer-group", "tags"],
+    database: ["database"],
+    tree: ["folder-tree"],
+    columns: ["table-columns"],
+    more: ["ellipsis"],
+    history: ["clock-rotate-left"],
+    close: ["xmark"],
+    bullets: ["list"],
+    external: ["arrow-up-right-from-square"]
   };
   const rules = Object.entries(groups).map(([icon, names]) =>
     names.map((name) => `.fa-${name}`).join(",") + `{--icon-mask:${dataUrl(ICONS[icon])}}`

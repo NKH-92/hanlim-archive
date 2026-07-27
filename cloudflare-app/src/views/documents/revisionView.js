@@ -24,7 +24,7 @@ export function documentRevisionPage({ session, document, values = {}, validatio
         <div class="alert warning revision-policy" role="note">
           <strong>동일 바인더 교체 전용</strong>
           <p>저장하면 현재 개정본은 자동으로 폐기되고, 같은 위치에 신규 개정본이 생성됩니다.</p>
-          <p>다른 바인더에 보관할 문서라면 <a href="/documents/new?documentNumber=${encodeURIComponent(document.document_number)}">문서 추가</a>로 등록하세요.</p>
+          <p>다른 바인더에 보관할 문서라면 <a href="/documents/new?documentNumber=${encodeURIComponent(document.document_number)}">문서 등록</a>으로 등록하세요.</p>
         </div>
 
         <fieldset class="form-section">

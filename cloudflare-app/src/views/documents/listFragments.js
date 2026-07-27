@@ -1,6 +1,7 @@
 // 문서 목록과 폐기 작업공간이 공유하는 툴바·피드백·페이지 조각.
 
 import { escapeHtml } from "../../ui/html/escape.js";
+import { FREE_TIER_BUDGET } from "../../config.js";
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
 import { alertDanger, alertWarning, paginationNav } from "../layout.js";
 import { documentListUrl } from "./urlHelpers.js";
@@ -25,16 +26,17 @@ export function paginationView(pagination, { query, filters }) {
   });
 }
 
-export function bulkActionBar(action = "/documents/disposal/process", filters = {}) {
+export function bulkActionBar(action = "/documents/disposal/process", filters = {}, limit = FREE_TIER_BUDGET.directBulkDisposeMaxItems) {
   return `
     <div class="bulk-bar" data-bulk-bar hidden>
       <span data-bulk-count>원본 0부 선택</span>
-      <button type="button" class="danger-button sm" data-open-modal="disposal-review-modal">선택 수량 확인</button>
+      <span class="bulk-limit-notice" data-bulk-limit-notice role="status" hidden></span>
+      <button type="button" class="danger-button sm" data-open-modal="disposal-review-modal" data-disposal-limit="${Number(limit)}">선택 수량 확인</button>
     </div>
     <dialog id="disposal-review-modal" class="modal disposal-review-modal" aria-labelledby="disposal-review-title">
       <form method="post" action="${escapeHtml(action)}" class="modal-body" data-bulk-form>
         <h2 id="disposal-review-title">실제 폐기 수량 확인</h2>
-        <p class="muted">문서 한 건을 실제 원본 한 부로 계산합니다. 아래 문서와 실제 폐기할 원본이 같은지 확인해 주세요.</p>
+        <p class="muted">문서 한 건을 실제 원본 한 부로 계산합니다. 한 번에 최대 ${Number(limit)}건까지 처리하며, 아래 문서와 실제 폐기할 원본이 같은지 확인해 주세요.</p>
         <p class="disposal-count-confirmation" aria-live="polite">
           실제 폐기할 원본이 <strong data-bulk-confirm-count>0부</strong>가 맞습니까?
         </p>
@@ -62,7 +64,7 @@ export function documentToolbar(session) {
   if (hasPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
     actions.push(`<a class="button secondary" href="/documents/export.csv"><i class="fa-solid fa-download" aria-hidden="true"></i>CSV 내보내기</a>`);
     actions.push(`<a class="button secondary" href="/documents/import"><i class="fa-solid fa-file-excel" aria-hidden="true"></i>엑셀 대장 동기화</a>`);
-    actions.push(`<a class="button action-button" href="/documents/new"><i class="fa-solid fa-plus" aria-hidden="true"></i>문서 추가</a>`);
+    actions.push(`<a class="button action-button" href="/documents/new"><i class="fa-solid fa-plus" aria-hidden="true"></i>문서 등록</a>`);
   }
   return actions.length ? `<div class="button-group document-toolbar">${actions.join("")}</div>` : "";
 }

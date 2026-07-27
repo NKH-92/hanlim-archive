@@ -10,20 +10,28 @@ export function bulkCommandScript() {
       var bulkConfirmCountInput = document.querySelector('[data-bulk-confirm-count-input]');
       var bulkConfirmButton = document.querySelector('[data-bulk-confirm-button]');
       var bulkDisposalButton = document.querySelector('[data-disposal-limit]');
+      var bulkLimitNotice = document.querySelector('[data-bulk-limit-notice]');
       function syncBulk() {
         var items = Array.from(document.querySelectorAll('[data-bulk-item]'));
         var checkedItems = items.filter(function (item) { return item.checked; });
         var checked = checkedItems.map(function (item) { return item.value; });
+        var disposalLimit = bulkDisposalButton ? Number(bulkDisposalButton.dataset.disposalLimit || 0) : 0;
+        var overLimit = Boolean(disposalLimit && checked.length > disposalLimit);
         if (bulkBar) bulkBar.hidden = checked.length === 0;
         bulkIds.forEach(function (input) { input.value = checked.join(','); });
         if (bulkCount) bulkCount.textContent = bulkBar && bulkBar.hasAttribute('data-document-selection')
           ? checked.length + '건 선택'
           : '원본 ' + checked.length + '부 선택';
+        if (bulkLimitNotice) {
+          bulkLimitNotice.textContent = overLimit
+            ? '한 번에 ' + disposalLimit + '건까지 폐기할 수 있습니다. ' + (checked.length - disposalLimit) + '건을 해제하세요.'
+            : '';
+          bulkLimitNotice.hidden = !overLimit;
+        }
         if (bulkConfirmCount) bulkConfirmCount.textContent = checked.length + '부';
         if (bulkConfirmCountInput) bulkConfirmCountInput.value = String(checked.length);
         if (bulkConfirmButton) {
-          var disposalLimit = bulkDisposalButton ? Number(bulkDisposalButton.dataset.disposalLimit || 0) : 0;
-          bulkConfirmButton.disabled = checked.length === 0 || Boolean(disposalLimit && checked.length > disposalLimit);
+          bulkConfirmButton.disabled = checked.length === 0 || overLimit;
           bulkConfirmButton.textContent = checked.length
             ? '예, 원본 ' + checked.length + '부를 폐기합니다'
             : '예, 폐기합니다';
@@ -48,10 +56,9 @@ export function bulkCommandScript() {
           bulkSelectAll.disabled = items.length === 0;
         }
         if (bulkDisposalButton) {
-          var maxDisposal = Number(bulkDisposalButton.dataset.disposalLimit || 0);
-          bulkDisposalButton.disabled = Boolean(maxDisposal && checked.length > maxDisposal);
-          bulkDisposalButton.title = maxDisposal && checked.length > maxDisposal
-            ? '폐기는 한 번에 ' + maxDisposal + '건 이하만 선택하세요.'
+          bulkDisposalButton.disabled = overLimit;
+          bulkDisposalButton.title = overLimit
+            ? '폐기는 한 번에 ' + disposalLimit + '건 이하만 선택하세요.'
             : '';
         }
       }
