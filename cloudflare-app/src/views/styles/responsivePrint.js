@@ -86,7 +86,10 @@ export function responsivePrintStyles() {
       .location-picker-steps label:last-child { grid-column: 1 / -1; }
       .location-selection-preview { grid-template-columns: 1fr auto; }
       .location-selection-preview a { grid-column: 1 / -1; }
-      .sticky-save-bar { bottom: calc(64px + env(safe-area-inset-bottom)); }
+      /* 760px 이하에서는 sticky가 폼 끝에서만 붙어 저장 버튼과 완료도가 화면 밖에 남는다.
+         하단 탭 위에 고정해 긴 폼 중간에서도 저장 상태를 유지한다. */
+      .sticky-save-bar { position: fixed; inset: auto var(--sp-3) calc(48px + var(--sp-2) + env(safe-area-inset-bottom)) var(--sp-3); z-index: 40; }
+      .document-form { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
       .floor-plan-tools { align-items: stretch; flex-direction: column; }
       .floor-rack-search { flex: 0 1 auto; width: 100%; max-width: none; }
       .floor-plan-tools .button-group, .floor-plan-tools .button { width: 100%; }

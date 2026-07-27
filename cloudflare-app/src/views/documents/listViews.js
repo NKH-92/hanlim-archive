@@ -1,6 +1,7 @@
 // 문서 목록과 소량 폐기 작업공간 화면.
 
 import { escapeHtml } from "../../ui/html/escape.js";
+import { FREE_TIER_BUDGET } from "../../config.js";
 import { documentResults } from "../documentTableViews.js";
 import { filterSelectRow, option, page } from "../layout.js";
 import { didYouMeanView, parsedChipRow, searchInputBlock } from "../searchFragments.js";
@@ -57,7 +58,7 @@ export function disposalWorkspacePage({
   years = [],
   filters = {},
   capped = false,
-  directBulkDisposeLimit = 10,
+  directBulkDisposeLimit = FREE_TIER_BUDGET.directBulkDisposeMaxItems,
   history = [],
   campaigns = [],
   pagination = { page: 1, totalPages: 1, totalItems: 0 },
@@ -105,9 +106,9 @@ function disposalTargetsView({ documents, categories, racks, years, filters, cap
     </section>
     <section class="panel results-panel">
       <div class="section-title"><h2>폐기 대상</h2><span class="count-badge">${documents.length}${capped ? "+" : ""}건</span></div>
-      ${capped ? `<div class="alert warning">소량 폐기 화면에는 앞의 ${limit}건만 표시됩니다. 조건에 맞는 문서 전체를 처리하려면 상단의 <a href="/disposal-batches/new">정기폐기</a>를 사용하세요.</div>` : ""}
+      ${capped ? `<div class="alert warning">선택 폐기는 한 번에 ${limit}건까지 처리하므로 앞의 ${limit}건만 표시됩니다. 조건에 맞는 문서 전체를 처리하려면 상단의 <a href="/disposal-batches/new">정기폐기</a>를 사용하세요.</div>` : ""}
       ${documentResults(documents, { bulk: true, selectAll: true, emptyMessage: "조건에 맞는 보관중 문서가 없습니다." })}
-      ${bulkActionBar("/documents/disposal/process", filters)}
+      ${bulkActionBar("/documents/disposal/process", filters, limit)}
     </section>
     </div>`;
 }

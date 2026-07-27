@@ -356,6 +356,9 @@ test("dashboard page renders search-first row results without a floor plan", asy
   for (const label of ["문서명", "문서번호 · 개정", "대분류", "보관 위치", "상태", "제·개정일"]) {
     assert.match(html, new RegExp(">" + label + "<"));
   }
+  // role="table" 격자는 열 이름 역할이 있어야 스크린리더가 각 셀의 열 맥락을 읽는다.
+  const viewerHeader = html.match(/<div class="viewer-result-header"[\s\S]*?<\/div>/)?.[0] || "";
+  assert.equal((viewerHeader.match(/role="columnheader"/g) || []).length, 6);
   assert.match(html, /<mark>PV<\/mark>/, "검색어 일치 부분이 하이라이트된다");
   assert.match(APP_SCRIPT, /window\.SearchCore/, "즉시 검색 코어가 정적 자산에 포함된다");
   assert.match(html, /<select name="status" form="viewer-search-form">[\s\S]*?보관중 문서[\s\S]*?폐기 문서[\s\S]*?전체/);
@@ -458,8 +461,8 @@ test("document workspace exposes permission-scoped selection actions and five de
   assert.match(html, /action="\/documents\/disposal\/process"/);
   assert.match(html, /data-document-preview/);
   assert.match(html, /data-column-toggle="revision-date"/);
-  assert.match(html, /<span>문서번호 · 개정<\/span>/);
-  assert.match(html, /data-column="revision-date" hidden>제·개정일/);
+  assert.match(html, /<span role="columnheader">문서번호 · 개정<\/span>/);
+  assert.match(html, /data-column="revision-date" role="columnheader" hidden>제·개정일/);
   assert.equal((html.match(/data-workspace-return-to/g) || []).length, 2);
 });
 

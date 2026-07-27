@@ -57,6 +57,8 @@ export function adminStyles() {
     .detail-actions > summary::-webkit-details-marker { display: none; }
     .detail-action-groups { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-3); margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--line); }
     .detail-action-groups > div { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+    .detail-action-groups > .detail-state-actions { display: grid; justify-items: end; gap: var(--sp-2); padding-left: var(--sp-4); border-left: 1px solid var(--danger); }
+    .detail-state-label { color: var(--danger); font-size: 12px; font-weight: 600; text-align: right; }
     .detail-history { margin-top: var(--sp-4); }
     .detail-history summary { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); cursor: pointer; font-weight: 700; list-style: none; }
     .detail-history summary::-webkit-details-marker { display: none; }

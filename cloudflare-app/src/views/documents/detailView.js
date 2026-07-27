@@ -124,7 +124,11 @@ function documentActions(document, capabilities) {
     stateActions.push(`<button type="button" class="button secondary" data-open-modal="restore-modal">폐기 취소</button>`);
   }
   if (!primaryActions.length && !stateActions.length) return "";
-  return `<details class="panel detail-actions" aria-label="문서 작업" data-detail-actions open><summary><span>관리 작업</span><span class="count-badge">${primaryActions.length + stateActions.length}개</span></summary><div class="detail-action-groups"><div>${primaryActions.join("")}</div><div>${stateActions.join("")}</div></div></details>`;
+  // 되돌리기 어려운 상태 변경은 일반 편집 작업과 같은 줄에 두지 않고 별도 구획으로 분리한다.
+  const stateGroup = stateActions.length
+    ? `<div class="detail-state-actions" role="group" aria-label="${document.status === "active" ? "폐기 처리" : "폐기 취소"}"><span class="detail-state-label">${document.status === "active" ? "상태 변경 · 되돌리려면 복구 권한이 필요합니다" : "상태 변경"}</span><div>${stateActions.join("")}</div></div>`
+    : "";
+  return `<details class="panel detail-actions" aria-label="문서 작업" data-detail-actions open><summary><span>관리 작업</span><span class="count-badge">${primaryActions.length + stateActions.length}개</span></summary><div class="detail-action-groups">${primaryActions.length ? `<div>${primaryActions.join("")}</div>` : ""}${stateGroup}</div></details>`;
 }
 
 function renderRevisionHistory(items, currentDocumentId) {

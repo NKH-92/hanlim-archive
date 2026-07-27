@@ -44,7 +44,7 @@ async function renderDisposalWorkspace(env, session, filters, feedback = null, {
     getRackSummaries(env),
     getDisposalDueYears(env),
     tab === "active"
-      ? getDisposalCandidates(env, filters, FREE_TIER_BUDGET.disposalProcessChunkSize + 1)
+      ? getDisposalCandidates(env, filters, FREE_TIER_BUDGET.directBulkDisposeMaxItems + 1)
       : Promise.resolve([]),
     historyPromise,
     campaignsPromise
@@ -55,9 +55,9 @@ async function renderDisposalWorkspace(env, session, filters, feedback = null, {
     racks,
     years,
     filters,
-    documents: candidates.slice(0, FREE_TIER_BUDGET.disposalProcessChunkSize),
-    capped: candidates.length > FREE_TIER_BUDGET.disposalProcessChunkSize,
-    directBulkDisposeLimit: FREE_TIER_BUDGET.disposalProcessChunkSize,
+    documents: candidates.slice(0, FREE_TIER_BUDGET.directBulkDisposeMaxItems),
+    capped: candidates.length > FREE_TIER_BUDGET.directBulkDisposeMaxItems,
+    directBulkDisposeLimit: FREE_TIER_BUDGET.directBulkDisposeMaxItems,
     history: history.items,
     campaigns,
     pagination: history.pagination,

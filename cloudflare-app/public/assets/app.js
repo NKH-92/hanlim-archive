@@ -254,20 +254,28 @@
       var bulkConfirmCountInput = document.querySelector('[data-bulk-confirm-count-input]');
       var bulkConfirmButton = document.querySelector('[data-bulk-confirm-button]');
       var bulkDisposalButton = document.querySelector('[data-disposal-limit]');
+      var bulkLimitNotice = document.querySelector('[data-bulk-limit-notice]');
       function syncBulk() {
         var items = Array.from(document.querySelectorAll('[data-bulk-item]'));
         var checkedItems = items.filter(function (item) { return item.checked; });
         var checked = checkedItems.map(function (item) { return item.value; });
+        var disposalLimit = bulkDisposalButton ? Number(bulkDisposalButton.dataset.disposalLimit || 0) : 0;
+        var overLimit = Boolean(disposalLimit && checked.length > disposalLimit);
         if (bulkBar) bulkBar.hidden = checked.length === 0;
         bulkIds.forEach(function (input) { input.value = checked.join(','); });
         if (bulkCount) bulkCount.textContent = bulkBar && bulkBar.hasAttribute('data-document-selection')
           ? checked.length + '건 선택'
           : '원본 ' + checked.length + '부 선택';
+        if (bulkLimitNotice) {
+          bulkLimitNotice.textContent = overLimit
+            ? '한 번에 ' + disposalLimit + '건까지 폐기할 수 있습니다. ' + (checked.length - disposalLimit) + '건을 해제하세요.'
+            : '';
+          bulkLimitNotice.hidden = !overLimit;
+        }
         if (bulkConfirmCount) bulkConfirmCount.textContent = checked.length + '부';
         if (bulkConfirmCountInput) bulkConfirmCountInput.value = String(checked.length);
         if (bulkConfirmButton) {
-          var disposalLimit = bulkDisposalButton ? Number(bulkDisposalButton.dataset.disposalLimit || 0) : 0;
-          bulkConfirmButton.disabled = checked.length === 0 || Boolean(disposalLimit && checked.length > disposalLimit);
+          bulkConfirmButton.disabled = checked.length === 0 || overLimit;
           bulkConfirmButton.textContent = checked.length
             ? '예, 원본 ' + checked.length + '부를 폐기합니다'
             : '예, 폐기합니다';
@@ -292,10 +300,9 @@
           bulkSelectAll.disabled = items.length === 0;
         }
         if (bulkDisposalButton) {
-          var maxDisposal = Number(bulkDisposalButton.dataset.disposalLimit || 0);
-          bulkDisposalButton.disabled = Boolean(maxDisposal && checked.length > maxDisposal);
-          bulkDisposalButton.title = maxDisposal && checked.length > maxDisposal
-            ? '폐기는 한 번에 ' + maxDisposal + '건 이하만 선택하세요.'
+          bulkDisposalButton.disabled = overLimit;
+          bulkDisposalButton.title = overLimit
+            ? '폐기는 한 번에 ' + disposalLimit + '건 이하만 선택하세요.'
             : '';
         }
       }
@@ -1173,6 +1180,11 @@
       });
 
       // 서버 즉시 검색: Core projection 후보 → Core 재검증 → 최대 30건 cursor 응답.
+      var searchCandidateCap = 200;
+      // 색인 미완성 경로에서 후보 상한에 닿으면 조건에 맞는 문서가 더 있어도 잘릴 수 있다.
+      var totalFoundAtCandidateCap = function (payload) {
+        return Number(payload.candidateCount || 0) >= searchCandidateCap;
+      };
       var viewerApp = document.querySelector('[data-viewer-app]');
       var viewerForm = document.querySelector('[data-viewer-form]');
       var viewerInput = viewerForm ? viewerForm.querySelector('input[name="q"]') : null;
@@ -1269,7 +1281,7 @@
           currentItems = append ? currentItems.concat(payload.items || []) : (payload.items || []);
           currentCursor = payload.nextCursor || '';
           var html = '<div class="viewer-result-table' + (workspaceSelectable ? ' is-selectable' : '') + '" role="table" aria-label="문서 검색 결과">' +
-            '<div class="viewer-result-header" role="row">' + (workspaceSelectable ? '<span class="check-col"><span class="sr-only">선택</span></span>' : '') + '<span>문서명</span><span>문서번호 · 개정</span><span>대분류</span><span>보관 위치</span><span>상태</span><span class="optional-column" data-column="revision-date" hidden>제·개정일</span></div>' +
+            '<div class="viewer-result-header" role="row">' + (workspaceSelectable ? '<span class="check-col" role="columnheader"><span class="sr-only">선택</span></span>' : '') + '<span role="columnheader">문서명</span><span role="columnheader">문서번호 · 개정</span><span role="columnheader">대분류</span><span role="columnheader">보관 위치</span><span role="columnheader">상태</span><span class="optional-column" data-column="revision-date" role="columnheader" hidden>제·개정일</span></div>' +
             '<div class="viewer-result-list" role="rowgroup">' +
             currentItems.map(function (item) { return resultRow(item, query); }).join('') +
             '</div></div>';
@@ -1278,13 +1290,22 @@
           } else if (payload.hasMore && currentCursor) {
             html += '<nav class="pagination"><button type="button" class="button secondary sm" data-search-more>더보기</button></nav>';
           }
-          if (payload.fallback) {
-            html = '<div class="alert warning" role="status">검색 인덱스 점검 중입니다. 결과가 제한될 수 있습니다.</div>' + html;
+          // 색인 재구성 중에도 Core 직접 검색이 결과를 채우므로, 결과가 실제로 비었거나
+          // 후보 상한에 닿아 누락 가능성이 있을 때만 사용자에게 알린다.
+          if (payload.fallback && (!currentItems.length || totalFoundAtCandidateCap(payload))) {
+            html = '<div class="alert warning" role="status">검색 색인을 재구성하는 중입니다. 결과가 일부 누락될 수 있으니 잠시 후 다시 검색하세요.</div>' + html;
           }
           replaceResults(html, append);
           if (resultsTitle) resultsTitle.textContent = '"' + query + '" 검색 결과';
-          if (resultsCount) resultsCount.textContent = Number(payload.candidateCount || currentItems.length).toLocaleString('ko-KR') + '건';
-          if (searchLive) searchLive.textContent = currentItems.length ? currentItems.length + '건을 표시했습니다.' : '검색 결과가 없습니다.';
+          var totalFound = Number(payload.candidateCount || currentItems.length);
+          if (resultsCount) resultsCount.textContent = totalFound.toLocaleString('ko-KR') + '건';
+          if (searchLive) {
+            searchLive.textContent = !currentItems.length
+              ? '검색 결과가 없습니다.'
+              : currentItems.length < totalFound
+                ? totalFound.toLocaleString('ko-KR') + '건 중 ' + currentItems.length.toLocaleString('ko-KR') + '건을 표시했습니다. 더보기로 이어서 확인하세요.'
+                : totalFound.toLocaleString('ko-KR') + '건을 모두 표시했습니다.';
+          }
           if (homeExtras) homeExtras.hidden = true;
           viewerApp.hidden = false;
           var revisionToggle = document.querySelector('[data-column-toggle="revision-date"]');

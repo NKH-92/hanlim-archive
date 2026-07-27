@@ -1,6 +1,7 @@
 // 검색 뷰어(/app)·Q&A·검색 리포트 화면.
 
 import { escapeHtml } from "../ui/html/escape.js";
+import { FREE_TIER_BUDGET } from "../config.js";
 import { safeEmbeddedJson } from "../platform/web/renderContext.js";
 import { capabilitiesFromSession } from "../domains/identity/index.js";
 import { searchCoreScript } from "./clientScript.js";
@@ -13,6 +14,9 @@ import {
 } from "./searchFragments.js";
 
 export { didYouMeanView, highlight, parsedChipRow, searchInputBlock };
+
+// 선택 폐기 한도는 서버 검증과 같은 예산 값을 쓴다(화면·서버 불일치 방지).
+const DIRECT_BULK_DISPOSE_LIMIT = FREE_TIER_BUDGET.directBulkDisposeMaxItems;
 
 export function dashboardPage({
   session,
@@ -35,6 +39,12 @@ export function dashboardPage({
   const documents = viewerSearch.items || [];
   const suggestions = viewerSearch.suggestions || [];
   const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
+  const shownItems = documents.length;
+  const resultStatusText = !totalItems
+    ? "검색 결과가 없습니다."
+    : shownItems < totalItems
+      ? `${totalItems.toLocaleString("ko-KR")}건 중 ${shownItems.toLocaleString("ko-KR")}건을 표시했습니다.`
+      : `${totalItems.toLocaleString("ko-KR")}건을 찾았습니다.`;
 
   // 홈 모드: 검색을 먼저 두되 서버가 기본 30행을 함께 제공한다.
   if (mode === "home") {
@@ -48,7 +58,7 @@ export function dashboardPage({
           ${viewerSearchForm({ query: "", suggestions: [], categories, tags, filters, home: true })}
           <div class="quick-row viewer-recents" data-recent-searches></div>
         </section>
-        <p class="search-live-status" data-search-live aria-live="polite">${totalItems ? `최근 등록·수정 문서 ${totalItems}건을 표시합니다.` : "보관 중인 문서가 없습니다."}</p>
+        <p class="search-live-status" data-search-live aria-live="polite">${totalItems ? `보관 문서 ${totalItems.toLocaleString("ko-KR")}건 중 최근 등록·수정 ${shownItems.toLocaleString("ko-KR")}건을 표시합니다.` : "보관 중인 문서가 없습니다."}</p>
         <div data-home-extras>${homeQuickLinks(categories)}</div>
 
         <section class="viewer-workspace is-home" data-viewer-app>
@@ -91,7 +101,7 @@ export function dashboardPage({
         ${filterSelectRow({ categories, tags, filters, viewer: true, formId: "viewer-search-form" })}
       </details></div>
       <button type="button" class="button secondary mobile-search-filter-button" data-open-modal="viewer-filter-dialog"><i class="fa-solid fa-sliders" aria-hidden="true"></i>검색 필터${activeFilterBadge(filters)}</button>
-      <p class="search-live-status" data-search-live aria-live="polite">${totalItems ? `${totalItems}건을 찾았습니다.` : "검색 결과가 없습니다."}</p>
+      <p class="search-live-status" data-search-live aria-live="polite">${resultStatusText}</p>
       ${parsedChipRow(parsedQuery, query)}
       ${activeFilterChips({ query, filters, categories, tags })}
       <div class="quick-row viewer-recents" data-recent-searches></div>
@@ -166,7 +176,7 @@ function viewerDocumentResults(documents, query, capabilities = {}, selectedDocu
   const selectable = capabilities.canManageSets || capabilities.canManageDisposals;
   const selected = new Set(selectedDocumentIds.map(Number));
   return `<div class="viewer-result-table ${selectable ? "is-selectable" : ""}" role="table" aria-label="문서 검색 결과">
-    <div class="viewer-result-header" role="row">${selectable ? `<span class="check-col"><span class="sr-only">선택</span></span>` : ""}<span>문서명</span><span>문서번호 · 개정</span><span>대분류</span><span>보관 위치</span><span>상태</span><span class="optional-column" data-column="revision-date" hidden>제·개정일</span></div>
+    <div class="viewer-result-header" role="row">${selectable ? `<span class="check-col" role="columnheader"><span class="sr-only">선택</span></span>` : ""}<span role="columnheader">문서명</span><span role="columnheader">문서번호 · 개정</span><span role="columnheader">대분류</span><span role="columnheader">보관 위치</span><span role="columnheader">상태</span><span class="optional-column" data-column="revision-date" role="columnheader" hidden>제·개정일</span></div>
     <div class="viewer-result-list" role="rowgroup">${documents.map((document) => viewerDocumentCard(document, query, selectable, selected.has(Number(document.id)))).join("")}</div>
   </div>`;
 }
@@ -211,12 +221,12 @@ function workspaceBulkActions({ capabilities, editableSets = [], returnTo }) {
     <button type="submit" class="button secondary sm">세트에 추가</button>
   </form>` : "";
   const disposalButton = capabilities.canManageDisposals
-    ? `<button type="button" class="danger-button sm" data-open-modal="workspace-disposal-modal" data-disposal-limit="10">선택 문서 폐기</button>`
+    ? `<button type="button" class="danger-button sm" data-open-modal="workspace-disposal-modal" data-disposal-limit="${DIRECT_BULK_DISPOSE_LIMIT}">선택 문서 폐기</button>`
     : "";
   const disposalDialog = capabilities.canManageDisposals ? `<dialog id="workspace-disposal-modal" class="modal disposal-review-modal" aria-labelledby="workspace-disposal-title">
     <form method="post" action="/documents/disposal/process" class="modal-body" data-bulk-form>
       <h2 id="workspace-disposal-title">선택 문서 폐기</h2>
-      <p>한 번에 최대 10건을 처리합니다. 실제 원본과 선택 수량이 같은지 확인하세요.</p>
+      <p>한 번에 최대 ${DIRECT_BULK_DISPOSE_LIMIT}건을 처리합니다. 실제 원본과 선택 수량이 같은지 확인하세요.</p>
       <p>실제 폐기할 원본이 <strong data-bulk-confirm-count>0부</strong>가 맞습니까?</p>
       <ol class="disposal-review-list" data-bulk-summary></ol>
       <input type="hidden" name="ids" data-bulk-ids>
@@ -227,7 +237,7 @@ function workspaceBulkActions({ capabilities, editableSets = [], returnTo }) {
       <div class="modal-actions"><button type="button" class="button secondary" data-close-modal>취소</button><button type="submit" class="danger-button" name="confirmDisposal" value="1" data-bulk-confirm-button disabled>예, 폐기합니다</button></div>
     </form>
   </dialog>` : "";
-  return `<div class="bulk-bar workspace-bulk-bar" data-bulk-bar data-document-selection hidden><span data-bulk-count>0건 선택</span>${setForm}${disposalButton}</div>${disposalDialog}`;
+  return `<div class="bulk-bar workspace-bulk-bar" data-bulk-bar data-document-selection hidden><span data-bulk-count>0건 선택</span><span class="bulk-limit-notice" data-bulk-limit-notice role="status" hidden></span>${setForm}${disposalButton}</div>${disposalDialog}`;
 }
 
 function activeFilterChips({ query, filters = {}, categories = [], tags = [] }) {
