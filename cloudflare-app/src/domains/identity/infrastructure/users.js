@@ -3,13 +3,15 @@ import { permissionFlags, PERMISSION_KEYS } from "../../../permissions.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
 import { actorUsername } from "../domain/actor.js";
 import { validateNewPassword } from "../domain/passwordPolicy.js";
-import { canTransitionUser, transitionFor } from "../domain/userState.js";
+import { canTransitionUser, transitionFor, userDeletionRefusal } from "../domain/userState.js";
 import {
   createUserPasswordResetMutationPlan,
   createUserPermissionMutationPlan,
+  createUserDeleteMutationPlan,
   createUserStatusMutationPlan
 } from "./userMutationPlans.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
+import { clean } from "../../../shared/text/normalize.js";
 
 // app_users.row_version은 역할·권한 화면이 OCC로 사용하는 값이다. 권한 판단 근거를 바꾸는
 // 상태·역할·템플릿·권한 변경은 증가시키고 credential/session_epoch 전용 변경은 증가시키지 않는다.
@@ -295,6 +297,66 @@ export async function resetUserPassword(env, id, temporaryPassword, actor) {
   return changed(results[2])
     ? { ok: true }
     : { ok: false, message: "사용자 인증 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+}
+
+// 테스트·검증 단계에서 만들어진 계정을 대장에서 지운다. 계정 행은 사라지지만 감사 이력의
+// actor_user_id에는 FK가 없어 이 계정이 남긴 과거 작업 증적은 그대로 보존된다.
+/**
+ * @param {any} env
+ * @param {string | number} id
+ * @param {Record<string, any>} actor
+ * @param {{ confirmedUsername?: unknown }} [confirmation]
+ */
+export async function deleteUser(env, id, actor, confirmation = {}) {
+  const user = await getAppUser(env, id);
+  const remainingAdminCount = user?.role === "Admin" ? await countOtherAdmins(env, user.id) : 0;
+  const refusal = userDeletionRefusal(user, actor, { remainingAdminCount });
+  if (refusal) return { ok: false, message: refusal };
+  if (clean(confirmation.confirmedUsername) !== user.username) {
+    return { ok: false, message: "삭제를 확정하려면 계정 아이디를 정확히 입력하세요." };
+  }
+
+  const guardSql = "FROM app_users WHERE id = ? AND username = ? AND row_version = ?";
+  const guardBinds = [user.id, user.username, Number(user.row_version)];
+  const audit = createSystemAuditStatement(env, {
+    entityType: "user",
+    entityId: user.id,
+    entityReference: user.username,
+    action: "delete",
+    actor,
+    summary: "사용자 계정 완전삭제",
+    details: { before: userAuditSnapshot(user), after: null }
+  }, { guardSql, guardBinds });
+  const clearThrottle = env.DB.prepare("DELETE FROM login_throttle WHERE username = ?").bind(user.username);
+  const remove = env.DB.prepare(`
+    DELETE FROM app_users
+    WHERE id = ? AND username = ? AND row_version = ?
+  `).bind(user.id, user.username, Number(user.row_version));
+  const plan = createUserDeleteMutationPlan(audit, clearThrottle, remove, `app_users:${user.id}:${user.row_version}`);
+
+  try {
+    const results = await executeMutationBatch(env, plan);
+    return changed(results[2])
+      ? { ok: true, username: user.username, displayName: user.display_name }
+      : { ok: false, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  } catch (error) {
+    if (error?.code === "STALE_VERSION") {
+      return { ok: false, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    }
+    throw error;
+  }
+}
+
+async function countOtherAdmins(env, excludedId) {
+  const row = await env.DB.prepare(`
+    SELECT COUNT(*) AS total
+    FROM app_users
+    WHERE role = 'Admin'
+      AND status = 'approved'
+      AND security_review_required = 0
+      AND id <> ?
+  `).bind(excludedId).first();
+  return Number(row?.total || 0);
 }
 
 async function transitionUserStatus(env, id, actor, spec) {

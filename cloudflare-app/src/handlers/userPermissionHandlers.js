@@ -1,5 +1,6 @@
 import {
   applyRoleTemplateToUsers,
+  deleteUser,
   disableUser,
   enableUser,
   getAppUser,
@@ -17,7 +18,7 @@ import {
   roleTemplatesPage,
   userPermissionsPage
 } from "../views/permissionViews.js";
-import { userPasswordResetPage } from "../views/adminViews.js";
+import { userDeletePage, userPasswordResetPage } from "../views/adminViews.js";
 import { CUSTOM_ROLE_TEMPLATE_KEY, PERMISSION_KEYS, permissionFlags } from "../permissions.js";
 import { redirect } from "../platform/http/responses.js";
 
@@ -128,6 +129,30 @@ export async function handleUserStatusAction(env, session, userId, action) {
   const result = await mutation(env, userId, session);
   if (!result.ok) return errorPage(result.message, session, 400);
   return redirect(`/admin/settings?toast=${action === "disable" ? "disabled" : "enabled"}`);
+}
+
+export async function renderUserDelete(env, session, userId, error = "") {
+  const user = await getAppUser(env, userId);
+  if (!user) return notFoundPage(session);
+  if (session?.role !== "Admin") {
+    return errorPage("계정 완전삭제는 시스템 관리자만 수행할 수 있습니다.", session, 403);
+  }
+  if (Number(user.id) === Number(session.userId) || user.username === session.username) {
+    return errorPage("현재 로그인한 계정은 삭제할 수 없습니다.", session, 400);
+  }
+  return userDeletePage({ session, user, error });
+}
+
+export async function handleUserDelete(request, env, session, userId) {
+  const form = await request.formData();
+  if (form.get("confirmDelete") !== "1") {
+    return renderUserDelete(env, session, userId, "삭제 후 계정을 되돌릴 수 없음을 확인하세요.");
+  }
+  const result = await deleteUser(env, userId, session, {
+    confirmedUsername: form.get("confirmedUsername")
+  });
+  if (!result.ok) return renderUserDelete(env, session, userId, result.message);
+  return redirect("/admin/settings?toast=user-deleted");
 }
 
 export async function renderUserPasswordReset(env, session, userId, error = "") {

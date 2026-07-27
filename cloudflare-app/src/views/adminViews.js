@@ -175,12 +175,21 @@ export function adminSettingsPage({ session, users }) {
   return page("사용자 관리", `
     <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리합니다.</p></div><div class="button-group">${templateManagement}<a class="button secondary" href="/admin">관리 설정</a></div></section>
     <section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${pending.length ? userRequestTable(pending, session) : emptyState("대기 중인 가입 요청이 없습니다.")}</section>
-    <section class="two-col">
-      <article class="panel">${sectionHeader("승인된 사용자", `${approved.length}명`)}${approved.length ? userRequestTable(approved, session) : emptyState("승인된 사용자가 없습니다.")}</article>
-      <article class="panel">${sectionHeader("사용중지 사용자", `${disabled.length}명`)}${disabled.length ? userRequestTable(disabled, session) : emptyState("사용중지된 사용자가 없습니다.")}</article>
-      <article class="panel">${sectionHeader("반려된 요청", `${rejected.length}건`)}${rejected.length ? userRequestTable(rejected, session) : emptyState("반려된 요청이 없습니다.")}</article>
-    </section>
+    <div class="user-group-stack">
+      ${userGroupSection("승인된 사용자", `${approved.length}명`, approved, session, "승인된 사용자가 없습니다.")}
+      ${userGroupSection("사용중지 사용자", `${disabled.length}명`, disabled, session, "사용중지된 사용자가 없습니다.")}
+      ${userGroupSection("반려된 요청", `${rejected.length}건`, rejected, session, "반려된 요청이 없습니다.")}
+    </div>
   `, session);
+}
+
+// 세 사용자 그룹은 한 행씩 쌓고 기본은 접어 둔다. 목록이 길어도 상단에서 건수만 훑고
+// 필요한 그룹만 펼쳐 볼 수 있게 한다.
+function userGroupSection(title, count, users, session, emptyMessage) {
+  return `<details class="panel user-group">
+    <summary><span class="user-group-title">${escapeHtml(title)}</span><span class="count-badge">${escapeHtml(count)}</span></summary>
+    <div class="user-group-body">${users.length ? userRequestTable(users, session) : emptyState(emptyMessage)}</div>
+  </details>`;
 }
 
 function userRequestTable(users, session) {
@@ -199,8 +208,9 @@ function userRoleLabel(user) {
 }
 
 function userActions(user, session) {
+  const deletion = userDeleteLink(user, session);
   if (Number(user.security_review_required || 0) === 1) {
-    return `<span class="muted">보안 검토 대상 · 일반 재승인 불가</span>`;
+    return `<div class="button-group"><span class="muted">보안 검토 대상 · 일반 재승인 불가</span>${deletion}</div>`;
   }
   const canResetPassword = session?.role === "Admin"
     && Number(user.id) !== Number(session.userId)
@@ -210,14 +220,46 @@ function userActions(user, session) {
     ? `<a class="button secondary sm" href="/admin/users/${user.id}/reset-password">비밀번호 초기화</a>`
     : "";
   if (user.role === "Admin") {
-    return passwordReset || `<span class="muted">현재 관리자 계정</span>`;
+    return `<div class="button-group">${passwordReset || `<span class="muted">현재 관리자 계정</span>`}${deletion}</div>`;
   }
   const permissions = `<a class="button secondary sm" href="/admin/users/${user.id}/permissions">권한</a>`;
   const target = `${user.display_name} (${user.username})`;
-  if (user.status === "approved") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/disable" data-confirm="${escapeHtml(target)} 계정의 로그인을 중지합니다. 계속할까요?"><button type="submit" class="danger-button sm">사용중지</button></form></div>`;
-  if (user.status === "disabled") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/enable" data-confirm="${escapeHtml(target)} 계정을 다시 사용할 수 있게 합니다. 계속할까요?"><button type="submit" class="primary sm">다시 사용</button></form></div>`;
-  if (user.status === "rejected") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 계정을 재승인합니다. 저장된 권한도 함께 확인하세요."><button type="submit" class="primary sm">재승인</button></form></div>`;
-  return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 가입 요청을 승인합니다. 승인 후 권한을 설정하세요."><button type="submit" class="primary sm">승인</button></form><form method="post" action="/admin/users/${user.id}/reject" data-confirm="${escapeHtml(target)} 가입 요청을 반려합니다. 계속할까요?"><button type="submit" class="danger-button sm">반려</button></form></div>`;
+  if (user.status === "approved") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/disable" data-confirm="${escapeHtml(target)} 계정의 로그인을 중지합니다. 계속할까요?"><button type="submit" class="danger-button sm">사용중지</button></form>${deletion}</div>`;
+  if (user.status === "disabled") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/enable" data-confirm="${escapeHtml(target)} 계정을 다시 사용할 수 있게 합니다. 계속할까요?"><button type="submit" class="primary sm">다시 사용</button></form>${deletion}</div>`;
+  if (user.status === "rejected") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 계정을 재승인합니다. 저장된 권한도 함께 확인하세요."><button type="submit" class="primary sm">재승인</button></form>${deletion}</div>`;
+  return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 가입 요청을 승인합니다. 승인 후 권한을 설정하세요."><button type="submit" class="primary sm">승인</button></form><form method="post" action="/admin/users/${user.id}/reject" data-confirm="${escapeHtml(target)} 가입 요청을 반려합니다. 계속할까요?"><button type="submit" class="danger-button sm">반려</button></form>${deletion}</div>`;
+}
+
+// 완전삭제는 되돌릴 수 없으므로 목록에서 바로 실행하지 않고 전용 확인 화면으로 보낸다.
+function userDeleteLink(user, session) {
+  if (session?.role !== "Admin") return "";
+  if (Number(user.id) === Number(session.userId) || user.username === session.username) return "";
+  return `<a class="button danger-button sm" href="/admin/users/${user.id}/delete">완전삭제</a>`;
+}
+
+export function userDeletePage({ session, user, error = "" }) {
+  return page("계정 완전삭제", `
+    <section class="page-head">
+      <div><h1>계정 완전삭제</h1><p class="muted">${escapeHtml(user.display_name)} (${escapeHtml(user.username)})</p></div>
+      <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
+    </section>
+    <section class="panel narrow">
+      ${alertWarning("계정 정보와 로그인 수단이 대장에서 삭제되며 되돌릴 수 없습니다. 이 계정이 남긴 문서 작업과 감사 이력은 그대로 보존됩니다.")}
+      ${error ? alertDanger(error) : ""}
+      <dl class="user-delete-summary">
+        <div><dt>아이디</dt><dd class="mono">${escapeHtml(user.username)}</dd></div>
+        <div><dt>이름</dt><dd>${escapeHtml(user.display_name)}</dd></div>
+        <div><dt>역할</dt><dd>${escapeHtml(userRoleLabel(user))}</dd></div>
+        <div><dt>상태</dt><dd>${userStatus(user)}</dd></div>
+        <div><dt>요청일</dt><dd>${escapeHtml(user.requested_at || "-")}</dd></div>
+      </dl>
+      <form method="post" action="/admin/users/${user.id}/delete" class="stack">
+        <label>삭제를 확정하려면 계정 아이디를 그대로 입력하세요<input name="confirmedUsername" autocomplete="off" spellcheck="false" required></label>
+        <label class="checkbox"><input type="checkbox" name="confirmDelete" value="1" required><span>이 계정을 완전삭제하며 복구할 수 없음을 확인했습니다.</span></label>
+        <button type="submit" class="danger-button">계정 완전삭제</button>
+      </form>
+    </section>
+  `, session);
 }
 
 export function userPasswordResetPage({ session, user, error = "", minLength = PASSWORD_POLICY.minLength }) {

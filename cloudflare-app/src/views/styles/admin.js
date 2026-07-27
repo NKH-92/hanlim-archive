@@ -115,5 +115,18 @@ export function adminStyles() {
     .empty-state { display: grid; place-items: center; gap: var(--sp-2); padding: var(--sp-8) var(--sp-4); text-align: center; color: var(--gray-500); font-size: 13px; border-radius: var(--r-md); background: var(--gray-50); border: 1px dashed var(--gray-200); }
     .empty-state i { font-size: 22px; color: var(--gray-300); }
     .empty-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: center; }
+
+    /* 사용자 그룹은 3열 병렬 대신 한 행씩 쌓고 기본은 접어 둔다. */
+    .user-group-stack { display: grid; gap: var(--sp-3); }
+    .user-group > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); cursor: pointer; font-size: 15px; font-weight: 700; list-style: none; }
+    .user-group > summary::-webkit-details-marker { display: none; }
+    .user-group-title { display: inline-flex; align-items: center; gap: var(--sp-2); }
+    .user-group-title::before { content: "▸"; color: var(--gray-400); font-size: 11px; }
+    .user-group[open] .user-group-title::before { content: "▾"; }
+    .user-group-body { margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--line); }
+    .user-delete-summary { display: grid; gap: 0; margin: var(--sp-4) 0; }
+    .user-delete-summary div { display: grid; grid-template-columns: minmax(96px, 1fr) minmax(0, 3fr); gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--gray-100); }
+    .user-delete-summary dt { color: var(--gray-500); font-size: 12px; font-weight: 600; }
+    .user-delete-summary dd { margin: 0; font-size: 13px; font-weight: 600; }
 `;
 }

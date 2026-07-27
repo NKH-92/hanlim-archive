@@ -35,8 +35,8 @@ export function searchStyles() {
     button:hover, .button:hover { background: var(--primary-strong); }
     .button.secondary, button.secondary, .secondary { background: var(--surface); border-color: var(--line); color: var(--gray-700); }
     .button.secondary:hover, button.secondary:hover, .secondary:hover { background: var(--gray-50); border-color: var(--gray-300); color: var(--gray-900); }
-    .danger-button { background: var(--danger-soft); color: var(--danger); border: 1px solid transparent; }
-    .danger-button:hover { background: var(--danger); color: var(--surface); }
+    .danger-button, .button.danger-button { background: var(--danger-soft); color: var(--danger); border: 1px solid transparent; }
+    .danger-button:hover, .button.danger-button:hover { background: var(--danger); color: var(--surface); }
     .sm { min-height: 30px; padding: var(--sp-1) var(--sp-3); font-size: 12.5px; border-radius: var(--r-sm); }
     .icon-button { min-height: 26px; width: 26px; padding: 0; background: transparent; color: var(--gray-400); border-radius: var(--r-sm); }
     .icon-button:hover { background: var(--gray-100); color: var(--gray-700); }

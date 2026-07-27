@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   applyRoleTemplateToUsers,
+  deleteUser,
   disableUser,
   enableUser,
   getAppUsers,
@@ -218,6 +219,49 @@ test("rejectUser는 승인된 사용자를 rejected로 재사용하지 않는다
   assert.equal(env.state.batches.length, 0);
 });
 
+test("deleteUser는 감사 INSERT와 잠금 해제를 계정 DELETE 앞에 같은 batch로 실행한다", async () => {
+  const env = userMutationEnv(userRow({ status: "rejected", row_version: 4 }));
+  const result = await deleteUser(env, 7, actor, { confirmedUsername: "viewer" });
+  assert.equal(result.ok, true);
+  assert.equal(env.state.batches.length, 1);
+  const [audit, throttle, remove] = env.state.batches[0];
+  assert.match(audit.sql, /INSERT INTO system_audit_logs/);
+  assert.match(audit.sql, /FROM app_users[\s\S]*row_version = \?/);
+  assert.match(throttle.sql, /DELETE FROM login_throttle/);
+  assert.match(remove.sql, /DELETE FROM app_users/);
+  assert.deepEqual(remove.args, [7, "viewer", 4]);
+  const details = JSON.parse(audit.args[9]);
+  assert.equal(details.before.username, "viewer");
+  assert.equal(details.after, null);
+});
+
+test("deleteUser는 아이디 확인 불일치·비 Admin·자기 계정을 거부한다", async () => {
+  const mismatched = userMutationEnv(userRow({ status: "rejected" }));
+  assert.equal((await deleteUser(mismatched, 7, actor, { confirmedUsername: "other@example.com" })).ok, false);
+  assert.equal(mismatched.state.batches.length, 0);
+
+  const regular = userMutationEnv(userRow({ status: "rejected" }));
+  const regularResult = await deleteUser(regular, 7, { ...actor, role: "User" }, { confirmedUsername: "viewer" });
+  assert.equal(regularResult.ok, false);
+  assert.equal(regular.state.batches.length, 0);
+
+  const own = userMutationEnv(userRow({ id: 1, username: "admin", status: "approved" }));
+  const ownResult = await deleteUser(own, 1, actor, { confirmedUsername: "admin" });
+  assert.equal(ownResult.ok, false);
+  assert.equal(own.state.batches.length, 0);
+});
+
+test("deleteUser는 남은 Admin이 없으면 Admin 계정을 지우지 않는다", async () => {
+  const lastAdmin = userMutationEnv(userRow({ id: 7, username: "other-admin", role: "Admin" }), 1, { total: 0 });
+  const blocked = await deleteUser(lastAdmin, 7, actor, { confirmedUsername: "other-admin" });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.message, /마지막 시스템 관리자/);
+  assert.equal(lastAdmin.state.batches.length, 0);
+
+  const spareAdmin = userMutationEnv(userRow({ id: 7, username: "other-admin", role: "Admin" }), 1, { total: 2 });
+  assert.equal((await deleteUser(spareAdmin, 7, actor, { confirmedUsername: "other-admin" })).ok, true);
+});
+
 test("updateUserPermissions는 역할 템플릿·권한 플래그와 전후 snapshot을 원자적으로 기록한다", async () => {
   const env = userMutationEnv(userRow({ role_template_key: "viewer", row_version: 3 }));
   const result = await updateUserPermissions(env, 7, {
@@ -304,7 +348,7 @@ function userRow(overrides = {}) {
   };
 }
 
-function userMutationEnv(user, changes = 1) {
+function userMutationEnv(user, changes = 1, adminCountRow = { total: 1 }) {
   const state = { batches: [] };
   const statement = (sql, args = []) => ({
     sql,
@@ -313,7 +357,8 @@ function userMutationEnv(user, changes = 1) {
       return statement(sql, nextArgs);
     },
     async first() {
-      return user;
+      // Admin 삭제 가드는 같은 env에서 남은 Admin 수를 별도로 읽는다.
+      return /COUNT\(\*\) AS total/.test(sql) ? adminCountRow : user;
     }
   });
   return {
