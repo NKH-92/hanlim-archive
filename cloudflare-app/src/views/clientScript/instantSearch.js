@@ -1,14 +1,7 @@
 // 전역 클라이언트 스크립트의 즉시 검색 조각. 10,000건 전환부터 브라우저 전체 인덱스를 받지 않는다.
 
-import { FREE_TIER_BUDGET } from "../../config.js";
-
 export function instantSearchScript() {
   return `      // 서버 즉시 검색: Core projection 후보 → Core 재검증 → 최대 30건 cursor 응답.
-      var searchCandidateCap = ${FREE_TIER_BUDGET.searchCandidateMaxItems};
-      // 색인 미완성 경로에서 후보 상한에 닿으면 조건에 맞는 문서가 더 있어도 잘릴 수 있다.
-      var totalFoundAtCandidateCap = function (payload) {
-        return Number(payload.candidateCount || 0) >= searchCandidateCap;
-      };
       var viewerApp = document.querySelector('[data-viewer-app]');
       var viewerForm = document.querySelector('[data-viewer-form]');
       var viewerInput = viewerForm ? viewerForm.querySelector('input[name="q"]') : null;
@@ -114,10 +107,12 @@ export function instantSearchScript() {
           } else if (payload.hasMore && currentCursor) {
             html += '<nav class="pagination"><button type="button" class="button secondary sm" data-search-more>더보기</button></nav>';
           }
-          // 색인 재구성 중에도 Core 직접 검색이 결과를 채우므로, 결과가 실제로 비었거나
-          // 후보 상한에 닿아 누락 가능성이 있을 때만 사용자에게 알린다.
-          if (payload.fallback && (!currentItems.length || totalFoundAtCandidateCap(payload))) {
-            html = '<div class="alert warning" role="status">검색 색인을 재구성하는 중입니다. 결과가 일부 누락될 수 있으니 잠시 후 다시 검색하세요.</div>' + html;
+          // fallback 경로는 최근 수정순 후보 창 안에서만 점수를 매기므로 결과 수와 무관하게
+          // 오래된 문서가 빠질 수 있다. 누락 가능성은 항상 알리고 문구만 상태에 맞게 나눈다.
+          if (payload.fallback) {
+            html = '<div class="alert warning" role="status">검색 색인을 재구성하는 중입니다. '
+              + (currentItems.length ? '오래된 문서가 결과에서 빠질 수 있으니' : '결과가 제한될 수 있으니')
+              + ' 찾는 문서가 없으면 잠시 후 다시 검색하세요.</div>' + html;
           }
           replaceResults(html, append);
           if (resultsTitle) resultsTitle.textContent = '"' + query + '" 검색 결과';

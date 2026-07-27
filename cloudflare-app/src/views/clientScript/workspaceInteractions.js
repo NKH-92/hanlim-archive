@@ -91,5 +91,20 @@ export function workspaceInteractionScript() {
         }
       });
 
+      // 모바일 고정 저장 바는 폼이 화면에 있을 때만 떠 있어야 한다. 폼을 완전히 지나가면
+      // 흐름으로 되돌려 뒤따르는 내용을 가리지 않는다.
+      var mobileSaveBar = document.querySelector('[data-save-bar]');
+      var saveBarForm = mobileSaveBar ? mobileSaveBar.closest('form') : null;
+      if (mobileSaveBar && saveBarForm) {
+        var syncSaveBar = function () {
+          var narrow = window.matchMedia?.('(max-width: 760px)').matches ?? false;
+          var bounds = saveBarForm.getBoundingClientRect();
+          var parked = narrow && bounds.bottom <= 0;
+          mobileSaveBar.toggleAttribute('data-save-bar-parked', parked);
+        };
+        syncSaveBar();
+        window.addEventListener('scroll', syncSaveBar, { passive: true });
+        window.addEventListener('resize', syncSaveBar);
+      }
 `;
 }
