@@ -123,6 +123,7 @@ export function bootstrapScript(escapeHtmlSource) {
 
       document.querySelectorAll('[data-auto-submit] select, [data-auto-submit] input[type="checkbox"]').forEach(function (control) {
         control.addEventListener('change', function () {
+          if (control.form?.matches('[data-viewer-form]')) return;
           if (control.form) control.form.submit();
         });
       });

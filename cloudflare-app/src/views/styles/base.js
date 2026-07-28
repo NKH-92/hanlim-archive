@@ -4,7 +4,7 @@ export function baseStyles() {
   return `    * { box-sizing: border-box; }
     html, body { overflow-x: hidden; }
     [hidden] { display: none !important; }
-    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; font-size: 14px; background: var(--bg); color: var(--ink); line-height: 1.55; letter-spacing: -.01em; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; font-size: 14px; background: var(--bg); color: var(--ink); line-height: 1.55; letter-spacing: 0; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
     a { color: inherit; }
     ::selection { background: var(--primary-soft); }
     .mono { font-family: var(--font-mono); }
@@ -13,8 +13,8 @@ export function baseStyles() {
     .clipboard-proxy { position: fixed; left: -9999px; }
 
     h1, h2, h3, p { overflow-wrap: anywhere; }
-    h1 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.3; letter-spacing: -.01em; }
-    h2 { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.35; letter-spacing: -.01em; }
+    h1 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.3; letter-spacing: 0; }
+    h2 { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.35; letter-spacing: 0; }
     h3 { margin: 0; font-size: 13.5px; font-weight: 700; line-height: 1.4; }
     .page-sub { margin: var(--sp-1) 0 0; color: var(--gray-500); font-size: 12.5px; font-weight: 500; }
     .muted { color: var(--gray-500); font-size: 13px; }
@@ -23,7 +23,7 @@ export function baseStyles() {
     .brand { display: inline-flex; align-items: center; gap: var(--sp-2); text-decoration: none; min-width: max-content; }
     .brand-logo { display: block; width: 56px; height: 40px; object-fit: contain; flex: none; }
     .brand strong, .brand small { display: block; }
-    .brand strong { font-weight: 700; font-size: 14px; letter-spacing: -.01em; }
+    .brand strong { font-weight: 700; font-size: 14px; letter-spacing: 0; }
     .brand small { color: var(--gray-500); font-size: 11.5px; font-weight: 500; }
     .topbar nav { display: flex; align-items: center; gap: var(--sp-1); flex: 1; }
     .archive-nav-item, .nav-sub-link, .logout-link { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); text-decoration: none; color: var(--gray-600); font-weight: 600; font-size: 13.5px; transition: background .15s ease, color .15s ease; }
@@ -33,7 +33,7 @@ export function baseStyles() {
     .archive-nav-item:hover, .nav-sub-link:hover, .logout-link:hover { background: var(--gray-100); color: var(--gray-900); }
     .archive-nav-item.active { background: var(--primary-soft); color: var(--primary); }
     .nav-group { display: grid; gap: var(--sp-1); }
-    .nav-group-label { padding: var(--sp-3) var(--sp-3) var(--sp-1); color: var(--gray-400); font-size: 10.5px; font-weight: 800; letter-spacing: .08em; }
+    .nav-group-label { padding: var(--sp-3) var(--sp-3) var(--sp-1); color: var(--gray-400); font-size: 10.5px; font-weight: 800; letter-spacing: 0; }
     .nav-group .nav-settings { margin-top: 0; border-top: 0; padding-top: 0; }
     .nav-create-document { margin-top: var(--sp-3); }
     .nav-settings { margin-top: var(--sp-2); border-top: 1px solid var(--line); padding-top: var(--sp-2); }
@@ -59,12 +59,7 @@ export function baseStyles() {
     .login-logo { display: block; width: min(176px, 70%); height: auto; object-fit: contain; filter: drop-shadow(0 8px 18px rgba(24, 33, 47, .18)); }
     .login-panel { padding: var(--sp-8); align-self: center; width: 100%; }
     .login-panel h2 { font-size: 19px; margin-bottom: var(--sp-4); }
-    .form-foot { margin-top: var(--sp-4); text-align: center; font-size: 13px; }
-    .form-foot a { color: var(--gray-500); text-decoration: none; font-weight: 600; }
-    .form-foot a:hover { color: var(--primary); }
-
     .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); margin: var(--sp-1) 0 var(--sp-4); }
-    .head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
     .breadcrumb { display: flex; gap: var(--sp-2); color: var(--gray-500); font-size: 12px; margin-bottom: var(--sp-1); }
     .breadcrumb a { text-decoration: none; }
     .breadcrumb a:hover { color: var(--primary); }

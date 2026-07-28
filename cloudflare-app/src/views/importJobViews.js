@@ -139,7 +139,7 @@ function importProcessingScript(job) {
 }
 
 function statusLabel(status) {
-  const type = status === "failed" || status === "cancelled" ? "disposed" : status === "completed" ? "active" : "pending";
+  const type = status === "failed" ? "import-failed" : status === "cancelled" ? "import-cancelled" : status === "completed" ? "import-completed" : "import-pending";
   return `<span class="status ${type}">${escapeHtml(STATUS_LABELS[status] || status)}</span>`;
 }
 

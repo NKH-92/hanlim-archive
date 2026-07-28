@@ -72,6 +72,22 @@ const approvedRgbaValues = [
   "rgba(255, 255, 255, .92)"
 ];
 
+const runtimeGeometryVariables = new Set([
+  "--grid-min",
+  "--height",
+  "--left",
+  "--rack-left",
+  "--rack-width",
+  "--top",
+  "--width",
+  "--z-ah",
+  "--z-aw",
+  "--zh",
+  "--zl",
+  "--zt",
+  "--zw"
+]);
+
 test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한다", () => {
   const css = styles();
 
@@ -86,7 +102,9 @@ test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한�
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /\.viewer-result-table/);
   assert.match(css, /\.archive-map/);
-  assert.match(css, /\.search-home-hero \{ min-height: 160px/);
+  assert.match(css, /\.search-home-hero \{ position: relative;[\s\S]*min-height: 160px/);
+  assert.match(css, /\.search-home \.search-results-controls \{ margin-top: 0; \}/);
+  assert.doesNotMatch(css, /\.viewer-search-form\.is-home \.filter-details \{ display: none; \}/);
   assert.match(css, /\.metric-strip \{ display: grid; grid-template-columns: repeat\(auto-fit/);
   assert.match(css, /@media \(min-width: 1180px\)/);
   assert.doesNotMatch(css, /@media \(min-width: 1181px\)/);
@@ -99,6 +117,55 @@ test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한�
   assert.match(css, /\.viewer-result-row \.mono \.viewer-result-value \{ min-width: 0; white-space: nowrap; overflow-wrap: normal; \}/);
   assert.match(css, /\.workflow-stepper \{ grid-template-columns: repeat\(5, minmax\(104px, 1fr\)\)/);
   assert.match(css, /\.document-detail-head \{ grid-template-columns: minmax\(0, 1fr\); max-inline-size: none; margin: calc\(-1 \* var\(--sp-3\)\) calc\(-1 \* var\(--sp-3\)\) var\(--sp-3\); padding: var\(--sp-5\) calc\(var\(--sp-4\) \+ var\(--sp-3\)\)/);
+  assert.match(css, /\.icon-button \{ min-height: 36px; width: 36px;[\s\S]*color: var\(--gray-600\)/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.icon-button \{ width: 44px; \}/);
+  assert.match(css, /input::placeholder, textarea::placeholder \{ color: var\(--gray-500\); \}/);
+  assert.match(css, /\.status\.document-active,[\s\S]*\.status\.account-review/);
+  assert.doesNotMatch(css, /\.status\.(?:active|disposed|pending|neutral)\b/);
+  assert.doesNotMatch(css, /\.answer-card\b|\.doc-row\b|\.operation-hero\b|\.hero-kicker\b|\.ledger-method|\.disposal-targets-layout\b/);
+});
+
+test("CSS 변수 참조는 토큰 또는 명시적인 런타임 기하 변수로 해석된다", () => {
+  const css = styles();
+  const defined = new Set(
+    [...css.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map((match) => match[1])
+  );
+  const referenced = new Set(
+    [...css.matchAll(/var\((--[a-z0-9-]+)/gi)].map((match) => match[1])
+  );
+  const undefinedVariables = [...referenced]
+    .filter((name) => !defined.has(name) && !runtimeGeometryVariables.has(name))
+    .sort();
+
+  assert.deepEqual(undefinedVariables, []);
+});
+
+test("상태 배지는 색 이름이 아니라 업무 의미 클래스를 사용한다", () => {
+  const viewsDirectory = new URL("../src/views/", import.meta.url);
+  const files = readdirSync(viewsDirectory, { recursive: true })
+    .filter((name) => String(name).endsWith(".js"));
+  const source = files
+    .map((name) => readFileSync(new URL(String(name).replaceAll("\\", "/"), viewsDirectory), "utf8"))
+    .join("\n");
+
+  assert.doesNotMatch(source, /class=["'`]status (?:active|disposed|pending|neutral)\b/);
+  for (const className of [
+    "document-active",
+    "document-disposed",
+    "account-approved",
+    "account-disabled",
+    "account-rejected",
+    "account-pending",
+    "account-review",
+    "ledger-current",
+    "ledger-excluded",
+    "campaign-completed",
+    "import-completed",
+    "snapshot-completed",
+    "review-pending"
+  ]) {
+    assert.match(source, new RegExp(`\\b${className}\\b`), `${className} 상태 클래스가 없습니다.`);
+  }
 });
 
 test("view 소스는 CSP가 차단하는 style 속성과 동적 CSSOM mutation을 만들지 않는다", () => {

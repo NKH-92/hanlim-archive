@@ -352,7 +352,7 @@ function filterKey(row) {
 
 function flagBadges(flags = [], action) {
   if (!flags.length) return actionBadge(action);
-  return flags.map((flag) => `<span class="status pending">${escapeHtml(FLAG_LABELS[flag] || flag)}</span>`).join(" ");
+  return flags.map((flag) => `<span class="status review-pending">${escapeHtml(FLAG_LABELS[flag] || flag)}</span>`).join(" ");
 }
 
 function diffCell(values, changedFields = []) {
@@ -385,7 +385,7 @@ function metric(label, value) {
 }
 
 function snapshotStatus(status) {
-  const type = status === "failed" || status === "cancelled" ? "disposed" : status === "completed" ? "active" : "pending";
+  const type = status === "failed" ? "snapshot-failed" : status === "cancelled" ? "snapshot-cancelled" : status === "completed" ? "snapshot-completed" : "snapshot-pending";
   return `<span class="status ${type}">${escapeHtml(STATUS_LABELS[status] || status)}</span>`;
 }
 
@@ -411,7 +411,7 @@ function workflowStepper(currentStep = 1) {
 }
 
 function actionBadge(action) {
-  const type = action === "create" ? "active" : action === "update" ? "pending" : "neutral";
+  const type = action === "create" ? "change-created" : action === "update" ? "change-updated" : "change-neutral";
   return `<span class="status ${type}">${escapeHtml(ACTION_LABELS[action] || action)}</span>`;
 }
 

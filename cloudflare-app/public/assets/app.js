@@ -129,6 +129,7 @@
 
       document.querySelectorAll('[data-auto-submit] select, [data-auto-submit] input[type="checkbox"]').forEach(function (control) {
         control.addEventListener('change', function () {
+          if (control.form?.matches('[data-viewer-form]')) return;
           if (control.form) control.form.submit();
         });
       });
@@ -1189,16 +1190,25 @@
         var resultsCount = document.querySelector('[data-results-count]');
         var searchLive = document.querySelector('[data-search-live]');
         var homeExtras = document.querySelector('[data-home-extras]');
+        var activeFilterChips = document.querySelector('[data-active-filter-chips]');
+        var mobileFilterForm = document.querySelector('[data-mobile-viewer-filter]');
+        var mobileFilterDialog = mobileFilterForm?.closest('dialog') || null;
+        var viewerContextElement = document.querySelector('[data-viewer-context]');
+        var viewerContext = { categories: [], tags: [] };
+        try { viewerContext = JSON.parse(viewerContextElement?.textContent || '{}'); } catch {}
+        var isHomeMode = viewerApp.classList.contains('is-home');
         var workspaceSelectable = Boolean(document.querySelector('[data-document-selection]'));
         var initialResults = {
           body: resultsBody ? resultsBody.innerHTML : '',
           title: resultsTitle ? resultsTitle.textContent : '',
-          count: resultsCount ? resultsCount.textContent : ''
+          count: resultsCount ? resultsCount.textContent : '',
+          status: searchLive ? searchLive.textContent : ''
         };
         var renderTimer = null;
         var activeRequest = null;
         var currentCursor = '';
         var currentItems = [];
+        var filterNames = ['category','tag','zone','status','sort','rack','face','column','shelf'];
 
         var replaceResults = function (html, preserveSelection) {
           var selectedIds = preserveSelection
@@ -1221,14 +1231,32 @@
           replaceResults(initialResults.body, false);
           if (resultsTitle) resultsTitle.textContent = initialResults.title;
           if (resultsCount) resultsCount.textContent = initialResults.count;
-          if (searchLive) searchLive.textContent = '검색어를 입력하면 보관중 문서를 바로 찾습니다.';
+          if (searchLive) searchLive.textContent = initialResults.status;
           if (homeExtras) homeExtras.hidden = false;
-          if (viewerApp.classList.contains('is-home')) viewerApp.hidden = false;
+          if (isHomeMode) viewerApp.hidden = false;
+        };
+
+        var formControl = function (form, name) {
+          if (!form) return null;
+          var control = form.elements?.namedItem?.(name);
+          return control || form.querySelector?.('[name="' + name + '"]') || null;
         };
 
         var formValue = function (name) {
-          var control = viewerForm.elements ? viewerForm.elements.namedItem(name) : null;
+          var control = formControl(viewerForm, name);
           return control && typeof control.value === 'string' ? control.value : '';
+        };
+
+        var setFormValue = function (form, name, value) {
+          var control = formControl(form, name);
+          if (control && typeof control.value === 'string') control.value = value;
+        };
+
+        var hasActiveSearchCriteria = function () {
+          if (viewerInput.value.trim()) return true;
+          if (['category','tag','zone','rack','face','column','shelf'].some(function (name) { return Boolean(formValue(name)); })) return true;
+          if (formValue('status') && formValue('status') !== 'active') return true;
+          return Boolean(formValue('sort') && formValue('sort') !== 'relevance');
         };
 
         var searchParams = function (cursor) {
@@ -1239,6 +1267,53 @@
           });
           if (cursor) params.set('cursor', cursor);
           return params;
+        };
+
+        var filterHref = function (name) {
+          var params = searchParams('');
+          params.delete('limit');
+          if (!viewerInput.value.trim()) params.delete('q');
+          if (name === 'status') params.set('status', 'active');
+          else params.delete(name);
+          if (name === 'rack') ['face','column','shelf'].forEach(function (part) { params.delete(part); });
+          var query = params.toString();
+          return '/app' + (query ? '?' + query : '');
+        };
+
+        var labelForFilter = function (collection, value, fallback) {
+          var match = Array.isArray(collection) ? collection.find(function (item) { return String(item.id) === String(value); }) : null;
+          return match?.name || fallback;
+        };
+
+        var renderActiveFilterChips = function () {
+          if (!activeFilterChips) return;
+          var chips = [];
+          var add = function (name, label) {
+            chips.push('<a class="chip active" href="' + escapeHtmlClient(filterHref(name)) + '" data-viewer-clear-filter="' + name + '">' + escapeHtmlClient(label) + ' <span aria-hidden="true">×</span></a>');
+          };
+          if (formValue('category')) add('category', labelForFilter(viewerContext.categories, formValue('category'), '대분류'));
+          if (formValue('tag')) add('tag', labelForFilter(viewerContext.tags, formValue('tag'), '태그'));
+          if (formValue('zone')) add('zone', formValue('zone') + '구역');
+          if (formValue('rack')) add('rack', '랙 ' + formValue('rack'));
+          if (formValue('status') && formValue('status') !== 'active') add('status', formValue('status') === 'disposed' ? '폐기' : '전체 상태');
+          activeFilterChips.innerHTML = chips.length ? '<nav class="active-filter-chips" aria-label="적용된 필터">' + chips.join('') + '</nav>' : '';
+        };
+
+        var syncMobileFilters = function () {
+          if (!mobileFilterForm) return;
+          setFormValue(mobileFilterForm, 'q', viewerInput.value.trim());
+          filterNames.forEach(function (name) { setFormValue(mobileFilterForm, name, formValue(name)); });
+        };
+
+        var syncFilterUi = function () {
+          var count = ['category','tag','zone','rack'].filter(function (name) { return Boolean(formValue(name)); }).length;
+          if (formValue('status') && formValue('status') !== 'active') count += 1;
+          document.querySelectorAll('[data-viewer-filter-count]').forEach(function (badge) {
+            badge.textContent = String(count);
+            badge.hidden = count === 0;
+          });
+          renderActiveFilterChips();
+          syncMobileFilters();
         };
 
         var syncWorkspaceReturnTo = function () {
@@ -1260,13 +1335,13 @@
           var itemRevision = item.revisionNumber || '-';
           var itemCategory = item.categoryName || '-';
           var itemLocation = location.label || '위치 미지정';
-          return '<article class="viewer-result-row' + (workspaceSelectable ? ' is-selectable' : '') + (disposed ? ' is-disposed' : '') + '" role="row" tabindex="0" data-document-row data-document-url="/documents/' + Number(item.id) + '" data-document-name="' + escapeHtmlClient(itemName) + '" data-document-number="' + escapeHtmlClient(itemNumber) + '" data-document-revision="' + escapeHtmlClient(itemRevision) + '" data-document-category="' + escapeHtmlClient(itemCategory) + '" data-document-location="' + escapeHtmlClient(itemLocation) + '" data-document-status="' + (disposed ? '폐기' : '보관중') + '">' +
+          return '<article class="viewer-result-row' + (workspaceSelectable ? ' is-selectable' : '') + (disposed ? ' is-disposed' : '') + '" role="row" tabindex="0" aria-selected="false" data-document-row data-document-url="/documents/' + Number(item.id) + '" data-document-name="' + escapeHtmlClient(itemName) + '" data-document-number="' + escapeHtmlClient(itemNumber) + '" data-document-revision="' + escapeHtmlClient(itemRevision) + '" data-document-category="' + escapeHtmlClient(itemCategory) + '" data-document-location="' + escapeHtmlClient(itemLocation) + '" data-document-status="' + (disposed ? '폐기' : '보관중') + '">' +
             (workspaceSelectable ? '<span class="check-col" role="cell" data-label="선택"><input type="checkbox" value="' + Number(item.id) + '" data-bulk-item aria-label="' + escapeHtmlClient(itemName) + ' 선택"></span>' : '') +
             '<span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/' + Number(item.id) + '" data-doc-click="' + Number(item.id) + '">' + window.SearchCore.highlightHtml(itemName, query, escapeHtmlClient) + '</a></span>' +
             '<span class="mono" role="cell" data-label="문서번호/개정"><span class="viewer-result-value">' + window.SearchCore.highlightHtml(itemNumber, query, escapeHtmlClient) + ' <small>' + escapeHtmlClient(itemRevision) + '</small></span></span>' +
             '<span role="cell" data-label="대분류">' + escapeHtmlClient(itemCategory) + '</span>' +
             '<span class="viewer-result-location" role="cell" data-label="보관 위치">' + escapeHtmlClient(itemLocation) + '</span>' +
-            '<span role="cell" data-label="상태"><span class="status ' + (disposed ? 'disposed' : 'active') + '">' + (disposed ? '폐기' : '보관중') + '</span></span>' +
+            '<span role="cell" data-label="상태"><span class="status ' + (disposed ? 'document-disposed' : 'document-active') + '">' + (disposed ? '폐기' : '보관중') + '</span></span>' +
             '<span class="optional-column" data-column="revision-date" role="cell" data-label="제·개정일" hidden>' + escapeHtmlClient(item.revisionDate || '-') + '</span>' +
             '</article>';
         };
@@ -1275,13 +1350,13 @@
           var query = viewerInput.value.trim();
           currentItems = append ? currentItems.concat(payload.items || []) : (payload.items || []);
           currentCursor = payload.nextCursor || '';
-          var html = '<div class="viewer-result-table' + (workspaceSelectable ? ' is-selectable' : '') + '" role="table" aria-label="문서 검색 결과">' +
+          var html = '<div class="viewer-result-table' + (workspaceSelectable ? ' is-selectable' : '') + '" role="grid" aria-label="문서 검색 결과">' +
             '<div class="viewer-result-header" role="row">' + (workspaceSelectable ? '<span class="check-col" role="columnheader"><span class="sr-only">선택</span></span>' : '') + '<span role="columnheader">문서명</span><span role="columnheader">문서번호 · 개정</span><span role="columnheader">대분류</span><span role="columnheader">보관 위치</span><span role="columnheader">상태</span><span class="optional-column" data-column="revision-date" role="columnheader" hidden>제·개정일</span></div>' +
             '<div class="viewer-result-list" role="rowgroup">' +
             currentItems.map(function (item) { return resultRow(item, query); }).join('') +
             '</div></div>';
           if (!currentItems.length) {
-            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/app">전체 문서 보기</a><a class="button secondary sm" href="/app">검색 초기화</a></div></div>';
+            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/app" data-viewer-search-reset>검색 초기화</a></div></div>';
           } else if (payload.hasMore && currentCursor) {
             html += '<nav class="pagination"><button type="button" class="button secondary sm" data-search-more>더보기</button></nav>';
           }
@@ -1293,7 +1368,7 @@
               + ' 찾는 문서가 없으면 잠시 후 다시 검색하세요.</div>' + html;
           }
           replaceResults(html, append);
-          if (resultsTitle) resultsTitle.textContent = '"' + query + '" 검색 결과';
+          if (resultsTitle) resultsTitle.textContent = query ? '"' + query + '" 검색 결과' : (hasActiveSearchCriteria() ? '필터 검색 결과' : '최근 등록·수정 문서');
           var totalFound = Number(payload.candidateCount || currentItems.length);
           if (resultsCount) resultsCount.textContent = totalFound.toLocaleString('ko-KR') + '건';
           if (searchLive) {
@@ -1325,8 +1400,7 @@
         };
 
         var requestSearch = async function (cursor, append) {
-          var query = viewerInput.value.trim();
-          if (!query) { restoreInitial(); return; }
+          if (!hasActiveSearchCriteria() && isHomeMode) { restoreInitial(); return; }
           if (activeRequest) activeRequest.abort();
           activeRequest = typeof AbortController === 'function' ? new AbortController() : null;
           if (searchLive) searchLive.textContent = append ? '다음 결과를 불러오는 중…' : '검색 중…';
@@ -1353,15 +1427,74 @@
         viewerInput.addEventListener('input', function () {
           clearTimeout(renderTimer);
           syncWorkspaceReturnTo();
-          if (!viewerInput.value.trim()) { restoreInitial(); return; }
+          syncFilterUi();
+          if (!hasActiveSearchCriteria() && isHomeMode) { restoreInitial(); return; }
           renderTimer = setTimeout(function () { requestSearch('', false); }, 180);
         });
-        viewerForm.addEventListener?.('change', syncWorkspaceReturnTo);
+        document.addEventListener('change', function (event) {
+          var control = event.target instanceof Element ? event.target : null;
+          if (!control || control.form !== viewerForm || control === viewerInput) return;
+          clearTimeout(renderTimer);
+          syncWorkspaceReturnTo();
+          syncFilterUi();
+          requestSearch('', false);
+        });
+        mobileFilterForm?.addEventListener?.('submit', function (event) {
+          event.preventDefault();
+          filterNames.forEach(function (name) { setFormValue(viewerForm, name, formControl(mobileFilterForm, name)?.value || ''); });
+          clearTimeout(renderTimer);
+          syncWorkspaceReturnTo();
+          syncFilterUi();
+          mobileFilterDialog?.close();
+          requestSearch('', false);
+        });
+        document.addEventListener('click', function (event) {
+          var target = event.target instanceof Element ? event.target : null;
+          if (!target) return;
+          if (target.closest('[data-open-modal="viewer-filter-dialog"]')) {
+            syncMobileFilters();
+            return;
+          }
+          var setFilter = target.closest('[data-viewer-set-filter]');
+          if (setFilter) {
+            event.preventDefault();
+            setFormValue(viewerForm, setFilter.dataset.viewerSetFilter, setFilter.dataset.viewerFilterValue || '');
+            syncWorkspaceReturnTo();
+            syncFilterUi();
+            requestSearch('', false);
+            return;
+          }
+          var clearFilter = target.closest('[data-viewer-clear-filter]');
+          if (clearFilter) {
+            event.preventDefault();
+            var name = clearFilter.dataset.viewerClearFilter;
+            setFormValue(viewerForm, name, name === 'status' ? 'active' : '');
+            if (name === 'rack') ['face','column','shelf'].forEach(function (part) { setFormValue(viewerForm, part, ''); });
+            syncWorkspaceReturnTo();
+            syncFilterUi();
+            requestSearch('', false);
+            return;
+          }
+          var reset = target.closest('[data-viewer-filter-reset], [data-viewer-search-reset]');
+          if (!reset) return;
+          event.preventDefault();
+          var clearQuery = reset.hasAttribute('data-viewer-search-reset');
+          if (clearQuery) viewerInput.value = '';
+          filterNames.forEach(function (name) {
+            setFormValue(viewerForm, name, name === 'status' ? 'active' : name === 'sort' ? 'relevance' : '');
+          });
+          clearTimeout(renderTimer);
+          syncWorkspaceReturnTo();
+          syncFilterUi();
+          mobileFilterDialog?.close();
+          requestSearch('', false);
+        });
         resultsBody?.addEventListener?.('click', function (event) {
           var target = event.target instanceof Element ? event.target : null;
           if (target?.closest('[data-search-retry]')) { requestSearch('', false); return; }
           if (target?.closest('[data-search-more]') && currentCursor) requestSearch(currentCursor, true);
         });
+        syncFilterUi();
         if (viewerInput.value.trim()) requestSearch('', false);
       }
 
@@ -1415,7 +1548,7 @@
           if (workspacePreview) workspacePreview.hidden = true;
           document.querySelectorAll('[data-document-row]').forEach(function (item) {
             item.classList.remove('is-selected');
-            item.removeAttribute('aria-selected');
+            item.setAttribute('aria-selected', 'false');
           });
           return;
         }

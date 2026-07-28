@@ -283,11 +283,11 @@ export function userPasswordResetPage({ session, user, error = "", minLength = P
 }
 
 function userStatus(user) {
-  if (Number(user.security_review_required || 0) === 1) return `<span class="status disposed">보안 검토 필요</span>`;
-  if (user.status === "approved") return `<span class="status active">승인</span>`;
-  if (user.status === "disabled") return `<span class="status pending">사용중지</span>`;
-  if (user.status === "rejected") return `<span class="status disposed">반려</span>`;
-  return `<span class="status pending">대기</span>`;
+  if (Number(user.security_review_required || 0) === 1) return `<span class="status account-review">보안 검토 필요</span>`;
+  if (user.status === "approved") return `<span class="status account-approved">승인</span>`;
+  if (user.status === "disabled") return `<span class="status account-disabled">사용중지</span>`;
+  if (user.status === "rejected") return `<span class="status account-rejected">반려</span>`;
+  return `<span class="status account-pending">대기</span>`;
 }
 
 export function passwordPage({ session, error = "", success = false, required = false }) {

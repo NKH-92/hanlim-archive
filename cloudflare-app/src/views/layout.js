@@ -147,7 +147,7 @@ export function alertWarning(message) {
 }
 
 export function statusBadge(status) {
-  return `<span class="status ${status === "active" ? "active" : "disposed"}">${status === "active" ? "보관중" : "폐기"}</span>`;
+  return `<span class="status ${status === "active" ? "document-active" : "document-disposed"}">${status === "active" ? "보관중" : "폐기"}</span>`;
 }
 
 export function sectionHeader(title, count) {
@@ -163,7 +163,7 @@ export function emptyResult(message, query = "") {
     <div class="empty-state">
       <i class="fa-regular fa-folder-open"></i>
       <p>${escapeHtml(message)}</p>
-      ${query ? `<div class="empty-actions"><a class="button secondary sm" href="/app">전체 문서 보기</a><a class="button secondary sm" href="/app">대분류로 찾기</a></div>` : ""}
+      ${query ? `<div class="empty-actions"><a class="button secondary sm" href="/app" data-viewer-search-reset>검색 초기화</a></div>` : ""}
     </div>
   `;
 }
@@ -191,7 +191,7 @@ export function timelineItem(title, meta, body) {
 
 // 문서 목록(/documents)과 뷰어 검색 폼(/app)이 같은 검색 필터를 공유한다.
 // viewer 변형은 라벨 노출·placeholder 문구·정렬 항목 순서만 다르고 구조는 동일하다.
-export function filterSelectRow({ categories, tags, filters, viewer = false, formId = "" }) {
+export function filterSelectRow({ categories, tags, filters, viewer = false, formId = "", showReset = true, resetHref = "/app" }) {
   if (viewer) {
     const formAttribute = formId ? ` form="${escapeHtml(formId)}"` : "";
     const sortOptions = [["updated", "최신순"], ["location", "위치순"], ["docnum", "문서번호순"], ["category", "대분류순"]]
@@ -203,7 +203,7 @@ export function filterSelectRow({ categories, tags, filters, viewer = false, for
           <label>태그<select name="tag"${formAttribute}><option value="">전체</option>${tags.map((tag) => option(tag.id, tag.name, filters.tagId)).join("")}</select></label>
           <label>보관 위치<select name="zone"${formAttribute}><option value="">전체</option>${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}</select></label>
           <label>정렬<select name="sort"${formAttribute}>${option("relevance", "정확도순", filters.sort || "relevance")}${sortOptions}</select></label>
-          <a class="button secondary sm" href="/app">초기화</a>
+          ${showReset ? `<a class="button secondary sm" href="${escapeHtml(resetHref)}" data-viewer-filter-reset>초기화</a>` : ""}
         </div>`;
   }
   const label = (text) => (viewer ? text : `<span class="sr-only">${text}</span>`);

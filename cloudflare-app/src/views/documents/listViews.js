@@ -74,7 +74,7 @@ export function disposalWorkspacePage({
     ${tab === "active" ? `
       <section class="panel disposal-safety-panel" aria-label="폐기 작업 주의">
         <div><strong>폐기는 원본 단위로 처리됩니다.</strong><p>현재 조건에서 ${targetCount.toLocaleString("ko-KR")}건을 확인할 수 있습니다. 실제 원본과 정확한 건수·사유를 마지막으로 대조하세요.</p></div>
-        <span class="status disposed">복구 권한 필요</span>
+        <span class="status policy-required">복구 권한 필요</span>
       </section>
     ` : ""}
     ${disposalFeedback(feedback)}
@@ -121,7 +121,7 @@ function disposalHistoryView(history, pagination, filters) {
       <td data-label="개정">${escapeHtml(item.revision_number)}</td>
       <td data-label="대분류">${escapeHtml(item.category_name || "-")}</td>
       <td class="location-cell" data-label="보관 위치">${escapeHtml(item.location_snapshot || "-")}</td>
-      <td data-label="상태"><span class="status disposed">폐기</span></td>
+      <td data-label="상태"><span class="status document-disposed">폐기</span></td>
       <td data-label="캠페인">${item.batch_code ? `<a class="mono" href="/disposal-batches/${item.disposal_batch_id}">${escapeHtml(item.batch_code)}</a>` : "-"}</td>
       <td data-label="폐기 사유">${escapeHtml(item.reason || "-")}</td>
       <td data-label="승인 참조">${escapeHtml(item.approval_reference || "-")}</td>
@@ -173,7 +173,7 @@ function disposalCampaignHistoryView(campaigns) {
     <tr>
       <td class="mono" data-label="캠페인 번호"><a href="/disposal-batches/${Number(batch.id)}">${escapeHtml(batch.batch_code)}</a></td>
       <td data-label="제목"><strong>${escapeHtml(batch.title)}</strong></td>
-      <td data-label="상태"><span class="status ${batch.status === "completed" ? "active" : batch.status === "cancelled" ? "disposed" : "pending"}">${escapeHtml(labels[batch.status] || batch.status)}</span></td>
+      <td data-label="상태"><span class="status ${batch.status === "completed" ? "campaign-completed" : batch.status === "cancelled" ? "campaign-cancelled" : "campaign-pending"}">${escapeHtml(labels[batch.status] || batch.status)}</span></td>
       <td data-label="폐기 사유">${escapeHtml(batch.disposal_reason || "-")}</td>
       <td data-label="승인 참조">${escapeHtml(batch.approval_reference || "-")}</td>
       <td data-label="대상 / 완료">${Number(batch.target_count || 0).toLocaleString("ko-KR")} / ${Number(batch.completed_count || 0).toLocaleString("ko-KR")}</td>
