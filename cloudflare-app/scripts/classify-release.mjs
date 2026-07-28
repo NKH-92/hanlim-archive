@@ -11,6 +11,12 @@ const DATABASE_PATHS = Object.freeze([
   /^cloudflare-app\/wrangler\.jsonc$/,
   /^\.github\/workflows\/deploy\.yml$/
 ]);
+const RELEASE_NEUTRAL_PATHS = Object.freeze([
+  /^docs\//,
+  /^README(?:\.[^/]*)?$/,
+  /^\.github\/CODEOWNERS$/,
+  /^\.github\/pull_request_template\.md$/
+]);
 const ASSET_PATH = /^cloudflare-app\/public\//;
 const RUNTIME_PATHS = Object.freeze([
   /^cloudflare-app\/src\//,
@@ -27,13 +33,19 @@ export function classifyReleaseFiles(files) {
   if (!changedFiles.length) {
     return releaseResult("database", changedFiles, "변경 파일을 확인할 수 없어 전체 보호 경로를 사용합니다.");
   }
-  if (changedFiles.some((file) => DATABASE_PATHS.some((pattern) => pattern.test(file)))) {
+  const releaseFiles = changedFiles.filter(
+    (file) => !RELEASE_NEUTRAL_PATHS.some((pattern) => pattern.test(file))
+  );
+  if (!releaseFiles.length) {
+    return releaseResult("database", changedFiles, "배포 대상 변경 파일을 확인할 수 없어 전체 보호 경로를 사용합니다.");
+  }
+  if (releaseFiles.some((file) => DATABASE_PATHS.some((pattern) => pattern.test(file)))) {
     return releaseResult("database", changedFiles, "스키마·binding·배포 절차 변경이 있어 전체 보호 경로를 사용합니다.");
   }
-  if (changedFiles.every((file) => ASSET_PATH.test(file))) {
+  if (releaseFiles.every((file) => ASSET_PATH.test(file))) {
     return releaseResult("asset-only", changedFiles, "공개 정적 자산만 변경되었습니다.");
   }
-  if (changedFiles.every((file) => RUNTIME_PATHS.some((pattern) => pattern.test(file)))) {
+  if (releaseFiles.every((file) => RUNTIME_PATHS.some((pattern) => pattern.test(file)))) {
     return releaseResult("runtime-only", changedFiles, "D1 스키마와 binding을 바꾸지 않는 Worker 변경입니다.");
   }
   return releaseResult("database", changedFiles, "분류되지 않은 경로가 있어 전체 보호 경로를 사용합니다.");

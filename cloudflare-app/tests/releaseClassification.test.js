@@ -21,13 +21,38 @@ test("release classifier는 정적 자산만 바뀌면 D1 mutation 없는 경로
 test("release classifier는 일반 Worker 변경에 Core recovery만 요구한다", () => {
   const result = classifyReleaseFiles([
     "cloudflare-app/src/index.js",
-    "cloudflare-app/tests/index.test.js"
+    "cloudflare-app/tests/index.test.js",
+    "docs/DESIGN.md"
   ]);
 
   assert.equal(result.releaseClass, "runtime-only");
   assert.equal(result.requiresMigration, false);
   assert.equal(result.requiresSmokePrincipals, true);
   assert.equal(result.recoveryScope, "core");
+});
+
+test("release classifier는 문서와 저장소 관리 파일을 배포 범위 판정에서 제외한다", () => {
+  const assetResult = classifyReleaseFiles([
+    "cloudflare-app/public/assets/app.css",
+    "docs/DESIGN.md",
+    "README.md",
+    ".github/CODEOWNERS",
+    ".github/pull_request_template.md"
+  ]);
+
+  assert.equal(assetResult.releaseClass, "asset-only");
+  assert.deepEqual(assetResult.changedFiles, [
+    ".github/CODEOWNERS",
+    ".github/pull_request_template.md",
+    "README.md",
+    "cloudflare-app/public/assets/app.css",
+    "docs/DESIGN.md"
+  ]);
+  assert.equal(classifyReleaseFiles(["docs/OPERATIONS.md"]).releaseClass, "database");
+  assert.equal(classifyReleaseFiles([
+    "docs/DESIGN.md",
+    "unexpected/release-input.txt"
+  ]).releaseClass, "database");
 });
 
 test("release classifier는 migration, binding, workflow, 미지 경로를 전체 보호 경로로 닫는다", () => {
