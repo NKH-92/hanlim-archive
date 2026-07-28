@@ -122,7 +122,35 @@ test("즉시 검색 DOM 교체는 화면에 남은 선택만 일괄 작업 상�
   assert.match(script, /params\.delete\('limit'\)/);
   assert.match(script, /document\.querySelectorAll\('\[data-workspace-return-to\]'\)/);
   assert.match(script, /input\.value = returnTo/);
-  assert.match(script, /viewerForm\.addEventListener\?\.\('change', syncWorkspaceReturnTo\)/);
+  assert.match(script, /document\.addEventListener\('change', function \(event\)/);
+  assert.match(script, /control\.form !== viewerForm/);
+  assert.match(script, /syncFilterUi\(\);[\s\S]*requestSearch\('', false\)/);
+});
+
+test("viewer filters use one live-search path on desktop and mobile", () => {
+  const script = clientScriptModule.clientScript();
+
+  assert.match(script, /data-mobile-viewer-filter/);
+  assert.match(script, /mobileFilterForm\?\.addEventListener\?\.\('submit'/);
+  assert.match(script, /event\.preventDefault\(\);[\s\S]*setFormValue\(viewerForm/);
+  assert.match(script, /mobileFilterDialog\?\.close\(\);[\s\S]*requestSearch\('', false\)/);
+  assert.match(script, /data-viewer-filter-reset/);
+  assert.match(script, /data-viewer-clear-filter/);
+  assert.match(script, /data-viewer-set-filter/);
+  assert.match(script, /hasActiveSearchCriteria/);
+  assert.match(script, /'필터 검색 결과'/);
+  assert.match(script, /control\.form\?\.matches\('\[data-viewer-form\]'\)/);
+  assert.doesNotMatch(script, /viewerForm\.addEventListener\?\.\('change', syncWorkspaceReturnTo\)/);
+});
+
+test("interactive search results expose one grid selection model and one empty reset", () => {
+  const script = clientScriptModule.clientScript();
+
+  assert.match(script, /role="grid" aria-label="문서 검색 결과"/);
+  assert.match(script, /role="row" tabindex="0" aria-selected="false"/);
+  assert.match(script, /data-viewer-search-reset>검색 초기화<\/a>/);
+  assert.equal((script.match(/data-viewer-search-reset>검색 초기화<\/a>/g) || []).length, 1);
+  assert.doesNotMatch(script, /전체 문서 보기<\/a><a[^>]*>검색 초기화/);
 });
 
 test("라우트가 생산하는 전역 토스트 키는 모두 표시 문구를 가진다", () => {

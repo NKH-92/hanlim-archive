@@ -1,11 +1,7 @@
 // 전역 CSS의 관리 화면 조각. 순서는 styles.js에서 고정한다.
 
 export function adminStyles() {
-  return `    .admin-link-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
-    .admin-link-grid a { min-height: 56px; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--gray-50); border: 1px solid var(--gray-100); text-decoration: none; font-weight: 600; font-size: 13.5px; transition: background .15s ease, color .15s ease, border-color .15s ease; }
-    .admin-link-grid a:hover { background: var(--primary-soft); border-color: var(--primary-soft); color: var(--primary); }
-    .admin-link-grid a i { color: var(--primary); }
-    .management-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
+  return `    .management-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
     .management-section { margin-bottom: 0; }
     .management-section.is-advanced { border-style: dashed; }
     .management-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-3); }
@@ -27,11 +23,10 @@ export function adminStyles() {
     .locator-hero { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-4); padding: var(--sp-4) var(--sp-5); margin-bottom: var(--sp-4); background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--primary); border-radius: var(--r-lg); }
     .locator-hero small { display: block; color: var(--gray-600); font-size: 12px; font-weight: 600; }
     .locator-hero strong { display: block; font-size: 17px; font-weight: 700; margin: var(--sp-1) 0; }
-    .loc-label-lg { color: var(--primary); letter-spacing: -.01em; }
+    .loc-label-lg { color: var(--primary); letter-spacing: 0; }
     .locator-hero span { color: var(--gray-500); font-size: 12.5px; }
 
     .document-detail-page, .document-detail-head, .document-detail-sections, .document-location-visuals, .document-location-visuals > *, .detail-section, .doc-floor-plan, .doc-floor-plan-body, .minimap-card, .mini-rack-stage { min-inline-size: 0; max-inline-size: 100%; }
-    .document-detail-head { display: grid; gap: var(--sp-3); margin-bottom: var(--sp-3); }
     .document-title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-4); }
     .document-title-copy { min-width: 0; }
     .document-state-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
@@ -68,9 +63,6 @@ export function adminStyles() {
     .tab-nav button { background: transparent; color: var(--gray-500); min-height: 0; padding: var(--sp-2) var(--sp-1) var(--sp-3); border: 0; border-radius: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; }
     .tab-nav button:hover { background: transparent; color: var(--gray-800); }
     .tab-nav button[aria-selected="true"] { background: transparent; color: var(--gray-900); box-shadow: inset 0 -2px 0 var(--primary); }
-    .tab-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 var(--sp-1); margin-left: var(--sp-1); border-radius: 999px; background: var(--gray-100); color: var(--gray-600); font-size: 11px; font-weight: 700; }
-    .tab-nav button[aria-selected="true"] .tab-count { background: var(--primary-soft); color: var(--primary); }
-
     .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--sp-8); }
     .detail-item { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--gray-100); }
     .detail-item small { color: var(--gray-500); font-size: 12px; font-weight: 600; }

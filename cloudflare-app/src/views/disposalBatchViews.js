@@ -385,7 +385,7 @@ function criteriaText(criteria = {}, categoryName = "") {
 }
 
 function statusLabel(status) {
-  const type = status === "failed" || status === "cancelled" ? "disposed" : status === "completed" ? "active" : "pending";
+  const type = status === "failed" ? "campaign-failed" : status === "cancelled" ? "campaign-cancelled" : status === "completed" ? "campaign-completed" : "campaign-pending";
   return `<span class="status ${type}">${escapeHtml(STATUS_LABELS[status] || status)}</span>`;
 }
 

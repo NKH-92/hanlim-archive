@@ -224,7 +224,10 @@ test("사용자 관리 화면은 반려와 사용중지를 분리한다", async 
   assert.match(html, /href="\/admin\/users\/8\/reset-password"/);
   assert.match(html, /action="\/admin\/users\/9\/reject"/);
   assert.doesNotMatch(html, /action="\/admin\/users\/7\/reject"/);
-  assert.match(html, /보안 검토 필요/);
+  assert.match(html, /class="status account-approved">승인<\/span>/);
+  assert.match(html, /class="status account-disabled">사용중지<\/span>/);
+  assert.match(html, /class="status account-pending">대기<\/span>/);
+  assert.match(html, /class="status account-review">보안 검토 필요<\/span>/);
   assert.match(html, /보안 검토 대상 · 일반 재승인 불가/);
   assert.doesNotMatch(html, /action="\/admin\/users\/10\/approve"/);
   assert.doesNotMatch(html, /href="\/admin\/users\/10\/permissions"/);

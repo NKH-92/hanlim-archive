@@ -9,7 +9,6 @@ export function workflowStyles() {
     .bulk-bar input { background: rgba(255, 255, 255, .12); color: var(--surface); border-color: transparent; min-height: 32px; }
     .bulk-bar input::placeholder { color: rgba(255, 255, 255, .55); }
     .bulk-bar input:focus { background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .4); box-shadow: none; }
-    .bulk-reason { flex: 1 1 240px; min-width: 0; color: var(--surface); }
     .pagination { display: flex; justify-content: center; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); color: var(--gray-600); font-weight: 600; font-size: 12.5px; }
     .workspace-tabs { display: flex; gap: var(--sp-1); border-bottom: 1px solid var(--line); }
     .workspace-tabs a { padding: var(--sp-3) var(--sp-4); border-bottom: 2px solid transparent; color: var(--gray-500); text-decoration: none; font-size: 13.5px; font-weight: 700; }
@@ -19,7 +18,7 @@ export function workflowStyles() {
     .disposal-review-modal { width: min(560px, calc(100% - var(--sp-8))); }
     .disposal-count-confirmation { margin: 0; padding: var(--sp-4); border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--danger-soft); text-align: center; }
     .disposal-count-confirmation strong { display: block; margin-top: var(--sp-1); color: var(--danger); font-size: 24px; line-height: 1.2; }
-    .disposal-review-list { max-height: 220px; overflow-y: auto; margin: 0; padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-7); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--gray-50); }
+    .disposal-review-list { max-height: 220px; overflow-y: auto; margin: 0; padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-6); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--gray-50); }
     .disposal-review-list li { padding: var(--sp-1) 0; font-size: 13px; }
     .disposal-safety-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-4); border-color: var(--danger); background: var(--danger-soft); }
     .disposal-safety-panel p { margin: var(--sp-1) 0 0; color: var(--gray-700); }
@@ -153,9 +152,6 @@ export function workflowStyles() {
     .snapshot-context-grid > div:last-child { border-right: 0; }
     .snapshot-context-grid span, .snapshot-context-grid small { color: var(--gray-500); font-size: 12px; }
     .snapshot-context-grid strong { font-size: 15px; }
-    .snapshot-version { display: grid; gap: var(--sp-1); padding: var(--sp-5); border-radius: var(--r-lg); background: var(--primary-soft); color: var(--primary); }
-    .snapshot-version span, .snapshot-version small { color: var(--gray-600); }
-    .snapshot-version strong { font-size: 36px; line-height: 1; }
     .snapshot-file-summary { padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--gray-50); font-size: 13px; font-weight: 700; }
     .snapshot-progress { appearance: none; display: block; width: 100%; height: 8px; overflow: hidden; border: 0; border-radius: 999px; background: var(--gray-100); }
     .snapshot-progress::-webkit-progress-bar { background: var(--gray-100); }

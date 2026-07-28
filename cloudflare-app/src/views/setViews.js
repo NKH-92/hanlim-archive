@@ -158,7 +158,7 @@ function setDocumentTable(set, documents, canEdit) {
           <td><a href="/documents/${doc.id}">${escapeHtml(doc.document_name)}</a></td>
           <td>${escapeHtml(doc.category_name)}</td>
           <td>${statusBadge(doc.status)}</td>
-          <td>${doc.sync_state === "excluded" ? `<span class="status disposed">대장 제외</span>` : `<span class="status active">포함</span>`}</td>
+          <td>${doc.sync_state === "excluded" ? `<span class="status ledger-excluded">대장 제외</span>` : `<span class="status ledger-current">포함</span>`}</td>
           ${canEdit ? `<td class="screen-only"><form method="post" action="/sets/${set.id}/remove" data-confirm="세트에서 이 문서를 제외할까요?"><input type="hidden" name="documentId" value="${doc.id}"><input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}"><button type="submit" class="danger-button sm">제외</button></form></td>` : ""}
         </tr>
       `).join("")}</tbody>

@@ -180,6 +180,10 @@ test("server and browser keep the exact-code row fields and key markup", async (
   assert.doesNotMatch(browser.html, /data-answer-card/);
   assert.match(serverHtml, /viewer-result-table/);
   assert.match(browser.html, /^<div class="viewer-result-table"/);
+  assert.match(serverHtml, /role="grid" aria-label="문서 검색 결과"/);
+  assert.match(browser.html, /role="grid" aria-label="문서 검색 결과"/);
+  assert.match(serverHtml, /role="row" tabindex="0" aria-selected="false"/);
+  assert.match(browser.html, /role="row" tabindex="0" aria-selected="false"/);
   assert.match(serverHtml, /href="\/documents\/7" data-doc-click="7">충전 공정 밸리데이션 보고서<\/a>/);
   assert.match(browser.html, /href="\/documents\/7" data-doc-click="7">충전 공정 밸리데이션 보고서<\/a>/);
   const expectedNumber = '<span class="mono" role="cell" data-label="문서번호/개정"><span class="viewer-result-value"><mark>PV</mark>-<mark>2026</mark>-<mark>014</mark> <small>Rev.1</small></span></span>';
@@ -187,8 +191,8 @@ test("server and browser keep the exact-code row fields and key markup", async (
   assert.match(browser.html, new RegExp(expectedNumber));
   assert.match(serverHtml, /data-label="대분류">PV<\/span>/);
   assert.match(browser.html, /data-label="보관 위치">1구역 \/ 1-1번 랙 \/ 2열 \/ 3선반<\/span>/);
-  assert.match(serverHtml, /status active">보관중/);
-  assert.match(browser.html, /status active">보관중/);
+  assert.match(serverHtml, /status document-active">보관중/);
+  assert.match(browser.html, /status document-active">보관중/);
   assert.equal(browser.title, `"${query}" 검색 결과`);
   assert.equal(browser.count, "1건");
 });

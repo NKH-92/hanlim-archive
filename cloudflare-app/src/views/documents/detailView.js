@@ -23,8 +23,8 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
   const rackLabel = rackFaceLabel(document);
   const locationAction = locationPrimaryAction(document, { replacementId, isExcluded });
   const syncBadge = isExcluded
-    ? `<span class="status disposed" title="현재 대장에는 포함되지 않은 문서">현재 대장 제외</span>`
-    : `<span class="status active">현재 대장 포함</span>`;
+    ? `<span class="status ledger-excluded" title="현재 대장에는 포함되지 않은 문서">현재 대장 제외</span>`
+    : `<span class="status ledger-current">현재 대장 포함</span>`;
 
   return page(document.document_name, `<div class="document-detail-page" data-document-detail>
     <section class="document-detail-head">

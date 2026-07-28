@@ -51,7 +51,7 @@ export function workspaceInteractionScript() {
           if (workspacePreview) workspacePreview.hidden = true;
           document.querySelectorAll('[data-document-row]').forEach(function (item) {
             item.classList.remove('is-selected');
-            item.removeAttribute('aria-selected');
+            item.setAttribute('aria-selected', 'false');
           });
           return;
         }
