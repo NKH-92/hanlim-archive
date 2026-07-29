@@ -1,17 +1,20 @@
 import { changeUserPassword, createSessionCookie } from "../auth.js";
 import {
   approveUser,
+  createApprovedUser,
   getAppUsers,
+  PASSWORD_POLICY,
   rejectUser,
+  validateNewPassword
 } from "../domains/identity/index.js";
 import {
   adminDashboardPage,
   adminSettingsPage,
-  passwordPage,
+  approvedUserCreatePage,
+  passwordPage
 } from "../views/adminViews.js";
 import { errorPage, notFoundPage } from "../views/authViews.js";
 import { redirect } from "../platform/http/responses.js";
-import { validateNewPassword } from "../domains/identity/index.js";
 import { loadAdminDashboardReadModel } from "../readModels/adminDashboard.js";
 
 export {
@@ -31,6 +34,37 @@ export async function handleAdminSettings(env, session) {
   const users = await getAppUsers(env);
 
   return adminSettingsPage({ session, users });
+}
+
+export function renderApprovedUserCreate(session, options = {}) {
+  return approvedUserCreatePage({ session, minLength: PASSWORD_POLICY.minLength, ...options });
+}
+
+export async function handleApprovedUserCreate(request, env, session) {
+  const form = await request.formData();
+  const values = {
+    username: form.get("username"),
+    displayName: form.get("displayName"),
+    team: form.get("team")
+  };
+  const temporaryPassword = String(form.get("temporaryPassword") ?? "");
+  const confirmPassword = String(form.get("confirmPassword") ?? "");
+
+  if (!temporaryPassword || !confirmPassword) {
+    return renderApprovedUserCreate(session, { values, error: "임시 비밀번호와 확인값을 모두 입력하세요." });
+  }
+  if (temporaryPassword !== confirmPassword) {
+    return renderApprovedUserCreate(session, { values, error: "임시 비밀번호가 일치하지 않습니다." });
+  }
+  if (form.get("confirmCreate") !== "1") {
+    return renderApprovedUserCreate(session, { values, error: "계정의 기본 권한과 최초 비밀번호 변경 정책을 확인하세요." });
+  }
+
+  const result = await createApprovedUser(env, { ...values, temporaryPassword }, session);
+  if (!result.ok) {
+    return renderApprovedUserCreate(session, { values: result.values || values, error: result.message });
+  }
+  return redirect("/admin/settings?toast=user-created");
 }
 
 export async function handleAdminUserAction(env, session, routeInfo) {

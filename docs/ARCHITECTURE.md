@@ -154,6 +154,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     CAS 방식으로 반복 횟수를 명시하는 self-describing record로 전환하며, 런타임 상한을 넘는 record는
     PBKDF2 실행 전에 fail-closed한다. 계정 상태와
     session epoch는 매 요청 DB에서 재검증하고, 반복 로그인 실패는 HMAC 기반 계정·IP 제한으로 차단한다.
+    공개 가입은 항상 404로 유지한다. 시스템관리자의 승인 사용자 단건 추가는 조회 전용 User와 최초 비밀번호 변경
+    강제 상태만 만들며, 감사 INSERT와 계정 INSERT를 같은 D1 batch에서 실행한다. Admin 승격과 추가 권한은 생성 요청과
+    분리한다.
     release smoke 계정은 45분 TTL과 필요한 단일 권한만 가지며 다음 release와 Cron janitor가 누수를 제거한다.
 25. **운영 version 격리**: 기본 Wrangler 환경은 운영 Worker·D1을 가리키지 않고 preview URL을 만들지 않는다.
     배포 전에 현재 100% traffic version을 기록하고 guarded deploy로 production에 직접 배포한다. canonical

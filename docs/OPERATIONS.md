@@ -286,6 +286,16 @@ npm run users:roster -- --input ..\명단.xlsx --out provisioning-local\user-ros
 
 공용 초기 비밀번호를 사용하는 동안에는 최초 로그인 전 선점 위험이 남는다. 등록 직후 변경을 안내하고 미사용 계정을 점검한다.
 
+### 승인 사용자 단건 등록
+
+시스템관리자는 `/admin/settings`의 `승인 사용자 추가`에서 이메일, 이름, 부서와 계정별 임시 비밀번호를 입력한다.
+
+1. 신규 계정은 승인된 조회 전용 User + `must_change_password=1`로만 생성한다.
+2. 추가 권한은 생성 완료 후 사용자 권한 화면에서 별도로 부여한다. 이 화면에서 Admin 계정을 직접 만들지 않는다.
+3. 중복 아이디와 알려진 메인 Admin·release smoke 아이디는 거부한다.
+4. 임시 비밀번호는 사용자에게 별도 보안 채널로 전달한다. 화면 오류, 감사로그, 저장소, issue와 PR에 기록하지 않는다.
+5. 다수 계정을 같은 초기 비밀번호로 등록해야 할 때는 위 `Provision Archive Users` workflow를 사용한다.
+
 ### 독립 Admin
 
 메인 Admin이 보안 복구와 최초 비밀번호 변경을 마쳤다면 배포 readiness에서 정상 Admin으로 인정한다. 사용할 수 있는 Admin이 전혀 없거나 별도 비상 관리자를 운영하기로 한 경우에만 production Environment 승인 후 `Provision Independent Admin` workflow를 사용한다. 기존 계정을 덮어쓰지 않으며 알려진 bootstrap/smoke 사용자명은 거부한다.

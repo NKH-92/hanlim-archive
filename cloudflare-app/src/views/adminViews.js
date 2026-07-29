@@ -172,14 +172,43 @@ export function adminSettingsPage({ session, users }) {
   const templateManagement = session?.role === "Admin"
     ? `<a class="button" href="/admin/role-templates">역할 템플릿</a>`
     : "";
+  const userCreation = session?.role === "Admin"
+    ? `<a class="button" href="/admin/users/new">승인 사용자 추가</a>`
+    : "";
   return page("사용자 관리", `
-    <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리합니다.</p></div><div class="button-group">${templateManagement}<a class="button secondary" href="/admin">관리 설정</a></div></section>
+    <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리합니다.</p></div><div class="button-group">${userCreation}${templateManagement}<a class="button secondary" href="/admin">관리 설정</a></div></section>
     <section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${pending.length ? userRequestTable(pending, session) : emptyState("대기 중인 가입 요청이 없습니다.")}</section>
     <div class="user-group-stack">
       ${userGroupSection("승인된 사용자", `${approved.length}명`, approved, session, "승인된 사용자가 없습니다.")}
       ${userGroupSection("사용중지 사용자", `${disabled.length}명`, disabled, session, "사용중지된 사용자가 없습니다.")}
       ${userGroupSection("반려된 요청", `${rejected.length}건`, rejected, session, "반려된 요청이 없습니다.")}
     </div>
+  `, session);
+}
+
+export function approvedUserCreatePage({ session, values = {}, error = "", minLength = PASSWORD_POLICY.minLength }) {
+  const username = String(values.username ?? "").trim().toLowerCase();
+  const displayName = String(values.displayName ?? "").trim();
+  const team = String(values.team ?? "").trim();
+  return page("승인 사용자 추가", `
+    <section class="page-head">
+      <div><h1>승인 사용자 추가</h1><p class="muted">가입 요청 없이 바로 사용할 일반 사용자 계정을 만듭니다.</p></div>
+      <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
+    </section>
+    <section class="panel narrow">
+      ${alertWarning("신규 계정은 조회 전용으로 승인되며, 사용자는 임시 비밀번호로 로그인한 뒤 새 비밀번호로 변경해야 합니다. 추가 권한은 계정 생성 후 사용자 권한 화면에서 별도로 설정하세요.")}
+      ${error ? alertDanger(error) : ""}
+      <form method="post" action="/admin/users/new" class="stack">
+        <label>사용자 아이디(이메일)<input name="username" type="email" autocomplete="off" maxlength="254" value="${escapeHtml(username)}" required></label>
+        <label>이름<input name="displayName" type="text" autocomplete="name" maxlength="60" value="${escapeHtml(displayName)}" required></label>
+        <label>부서<input name="team" type="text" autocomplete="organization" maxlength="40" value="${escapeHtml(team)}"></label>
+        <label>임시 비밀번호<input type="password" name="temporaryPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
+        <label>임시 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
+        <label class="checkbox"><input type="checkbox" name="confirmCreate" value="1" required><span>일반 사용자·조회 전용으로 승인하고 다음 로그인에서 비밀번호 변경을 강제함을 확인했습니다.</span></label>
+        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 설정하고 사용자에게 별도 보안 채널로 전달하세요. 비밀번호 값과 해시는 감사로그에 기록하지 않습니다.</p>
+        <button type="submit" class="button">승인 사용자 추가</button>
+      </form>
+    </section>
   `, session);
 }
 

@@ -1,10 +1,12 @@
-import { createPasswordRecord } from "../../../auth/passwords.js";
+import { createPasswordRecord, isPasswordInputBounded } from "../../../auth/passwords.js";
 import { permissionFlags, PERMISSION_KEYS } from "../../../permissions.js";
 import { createSystemAuditStatement } from "../../audit/index.js";
 import { actorUsername } from "../domain/actor.js";
 import { validateNewPassword } from "../domain/passwordPolicy.js";
 import { canTransitionUser, transitionFor, userDeletionRefusal } from "../domain/userState.js";
+import { validateApprovedUser } from "../domain/approvedUser.js";
 import {
+  createApprovedUserMutationPlan,
   createUserPasswordResetMutationPlan,
   createUserPermissionMutationPlan,
   createUserDeleteMutationPlan,
@@ -24,6 +26,97 @@ const MATCHED_ROLE_TEMPLATE_LABEL = `(
       `user_role_templates.${permission} = app_users.${permission}`
     )).join("\n    AND ")}
 )`;
+
+export async function createApprovedUser(env, values, actor) {
+  if (actor?.role !== "Admin") {
+    return { ok: false, message: "승인 사용자 추가는 시스템 관리자만 수행할 수 있습니다." };
+  }
+
+  const validation = validateApprovedUser(values);
+  if (!validation.ok) return validation;
+  const temporaryPassword = String(values?.temporaryPassword ?? "");
+  if (!isPasswordInputBounded(temporaryPassword)) {
+    return { ok: false, values: validation.values, message: "임시 비밀번호가 허용된 최대 길이를 초과했습니다." };
+  }
+  const passwordValidation = validateNewPassword(temporaryPassword, { label: "임시 비밀번호" });
+  if (!passwordValidation.ok) return { ...passwordValidation, values: validation.values };
+
+  const user = validation.values;
+  const existing = await env.DB.prepare("SELECT id FROM app_users WHERE username = ?").bind(user.username).first();
+  if (existing) {
+    return { ok: false, values: user, duplicate: true, message: "이미 등록된 사용자 아이디입니다." };
+  }
+
+  const passwordRecord = await createPasswordRecord(temporaryPassword);
+  const approvedBy = actorUsername(actor);
+  const guardSql = `
+    FROM (SELECT 1) AS approved_user_candidate
+    WHERE NOT EXISTS (SELECT 1 FROM app_users WHERE username = ?)
+  `;
+  const guardBinds = [user.username];
+  const permissions = Object.fromEntries(PERMISSION_KEYS.map((permission) => [permission, false]));
+  const audit = createSystemAuditStatement(env, {
+    entityType: "user",
+    entityReference: user.username,
+    action: "create_approved",
+    actor,
+    summary: "승인 사용자 추가",
+    details: {
+      before: null,
+      after: {
+        username: user.username,
+        displayName: user.displayName,
+        team: user.team || null,
+        status: "approved",
+        role: "User",
+        roleTemplateKey: "viewer",
+        permissions,
+        mustChangePassword: true
+      }
+    }
+  }, { guardSql, guardBinds });
+  const insert = env.DB.prepare(`
+    INSERT INTO app_users (
+      username,
+      display_name,
+      team,
+      password_salt,
+      password_hash,
+      status,
+      approved_at,
+      approved_by,
+      role,
+      role_template_key,
+      must_change_password,
+      security_review_required,
+      ${PERMISSION_KEYS.join(", ")},
+      updated_at
+    )
+    SELECT ?, ?, ?, ?, ?, 'approved', CURRENT_TIMESTAMP, ?, 'User', 'viewer', 1, 0,
+      ${PERMISSION_KEYS.map(() => "0").join(", ")},
+      CURRENT_TIMESTAMP
+    WHERE NOT EXISTS (SELECT 1 FROM app_users WHERE username = ?)
+  `).bind(
+    user.username,
+    user.displayName,
+    user.team || null,
+    passwordRecord.salt,
+    passwordRecord.hash,
+    approvedBy,
+    user.username
+  );
+  const plan = createApprovedUserMutationPlan(audit, insert, `app_users:${user.username}:absent`);
+
+  try {
+    await executeMutationBatch(env, plan);
+    return { ok: true, username: user.username, displayName: user.displayName };
+  } catch (error) {
+    if (error?.code === "STALE_VERSION" || /UNIQUE constraint failed/i.test(String(error?.message || ""))) {
+      return { ok: false, values: user, duplicate: true, message: "이미 등록된 사용자 아이디입니다." };
+    }
+    throw error;
+  }
+}
 
 export async function getAppUsers(env) {
   const result = await env.DB.prepare(`

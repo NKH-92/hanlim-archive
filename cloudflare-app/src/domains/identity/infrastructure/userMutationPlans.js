@@ -8,6 +8,14 @@ export function createUserStatusMutationPlan(action, auditStatement, updateState
     .withBudget(2);
 }
 
+export function createApprovedUserMutationPlan(auditStatement, insertStatement, guard) {
+  return createBatchPlan("identity.user.create_approved")
+    .step("user.audit.create_approved", auditStatement, { guard, auditEventId: "user.create_approved" })
+    .step("user.create.approved", insertStatement, { guard })
+    .expectChanged("user.create.approved")
+    .withBudget(2);
+}
+
 export function createUserPermissionMutationPlan(auditStatement, updateStatement, guard) {
   return createBatchPlan("identity.user.permissions")
     .step("user.audit.permissions", auditStatement, { guard, auditEventId: "user.permissions_update" })

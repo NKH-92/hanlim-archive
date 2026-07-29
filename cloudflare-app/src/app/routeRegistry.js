@@ -36,6 +36,14 @@ export const AUTHENTICATED_ROUTES = Object.freeze([
   route("session.logout.fallback", "identity", ANY, "/logout", { fallback: true }),
   route("admin.dashboard", "admin", "GET", "/admin", { policy: "any-management-permission" }),
   route("admin.settings", "identity", "GET", "/admin/settings", { permission: PERMISSIONS.MANAGE_USERS }),
+  route("admin.user.create.form", "identity", "GET", "/admin/users/new", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
+  route("admin.user.create", "identity", "POST", "/admin/users/new", {
+    permission: PERMISSIONS.MANAGE_USERS,
+    policy: "admin-only"
+  }),
   route("admin.role-templates", "identity", "GET", "/admin/role-templates", {
     permission: PERMISSIONS.MANAGE_USERS,
     policy: "admin-only"
