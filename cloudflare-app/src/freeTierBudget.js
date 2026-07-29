@@ -17,24 +17,26 @@ export const FREE_TIER_BUDGET = Object.freeze({
   disposalProcessChunkSize: 25,
   csvImportMaxItems: 50,
   csvImportProcessChunkSize: 1,
-  documentCapacityWarningCount: 11000,
-  documentCapacityHardCount: 12000,
-  excelSnapshotMaxItems: 12000,
+  documentCapacityWarningCount: 27000,
+  documentCapacityHardCount: 30000,
+  excelSnapshotMaxItems: 30000,
   excelSnapshotDeltaMaxItems: 1000,
   excelSnapshotMembershipChunkSize: 1000,
   excelSnapshotStageChunkSize: 50,
   excelSnapshotExportPageSize: 250,
-  excelSnapshotMaxFileBytes: 10 * 1024 * 1024,
+  excelSnapshotMaxFileBytes: 20 * 1024 * 1024,
   excelSnapshotMaxZipEntries: 500,
-  excelSnapshotMaxZipUncompressedBytes: 50 * 1024 * 1024,
+  excelSnapshotMaxZipUncompressedBytes: 100 * 1024 * 1024,
+  bootstrapApplyChunkSize: 5000,
+  bootstrapApplyScheduleThreshold: 5000,
+  snapshotMembershipRetentionCount: 3,
+  snapshotMembershipCleanupChunkSize: 500,
   documentPageSize: 30,
   searchCandidateMaxItems: 200,
   searchResponseMaxItems: 30,
   searchOutboxCronChunkSize: 25,
-  // 전체 재색인은 bootstrap/복구 때만 필요하다. 10,000건을 한 UTC 일자에 밀어 넣지 않고
-  // 실제 rows_written을 관측하며 여러 Cron으로 분산하기 위해 의도적으로 작게 유지한다.
-  searchRebuildChunkSize: 10,
-  // 최초 10,000건 apply 전용 정지선. 문서명 exact index를 포함한 지배적 write 추정은 약 80,000행이므로
-  // UTC 일자 시작 사용량이 5,000행 미만일 때만 수행하고 85,000행부터 추가 대량 write를 중지한다.
-  initialLoadDailyRowsWrittenStop: 85000
+  // 전체 재색인은 bootstrap/복구 때만 필요하다. Cron마다 50건씩 전진해 foreground 요청과 분리한다.
+  searchRebuildChunkSize: 50,
+  // 운영 지표용 일일 정지선. 최초 등록은 5,000건씩 날짜를 나누며 실제 Cloudflare 지표가 최종 권위값이다.
+  initialLoadDailyRowsWrittenStop: 95000
 });

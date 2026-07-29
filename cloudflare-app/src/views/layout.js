@@ -59,6 +59,10 @@ function header(session) {
   }
   if (capabilities.canManageDisposals) {
     workLinks.push(["/documents/disposal", "fa-box-archive", "문서 폐기"]);
+    workLinks.push(["/documents/disposal?tab=documents", "fa-box-archive", "폐기 문서"]);
+  }
+  if (capabilities.canManageDocuments) {
+    workLinks.push(["/documents/new", "fa-file-circle-plus", "문서 등록"]);
   }
 
   const masterLinks = [];
@@ -84,7 +88,7 @@ function header(session) {
   const navLink = ([href, icon, text], sub = false) =>
     `<a href="${href}" class="${sub ? "nav-sub-link" : "archive-nav-item"}"><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(text)}</a>`;
   const navGroup = (label, links, extras = "") => links.length || extras
-    ? `<section class="nav-group" aria-label="${escapeHtml(label)}"><strong class="nav-group-label">${escapeHtml(label)}</strong>${links.map((link) => navLink(link)).join("")}${extras}</section>`
+    ? `<details class="nav-group" aria-label="${escapeHtml(label)}"><summary class="nav-group-label">${escapeHtml(label)}</summary><div class="nav-group-content">${links.map((link) => navLink(link)).join("")}${extras}</div></details>`
     : "";
   const nestedGroup = (label, icon, links) => links.length
     ? `<details class="nav-settings"><summary><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(label)}</summary><div>${links.map((link) => navLink(link, true)).join("")}</div></details>`
@@ -95,8 +99,7 @@ function header(session) {
     ...workLinks,
     ...operationLinks,
     ...masterLinks,
-    ...evidenceLinks,
-    ...(capabilities.canManageDocuments ? [["/documents/new", "fa-file-circle-plus", "문서 등록"]] : [])
+    ...evidenceLinks
   ];
   const mobileTabs = `${documentLinks.map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${text === "보관 위치" ? "위치" : "검색"}</span></a>`).join("")}<button type="button" class="archive-nav-item mobile-tab" data-mobile-more aria-controls="primary-navigation" aria-expanded="false"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>더보기</span></button>`;
   const utilityLinks = [["/qa", "fa-circle-info", "도움말·문의"]];
@@ -109,13 +112,11 @@ function header(session) {
     <header class="topbar">
       <a href="/app" class="brand"><img class="brand-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약"><span><strong>한림문서고</strong><small>통합 문서 위치 검색</small></span></a>
       <button type="button" class="command-trigger" data-command-open aria-haspopup="dialog"><i class="fa-solid fa-magnifying-glass"></i><span>메뉴 찾기</span><kbd>Ctrl+K</kbd></button>
-      <button type="button" class="hamburger" aria-label="메뉴 열기" aria-controls="primary-navigation" aria-expanded="false" data-hamburger><span></span><span></span><span></span></button>
       <nav id="primary-navigation" aria-label="주 메뉴" data-nav-menu>
         <button type="button" class="drawer-close" data-drawer-close aria-label="메뉴 닫기">×</button>
         ${navGroup("문서", documentLinks)}
         ${navGroup("업무", workLinks)}
         ${navGroup("운영", operationLinks, operationExtras)}
-        ${capabilities.canManageDocuments ? `<a class="button action-button nav-create-document" href="/documents/new"><i class="fa-solid fa-plus" aria-hidden="true"></i>문서 등록</a>` : ""}
         <div class="nav-user">
           <span class="session-pill">${escapeHtml(session.displayName)} · ${escapeHtml(roleLabel)}</span>
           <a href="/qa" class="nav-sub-link"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>도움말·문의</a>
@@ -198,7 +199,6 @@ export function filterSelectRow({ categories, tags, filters, viewer = false, for
       .map(([value, text]) => option(value, text, filters.sort))
       .join("");
     return `<div class="viewer-filter-row">
-          <label>문서 상태<select name="status"${formAttribute}>${option("active", "보관중 문서", filters.status || "active")}${option("disposed", "폐기 문서", filters.status || "active")}${option("all", "전체", filters.status || "active")}</select></label>
           <label>대분류<select name="category"${formAttribute}><option value="">전체</option>${categories.map((c) => option(c.id, c.name, filters.categoryId)).join("")}</select></label>
           <label>태그<select name="tag"${formAttribute}><option value="">전체</option>${tags.map((tag) => option(tag.id, tag.name, filters.tagId)).join("")}</select></label>
           <label>보관 위치<select name="zone"${formAttribute}><option value="">전체</option>${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}</select></label>
@@ -232,13 +232,6 @@ export function filterSelectRow({ categories, tags, filters, viewer = false, for
               ${[1, 2, 3].map((zone) => option(zone, `${zone}구역`, filters.zoneNumber)).join("")}
             </select>
           </label>
-          <label>${label("문서 상태")}
-            <select name="status">
-              ${option("active", "보관중", filters.status || "active")}
-              ${option("disposed", "폐기", filters.status || "active")}
-              ${option("all", "전체", filters.status || "active")}
-            </select>
-          </label>
           <label>${label("정렬")}
             <select name="sort">
               ${option("relevance", "정확도순", filters.sort || "relevance")}
@@ -250,12 +243,15 @@ ${viewer ? `          <a class="button secondary sm" href="/app">초기화</a>
 }
 
 // /app과 /documents 목록이 같은 페이지 내비 마크업을 공유한다(호출부가 URL만 다르게 만든다).
-export function paginationNav(page, totalPages, { previousUrl, nextUrl }) {
+export function paginationNav(page, totalPages, { previousUrl, nextUrl, hasMore = false }) {
+  const unknownTotal = totalPages === null || totalPages === undefined;
   return `
     <nav class="pagination" aria-label="검색 결과 페이지">
       ${page === 1 ? `<span class="button secondary sm disabled" aria-disabled="true">이전</span>` : `<a class="button secondary sm" href="${previousUrl}">이전</a>`}
-      <span>${page} / ${totalPages}</span>
-      ${page === totalPages ? `<span class="button secondary sm disabled" aria-disabled="true">다음</span>` : `<a class="button secondary sm" href="${nextUrl}">다음</a>`}
+      <span>${unknownTotal ? `${page}페이지` : `${page} / ${totalPages}`}</span>
+      ${unknownTotal
+        ? (hasMore ? `<a class="button secondary sm" href="${nextUrl}">다음</a>` : `<span class="button secondary sm disabled" aria-disabled="true">다음</span>`)
+        : (page === totalPages ? `<span class="button secondary sm disabled" aria-disabled="true">다음</span>` : `<a class="button secondary sm" href="${nextUrl}">다음</a>`)}
     </nav>
   `;
 }

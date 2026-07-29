@@ -99,7 +99,7 @@ test("disposed suggestion requests never expose active-document suggestions", as
   assert.deepEqual(payload.suggestions, []);
 });
 
-test("dashboard status selector defaults to active and supports disposed or all", async () => {
+test("일반 dashboard는 상태 파라미터와 무관하게 보관중 문서만 표시한다", async () => {
   const user = { username: "viewer", displayName: "Viewer", role: "User" };
 
   const homeEnv = dashboardSearchEnv();
@@ -110,8 +110,8 @@ test("dashboard status selector defaults to active and supports disposed or all"
   const homeHtml = await homeResponse.text();
   const homeSearch = authoritativeDocumentSearch(homeEnv.state.calls);
   assert.ok(homeSearch, "초기 /app도 서버에서 기본 문서 목록을 읽어야 한다");
-  assert.ok(homeSearch.args.includes(30), "초기 문서 목록은 30행 단위를 사용해야 한다");
-  assert.match(homeHtml, /<option value="active" selected>보관중 문서<\/option>/);
+  assert.ok(homeSearch.args.includes(31), "초기 문서 목록은 30행과 다음 페이지 sentinel 1행을 읽어야 한다");
+  assert.doesNotMatch(homeHtml, /<select name="status"/);
   assert.match(homeHtml, /<option value="updated" selected>최신순<\/option>/);
   assert.match(homeHtml, /충전 공정 밸리데이션 보고서/);
 
@@ -127,7 +127,7 @@ test("dashboard status selector defaults to active and supports disposed or all"
   assert.ok(defaultSearch);
   assert.match(defaultSearch.sql, /d\.status = \?/);
   assert.equal(defaultSearch.args[0], "active");
-  assert.match(defaultHtml, /<option value="active" selected>보관중 문서<\/option>/);
+  assert.doesNotMatch(defaultHtml, /<select name="status"/);
   assert.doesNotMatch(defaultHtml, /폐기된 공정 밸리데이션 보고서/);
 
   const disposedEnv = dashboardSearchEnv();
@@ -141,10 +141,9 @@ test("dashboard status selector defaults to active and supports disposed or all"
   assert.equal(disposedResponse.status, 200);
   assert.ok(disposedSearch);
   assert.match(disposedSearch.sql, /d\.status = \?/);
-  assert.equal(disposedSearch.args[0], "disposed");
-  assert.match(disposedHtml, /<option value="disposed" selected>폐기 문서<\/option>/);
-  assert.match(disposedHtml, /폐기된 공정 밸리데이션 보고서/);
-  assert.doesNotMatch(disposedHtml, />충전 공정 밸리데이션 보고서</);
+  assert.equal(disposedSearch.args[0], "active");
+  assert.doesNotMatch(disposedHtml, /폐기된 공정 밸리데이션 보고서/);
+  assert.match(disposedHtml, />충전 공정 밸리데이션 보고서</);
 
   const legacyEnv = dashboardSearchEnv();
   const legacyCookie = await createSessionCookie(user, legacyEnv, false);
@@ -157,9 +156,9 @@ test("dashboard status selector defaults to active and supports disposed or all"
   assert.equal(legacyResponse.status, 200);
   assert.ok(legacySearch);
   assert.match(legacySearch.sql, /d\.status = \?/);
-  assert.equal(legacySearch.args[0], "disposed");
-  assert.match(legacyHtml, /폐기된 공정 밸리데이션 보고서/);
-  assert.doesNotMatch(legacyHtml, />충전 공정 밸리데이션 보고서</);
+  assert.equal(legacySearch.args[0], "active");
+  assert.doesNotMatch(legacyHtml, /폐기된 공정 밸리데이션 보고서/);
+  assert.match(legacyHtml, />충전 공정 밸리데이션 보고서</);
 
   const allEnv = dashboardSearchEnv();
   const allCookie = await createSessionCookie(user, allEnv, false);
@@ -171,10 +170,10 @@ test("dashboard status selector defaults to active and supports disposed or all"
 
   assert.equal(allResponse.status, 200);
   assert.ok(allSearch);
-  assert.doesNotMatch(allSearch.sql, /d\.status = \?/);
-  assert.match(allHtml, /<option value="all" selected>전체<\/option>/);
+  assert.match(allSearch.sql, /d\.status = \?/);
+  assert.equal(allSearch.args[0], "active");
   assert.match(allHtml, /충전 공정 밸리데이션 보고서/);
-  assert.match(allHtml, /폐기된 공정 밸리데이션 보고서/);
+  assert.doesNotMatch(allHtml, /폐기된 공정 밸리데이션 보고서/);
 });
 
 test("every authenticated role can open the dedicated floor plan", async () => {

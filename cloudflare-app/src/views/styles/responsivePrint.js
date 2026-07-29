@@ -3,7 +3,7 @@
 export function responsivePrintStyles() {
   return `    @media (min-width: 1100px) {
       .topbar { position: fixed; inset: 0 auto 0 0; width: 240px; flex-direction: column; align-items: stretch; padding: var(--sp-4) var(--sp-3); border-right: 1px solid var(--line); border-bottom: 0; }
-      .topbar nav { flex-direction: column; align-items: stretch; gap: var(--sp-1); }
+      .topbar nav { flex-direction: column; align-items: stretch; gap: var(--sp-1); padding-right: var(--sp-1); }
       .nav-group { width: 100%; }
       .brand { padding: var(--sp-1) var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); margin-bottom: var(--sp-2); }
       .archive-nav-item, .nav-sub-link, .logout-link { justify-content: flex-start; }
@@ -11,7 +11,7 @@ export function responsivePrintStyles() {
       .nav-user { margin: auto 0 0; flex-direction: column; align-items: stretch; gap: var(--sp-1); padding-top: var(--sp-2); border-top: 1px solid var(--line); }
       .session-pill { border-radius: var(--r-md); white-space: normal; text-align: center; }
       .topbar ~ .app-shell { width: auto; max-width: 1440px; margin-left: calc(240px + var(--sp-6)); margin-right: var(--sp-6); }
-      .hamburger, .drawer-close, .nav-scrim { display: none; }
+      .drawer-close, .nav-scrim { display: none; }
     }
     @media (max-width: 1180px) {
       .viewer-workspace { grid-template-columns: 1fr; }
@@ -19,12 +19,9 @@ export function responsivePrintStyles() {
     }
     @media (max-width: 1099px) {
       .topbar { justify-content: space-between; }
-      .hamburger { display: inline-flex; flex-direction: column; justify-content: center; align-items: center; gap: var(--sp-1); width: 44px; min-height: 44px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: var(--r-md); padding: 0; }
-      .hamburger:hover { background: var(--gray-50); }
-      .hamburger span { display: block; width: 16px; height: 2px; background: currentColor; border-radius: 2px; }
       .drawer-close { display: inline-flex; align-self: flex-end; width: 44px; min-height: 44px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: var(--r-md); font-size: 15px; padding: 0; }
       .drawer-close:hover { background: var(--gray-50); }
-      .topbar nav { position: fixed; inset: 0 0 0 auto; width: min(320px, 86vw); background: var(--surface); padding: var(--sp-4); flex-direction: column; align-items: stretch; transform: translateX(100%); transition: transform .22s ease; box-shadow: var(--shadow-2); z-index: 60; }
+      .topbar nav { position: fixed; inset: 0 0 0 auto; width: min(320px, 86vw); max-height: 100dvh; background: var(--surface); padding: var(--sp-4) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom)); flex-direction: column; align-items: stretch; transform: translateX(100%); transition: transform .22s ease; box-shadow: var(--shadow-2); z-index: 60; -webkit-overflow-scrolling: touch; }
       .topbar nav:not(.is-open) { pointer-events: none; }
       .topbar nav.is-open { transform: translateX(0); }
       .nav-user { margin: auto 0 0; flex-direction: column; align-items: stretch; padding-top: var(--sp-2); border-top: 1px solid var(--line); }

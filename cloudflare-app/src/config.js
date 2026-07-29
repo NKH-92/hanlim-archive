@@ -20,6 +20,12 @@ export const DEFAULT_CSV_IMPORT_LIMITS = Object.freeze({
   maxRows: FREE_TIER_BUDGET.csvImportMaxItems
 });
 
+export const DEFAULT_SUPPORT_CONTACT = Object.freeze({
+  department: "SQA팀",
+  name: "남광현",
+  email: ""
+});
+
 export { FREE_TIER_BUDGET };
 
 export function getAppConfig(env = {}) {
@@ -37,8 +43,8 @@ export function getAppConfig(env = {}) {
       defaultShelves: DEFAULT_RACK_SHELVES
     },
     support: {
-      department: readText(env.SUPPORT_DEPARTMENT),
-      name: readText(env.SUPPORT_NAME),
+      department: DEFAULT_SUPPORT_CONTACT.department,
+      name: DEFAULT_SUPPORT_CONTACT.name,
       email: readEmail(env.SUPPORT_EMAIL)
     }
   };

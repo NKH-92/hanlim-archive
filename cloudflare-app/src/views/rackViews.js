@@ -77,7 +77,7 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
           <a href="${base}&status=active" aria-label="${column}열 ${shelf}선반 보관중 ${active}건">
             <span>${column}열 · ${shelf}선반</span><strong>${active}건</strong>
           </a>
-          ${disposed ? `<a class="rack-cell-disposed" href="${base}&status=disposed">폐기 ${disposed}건</a>` : ""}
+          ${disposed ? `<a class="rack-cell-disposed" href="/documents/disposal?tab=documents">폐기 ${disposed}건</a>` : ""}
         </div>`);
     }
   }

@@ -14,9 +14,7 @@ export function suggestionScript() {
           }
           timer = setTimeout(function () {
             if (input.closest('[data-viewer-form]') && window.__hanlimSearchIndexReady) return;
-            var statusControl = input.form ? input.form.querySelector('select[name="status"]') : null;
             var suggestionUrl = '/api/search-suggestions?q=' + encodeURIComponent(q);
-            if (statusControl && statusControl.value === 'disposed') suggestionUrl += '&status=disposed';
             fetch(suggestionUrl, { headers: { Accept: 'application/json' } })
               .then(function (response) { return response.ok ? response.json() : { suggestions: [] }; })
               .then(function (data) {

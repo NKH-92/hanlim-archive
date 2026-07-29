@@ -6,8 +6,8 @@ import { readBoolean } from "../../../shared/coercion.js";
 import { clean } from "../../../shared/text/normalize.js";
 import {
   buildDocumentFilterWhere,
-  getDocumentCount,
-  getDocumentPage,
+  getFastDocumentCount,
+  getDocumentPageWindow,
   parseDocumentFilters
 } from "../../documents/index.js";
 import {
@@ -664,17 +664,24 @@ export async function getViewerSearchPayload(env, params = {}) {
     : 12;
   const rawPage = Number(params.page);
   const requestedPage = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
-  const filters = parseDocumentFilters(params, { query });
+  const filters = { ...parseDocumentFilters(params, { query }), status: "active", includeDisposed: false };
   if (!query) {
-    const totalItems = await getDocumentCount(env, filters);
-    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-    const page = Math.min(requestedPage, totalPages);
-    const documents = await getDocumentPage(env, filters, page, pageSize);
+    const totalItems = await getFastDocumentCount(env, filters);
+    const page = requestedPage;
+    const window = await getDocumentPageWindow(env, filters, page, pageSize);
+    const documents = window.items;
     return {
       items: documents.map(documentToViewerItem),
-      pagination: { page, pageSize, totalItems, totalPages },
+      hasMore: window.hasMore,
+      pagination: {
+        page,
+        pageSize,
+        totalItems,
+        totalPages: totalItems === null ? null : Math.max(1, Math.ceil(totalItems / pageSize)),
+        hasMore: window.hasMore
+      },
       facets: buildViewerFacets(documents),
-      suggestions: filters.status === "disposed" ? [] : buildSearchSuggestions(documents, 8)
+      suggestions: buildSearchSuggestions(documents, 8)
     };
   }
 

@@ -8,6 +8,7 @@ import {
   applyDocumentSnapshot,
   createDocumentSnapshot,
   prepareDocumentSnapshot,
+  runScheduledBootstrapApplication,
   stageDocumentSnapshotRows
 } from "../src/domains/snapshots/index.js";
 import { FREE_TIER_BUDGET } from "../src/freeTierBudget.js";
@@ -82,6 +83,17 @@ try {
     confirmedReviewCount: count
   });
   assertOk(applied, "snapshot apply");
+  let automaticApplyChunks = 0;
+  if (applied.scheduled) {
+    const maximumChunks = Math.ceil(count / FREE_TIER_BUDGET.bootstrapApplyChunkSize) + 1;
+    while (automaticApplyChunks < maximumChunks) {
+      const chunk = await runScheduledBootstrapApplication(env, { force: true });
+      assertOk(chunk, `자동 분할 반영 ${automaticApplyChunks + 1}`);
+      if (!chunk.processed) throw new Error("예약된 최초 적재 chunk를 선점하지 못했습니다.");
+      automaticApplyChunks += 1;
+      if (chunk.completed) break;
+    }
+  }
   const applyMs = performance.now() - applyStartedAt;
 
   const currentDocuments = scalar(database, "SELECT COUNT(*) FROM documents WHERE sync_state = 'current'");
@@ -123,6 +135,8 @@ try {
     stagedChunks,
     prepareStatements: Number(prepared.statementCount || 0),
     applyStatements: Number(applied.statementCount || 0),
+    automaticApplyChunkSize: FREE_TIER_BUDGET.bootstrapApplyChunkSize,
+    automaticApplyChunks,
     currentDocuments,
     disposedDocuments,
     documentTags,

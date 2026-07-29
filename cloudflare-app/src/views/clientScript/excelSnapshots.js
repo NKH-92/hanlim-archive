@@ -326,7 +326,7 @@ export function excelSnapshotScript() {
               backupConfirmed: backupConfirmed
             });
             showRecovery(created.id);
-            // 최초 bootstrap은 모든 행을 실제 source row로 staging하므로 동일 10,000행 membership을
+            // 최초 bootstrap은 모든 행을 실제 source row로 staging하므로 동일 최대 30,000행 membership을
             // 한 번 더 저장할 이유가 없다. managed v2만 unchanged 행 복원을 위해 membership을 보낸다.
             if (excelCachedParsed.schemaVersion >= 2 && excelCachedParsed.mode !== 'bootstrap') {
               for (var membershipIndex = 0; membershipIndex < excelCachedParsed.rows.length; membershipIndex += excelSnapshotMembershipChunkSize) {
@@ -456,23 +456,42 @@ export function excelSnapshotScript() {
         }
 
         var print = workbook.addWorksheet('인쇄용 관리대장', { views: [{ state: 'frozen', ySplit: 4 }] });
+        var printDocuments = payload.documents.filter(function (document) { return String(document.status || '') !== '폐기'; });
         print.mergeCells('A1:M1');
         print.getCell('A1').value = '한림 문서고 관리대장';
         print.getCell('A1').font = { name: '맑은 고딕', bold: true, size: 18, color: { argb: 'FF17365D' } };
         print.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
         print.getRow(1).height = 34;
-        print.mergeCells('A2:J2');
-        print.getCell('A2').value = '대장 버전 ' + payload.baseVersion + ' · 추출 ' + payload.exportedAt.slice(0, 10) + ' · 총 ' + payload.documents.length + '건';
-        print.getCell('A2').font = { name: '맑은 고딕', size: 9, color: { argb: 'FF666666' } };
-        print.mergeCells('K2:M2'); print.getCell('K2').value = '확인:                         ';
-        print.getCell('K2').alignment = { horizontal: 'right' };
-        print.addRow([]);
+        print.mergeCells('A2:I3');
+        [
+          ['J2:K2', 'J3:K3', '담당자\\nThe Person in charge'],
+          ['L2:M2', 'L3:M3', '확인자\\nConfirmed by']
+        ].forEach(function (signatureBlock) {
+          print.mergeCells(signatureBlock[0]);
+          print.mergeCells(signatureBlock[1]);
+          var labelCell = print.getCell(signatureBlock[0].split(':')[0]);
+          var signatureCell = print.getCell(signatureBlock[1].split(':')[0]);
+          labelCell.value = signatureBlock[2];
+          labelCell.font = { name: '맑은 고딕', size: 10, color: { argb: 'FF000000' } };
+          labelCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+          signatureCell.alignment = { horizontal: 'center', vertical: 'middle' };
+          [labelCell, signatureCell].forEach(function (cell) {
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FF000000' } },
+              left: { style: 'thin', color: { argb: 'FF000000' } },
+              bottom: { style: 'thin', color: { argb: 'FF000000' } },
+              right: { style: 'thin', color: { argb: 'FF000000' } }
+            };
+          });
+        });
+        print.getRow(2).height = 60;
+        print.getRow(3).height = 60;
         print.addRow(excelHeaders);
         excelHeaderStyle(print.getRow(4));
-        payload.documents.forEach(function (document) { print.addRow(excelDataValues(document).slice(0, 13)); });
+        printDocuments.forEach(function (document) { print.addRow(excelDataValues(document).slice(0, 13)); });
         print.columns = data.columns.slice(0, 13).map(function (column) { return { width: column.width }; });
         print.getColumn(3).numFmt = 'yyyy-mm-dd';
-        for (var printRow = 5; printRow <= payload.documents.length + 4; printRow += 1) {
+        for (var printRow = 5; printRow <= printDocuments.length + 4; printRow += 1) {
           print.getRow(printRow).height = 21;
           print.getRow(printRow).eachCell({ includeEmpty: true }, function (cell, column) {
             cell.font = { name: '맑은 고딕', size: 8 };
@@ -480,9 +499,12 @@ export function excelSnapshotScript() {
             cell.border = { bottom: { style: 'thin', color: { argb: 'FFD9D9D9' } } };
           });
         }
-        print.pageSetup = { paperSize: 8, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:4',
+        var printLastRow = Math.max(4, printDocuments.length + 4);
+        print.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+          printArea: 'A1:M' + printLastRow, printTitlesRow: '1:4',
           margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } };
-        print.headerFooter.oddFooter = '&L한림 문서고&C&P / &N&R' + payload.exportedAt.slice(0, 10);
+        print.headerFooter.oddHeader = '&L별첨 15. 문서 목록 Document List';
+        print.headerFooter.oddFooter = '&C&P / &N&RHLF-GR-04-15 / Rev.2';
 
         var guide = workbook.addWorksheet('작성안내');
         guide.columns = [{ width: 24 }, { width: 90 }];
@@ -494,7 +516,7 @@ export function excelSnapshotScript() {
           ['랙 위치','1번 랙은 단면, 2~13번 랙은 1면 또는 2면을 사용합니다. 열은 1~7, 선반은 1~6입니다.'],
           ['상태','보관중 또는 폐기만 입력합니다.'],
           ['동기화','업로드 후 추가·변경·제외 내역을 확인하고 현재 대장으로 반영하세요. 오류가 있으면 기존 대장은 바뀌지 않습니다.'],
-          ['인쇄','인쇄용 관리대장 시트는 A3 가로, 한 페이지 너비로 설정되어 있습니다.']
+          ['인쇄','인쇄용 관리대장 시트는 폐기 문서를 제외하며, A4 가로, A~M열 한 페이지 너비와 마지막 데이터 행까지로 설정되어 있습니다.']
         ].forEach(function (row) { guide.addRow(row); });
         guide.eachRow(function (row, index) { if (index > 1) { row.height = 34; row.eachCell(function (cell) { cell.alignment = { vertical: 'middle', wrapText: true }; cell.font = { name: '맑은 고딕', size: 10 }; }); } });
 

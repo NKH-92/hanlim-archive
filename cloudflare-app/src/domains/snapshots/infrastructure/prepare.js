@@ -381,7 +381,7 @@ function snapshotChangePayload(item, { bootstrap = false } = {}) {
     expectedRowVersion: item.expectedRowVersion,
     beforeJson: bootstrap ? null : (item.before ? JSON.stringify(item.before) : null),
     // bootstrap 신규행은 화면이 normalized_json을 fallback으로 읽고 apply도 normalized_json만 쓴다.
-    // 동일한 10,000개 after payload를 중복 저장하지 않는다.
+    // 동일한 최대 30,000개 after payload를 중복 저장하지 않는다.
     afterJson: bootstrap ? null : (item.after ? JSON.stringify(item.after) : null),
     changedFieldsJson: JSON.stringify(item.changedFields || []),
     changeFlagsJson: JSON.stringify(item.changeFlags || []),

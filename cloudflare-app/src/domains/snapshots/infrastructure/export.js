@@ -183,6 +183,35 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
     return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "export page 범위를 벗어났습니다.");
   }
   const offset = (page - 1) * pageSize;
+  const previousCursor = page === 1 ? null : await env.DB.prepare(`
+    SELECT
+      cursor_rack_number, cursor_rack_face, cursor_column_number,
+      cursor_shelf_number, cursor_document_number, cursor_document_id
+    FROM document_snapshot_export_pages
+    WHERE manifest_id = ? AND page_number = ?
+  `).bind(id, page - 1).first();
+  if (page > 1 && !previousCursor?.cursor_document_id) {
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE,
+      "앞 페이지부터 순서대로 내려받아 주세요. 중단된 경우 현재 대장 추출을 다시 시작할 수 있습니다."
+    );
+  }
+  const cursorWhere = previousCursor ? `AND (
+      r.rack_number > ?
+      OR (r.rack_number = ? AND d.rack_face > ?)
+      OR (r.rack_number = ? AND d.rack_face = ? AND rs.column_number > ?)
+      OR (r.rack_number = ? AND d.rack_face = ? AND rs.column_number = ? AND rs.shelf_number > ?)
+      OR (r.rack_number = ? AND d.rack_face = ? AND rs.column_number = ? AND rs.shelf_number = ? AND d.document_number > ?)
+      OR (r.rack_number = ? AND d.rack_face = ? AND rs.column_number = ? AND rs.shelf_number = ? AND d.document_number = ? AND d.id > ?)
+    )` : "";
+  const cursorBinds = previousCursor ? [
+    previousCursor.cursor_rack_number,
+    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face,
+    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number,
+    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number, previousCursor.cursor_shelf_number,
+    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number, previousCursor.cursor_shelf_number, previousCursor.cursor_document_number,
+    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number, previousCursor.cursor_shelf_number, previousCursor.cursor_document_number, previousCursor.cursor_document_id
+  ] : [];
   const result = await env.DB.prepare(`
     SELECT
       d.excel_row_key, d.row_version, d.document_number, d.revision_number, d.revision_date,
@@ -190,7 +219,13 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
       r.rack_number, r.code AS rack_code, r.is_single_sided,
       rs.column_number, rs.shelf_number, d.rack_face,
       GROUP_CONCAT(t.name, ';') AS tag_names,
-      d.note, d.status
+      d.note, d.status,
+      r.rack_number AS cursor_rack_number,
+      d.rack_face AS cursor_rack_face,
+      rs.column_number AS cursor_column_number,
+      rs.shelf_number AS cursor_shelf_number,
+      d.document_number AS cursor_document_number,
+      d.id AS cursor_document_id
     FROM documents d
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
@@ -198,22 +233,41 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
     LEFT JOIN document_tags dt ON dt.document_id = d.id
     LEFT JOIN tags t ON t.id = dt.tag_id
     WHERE d.sync_state = 'current'
+    ${cursorWhere}
     GROUP BY d.id
     ORDER BY r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number, d.id
-    LIMIT ? OFFSET ?
-  `).bind(pageSize, offset).all();
-  const documents = (result.results ?? []).map(exportDocument);
+    LIMIT ?
+  `).bind(...cursorBinds, pageSize).all();
+  const rows = result.results ?? [];
+  const documents = rows.map(exportDocument);
+  const lastRow = rows.at(-1) || {};
   const pageHash = await computeExportManifestHash(documents);
   await env.DB.prepare(`
     INSERT INTO document_snapshot_export_pages (
-      manifest_id, page_number, row_offset, row_count, page_hash
+      manifest_id, page_number, row_offset, row_count, page_hash,
+      cursor_rack_number, cursor_rack_face, cursor_column_number,
+      cursor_shelf_number, cursor_document_number, cursor_document_id
     )
-    VALUES (?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(manifest_id, page_number) DO UPDATE SET
       row_offset = excluded.row_offset,
       row_count = excluded.row_count,
-      page_hash = excluded.page_hash
-  `).bind(id, page, offset, documents.length, pageHash).run();
+      page_hash = excluded.page_hash,
+      cursor_rack_number = excluded.cursor_rack_number,
+      cursor_rack_face = excluded.cursor_rack_face,
+      cursor_column_number = excluded.cursor_column_number,
+      cursor_shelf_number = excluded.cursor_shelf_number,
+      cursor_document_number = excluded.cursor_document_number,
+      cursor_document_id = excluded.cursor_document_id
+  `).bind(
+    id, page, offset, documents.length, pageHash,
+    lastRow.cursor_rack_number ?? null,
+    lastRow.cursor_rack_face ?? null,
+    lastRow.cursor_column_number ?? null,
+    lastRow.cursor_shelf_number ?? null,
+    lastRow.cursor_document_number ?? null,
+    lastRow.cursor_document_id ?? null
+  ).run();
   return {
     ok: true,
     manifestId: id,

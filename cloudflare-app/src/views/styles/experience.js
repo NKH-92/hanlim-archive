@@ -144,7 +144,6 @@ export function experienceStyles() {
       .topbar .brand strong { color: var(--surface); }
       .topbar .brand small, .topbar .command-trigger { display: none; }
       .topbar .brand-logo { width: 48px; height: 34px; }
-      .topbar .hamburger { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .18); color: var(--surface); }
       .document-detail-head { grid-template-columns: minmax(0, 1fr); max-inline-size: none; margin: calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3)) var(--sp-3); padding: var(--sp-5) calc(var(--sp-4) + var(--sp-3)); border-radius: 0 0 var(--r-lg) var(--r-lg); }
       .document-detail-head .breadcrumb { display: flex; align-items: center; margin: 0; }
       .document-detail-head .breadcrumb > span { display: none; }

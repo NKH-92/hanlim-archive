@@ -10,6 +10,8 @@ export { createDocumentSnapshot, cancelDocumentSnapshot } from "./lifecycle.js";
 export { stageDocumentSnapshotMembership, stageDocumentSnapshotRows } from "./staging.js";
 export { prepareDocumentSnapshot } from "./prepare.js";
 export { applyDocumentSnapshot } from "./apply.js";
+export { runScheduledBootstrapApplication } from "./bootstrapApply.js";
+export { runDocumentSnapshotMaintenance } from "./maintenance.js";
 export {
   createDocumentSnapshotExport,
   finalizeDocumentSnapshotExport,

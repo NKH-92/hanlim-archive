@@ -121,12 +121,14 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
     });
     const warnings = parseSnapshotWarnings(snapshot, summary, auth);
     const applied = new URL(request.url).searchParams.get("applied") === "1";
+    const scheduled = new URL(request.url).searchParams.get("scheduled") === "1";
     return documentSnapshotDetailPage({
       session,
       snapshot,
       rows,
       exclusions,
       applied,
+      scheduled,
       canApply: snapshot.status === "ready" && auth.ok,
       applyBlockReason: auth.ok ? "" : auth.message,
       requiredPermissions: auth.requiredPermissions || [],
@@ -224,6 +226,9 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
           applyMode: resolveSnapshotApplyMode(env),
           status
         });
+      }
+      if (result.scheduled) {
+        return redirect(`/document-snapshots/${id}?scheduled=1`);
       }
       if (typeof effects.syncPendingSearchDocuments === "function") {
         try {

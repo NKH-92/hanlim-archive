@@ -18,7 +18,8 @@ import { resolveSearchOutcome, resolveSearchRequest } from "./searchRequest.js";
 export async function handleDashboard(request, env, session) {
   const url = new URL(request.url);
   const search = await resolveSearchRequest(env, url);
-  const { query, page, categories, tags, parsed, filters } = search;
+  const { query, page, categories, tags, parsed } = search;
+  const filters = { ...search.filters, status: "active", includeDisposed: false };
   const selectedDocumentIds = parseSelectedDocumentIds(url.searchParams.get("selected"));
   const capabilities = capabilitiesFromSession(session);
   const editableSets = capabilities.canManageSets
@@ -40,16 +41,19 @@ export async function handleDashboard(request, env, session) {
       pageSize: 30
     });
 
-  const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
+  const totalItems = viewerSearch.pagination?.totalItems ?? viewerSearch.items?.length ?? 0;
   const didYouMean = await resolveSearchOutcome(env, search, totalItems);
-  const isHome = !query && !search.hasExplicitFilter;
+  const isHome = !query && ![
+    filters.categoryId, filters.tagId, filters.zoneNumber, filters.rackId,
+    filters.rackFace, filters.columnNumber, filters.shelfNumber
+  ].some(Boolean) && (!filters.sort || filters.sort === "updated");
 
   return dashboardPage({
     session,
     mode: isHome ? "home" : "results",
     query,
     parsedQuery: parsed,
-    viewerSearch: filters.status === "disposed" ? { ...viewerSearch, suggestions: [] } : viewerSearch,
+    viewerSearch,
     categories,
     tags,
     filters,
@@ -96,7 +100,9 @@ export async function handleSearchSuggestions(request, env) {
   const url = new URL(request.url);
   const query = clean(url.searchParams.get("q"));
   const filters = parseDocumentFilters(url.searchParams, { query });
-  const suggestions = filters.status === "disposed" ? [] : await getSearchSuggestions(env, query, 8);
+  const suggestions = filters.status === "disposed" || filters.status === "all"
+    ? []
+    : await getSearchSuggestions(env, query, 8);
   return jsonResponse({ suggestions });
 }
 
@@ -107,8 +113,7 @@ export async function handleViewerSearch(request, env) {
   if (payload?.ok === false) {
     return jsonResponse(payload, { status: Number(payload.status || 400) });
   }
-  const filters = parseDocumentFilters(params, { query: params.q || params.query });
-  return jsonResponse(filters.status === "disposed" ? { ...payload, suggestions: [] } : payload);
+  return jsonResponse(payload);
 }
 
 export function handleSearchIndex() {

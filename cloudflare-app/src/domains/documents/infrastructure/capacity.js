@@ -3,11 +3,12 @@ import { FREE_TIER_BUDGET } from "../../../freeTierBudget.js";
 export async function getDocumentCapacity(env) {
   const row = await env.DB.prepare(`
     SELECT
-      (SELECT COUNT(*) FROM documents WHERE sync_state = 'current') AS current_count,
-      warning_document_count,
-      hard_document_count
-    FROM capacity_policy
-    WHERE id = 1
+      state.current_document_count AS current_count,
+      policy.warning_document_count,
+      policy.hard_document_count
+    FROM capacity_policy policy
+    JOIN document_capacity_state state ON state.id = policy.id
+    WHERE policy.id = 1
   `).first();
   const currentCount = Number(row?.current_count || 0);
   const warningCount = Number(row?.warning_document_count || FREE_TIER_BUDGET.documentCapacityWarningCount);

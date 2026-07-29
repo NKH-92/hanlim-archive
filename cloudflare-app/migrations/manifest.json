@@ -52,7 +52,8 @@
     "0049_drop_search_outbox_and_clock.sql": "d4be4f5f842c464ed64853fb2263cb32ff5203277622471d69ef36c12ef29984",
     "0050_initial_load_write_optimization.sql": "07c3538998841f50d7cc06d60cccb00a593ae21abcbbcc7dd8f471366ac82116",
     "0051_drop_removed_mfa_and_legacy_bootstrap.sql": "b4cc5480cd1a48c36fdc95544c1bc33d3ddeb136404dbda8ba80c92190c821f7",
-    "0052_compact_snapshot_staging.sql": "9ec5edfa3f3f99cced5ce9f6b4468d90f122ac8416fc820792900d5639776383"
+    "0052_compact_snapshot_staging.sql": "9ec5edfa3f3f99cced5ce9f6b4468d90f122ac8416fc820792900d5639776383",
+    "0053_thirty_thousand_capacity_and_bootstrap.sql": "1288b3ec29d68aa83b657c9a0a00019f290573c767fc4043a7f46e432b0ef7d0"
   },
   "schema": {
     "tables": [
@@ -64,6 +65,7 @@
       "disposal_batches",
       "disposal_logs",
       "document_audit_logs",
+      "document_capacity_state",
       "document_import_items",
       "document_import_jobs",
       "document_movements",
@@ -102,6 +104,23 @@
       "user_role_templates"
     ],
     "triggers": [
+      "trg_bootstrap_lock_categories_delete",
+      "trg_bootstrap_lock_categories_insert",
+      "trg_bootstrap_lock_categories_update",
+      "trg_bootstrap_lock_document_tags_delete",
+      "trg_bootstrap_lock_document_tags_insert",
+      "trg_bootstrap_lock_documents_delete",
+      "trg_bootstrap_lock_documents_insert",
+      "trg_bootstrap_lock_documents_update",
+      "trg_bootstrap_lock_rack_slots_delete",
+      "trg_bootstrap_lock_rack_slots_insert",
+      "trg_bootstrap_lock_rack_slots_update",
+      "trg_bootstrap_lock_racks_delete",
+      "trg_bootstrap_lock_racks_insert",
+      "trg_bootstrap_lock_racks_update",
+      "trg_bootstrap_lock_tags_delete",
+      "trg_bootstrap_lock_tags_insert",
+      "trg_bootstrap_lock_tags_update",
       "trg_category_row_version_compat",
       "trg_category_sync_version_delete",
       "trg_category_sync_version_insert",
@@ -111,6 +130,9 @@
       "trg_document_audit_logs_no_update",
       "trg_document_capacity_insert",
       "trg_document_capacity_reinclude",
+      "trg_document_capacity_state_delete",
+      "trg_document_capacity_state_insert",
+      "trg_document_capacity_state_update",
       "trg_document_excel_row_key",
       "trg_document_movements_no_delete",
       "trg_document_movements_no_update",

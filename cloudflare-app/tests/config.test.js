@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   DEFAULT_CSV_IMPORT_LIMITS,
+  DEFAULT_SUPPORT_CONTACT,
   FREE_TIER_BUDGET,
   getAppConfig,
   MAX_RACKS_PER_ZONE
@@ -18,19 +19,19 @@ test("getAppConfig uses safe defaults without env overrides", () => {
   assert.equal(FREE_TIER_BUDGET.maxD1StatementsPerRequest, 48);
   assert.equal(FREE_TIER_BUDGET.maxD1MutationStatementsPerBatch, 40);
   assert.equal(FREE_TIER_BUDGET.documentPageSize, 30);
-  assert.deepEqual(config.support, { department: "", name: "", email: "" });
+  assert.deepEqual(config.support, DEFAULT_SUPPORT_CONTACT);
 });
 
-test("getAppConfig normalizes optional support contact settings", () => {
+test("getAppConfig keeps the designated support contact and normalizes its optional email", () => {
   const config = getAppConfig({
-    SUPPORT_DEPARTMENT: " SQA팀 ",
-    SUPPORT_NAME: " 문서 담당자 ",
+    SUPPORT_DEPARTMENT: " 다른 부서 ",
+    SUPPORT_NAME: " 다른 담당자 ",
     SUPPORT_EMAIL: "archive@example.com"
   });
 
   assert.deepEqual(config.support, {
     department: "SQA팀",
-    name: "문서 담당자",
+    name: "남광현",
     email: "archive@example.com"
   });
   assert.equal(getAppConfig({ SUPPORT_EMAIL: "not-an-email" }).support.email, "");
