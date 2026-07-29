@@ -10,7 +10,7 @@ export function searchStyles() {
     .filter-details summary i { font-size: .85em; }
     .filter-details[open] summary { margin-bottom: var(--sp-2); color: var(--gray-700); }
     .filter-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 var(--sp-1); border-radius: 999px; background: var(--primary); color: var(--surface); font-size: 11px; font-weight: 700; }
-    .viewer-filter-row { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)) auto; gap: var(--sp-2); align-items: center; }
+    .viewer-filter-row { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)) auto; gap: var(--sp-2); align-items: center; }
     .quick-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--gray-500); font-weight: 600; font-size: 12.5px; }
     .viewer-recents:empty { display: none; }
     .quick-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--gray-500); font-weight: 600; font-size: 12.5px; }

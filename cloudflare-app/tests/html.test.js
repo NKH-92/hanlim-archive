@@ -75,7 +75,7 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(html, /data-bulk-item/);
   assert.match(html, />진행 중<\/a>/);
   assert.match(html, />캠페인 이력<\/a>/);
-  assert.match(html, />문서 이력<\/a>/);
+  assert.match(html, />폐기 문서<\/a>/);
   assert.match(html, /href="\/disposal-batches\/new">정기폐기 시작<\/a>/);
   assert.match(html, /action="\/documents\/disposal\/process"/);
   assert.match(html, /id="disposal-review-modal"/);
@@ -120,7 +120,7 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(historyMain, /보존기간 만료/);
   assert.match(historyMain, /QA-APP-2026-041/);
   assert.match(historyMain, /href="\/disposal-batches\/4">DSP-2026-0004<\/a>/);
-  assert.match(historyMain, />폐기 이력 보기<\/a>/);
+  assert.match(historyMain, />폐기 문서 보기<\/a>/);
   assert.match(historyMain, />문서로 이동<\/a>/);
   assert.doesNotMatch(historyMain, /data-bulk-item|data-bulk-bar/);
 
@@ -161,11 +161,11 @@ test("Q&A renders optional support settings without a hard-coded address", async
   const session = { username: "user", displayName: "사용자", role: "User", csrfToken: "csrf" };
   const configured = await qaPage({
     session,
-    support: { department: "SQA팀", name: "담당자", email: "archive@example.com" }
+    support: { department: "SQA팀", name: "남광현", email: "archive@example.com" }
   }).text();
   const unconfigured = await qaPage({ session, support: {} }).text();
 
-  assert.match(configured, /SQA팀 \/ 담당자/);
+  assert.match(configured, /SQA팀 \/ 남광현/);
   assert.match(configured, /mailto:archive@example\.com/);
   assert.doesNotMatch(unconfigured, /mailto:/);
   assert.match(unconfigured, /운영 관리자에게 문의하세요/);
@@ -346,7 +346,7 @@ test("dashboard page renders search-first row results without a floor plan", asy
 
   assert.match(html, /data-viewer-form/);
   assert.match(html, /id="viewer-search-form"/);
-  for (const name of ["status", "category", "tag", "zone", "sort"]) {
+  for (const name of ["category", "tag", "zone", "sort"]) {
     assert.match(html, new RegExp(`<select name="${name}" form="viewer-search-form">`));
   }
   assert.match(html, /data-viewer-results/);
@@ -363,7 +363,7 @@ test("dashboard page renders search-first row results without a floor plan", asy
   assert.equal((viewerHeader.match(/role="columnheader"/g) || []).length, 6);
   assert.match(html, /<mark>PV<\/mark>/, "검색어 일치 부분이 하이라이트된다");
   assert.match(APP_SCRIPT, /window\.SearchCore/, "즉시 검색 코어가 정적 자산에 포함된다");
-  assert.match(html, /<select name="status" form="viewer-search-form">[\s\S]*?보관중 문서[\s\S]*?폐기 문서[\s\S]*?전체/);
+  assert.doesNotMatch(html, /<select name="status"/);
   assert.doesNotMatch(html, /name="includeDisposed"/);
   assert.match(html, /href="\/app" class="brand"/);
   const viewerNav = html.match(/<nav[^>]*aria-label="주 메뉴"[\s\S]*?<\/nav>/)?.[0] || "";
@@ -371,9 +371,13 @@ test("dashboard page renders search-first row results without a floor plan", asy
   assert.doesNotMatch(viewerNav, /href="\/sets"/);
   assert.doesNotMatch(viewerNav, /href="\/(documents|racks|categories|tags|admin|disposal-batches)/);
   assert.match(html, /class="mobile-tabs"[\s\S]*?href="\/app"/);
+  assert.match(html, /data-mobile-more/, "모바일 메뉴는 하단 더보기에서 연다");
+  assert.doesNotMatch(html, /data-hamburger|class="hamburger"|aria-label="메뉴 열기"/, "상단 중복 메뉴 버튼을 렌더링하지 않는다");
+  assert.doesNotMatch(APP_SCRIPT, /data-hamburger/, "상단 중복 메뉴 버튼용 클라이언트 코드가 남지 않는다");
+  assert.doesNotMatch(APP_STYLES, /\.hamburger/, "상단 중복 메뉴 버튼용 스타일이 남지 않는다");
   assert.match(html, /data-command-palette/);
   assert.match(html, /Ctrl\+K/);
-  assert.match(APP_SCRIPT, /suggestionUrl \+= '&status=disposed'/, "폐기 검색 자동완성도 상태를 전달한다");
+  assert.doesNotMatch(APP_SCRIPT, /status=disposed/, "일반 검색 자동완성은 폐기 상태 경로를 만들지 않는다");
   assert.doesNotMatch(html, />Dashboard</);
 });
 
@@ -409,7 +413,7 @@ test("dashboard home mode uses a search-first operational hero without a floor p
   assert.match(main, /search-home-hero/);
   assert.match(main, /문서를 빠르게 찾으세요/);
   assert.match(main, /data-viewer-filter-controls/);
-  for (const name of ["status", "category", "tag", "zone", "sort"]) {
+  for (const name of ["category", "tag", "zone", "sort"]) {
     assert.match(main, new RegExp(`<select name="${name}" form="viewer-search-form">`));
   }
   assert.match(html, /id="viewer-filter-dialog"/);
@@ -571,6 +575,11 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   assert.match(nav, /aria-label="문서"/);
   assert.match(nav, /aria-label="업무"/);
   assert.match(nav, /aria-label="운영"/);
+  for (const label of ["문서", "업무", "운영"]) {
+    assert.match(nav, new RegExp(`<details class="nav-group" aria-label="${label}"><summary class="nav-group-label">${label}<\\/summary>`));
+  }
+  assert.doesNotMatch(nav, /<details class="nav-group"[^>]*\sopen(?:\s|>)/, "대분류 메뉴는 기본으로 접힌다");
+  assert.match(APP_STYLES, /\.topbar nav \{[^}]*overflow-y: auto;[^}]*scrollbar-gutter: stable;/, "긴 메뉴는 내부에서 스크롤한다");
   assert.match(nav, /href="\/app"[^>]*>[\s\S]*?문서/);
   assert.match(nav, /href="\/floor-plan"[^>]*>[\s\S]*?보관 위치/);
   assert.match(nav, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀 대장 동기화/);
@@ -671,7 +680,7 @@ test("ordinary document management list has no disposal selection and keeps mobi
   assert.match(main, /data-label="보관 위치"/);
   assert.doesNotMatch(main, /data-bulk-item|data-bulk-select-all|data-bulk-bar/);
   assert.doesNotMatch(main, /is-bulk-selectable/);
-  assert.match(main, /<select name="status">[\s\S]*?보관중[\s\S]*?폐기[\s\S]*?전체/);
+  assert.doesNotMatch(main, /<select name="status">/);
   assert.doesNotMatch(main, /action="\/documents\/bulk-dispose"/);
   assert.match(APP_STYLES, /@media \(max-width: 760px\)[\s\S]*?\.doc-table/);
 });
@@ -842,7 +851,7 @@ test("document details page keeps core information and permission-scoped actions
   const detailFloorPlan = coreAdminMain.match(/<section class="panel doc-floor-plan"[\s\S]*?<\/section>/)?.[0] || "";
   assert.doesNotMatch(detailFloorPlan, /href="\/documents\?rack=/);
   assert.doesNotMatch(coreAdminMain, /<details class="panel doc-floor-plan"|위치 복사|같은 랙 문서 보기/);
-  assert.doesNotMatch(coreAdminMain, /ARC-000007|완전 삭제|세트에 추가|QR/);
+  assert.doesNotMatch(coreAdminMain, /ARC-000007|완전 삭제|세트에 추가|>QR</);
 
   const coreDisposedHtml = await documentDetailsPage({
     session,

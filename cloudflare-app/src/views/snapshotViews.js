@@ -73,7 +73,7 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
           <div class="snapshot-file-summary" data-excel-file-summary hidden></div>
           <div class="alert warning" data-excel-stale-warning hidden>현재 버전보다 오래된 관리 파일입니다. 최신 대장을 다시 내보내 작업하세요. 최종 판정은 서버 검증이 수행합니다.</div>
           <progress class="snapshot-progress" data-excel-progress data-excel-progress-bar aria-label="엑셀 전송 진행률" max="100" value="0" hidden></progress>
-          <p class="muted" data-excel-message aria-live="polite">시스템에서 추출한 관리 파일(_시스템정보 포함)을 권장합니다. 최대 1,000건까지 가능합니다.</p>
+          <p class="muted" data-excel-message aria-live="polite">시스템에서 추출한 관리 파일(_시스템정보 포함)을 권장합니다. 일상 변경은 최대 1,000건, 최초 연결은 최대 30,000건이며 시스템이 자동 분할합니다.</p>
           <div class="alert info" data-excel-recovery role="status" hidden></div>
           <fieldset class="snapshot-bootstrap-confirm" data-excel-bootstrap hidden>
             <legend>최초 연결 파일 확인</legend>
@@ -121,6 +121,7 @@ export function documentSnapshotDetailPage({
   exclusions = [],
   error = "",
   applied = false,
+  scheduled = false,
   canApply = false,
   applyBlockReason = "",
   requiredPermissions = [],
@@ -178,6 +179,12 @@ export function documentSnapshotDetailPage({
   const notice = applied || snapshot.status === "completed"
     ? `<div class="alert success" role="status">이 엑셀 파일이 현재 문서대장으로 반영되었습니다.</div>`
     : "";
+  const bootstrapProgress = Number(snapshot.bootstrap_progress_count || 0);
+  const bootstrapTotal = Number(snapshot.total_count || 0);
+  const awaitingBootstrapFinalization = bootstrapTotal > 0 && bootstrapProgress === bootstrapTotal;
+  const scheduledNotice = snapshot.status === "applying" && snapshot.mode === "bootstrap" && snapshot.bootstrap_apply_actor_json
+    ? `<div class="alert info" role="status"><strong>${scheduled ? "최초 대량등록이 예약되었습니다." : awaitingBootstrapFinalization ? "문서 생성이 끝나 공개 확정을 기다리고 있습니다." : "최초 대량등록을 자동 분할 반영 중입니다."}</strong> 1일 최대 5,000건씩 처리하며 현재 ${number(bootstrapProgress)} / ${number(bootstrapTotal)}건입니다.${snapshot.bootstrap_next_run_at ? ` 다음 실행 기준(UTC): ${escapeHtml(snapshot.bootstrap_next_run_at)}` : ""}</div>`
+    : "";
   const permissionText = (requiredPermissions || [])
     .map((permission) => PERMISSION_LABELS[permission] || permission)
     .join(", ");
@@ -201,6 +208,7 @@ export function documentSnapshotDetailPage({
       <div class="button-group"><button type="button" class="button secondary" data-excel-export>현재 대장 엑셀 추출</button><a class="button secondary" href="/documents/import">엑셀 대장 동기화</a></div>
     </section>
     ${notice}
+    ${scheduledNotice}
     ${error || snapshot.error_summary ? alertDanger(error || snapshot.error_summary) : ""}
     ${applyBlockReason && snapshot.status === "ready" ? alertDanger(applyBlockReason) : ""}
     ${warningBlock}

@@ -271,30 +271,35 @@ export async function getDisposalHistoryPage(env, { query = "", page = 1, pageSi
   const safePageSize = Math.max(1, Math.min(Number(pageSize) || 30, 100));
   const offset = (safePage - 1) * safePageSize;
   const like = d1ContainsPattern(cleanQuery);
-  const where = `dl.action = 'disposed' AND (
+  const where = `d.status = 'disposed' AND d.sync_state = 'current' AND (
     ? = '' OR d.document_number LIKE ? ESCAPE '\\' OR d.revision_number LIKE ? ESCAPE '\\' OR d.document_name LIKE ? ESCAPE '\\'
   )`;
   const countRow = await env.DB.prepare(`
     SELECT COUNT(*) AS count
-    FROM disposal_logs dl
-    JOIN documents d ON d.id = dl.document_id
+    FROM documents d
     WHERE ${where}
   `).bind(cleanQuery, like, like, like).first();
   const result = await env.DB.prepare(`
     SELECT
       dl.id, dl.document_id, dl.disposal_batch_id, dl.reason, dl.performed_by, dl.created_at,
-      d.document_number, d.revision_number, d.document_name, d.status,
+      d.document_number, d.revision_number, d.document_name, d.status, d.updated_at,
       c.name AS category_name,
       ${locationSnapshotSql("d", "r", "rs")} AS location_snapshot,
       b.batch_code, b.approval_reference
-    FROM disposal_logs dl
-    JOIN documents d ON d.id = dl.document_id
+    FROM documents d
+    LEFT JOIN disposal_logs dl ON dl.id = (
+      SELECT latest.id
+      FROM disposal_logs latest
+      WHERE latest.document_id = d.id AND latest.action = 'disposed'
+      ORDER BY latest.id DESC
+      LIMIT 1
+    )
     JOIN categories c ON c.id = d.category_id
     JOIN rack_slots rs ON rs.id = d.rack_slot_id
     JOIN racks r ON r.id = rs.rack_id
     LEFT JOIN disposal_batches b ON b.id = dl.disposal_batch_id
     WHERE ${where}
-    ORDER BY dl.created_at DESC, dl.id DESC
+    ORDER BY COALESCE(dl.created_at, d.updated_at) DESC, d.id DESC
     LIMIT ? OFFSET ?
   `).bind(cleanQuery, like, like, like, safePageSize, offset).all();
   const totalItems = Number(countRow?.count || 0);

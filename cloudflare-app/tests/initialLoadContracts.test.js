@@ -68,7 +68,8 @@ test("초기 적재 최종 schema는 rollback shape를 보존하면서 연결·s
     ).get().sql;
     assert.match(documentTagsSql, /WITHOUT ROWID/i);
     assert.match(membershipSql, /WITHOUT ROWID/i);
-    assert.match(snapshotRowsSql, /id INTEGER PRIMARY KEY AUTOINCREMENT/i, "직전 Worker가 읽는 staging id shape는 유지한다");
+    assert.match(snapshotRowsSql, /id INTEGER GENERATED ALWAYS AS \(row_number\) VIRTUAL/i, "직전 Worker가 읽는 staging id 열은 유지한다");
+    assert.match(snapshotRowsSql, /WITHOUT ROWID/i, "30,000행 staging write amplification을 줄인다");
 
     const removedIndexes = [
       "idx_rack_slots_rack_layout",
@@ -124,15 +125,16 @@ test("검색 cursor generation은 projection 상태와 rollback mirror를 함께
   }
 });
 
-test("10,000건 운영 정책은 11,000 경고와 12,000 하드 상한을 고정한다", () => {
-  assert.equal(FREE_TIER_BUDGET.documentCapacityWarningCount, 11000);
-  assert.equal(FREE_TIER_BUDGET.documentCapacityHardCount, 12000);
-  assert.equal(FREE_TIER_BUDGET.excelSnapshotMaxItems, 12000);
+test("30,000건 운영 정책은 27,000 경고와 자동 분할 경계를 고정한다", () => {
+  assert.equal(FREE_TIER_BUDGET.documentCapacityWarningCount, 27000);
+  assert.equal(FREE_TIER_BUDGET.documentCapacityHardCount, 30000);
+  assert.equal(FREE_TIER_BUDGET.excelSnapshotMaxItems, 30000);
   assert.equal(FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems, 1000);
   assert.equal(FREE_TIER_BUDGET.searchCandidateMaxItems, 200);
   assert.equal(FREE_TIER_BUDGET.searchResponseMaxItems, 30);
-  assert.equal(FREE_TIER_BUDGET.searchRebuildChunkSize, 10);
-  assert.equal(FREE_TIER_BUDGET.initialLoadDailyRowsWrittenStop, 85000);
+  assert.equal(FREE_TIER_BUDGET.searchRebuildChunkSize, 50);
+  assert.equal(FREE_TIER_BUDGET.bootstrapApplyChunkSize, 5000);
+  assert.equal(FREE_TIER_BUDGET.initialLoadDailyRowsWrittenStop, 95000);
 });
 
 test("용량 trigger는 하드 상한의 다음 current 문서를 원자 차단한다", async () => {
@@ -174,7 +176,7 @@ test("용량 trigger는 하드 상한의 다음 current 문서를 원자 차단�
   }
 });
 
-test("schema v2 membership은 무변경 12,000행 경로에서 source JSON 재전송을 요구하지 않는다", async () => {
+test("schema v2 membership은 30,000행 상한에서도 source JSON 재전송을 요구하지 않는다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };
   const actor = actorFixture();

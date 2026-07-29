@@ -117,6 +117,64 @@ export async function getDocumentPage(env, filters = {}, page = 1, pageSize = 30
   return result.results ?? [];
 }
 
+export async function getDocumentPageWindow(env, filters = {}, page = 1, pageSize = 30) {
+  const safePage = Math.max(1, Math.floor(Number(page) || 1));
+  const safePageSize = Math.max(1, Math.min(Math.floor(Number(pageSize) || 30), 100));
+  const offset = (safePage - 1) * safePageSize;
+  const { where, binds } = buildDocumentFilterWhere(filters);
+  const orderBy = documentPageOrder(filters.sort);
+  const result = await env.DB.prepare(`
+    SELECT
+      d.id,
+      ${DOCUMENT_CORE_COLUMNS}
+      d.updated_at,
+      ${DOCUMENT_LOCATION_COLUMNS}
+      r.column_count,
+      r.shelf_count,
+      rs.column_number,
+      rs.shelf_number,
+      rs.slot_code,
+      ${DOCUMENT_TAG_CONCAT}
+    ${DOCUMENT_BASE_JOINS}
+    ${DOCUMENT_TAG_JOINS}
+    ${where}
+    GROUP BY d.id
+    ORDER BY ${orderBy}
+    LIMIT ? OFFSET ?
+  `).bind(...binds, safePageSize + 1, offset).all();
+  const rows = result.results ?? [];
+  return {
+    items: rows.slice(0, safePageSize),
+    hasMore: rows.length > safePageSize,
+    page: safePage,
+    pageSize: safePageSize
+  };
+}
+
+export async function getFastDocumentCount(env, filters = {}) {
+  const hasNarrowingFilter = Boolean(
+    filters.categoryId || filters.zoneNumber || filters.tagId || filters.rackId ||
+    filters.rackFace || filters.columnNumber || filters.shelfNumber
+  );
+  if (hasNarrowingFilter || !["active", "disposed"].includes(filters.status)) return null;
+  let row;
+  try {
+    row = await env.DB.prepare(`
+      SELECT active_document_count, disposed_document_count
+      FROM document_capacity_state
+      WHERE id = 1
+    `).first();
+  } catch (error) {
+    // 비밀번호 변경 호환 검증처럼 최신 운영 migration 전의 최소 schema를 사용하는 경로는
+    // 정확한 총건수 없이 pageSize+1 탐색으로 계속 동작한다.
+    if (/no such table: document_capacity_state/i.test(String(error?.message || error))) return null;
+    throw error;
+  }
+  return filters.status === "disposed"
+    ? Number(row?.disposed_document_count || 0)
+    : Number(row?.active_document_count || 0);
+}
+
 export async function getDocumentCount(env, filters = {}) {
   const { where, binds } = buildDocumentFilterWhere(filters);
   const row = await env.DB.prepare(`

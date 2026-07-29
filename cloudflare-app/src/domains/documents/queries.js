@@ -1,5 +1,7 @@
 export {
   getDocumentPage,
+  getDocumentPageWindow,
+  getFastDocumentCount,
   getDocumentCount,
   getDocumentsForExport,
   getDocument,

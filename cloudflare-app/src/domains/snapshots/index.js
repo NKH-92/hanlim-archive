@@ -12,6 +12,8 @@ export {
   getDocumentSyncState,
   listDocumentSnapshots,
   prepareDocumentSnapshot,
+  runDocumentSnapshotMaintenance,
+  runScheduledBootstrapApplication,
   stageDocumentSnapshotMembership,
   stageDocumentSnapshotRows,
   SNAPSHOT_STATUSES

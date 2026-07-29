@@ -48,6 +48,18 @@ export async function createDocumentSnapshot(env, input, actor) {
   if (!reason.ok) return reason;
 
   const state = await getDocumentSyncState(env);
+  const applyingBootstrap = await env.DB.prepare(`
+    SELECT id
+    FROM document_snapshots
+    WHERE status = 'applying' AND mode = 'bootstrap' AND bootstrap_apply_actor_json IS NOT NULL
+    LIMIT 1
+  `).first();
+  if (applyingBootstrap) {
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE,
+      "최초 대량등록을 자동 분할 반영 중입니다. 완료된 뒤 새 엑셀 작업을 시작해 주세요."
+    );
+  }
 
   if (mode === "bootstrap") {
     if (actor?.role !== "Admin" || !hasPermission(actor, PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS)) {

@@ -1,3 +1,4 @@
+import { FREE_TIER_BUDGET } from "../../../freeTierBudget.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
 import { permissionSnapshot } from "../../../permissions.js";
@@ -12,6 +13,7 @@ import {
 import { buildSystemApplyAuditDetails } from "../domain/auditPayload.js";
 import { SNAPSHOT_ERROR_CODES, snapshotError } from "../domain/errorCodes.js";
 import { buildApplyStatements } from "./applyPlan.js";
+import { scheduleBootstrapApplication } from "./bootstrapApply.js";
 import { getDocumentSnapshot, getDocumentSyncState } from "./queries.js";
 import {
   createSnapshotPlan,
@@ -125,6 +127,19 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
     mode: auth.mode,
     permissionSnapshot: permissionSnapshot(actor)
   });
+  if (
+    snapshot.mode === "bootstrap" &&
+    summary.createCount > FREE_TIER_BUDGET.bootstrapApplyScheduleThreshold
+  ) {
+    return scheduleBootstrapApplication(env, {
+      snapshotId,
+      actorSnapshot,
+      role: clean(actor?.role) || "Admin",
+      applyReason: reason.applyReason,
+      approvalReference: reason.approvalReference,
+      applyDetails
+    });
+  }
   const statements = buildApplyStatements(env, {
     snapshotId,
     snapshot,

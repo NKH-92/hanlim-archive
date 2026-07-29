@@ -11,12 +11,20 @@ export function disposalFeedback(feedback) {
   if (feedback.type === "warning") return alertWarning(feedback.message);
   if (feedback.type === "success") return `<div class="alert success disposal-complete" role="status">
     <strong>${escapeHtml(feedback.message)}</strong>
-    <div class="disposal-complete-actions"><a class="button secondary sm" href="/documents/disposal?tab=documents">폐기 이력 보기</a><a class="button secondary sm" href="/app">문서로 이동</a></div>
+    <div class="disposal-complete-actions"><a class="button secondary sm" href="/documents/disposal?tab=documents">폐기 문서 보기</a><a class="button secondary sm" href="/app">문서로 이동</a></div>
   </div>`;
   return alertDanger(feedback.message);
 }
 
 export function paginationView(pagination, { query, filters }) {
+  if (pagination.totalPages === null) {
+    if (pagination.page <= 1 && !pagination.hasMore) return "";
+    return paginationNav(pagination.page, null, {
+      previousUrl: documentListUrl({ query, filters, page: Math.max(1, pagination.page - 1) }),
+      nextUrl: documentListUrl({ query, filters, page: pagination.page + 1 }),
+      hasMore: pagination.hasMore
+    });
+  }
   if (pagination.totalPages <= 1) return "";
   const previous = pagination.page > 1 ? pagination.page - 1 : 1;
   const next = pagination.page < pagination.totalPages ? pagination.page + 1 : pagination.totalPages;

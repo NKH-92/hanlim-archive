@@ -21,7 +21,7 @@ export function documentsPage({
   pagination = { page: 1, pageSize: 30, totalDocuments: documents.length, totalPages: 1 }
 }) {
   const chipRow = parsedChipRow(parsedQuery, query, "/documents");
-  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.status && filters.status !== "active", filters.sort && filters.sort !== "updated"].filter(Boolean).length;
+  const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.sort && filters.sort !== "updated"].filter(Boolean).length;
   return page("문서 관리", `
     <section class="page-head">
       <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 관리</span></nav><h1>문서 관리</h1><p class="muted">문서 정보와 보관 위치를 확인하고 수정합니다.</p></div>
@@ -41,7 +41,7 @@ export function documentsPage({
     <section class="panel results-panel">
       <div class="section-title">
         <h2>${query ? `"${escapeHtml(query)}" 검색 결과` : "전체 보유문서"}</h2>
-        <span class="count-badge">${pagination.totalDocuments}건</span>
+        <span class="count-badge">${pagination.totalDocuments === null ? `${documents.length}${pagination.hasMore ? "+" : ""}` : pagination.totalDocuments}건</span>
       </div>
       ${documentResults(documents, { emptyQuery: query, showScore: Boolean(query), query })}
       ${!documents.length && didYouMean.length ? didYouMeanView(didYouMean) : ""}
@@ -81,7 +81,7 @@ export function disposalWorkspacePage({
     <nav class="workspace-tabs" aria-label="폐기 작업 화면">
       <a href="${escapeHtml(disposalListUrl(filters))}" ${tab === "active" ? `aria-current="page"` : ""}>진행 중</a>
       <a href="/documents/disposal?tab=history" ${tab === "history" ? `aria-current="page"` : ""}>캠페인 이력</a>
-      <a href="/documents/disposal?tab=documents" ${tab === "documents" ? `aria-current="page"` : ""}>문서 이력</a>
+      <a href="/documents/disposal?tab=documents" ${tab === "documents" ? `aria-current="page"` : ""}>폐기 문서</a>
     </nav>
     ${tab === "history"
       ? disposalCampaignHistoryView(campaigns)
@@ -125,23 +125,23 @@ function disposalHistoryView(history, pagination, filters) {
       <td data-label="캠페인">${item.batch_code ? `<a class="mono" href="/disposal-batches/${item.disposal_batch_id}">${escapeHtml(item.batch_code)}</a>` : "-"}</td>
       <td data-label="폐기 사유">${escapeHtml(item.reason || "-")}</td>
       <td data-label="승인 참조">${escapeHtml(item.approval_reference || "-")}</td>
-      <td data-label="처리">${escapeHtml(item.performed_by)}<small>${escapeHtml(item.created_at)}</small></td>
+      <td data-label="처리">${escapeHtml(item.performed_by || "-")}<small>${escapeHtml(item.created_at || item.updated_at || "-")}</small></td>
     </tr>`).join("");
   const query = escapeHtml(filters.query || "");
   return `
     <section class="panel">
       <form method="get" action="/documents/disposal" class="filter-row">
         <input type="hidden" name="tab" value="documents">
-        <label class="search-input"><span class="sr-only">폐기 이력 검색</span><input type="search" name="q" value="${query}" placeholder="문서명, 문서번호, 개정번호"></label>
+        <label class="search-input"><span class="sr-only">폐기 문서 검색</span><input type="search" name="q" value="${query}" placeholder="문서명, 문서번호, 개정번호"></label>
         <button type="submit" class="button">검색</button>
         <a class="button secondary" href="/documents/disposal?tab=documents">초기화</a>
       </form>
     </section>
     <section class="panel results-panel">
-      <div class="section-title"><h2>폐기 이력</h2><span class="count-badge">${pagination.totalItems || 0}건</span></div>
+      <div class="section-title"><h2>폐기 문서</h2><span class="count-badge">${pagination.totalItems || 0}건</span></div>
       <div class="table-wrap"><table class="doc-table disposal-history-table">
         <thead><tr><th>문서명</th><th>문서번호</th><th>개정</th><th>대분류</th><th>보관 위치</th><th>상태</th><th>캠페인</th><th>폐기 사유</th><th>승인 참조</th><th>처리</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="10" class="empty">폐기 이력이 없습니다.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="10" class="empty">현재 폐기 상태인 문서가 없습니다.</td></tr>`}</tbody>
       </table></div>
       ${historyPagination(pagination, filters.query)}
     </section>`;
@@ -154,7 +154,7 @@ function historyPagination(pagination, query) {
     if (query) params.set("q", query);
     return `/documents/disposal?${params}`;
   };
-  return `<nav class="pagination" aria-label="폐기 이력 페이지">
+  return `<nav class="pagination" aria-label="폐기 문서 페이지">
     ${pagination.page <= 1 ? `<span class="button secondary sm disabled" aria-disabled="true">이전</span>` : `<a class="button secondary sm" href="${escapeHtml(url(pagination.page - 1))}">이전</a>`}
     <span>${pagination.page} / ${pagination.totalPages}</span>
     ${pagination.page >= pagination.totalPages ? `<span class="button secondary sm disabled" aria-disabled="true">다음</span>` : `<a class="button secondary sm" href="${escapeHtml(url(pagination.page + 1))}">다음</a>`}

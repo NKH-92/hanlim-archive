@@ -118,7 +118,7 @@ export function dashboardPage({
           <div class="viewer-result-tools">
             ${capabilities.canManageSets || capabilities.canManageDisposals ? `<label class="bulk-select-all-label"><input type="checkbox" data-bulk-select-all> 현재 목록 선택</label>` : ""}
             ${columnSettings()}
-            <span class="count-badge" data-results-count>${totalItems}건</span>
+            <span class="count-badge" data-results-count>${viewerSearch.pagination?.totalItems === null ? `${documents.length}${viewerSearch.pagination?.hasMore ? "+" : ""}` : totalItems}건</span>
           </div>
         </div>
         <div data-results-body>
@@ -164,7 +164,7 @@ function viewerFilterControls({ query, categories, tags, filters, statusText, su
 }
 
 function activeViewerFilterCount(filters = {}) {
-  return [filters.categoryId, filters.tagId, filters.zoneNumber, filters.rackId, filters.status && filters.status !== "active"].filter(Boolean).length;
+  return [filters.categoryId, filters.tagId, filters.zoneNumber, filters.rackId].filter(Boolean).length;
 }
 
 function hasExplicitViewerFilter(filters = {}) {
@@ -291,6 +291,15 @@ function activeFilterChips({ query, filters = {}, categories = [], tags = [] }) 
 }
 
 function viewerPagination(pagination = {}, { query, filters }) {
+  if (pagination.totalPages === null) {
+    const page = Number(pagination.page || 1);
+    if (page <= 1 && !pagination.hasMore) return "";
+    return paginationNav(page, null, {
+      previousUrl: viewerUrl({ query, filters, page: Math.max(1, page - 1) }),
+      nextUrl: viewerUrl({ query, filters, page: page + 1 }),
+      hasMore: pagination.hasMore
+    });
+  }
   const totalPages = Number(pagination.totalPages || 1);
   if (totalPages <= 1) return "";
   const page = Number(pagination.page || 1);

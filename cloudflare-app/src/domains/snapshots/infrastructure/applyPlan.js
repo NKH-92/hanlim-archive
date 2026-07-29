@@ -224,7 +224,7 @@ export function buildApplyStatements(env, {
         CASE
           -- 최초 대장은 DB 안에서 새로 생성된 업무 이력이 아니라 승인 Excel의 초기 상태다.
           -- row_number는 파일 안에서 유일하므로 bootstrap은 처음부터 최종 내부 코드로 넣어
-          -- 10,000건 전체를 다시 UPDATE하는 write amplification을 피한다.
+          -- 초기 문서 전체를 다시 UPDATE하는 write amplification을 피한다.
           WHEN s.mode = 'bootstrap' THEN 'ARC-' || printf('%06d', row.row_number - 1)
           ELSE 'SNP-' || row.snapshot_id || '-' || row.row_number
         END,
@@ -279,7 +279,7 @@ export function buildApplyStatements(env, {
       JOIN documents d ON d.excel_row_key = row.row_key
       WHERE row.snapshot_id = ? AND row.action = 'create'
         -- bootstrap의 행별 provenance는 snapshot row + canonical hash + system apply audit가 담당한다.
-        -- 초기 10,000건을 10,000개의 가상 "등록 행위"로 중복 기록하지 않는다.
+        -- 초기 수만 건을 같은 수의 가상 "등록 행위"로 중복 기록하지 않는다.
         AND s.mode <> 'bootstrap'
     `).bind(actorSnapshot.displayName, role, actorSnapshot.userId, actorSnapshot.username, reason, approval, id),
 

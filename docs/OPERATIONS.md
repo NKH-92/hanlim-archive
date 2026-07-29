@@ -105,6 +105,8 @@ D1 복구는 데이터 상태를 되돌리는 파괴적 작업이므로 자동 r
 
 ## 7. Migration과 rollback
 
+최초 대량등록이 `applying` 상태인 동안에는 예약 작업을 이해하지 못하는 이전 Worker로 rollback하지 않는다. 긴급 rollback이 필요하면 현재 Worker로 자동 분할 반영을 완료하거나, 숨김 상태 문서와 예약 상태를 정리하는 별도 복구 계획을 승인한 뒤 진행한다.
+
 - migration은 append-only다.
 - additive 변경은 이전 Worker와 함께 동작하는 expand 단계로 먼저 적용한다.
 - schema 제거는 이전 Worker의 runtime 참조가 0임을 확인한 뒤 별도 contract migration으로 수행한다.
@@ -190,22 +192,24 @@ node scripts/audit-excel-snapshot-data.mjs --db path\to\backup.sqlite --out repo
 
 소량 선택 폐기는 별도 직접 경로를 사용하며 현재 상한은 `FREE_TIER_BUDGET.directBulkDisposeMaxItems`가 단일 출처다.
 
-## 11. 최초 10,000건 실사용 전환
+## 11. 최초 최대 30,000건 실사용 전환
 
 테스트 데이터가 들어 있는 운영·검증 DB를 DELETE해서 실대장으로 재사용하지 않는다. 실사용 전환은 새 Core D1에 전체 migration을 적용한 뒤 승인 Excel bootstrap → projection 재색인 → 검증 → Worker binding 전환 순서로 수행한다.
 
 ### 용량 계약
 
-- 최초 승인 파일 목표: 10,000행.
-- 운영 경고: 11,000 current 문서.
-- 기술 상한: 12,000 current 문서. 12,001번째 등록·재포함·snapshot apply는 DB trigger가 transaction을 차단한다.
+- 최초 승인 파일 상한: 30,000행.
+- 운영 경고: 27,000 current 문서.
+- 기술 상한: 30,000 current 문서. 30,001번째 등록·재포함·snapshot apply는 DB trigger가 transaction을 차단한다.
 - managed snapshot의 실제 변경 영향 상한과 chunk는 `FREE_TIER_BUDGET`을 단일 출처로 사용한다.
+- 최초 파일의 브라우저 전송은 50행씩 자동 분할된다. 승인 뒤 5,000건씩 다음 UTC 일자부터 Cron이 자동 생성하고, 마지막 생성일 다음 UTC 일자에 전체 공개를 확정한다. 사용자가 묶음 크기를 정하지 않는다.
+- 반영 중에는 일반 문서·태그·분류·랙 변경이 DB에서 잠긴다. 실패하면 같은 진행 건수에서 1시간 뒤 재시도하고, 완료 전 문서는 일반 목록에 공개하지 않는다.
 - 초기 적재와 대량 작업 전에는 D1 계정의 당일 `rows_written`을 확인한다. 저장소의 내부 대응선은 `FREE_TIER_BUDGET` 값으로 판단하고 실제 Cloudflare 사용량이 권위값이다.
 
 ### 구조 리허설
 
 ```powershell
-npm run rehearse:initial-load -- --count=10000
+npm run rehearse:initial-load -- --count=30000
 ```
 
 이 명령은 메모리 SQLite에서 전체 migration과 실제 snapshot bootstrap 계약을 목표 규모로 검증한다. Cloudflare CPU, 네트워크 SLA 또는 실제 D1 `rows_written`을 대신하지 않는다. 특정 날짜의 과거 실행 시간은 운영 기준으로 사용하지 않는다.
@@ -213,11 +217,13 @@ npm run rehearse:initial-load -- --count=10000
 ### 전환 확인
 
 1. 현재 migration chain 전체를 새 Core에 적용한다.
-2. 승인 Excel을 bootstrap으로 검증·반영하고 문서 수, identity, FK, 분류·상태·위치·태그 집계와 canonical hash를 대조한다.
-3. projection이 `ready`, indexed count = current 문서 수, dirty 0이 될 때까지 재색인을 전진시킨다.
-4. 새 schema의 Excel을 무수정 재업로드해 create/update/exclude가 0인지 확인한다.
-5. 정확 문서번호, 일반 검색, 오래된 문서, 초성·한영 자판, cursor, fallback 표본을 시험한다.
-6. `npm run verify`, `npm run deploy:dry`, Time Travel 복구와 재색인 훈련을 완료한다.
+2. 승인 Excel을 bootstrap으로 검증·예약하고 snapshot 상세의 `반영 건수 / 전체 건수`가 UTC 일자마다 전진하는지 확인한다.
+3. 완료 후 문서 수, identity, FK, 분류·상태·위치·태그 집계와 canonical hash를 대조한다.
+4. projection이 `ready`, indexed count = current 문서 수, dirty 0이 될 때까지 재색인을 전진시킨다.
+5. 새 schema의 Excel을 무수정 재업로드해 create/update/exclude가 0인지 확인한다.
+6. 정확 문서번호, 일반 검색, 오래된 문서, 초성·한영 자판, cursor, fallback 표본을 시험한다.
+7. 일반 목록에 폐기 문서가 없고 `폐기 문서` 탭에는 현재 폐기 상태 문서만 있는지 확인한다.
+8. `npm run verify`, `npm run deploy:dry`, Time Travel 복구와 재색인 훈련을 완료한다.
 
 쓰기 개방 전 rollback은 이전 Worker와 이전 Core binding으로 돌아갈 수 있다. 쓰기 개방 후에는 신규 Core를 유지한 채 호환 Worker로 rollback하며, 기존 Core는 안정화 승인 전까지 삭제하지 않는다.
 
@@ -246,7 +252,7 @@ Cloudflare의 Free 한도는 변경될 수 있으므로 월별 점검 시 공식
 - `login_throttle`: 이전 schema Worker와의 로그인 throttle fallback 및 credential reset cleanup.
 - 내부 `permanentlyDeleteDocument`: 현재 HTTP route는 404지만 직전 Worker rollback 계약 때문에 domain 내부 기능을 유지한다.
 - `/api/search-index`: 폐기된 브라우저 전체 색인 endpoint에 DB 없는 410을 반환한다.
-- `includeDisposed`: 과거 URL query를 현재 `status` 필터로 변환하는 입력 호환.
+- `includeDisposed`: 과거 URL 입력은 파싱하지만 일반 목록은 active로 고정한다. 폐기 문서는 전용 탭에서만 조회한다.
 
 이 경계는 영구 기능이 아니다. rollback/client 관찰 기간 종료와 실제 사용 여부를 확인한 뒤 각각 별도 정리한다. 제거 조건은 [ROADMAP.md](./ROADMAP.md)에 기록한다.
 

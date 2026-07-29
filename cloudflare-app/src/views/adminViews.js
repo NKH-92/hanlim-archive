@@ -83,7 +83,7 @@ function capacityPanel(capacity) {
     ? "기술 상한에 도달했습니다. 신규 등록과 대장 반영이 차단됩니다."
     : capacity.level === "warning"
       ? "운영 경고 구간입니다. 확장 또는 제외 계획을 확정하세요."
-      : "10,000건 운영과 20% 기술 여유 범위 안입니다.";
+      : "30,000건 기술 상한의 안정 운영 범위 안입니다.";
   return `<section class="panel search-index-health ${escapeHtml(level)}">
     <div><strong>문서 대장 용량</strong><span>${Number(capacity.currentCount).toLocaleString("ko-KR")} / ${Number(capacity.hardCount).toLocaleString("ko-KR")}건 · 잔여 ${Number(capacity.remainingCount).toLocaleString("ko-KR")}건</span></div><p>${escapeHtml(message)}</p>
   </section>`;

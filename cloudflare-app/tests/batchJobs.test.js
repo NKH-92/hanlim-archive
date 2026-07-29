@@ -116,20 +116,22 @@ test("선택 원본 수량 확인이 없거나 다르면 폐기 캠페인을 만
   assert.equal(env.state.batches.length, 0);
 });
 
-test("폐기 이력은 문서 식별자와 사유·승인 참조를 페이지 단위로 조회한다", async () => {
+test("현재 폐기 문서는 최신 폐기 사유·승인 참조와 함께 페이지 단위로 조회한다", async () => {
   const env = recordingEnv({
     first(sql) {
       return sql.includes("COUNT(*) AS count") ? { count: 1 } : null;
     },
     all(sql) {
-      return sql.includes("FROM disposal_logs") ? [{ id: 5, document_number: "SOP-QA-014" }] : [];
+      return sql.includes("FROM documents d") ? [{ id: 5, document_number: "SOP-QA-014" }] : [];
     }
   });
   const page = await getDisposalHistoryPage(env, { query: "SOP", page: 1, pageSize: 30 });
 
   assert.equal(page.pagination.totalItems, 1);
   assert.equal(page.items[0].document_number, "SOP-QA-014");
-  const historyRead = env.state.calls.find((call) => call.type === "all" && call.sql.includes("FROM disposal_logs"));
+  const historyRead = env.state.calls.find((call) => call.type === "all" && call.sql.includes("FROM documents d"));
+  assert.match(historyRead.sql, /d\.status = 'disposed'/);
+  assert.match(historyRead.sql, /d\.sync_state = 'current'/);
   assert.match(historyRead.sql, /approval_reference/);
   assert.match(historyRead.sql, /location_snapshot/);
   assert.deepEqual(historyRead.args.slice(-2), [30, 0]);

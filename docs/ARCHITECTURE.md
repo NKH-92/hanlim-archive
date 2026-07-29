@@ -95,7 +95,7 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     XLSX만 브라우저에서 상대 경로·기본 namespace 형태로 정규화한 뒤 다시 읽는다. 원본 파일 hash는 바꾸지 않는다.
 14. **엑셀 출처와 압축 예산**: export API는 DB에 manifest ID·base version·현재 snapshot·canonical export hash를
     먼저 기록하고 XLSX 숨김 metadata에 manifest ID를 넣는다. managed 업로드는 현재 상태와 manifest를 다시 대조한다.
-    브라우저는 원본 10MB, ZIP 500항목, 비압축 합계 50MB를 넘는 파일을 workbook 해석 전에 거부하고 서버도 보고된
+    브라우저는 원본 20MB, ZIP 500항목, 비압축 합계 100MB를 넘는 파일을 workbook 해석 전에 거부하고 서버도 보고된
     원본 크기 상한을 재검사한다.
 15. **개별 관리와 개정 경계**: 웹의 문서 추가·정보 수정·개정·위치 이동·폐기는 모두 `sync_state = 'current'`
     대장과 단조 증가 version에 반영되어 다음 Excel export와 인쇄용 시트의 입력이 된다. Excel snapshot은
@@ -112,11 +112,14 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 19. **rollback 호환성**: migration은 이전 Worker와 함께 동작하는 additive 변경을 먼저 적용한다.
     배포 전 현재 100% traffic Worker를 rollback 대상으로 기록하고, migration 전후 인증과 핵심 쓰기
     불변식을 확인한다. 비호환 schema 제거는 별도 release로 분리한다.
-20. **10,000건 용량·초기 적재 경계**: 현재 대장은 11,000건부터 운영 경고, 12,000건에서 DB trigger와 application
-    guard가 신규 등록·재포함·엑셀 반영을 함께 차단한다. managed v2의 전체 membership은 1,000행, 실제 변경행은 50행씩
-    전송하며 일상 변경 영향은 1,000건을 넘길 수 없다. 최초 bootstrap은 모든 행을 실제 source row로 staging하므로
-    중복 membership을 만들지 않는다. 승인 Excel 자체가 초기 상태의 출처이므로 10,000개의 가상 create/dispose audit을
-    중복 생성하지 않고 snapshot row·canonical hash·system apply audit과 `last_snapshot_id`로 행별 provenance를 보존한다.
+20. **30,000건 용량·초기 적재 경계**: 현재 대장은 27,000건부터 운영 경고, 30,000건에서 DB trigger와 application
+    guard가 신규 등록·재포함·엑셀 반영을 함께 차단한다. 용량 검사는 매번 전체 COUNT를 하지 않고 trigger가 유지하는
+    `document_capacity_state`를 읽는다. managed v2의 전체 membership은 1,000행, 실제 변경행은 50행씩 전송하며 일상
+    변경 영향은 1,000건을 넘길 수 없다. 최초 bootstrap 행 전송도 50행씩 자동 분할하고, 승인 뒤 실제 문서 생성은
+    다음 UTC 일자부터 Cron이 1일 최대 5,000건씩 재개한다. 중간 문서는 `excluded`로 숨기고 마지막 생성일 다음 UTC 일자에
+    current로 확정하여 쓰기량을 겹치지 않게 하며, 그동안 문서·태그·랙·분류 변경을 DB trigger가 차단한다. 승인 Excel 자체가 초기 상태의 출처이므로
+    수만 개의 가상 create/dispose audit을 중복 생성하지 않고 snapshot row·canonical hash·system apply audit과
+    `last_snapshot_id`로 행별 provenance를 보존한다.
 21. **검색 projection은 Core D1 안의 파생 데이터**: `DB`는 문서·사용자·감사·권한의 유일한 권위 저장소이며
     검색 projection(`search_projection_documents`, `search_projection_fts`)도 같은 DB에 둔다. projection에는
     `storage_code`, 사용자, 감사정보를 저장하지 않는다. 검색 후보는 최대 200개 ID이며 Core에서 현재 상태·필터를
@@ -138,6 +141,10 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
 23. **검색 전용 D1은 존재하지 않는다**: Worker는 모든 환경에서 `DB` 하나만 바인딩한다. `SEARCH_DB` binding,
     두 번째 migration 체인, 그리고 cross-DB 정합성을 위해 존재했던 outbox lease·processor lease·문서별
     watermark·삭제 tombstone·active/building/previous generation·rebuild token·cutover fence는 모두 제거했다.
+24. **폐기 문서 분리**: 일반 `/app`과 `/documents`는 항상 `status = 'active'`만 조회하고 상태 선택기를 제공하지 않는다.
+    현재 폐기 문서는 `/documents/disposal?tab=documents`에서 별도로 조회한다. 문서 원본 행은 복구와 FK를 위해
+    `documents.status = 'disposed'`로 유지하고, 폐기 행위·사유·담당자·캠페인은 불변 `disposal_logs`에 별도 저장한다.
+    관리 Excel의 `문서데이터`는 동기화 무결성을 위해 폐기행도 보존하지만 `인쇄용 관리대장`은 폐기행을 제외한다.
     `search_index_outbox`와 전역 `search_event_clock`, 그리고 그 둘에 쓰던 17개 trigger도 제거했으므로
     파생 색인 신호는 `search_projection_dirty` 하나로 모인다. migration 0050부터 runtime cursor는
     `search_projection_state.generation`을 사용하며 `search_index_state`는 이전 Worker rollback용 mirror로만 남긴다.

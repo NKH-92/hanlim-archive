@@ -10,6 +10,7 @@ const CORE_TABLES = [
   // 0051에서 runtime 미사용 legacy bootstrap job table을 제거했다.
   "bootstrap_runtime_control",
   "capacity_policy",
+  "document_capacity_state",
   "categories",
   "disposal_batch_items",
   "disposal_batches",
@@ -68,6 +69,9 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_document_audit_logs_no_update",
   "trg_document_capacity_insert",
   "trg_document_capacity_reinclude",
+  "trg_document_capacity_state_delete",
+  "trg_document_capacity_state_insert",
+  "trg_document_capacity_state_update",
   "trg_document_excel_row_key",
   "trg_document_movements_no_delete",
   "trg_document_movements_no_update",
@@ -117,7 +121,24 @@ const IMMUTABILITY_TRIGGERS = [
   "trg_tag_sync_version_insert",
   "trg_tag_sync_version_update",
   "trg_user_enable_requires_epoch_rotation",
-  "trg_user_status_session_epoch_compat"
+  "trg_user_status_session_epoch_compat",
+  "trg_bootstrap_lock_categories_delete",
+  "trg_bootstrap_lock_categories_insert",
+  "trg_bootstrap_lock_categories_update",
+  "trg_bootstrap_lock_document_tags_delete",
+  "trg_bootstrap_lock_document_tags_insert",
+  "trg_bootstrap_lock_documents_delete",
+  "trg_bootstrap_lock_documents_insert",
+  "trg_bootstrap_lock_documents_update",
+  "trg_bootstrap_lock_rack_slots_delete",
+  "trg_bootstrap_lock_rack_slots_insert",
+  "trg_bootstrap_lock_rack_slots_update",
+  "trg_bootstrap_lock_racks_delete",
+  "trg_bootstrap_lock_racks_insert",
+  "trg_bootstrap_lock_racks_update",
+  "trg_bootstrap_lock_tags_delete",
+  "trg_bootstrap_lock_tags_insert",
+  "trg_bootstrap_lock_tags_update"
 ].sort();
 
 test("migration 번호는 연속이고 released baseline의 모든 공개 이력을 보존한다", async () => {

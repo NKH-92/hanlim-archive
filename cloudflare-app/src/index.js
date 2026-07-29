@@ -24,6 +24,10 @@ import {
   syncChangedSearchDocuments,
   syncPendingSearchDocuments
 } from "./domains/search/index.js";
+import {
+  runDocumentSnapshotMaintenance,
+  runScheduledBootstrapApplication
+} from "./domains/snapshots/index.js";
 
 export default {
   async fetch(request, env) {
@@ -82,12 +86,24 @@ export default {
   },
   async scheduled(_controller, env, ctx) {
     const requestEnv = createRequestD1Environment(env, { requestId: `cron-${shortRequestId()}` });
-    ctx.waitUntil(Promise.all([
-      runSearchMaintenance(requestEnv),
-      runAuthMaintenance(requestEnv)
-    ]));
+    ctx.waitUntil(runScheduledMaintenance(requestEnv));
   }
 };
+
+async function runScheduledMaintenance(env) {
+  try {
+    const bootstrap = await runScheduledBootstrapApplication(env);
+    if (bootstrap.processed) return bootstrap;
+  } catch (error) {
+    logError("worker.bootstrap-maintenance", error);
+    throw error;
+  }
+  return Promise.all([
+    runSearchMaintenance(env),
+    runAuthMaintenance(env),
+    runDocumentSnapshotMaintenance(env)
+  ]);
+}
 
 async function runSearchMaintenance(env) {
   try {

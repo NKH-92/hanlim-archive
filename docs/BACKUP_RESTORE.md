@@ -111,8 +111,9 @@ node --test tests/excelSnapshotSync.test.js
 node --test tests/excelSnapshotWorkbookE2E.test.js
 node --test tests/searchProjection.test.js
 node --test tests/initialLoadContracts.test.js
+node --test tests/thirtyThousandTransition.test.js
 node --test tests/racksDomain.test.js
-npm run rehearse:initial-load -- --count=10000
+npm run rehearse:initial-load -- --count=30000
 ```
 
 이 검증은 다음 계약을 확인한다.
@@ -122,7 +123,7 @@ npm run rehearse:initial-load -- --count=10000
 - managed 0-diff 재업로드가 create/update/exclude 0으로 준비된다.
 - current identity, FK와 문서 수가 보존된다.
 - projection dirty 배출과 in-place 재색인이 `ready`까지 전진한다.
-- 10,000건 구조에서 payload, statement와 capacity 계약이 성립한다.
+- 30,000건 구조에서 payload, statement, 자동 5,000건 분할과 capacity 계약이 성립한다.
 - 랙 위치 표현과 검색 결과의 물리 위치 계약이 유지된다.
 
 로컬 실행 시간은 운영 성능 SLA로 사용하지 않는다. 운영 승인 전에는 실제 서명 Excel 사본과 실제 Cloudflare 지표로 다시 검증한다.
