@@ -7,6 +7,7 @@ import {
   preflightAdminProvision,
   runAdminProvision
 } from "../scripts/provision-admin-guarded.mjs";
+import { buildMainAdminRemediationSql, MAIN_ADMIN_USERNAME } from "../scripts/remediate-main-admin-guarded.mjs";
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 
 const PRODUCTION_ID = "1262ca00-b431-490c-aad2-539d77d4f73f";
@@ -43,7 +44,7 @@ function setProvisionEnv(overrides = {}) {
   };
 }
 
-test("전체 migration 뒤 독립 Admin readiness는 fail-closed이고 guarded provisioning 후 통과한다", async () => {
+test("전체 migration 뒤 안전한 Admin readiness는 fail-closed이고 guarded provisioning 후 통과한다", async () => {
   const database = await createMigratedDatabase();
   try {
     const before = database.prepare(adminReadinessSql("post-migration")).get();
@@ -69,6 +70,47 @@ test("전체 migration 뒤 독립 Admin readiness는 fail-closed이고 guarded p
       can_apply_document_snapshots: 0,
       must_change_password: 0,
       security_review_required: 0
+    });
+  } finally {
+    database.close();
+  }
+});
+
+test("보안 복구와 최초 비밀번호 변경을 마친 메인 Admin도 배포 readiness를 통과한다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    database.exec(buildMainAdminRemediationSql({
+      passwordRecord: { salt: "remediated-salt", hash: "remediated-hash" },
+      operationId: "readiness-main-admin"
+    }));
+
+    const forcedChange = database.prepare(adminReadinessSql("pre-migration")).get();
+    assert.deepEqual(evaluateAdminReadiness([{ results: [forcedChange] }]), {
+      ok: false,
+      approvedAdminCount: 0
+    });
+
+    database.prepare(`
+      UPDATE app_users
+      SET must_change_password = 0,
+          session_epoch = session_epoch + 1
+      WHERE username = ?
+    `).run(MAIN_ADMIN_USERNAME);
+    const ready = database.prepare(adminReadinessSql("post-migration")).get();
+    assert.deepEqual(evaluateAdminReadiness([{ results: [ready] }]), {
+      ok: true,
+      approvedAdminCount: 1
+    });
+
+    database.prepare(`
+      UPDATE app_users
+      SET can_manage_users = 0
+      WHERE username = ?
+    `).run(MAIN_ADMIN_USERNAME);
+    const noPermission = database.prepare(adminReadinessSql("post-migration")).get();
+    assert.deepEqual(evaluateAdminReadiness([{ results: [noPermission] }]), {
+      ok: false,
+      approvedAdminCount: 0
     });
   } finally {
     database.close();

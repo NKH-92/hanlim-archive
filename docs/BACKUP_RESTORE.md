@@ -76,7 +76,7 @@ npx wrangler d1 time-travel restore hanlim-archive --env production --bookmark "
 3. 승인 계정 로그인, 정확 문서번호 검색, 일반 검색과 문서 상세를 표본 확인한다.
 4. 서명 Excel 표본과 구역/랙/면/열/선반 위치를 대조한다.
 5. 최근 감사·이동·폐기 이력을 표본 확인한다.
-6. 독립 Admin의 사용자 관리 화면 접근을 확인한다.
+6. readiness를 통과한 Admin의 사용자 관리 화면 접근을 확인한다.
 7. projection을 필요하면 `pending`으로 예약하고 Cron/유지보수 경로로 재색인한다.
 8. projection `ready`, indexed count = current 문서 수, dirty 0을 확인한다.
 9. release SHA, Worker version, 복구 DB/bookmark, 승인, 명령 결과와 검증 결과를 incident 기록에 남긴다.

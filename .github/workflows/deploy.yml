@@ -113,7 +113,7 @@ jobs:
           npx wrangler versions view "$PREVIOUS_VERSION_ID" --env production --json \
             > release-evidence/version-before.json
           echo "PREVIOUS_VERSION_ID=$PREVIOUS_VERSION_ID" >> "$GITHUB_ENV"
-      - name: Verify independent administrator before migration
+      - name: Verify deployment administrator before migration
         if: steps.classify_release.outputs.release_class == 'database'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -159,7 +159,7 @@ jobs:
         run: |
           set -o pipefail
           npm run db:migrate:remote 2>&1 | tee release-evidence/migration-apply.txt
-      - name: Verify independent administrator after migration
+      - name: Verify deployment administrator after migration
         if: steps.classify_release.outputs.release_class == 'database'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

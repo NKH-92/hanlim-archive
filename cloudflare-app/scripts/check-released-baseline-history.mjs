@@ -5,7 +5,7 @@
  * all changed together in one pull request.
  */
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -32,33 +32,60 @@ function git(args) {
   });
 }
 
-export function verifyReleasedBaselineAgainstBase({ currentBaseline, baseMigrations }) {
+export function verifyReleasedBaselineAgainstBase({
+  currentBaseline,
+  currentMigrations,
+  baseBaseline,
+  baseMigrations
+}) {
   const errors = [];
   const checksums = currentBaseline?.checksums;
+  const baseChecksums = baseBaseline?.checksums;
   const baseNames = Object.keys(baseMigrations || {}).sort();
+  const currentMigrationNames = Object.keys(currentMigrations || {}).sort();
+  const releasedBaseNames = Object.keys(baseChecksums || {});
 
   if (!currentBaseline || currentBaseline.version !== 1 || !checksums || typeof checksums !== "object") {
     return { ok: false, errors: ["current released baseline is missing or malformed"] };
   }
+  if (!baseBaseline || baseBaseline.version !== 1 || !baseChecksums || typeof baseChecksums !== "object") {
+    return { ok: false, errors: ["trusted base released baseline is missing or malformed"] };
+  }
   if (!baseNames.length) {
     return { ok: false, errors: ["trusted base contains no migrations"] };
   }
+  if (!releasedBaseNames.length) {
+    return { ok: false, errors: ["trusted base released baseline contains no migrations"] };
+  }
+
+  const currentMigrationPrefix = currentMigrationNames.slice(0, baseNames.length);
+  if (JSON.stringify(currentMigrationPrefix) !== JSON.stringify(baseNames)) {
+    errors.push("current migrations must retain every migration from the trusted base in order");
+  }
+  for (const name of baseNames) {
+    if (hashMigrationSql(currentMigrations?.[name] || "") !== hashMigrationSql(baseMigrations[name])) {
+      errors.push(`${name}: migration SQL differs from the trusted base`);
+    }
+  }
 
   const currentNames = Object.keys(checksums);
-  const currentBasePrefix = currentNames.slice(0, baseNames.length);
-  if (JSON.stringify(currentBasePrefix) !== JSON.stringify(baseNames)) {
+  const currentBasePrefix = currentNames.slice(0, releasedBaseNames.length);
+  if (JSON.stringify(currentBasePrefix) !== JSON.stringify(releasedBaseNames)) {
     errors.push("released baseline must retain every migration from the trusted base in order");
   }
 
-  for (const name of baseNames) {
-    const expected = hashMigrationSql(baseMigrations[name]);
+  for (const name of releasedBaseNames) {
+    const expected = baseChecksums[name];
+    if (expected !== hashMigrationSql(baseMigrations[name] || "")) {
+      errors.push(`${name}: trusted base baseline does not match its migration SQL`);
+    }
     if (checksums[name] !== expected) {
       errors.push(`${name}: released baseline differs from the trusted base`);
     }
   }
 
   const releasedThroughIndex = currentNames.indexOf(currentBaseline.releasedThrough);
-  if (releasedThroughIndex < baseNames.length - 1) {
+  if (releasedThroughIndex < releasedBaseNames.length - 1) {
     errors.push("releasedThrough cannot move behind the trusted base migration tail");
   }
 
@@ -86,12 +113,27 @@ export function loadBaseMigrations(baseRef) {
   ]));
 }
 
+export function loadBaseReleasedBaseline(baseRef) {
+  return JSON.parse(git(["show", `${baseRef}:cloudflare-app/migrations/released-baseline.json`]));
+}
+
+export async function loadCurrentMigrations() {
+  const migrationsDir = join(APP_ROOT, "migrations");
+  const names = (await readdir(migrationsDir)).filter((name) => MIGRATION_PATTERN.test(name)).sort();
+  return Object.fromEntries(await Promise.all(names.map(async (name) => [
+    name,
+    await readFile(join(migrationsDir, name), "utf8")
+  ])));
+}
+
 export async function checkReleasedBaselineHistory({ baseRef }) {
   const currentBaseline = JSON.parse(
     await readFile(join(APP_ROOT, "migrations", "released-baseline.json"), "utf8")
   );
   return verifyReleasedBaselineAgainstBase({
     currentBaseline,
+    currentMigrations: await loadCurrentMigrations(),
+    baseBaseline: loadBaseReleasedBaseline(baseRef),
     baseMigrations: loadBaseMigrations(baseRef)
   });
 }
