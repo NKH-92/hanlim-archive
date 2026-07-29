@@ -318,17 +318,43 @@ test("released-baseline history gate rejects coordinated SQL and baseline edits"
     )
   };
 
-  assert.equal(verifyReleasedBaselineAgainstBase({ currentBaseline: baseline, baseMigrations }).ok, true);
+  assert.equal(verifyReleasedBaselineAgainstBase({
+    currentBaseline: baseline,
+    currentMigrations: baseMigrations,
+    baseBaseline: baseline,
+    baseMigrations
+  }).ok, true);
 
   const coedited = structuredClone(baseline);
   const changedSql = `${baseMigrations["0002_more.sql"]}-- rewritten\n`;
   coedited.checksums["0002_more.sql"] = createHash("sha256").update(changedSql).digest("hex");
-  assert.equal(verifyReleasedBaselineAgainstBase({ currentBaseline: coedited, baseMigrations }).ok, false);
+  assert.equal(verifyReleasedBaselineAgainstBase({
+    currentBaseline: coedited,
+    currentMigrations: { ...baseMigrations, "0002_more.sql": changedSql },
+    baseBaseline: baseline,
+    baseMigrations
+  }).ok, false);
 
   const truncated = structuredClone(baseline);
   delete truncated.checksums["0002_more.sql"];
   truncated.releasedThrough = "0001_initial.sql";
-  assert.equal(verifyReleasedBaselineAgainstBase({ currentBaseline: truncated, baseMigrations }).ok, false);
+  assert.equal(verifyReleasedBaselineAgainstBase({
+    currentBaseline: truncated,
+    currentMigrations: baseMigrations,
+    baseBaseline: baseline,
+    baseMigrations
+  }).ok, false);
+
+  const baseWithUnreleasedTail = {
+    ...baseMigrations,
+    "0003_unreleased.sql": "ALTER TABLE example ADD COLUMN note TEXT;\n"
+  };
+  assert.equal(verifyReleasedBaselineAgainstBase({
+    currentBaseline: baseline,
+    currentMigrations: baseWithUnreleasedTail,
+    baseBaseline: baseline,
+    baseMigrations: baseWithUnreleasedTail
+  }).ok, true);
 });
 
 test("migration checksum은 CRLF를 LF로 정규화한다", async () => {

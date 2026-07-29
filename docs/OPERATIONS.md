@@ -83,7 +83,7 @@ $env:D1_TARGET_DATABASE_ID = "<production DB id>"
 npm run deploy:dry
 ```
 
-`deploy:dry`는 실제 배포나 원격 migration을 수행하지 않는다. CI는 PR base의 `released-baseline.json`과 비교해 이미 공개된 migration SQL·checksum·schema 기준선의 변경을 차단한다.
+`deploy:dry`는 실제 배포나 원격 migration을 수행하지 않는다. CI는 PR base의 모든 migration SQL을 변경 불가 이력으로 비교하고, PR base의 `released-baseline.json`에 기록된 실제 공개 migration의 checksum·schema 기준선도 별도로 보존한다. 따라서 migration이 `main`에 병합된 뒤 운영 배포가 중단되어도 공개 기준선을 거짓으로 앞당기지 않고 복구 PR을 만들 수 있다.
 
 ## 6. 운영 배포 흐름
 
