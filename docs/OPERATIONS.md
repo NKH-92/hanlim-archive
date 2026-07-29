@@ -91,9 +91,9 @@ npm run deploy:dry
 
 1. 같은 SHA를 다시 검증하고 release evidence를 생성한다.
 2. 현재 100% traffic Worker version과 metadata를 rollback 대상으로 기록한다.
-3. 독립 Admin 존재와 현재 Worker의 health·version·rollback compatibility marker를 확인한다.
+3. 배포에 사용할 수 있는 Admin 존재와 현재 Worker의 health·version·rollback compatibility marker를 확인한다. Admin은 승인 상태, 사용자 관리 권한, 최초 비밀번호 변경 완료, 보안 검토 해제 조건을 모두 만족해야 하며 보안 복구를 마친 메인 Admin도 인정한다.
 4. Core D1의 현재 Time Travel bookmark를 release SHA·run ID·database ID와 함께 pre-mutation artifact로 기록한다.
-5. append-only migration을 적용하고 독립 Admin 존재를 다시 확인한다.
+5. append-only migration을 적용하고 동일한 Admin readiness를 다시 확인한다.
 6. 신규 schema에서 release run 전용 smoke 계정을 만들고 이전 Worker와의 필수 호환 경로를 확인한다.
 7. release SHA metadata와 함께 Worker를 production에 배포한다.
 8. `/healthz`, `/readyz`, version, HTTPS/asset, 로그인, 검색, 사용자 관리 smoke를 실행한다.
@@ -126,7 +126,7 @@ D1 복구는 데이터 상태를 되돌리는 파괴적 작업이므로 자동 r
 - HTTPS 전송 경계와 정적 asset 상태/MIME/ETag.
 - 미인증 업무 경로의 로그인 redirect.
 - 승인 계정의 검색·문서 상세 표본.
-- 독립 Admin의 사용자 관리 화면 접근.
+- 검증된 Admin의 사용자 관리 화면 접근.
 - migration pending 0.
 - 관리자 화면에서 projection `ready`, 색인 수 = current 문서 수, dirty = 0.
 - Worker/D1 오류, JavaScript console 오류, CSP 위반 부재.
@@ -288,7 +288,7 @@ npm run users:roster -- --input ..\명단.xlsx --out provisioning-local\user-ros
 
 ### 독립 Admin
 
-복구·최초 환경에서 독립 Admin이 없을 때만 production Environment 승인 후 `Provision Independent Admin` workflow를 사용한다. 기존 계정을 덮어쓰지 않으며 알려진 bootstrap/smoke 사용자명은 거부한다.
+메인 Admin이 보안 복구와 최초 비밀번호 변경을 마쳤다면 배포 readiness에서 정상 Admin으로 인정한다. 사용할 수 있는 Admin이 전혀 없거나 별도 비상 관리자를 운영하기로 한 경우에만 production Environment 승인 후 `Provision Independent Admin` workflow를 사용한다. 기존 계정을 덮어쓰지 않으며 알려진 bootstrap/smoke 사용자명은 거부한다.
 
 ## 15. 증적과 비밀정보
 

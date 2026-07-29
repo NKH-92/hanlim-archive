@@ -5,21 +5,18 @@ import path from "node:path";
 
 import { preflightDeploy, runWranglerCaptured } from "./deploy-guarded.mjs";
 
-const KNOWN_BOOTSTRAP_USERNAME = "nkh92@hanlim.com";
-
 export function adminReadinessSql(phase = "post-migration") {
   if (!new Set(["pre-migration", "post-migration"]).has(phase)) {
     throw new TypeError("D1_ADMIN_CHECK_PHASE는 pre-migration 또는 post-migration이어야 합니다.");
   }
-  const reviewClause = phase === "post-migration" ? "AND COALESCE(security_review_required, 0) = 0" : "";
   return `
     SELECT COUNT(*) AS approved_admin_count
     FROM app_users
     WHERE status = 'approved'
       AND role = 'Admin'
       AND can_manage_users = 1
-      AND username <> '${KNOWN_BOOTSTRAP_USERNAME}'
-      ${reviewClause}
+      AND must_change_password = 0
+      AND COALESCE(security_review_required, 0) = 0
   `;
 }
 
@@ -63,7 +60,7 @@ export function runAdminReadinessCheck({
     const readiness = evaluateAdminReadiness(JSON.parse(executed.stdout || "[]"));
     return readiness.ok
       ? { ...readiness, envName, phase, databaseId: target.configuredId }
-      : { ...readiness, errors: ["승인된 독립 Admin 계정이 없습니다. migration 전에 guarded provisioning을 완료하세요."] };
+      : { ...readiness, errors: ["배포에 사용할 수 있는 Admin 계정이 없습니다. 승인 상태, 사용자 관리 권한, 비밀번호 변경 완료와 보안 검토 상태를 확인하세요."] };
   } catch {
     return { ok: false, errors: ["원격 D1 관리자 readiness 응답을 해석할 수 없습니다."] };
   }
