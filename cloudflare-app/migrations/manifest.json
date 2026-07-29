@@ -53,7 +53,8 @@
     "0050_initial_load_write_optimization.sql": "07c3538998841f50d7cc06d60cccb00a593ae21abcbbcc7dd8f471366ac82116",
     "0051_drop_removed_mfa_and_legacy_bootstrap.sql": "b4cc5480cd1a48c36fdc95544c1bc33d3ddeb136404dbda8ba80c92190c821f7",
     "0052_compact_snapshot_staging.sql": "9ec5edfa3f3f99cced5ce9f6b4468d90f122ac8416fc820792900d5639776383",
-    "0053_thirty_thousand_capacity_and_bootstrap.sql": "1288b3ec29d68aa83b657c9a0a00019f290573c767fc4043a7f46e432b0ef7d0"
+    "0053_thirty_thousand_capacity_and_bootstrap.sql": "1288b3ec29d68aa83b657c9a0a00019f290573c767fc4043a7f46e432b0ef7d0",
+    "0054_main_admin_display_name.sql": "b1f43fdd4d378796fda3d144aa0bcd524ee1f5ca5d67fb00af76ac0dcbef3ccb"
   },
   "schema": {
     "tables": [

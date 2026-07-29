@@ -24,6 +24,36 @@ const REMEDIATION_ENV_NAMES = [
   "MAIN_ADMIN_REMEDIATION_OPERATION_ID"
 ];
 
+test("0054는 메인 관리자 이름을 남광현으로 정정하고 감사로그를 남긴다", async () => {
+  const database = await createMigratedDatabase();
+  try {
+    const account = database.prepare(`
+      SELECT display_name, row_version
+      FROM app_users
+      WHERE username = ?
+    `).get(MAIN_ADMIN_USERNAME);
+    assert.equal(account.display_name, "남광현");
+    assert.equal(Number(account.row_version) >= 2, true);
+
+    const audit = database.prepare(`
+      SELECT action, actor_username_snapshot, summary, details_json
+      FROM system_audit_logs
+      WHERE entity_type = 'user'
+        AND entity_reference = ?
+        AND action = 'profile_update'
+    `).get(MAIN_ADMIN_USERNAME);
+    assert.equal(audit.actor_username_snapshot, "migration-0054");
+    assert.equal(audit.summary, "메인 관리자 이름 변경");
+    assert.deepEqual(JSON.parse(audit.details_json), {
+      before: { displayName: "관리자" },
+      after: { displayName: "남광현" },
+      reason: "승인된 운영 요청"
+    });
+  } finally {
+    database.close();
+  }
+});
+
 test("0039 전용 authorization은 격리된 메인 관리자만 새 credential로 복구한다", async () => {
   const database = await createMigratedDatabase();
   try {
@@ -56,7 +86,7 @@ test("0039 전용 authorization은 격리된 메인 관리자만 새 credential�
       WHERE username = ?
     `).get(MAIN_ADMIN_USERNAME);
     assert.deepEqual({ ...account }, {
-      display_name: "메인 관리자",
+      display_name: "남광현",
       status: "approved",
       role: "Admin",
       can_manage_users: 1,

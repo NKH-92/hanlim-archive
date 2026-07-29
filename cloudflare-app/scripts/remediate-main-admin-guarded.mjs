@@ -9,7 +9,7 @@ import { createPasswordRecord } from "../src/auth/passwords.js";
 import { preflightDeploy, runWranglerCaptured } from "./deploy-guarded.mjs";
 
 export const MAIN_ADMIN_USERNAME = "nkh92@hanlim.com";
-const MAIN_ADMIN_DISPLAY_NAME = "메인 관리자";
+const MAIN_ADMIN_DISPLAY_NAME = "남광현";
 const MINIMUM_FORCED_CHANGE_PASSWORD_LENGTH = 6;
 const MAXIMUM_PASSWORD_LENGTH = 128;
 
