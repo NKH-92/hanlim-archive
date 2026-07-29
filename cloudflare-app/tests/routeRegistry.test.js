@@ -71,6 +71,8 @@ test("모든 인증 POST descriptor는 Origin·CSRF를 요구하고 permission k
   assert.equal(ROUTES.find((item) => item.id === "documents.restore").policy, "admin-only");
   assert.equal(ROUTES.find((item) => item.id === "admin.user.password-reset").policy, "admin-only");
   assert.equal(ROUTES.find((item) => item.id === "admin.user.password-reset.form").policy, "admin-only");
+  assert.equal(ROUTES.find((item) => item.id === "admin.user.create").policy, "admin-only");
+  assert.equal(ROUTES.find((item) => item.id === "admin.user.create.form").policy, "admin-only");
   for (const id of [
     "admin.role-templates",
     "admin.role-template.edit.form",
@@ -106,6 +108,8 @@ test("route registry는 master, user, role-template parameter를 해석한다", 
   assert.deepEqual(resolved("/admin/users/5/approve", "POST"), { id: "admin.user.approve", params: { id: 5 } });
   assert.deepEqual(resolved("/admin/users/5/permissions"), { id: "admin.user.permissions.form", params: { id: 5 } });
   assert.deepEqual(resolved("/admin/users/5/reset-password"), { id: "admin.user.password-reset.form", params: { id: 5 } });
+  assert.deepEqual(resolved("/admin/users/new"), { id: "admin.user.create.form", params: {} });
+  assert.deepEqual(resolved("/admin/users/new", "POST"), { id: "admin.user.create", params: {} });
   assert.deepEqual(resolved("/admin/role-templates/document_manager/edit"), {
     id: "admin.role-template.edit.form",
     params: { key: "document_manager" }

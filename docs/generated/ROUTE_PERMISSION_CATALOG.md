@@ -28,6 +28,8 @@
 | `session.logout.fallback` | `*` | `/logout` | required | authenticated |
 | `admin.dashboard` | `GET` | `/admin` | required | policy:any-management-permission |
 | `admin.settings` | `GET` | `/admin/settings` | required | `can_manage_users` |
+| `admin.user.create.form` | `GET` | `/admin/users/new` | required | `can_manage_users` + policy:admin-only |
+| `admin.user.create` | `POST` | `/admin/users/new` | required | `can_manage_users` + policy:admin-only |
 | `admin.role-templates` | `GET` | `/admin/role-templates` | required | `can_manage_users` + policy:admin-only |
 | `admin.role-template.edit.form` | `GET` | `/admin/role-templates/:key/edit` | required | `can_manage_users` + policy:admin-only |
 | `admin.role-template.edit` | `POST` | `/admin/role-templates/:key/edit` | required | `can_manage_users` + policy:admin-only |
@@ -138,7 +140,7 @@
 | `can_manage_masters` | `racks.list`, `racks.create`, `racks.new`, `racks.configure.form`, `racks.configure`, `racks.details`, `racks.edit.form`, `racks.edit`, `categories.list`, `categories.save`, `categories.edit`, `categories.delete`, `tags.list`, `tags.save`, `tags.edit`, `tags.delete` |
 | `can_manage_sets` | `sets.create.form`, `sets.create`, `sets.edit.form`, `sets.clone.form`, `sets.clone`, `sets.edit`, `sets.delete`, `sets.add`, `sets.remove`, `sets.lock`, `sets.unlock` |
 | `can_manage_users` | `admin.settings`, `admin.user.permissions.form`, `admin.user.permissions`, `admin.user.approve`, `admin.user.reject`, `admin.user.disable`, `admin.user.enable` |
-| `can_manage_users` + policy:admin-only | `admin.role-templates`, `admin.role-template.edit.form`, `admin.role-template.edit`, `admin.role-template.apply`, `admin.user.password-reset.form`, `admin.user.password-reset`, `admin.user.delete.form`, `admin.user.delete` |
+| `can_manage_users` + policy:admin-only | `admin.user.create.form`, `admin.user.create`, `admin.role-templates`, `admin.role-template.edit.form`, `admin.role-template.edit`, `admin.role-template.apply`, `admin.user.password-reset.form`, `admin.user.password-reset`, `admin.user.delete.form`, `admin.user.delete` |
 | `can_move_documents` | `documents.move.form`, `documents.move` |
 | `can_view_audit` | `admin.search-report`, `admin.audit` |
 | authenticated | `home.redirect`, `search.home`, `floor-plan.read`, `qa.read`, `search.suggestions`, `search.viewer`, `search.index`, `search.click`, `session.password.form`, `session.password.change`, `session.logout`, `session.logout.fallback`, `documents.list`, `documents.details`, `sets.list`, `sets.details`, `sets.export`, `sets.export.csv` |

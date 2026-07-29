@@ -8,7 +8,9 @@ import {
   handleAdminDashboard,
   handleAdminSettings,
   handleAdminUserAction,
+  handleApprovedUserCreate,
   handleChangePassword,
+  renderApprovedUserCreate,
   renderPasswordPage
 } from "./adminHandlers.js";
 import { handleSystemAudit } from "./auditHandlers.js";
@@ -65,6 +67,12 @@ export async function routeAuthenticatedRequest(request, env, session, url, path
     return sessionHasManagementAccess(session) ? handleAdminDashboard(env, session) : accessDeniedPage(session);
   }
   if (routeId === "admin.settings") return requireManageUsers(session) ?? handleAdminSettings(env, session);
+  if (routeId === "admin.user.create.form") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? renderApprovedUserCreate(session);
+  }
+  if (routeId === "admin.user.create") {
+    return requireManageUsers(session) ?? requireAdmin(session) ?? handleApprovedUserCreate(request, env, session);
+  }
   if (routeId === "admin.role-templates") {
     return requireManageUsers(session) ?? requireAdmin(session) ?? renderRoleTemplates(env, session);
   }

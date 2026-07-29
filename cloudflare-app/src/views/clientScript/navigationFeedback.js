@@ -21,6 +21,7 @@ export const TOAST_MESSAGES = Object.freeze({
   "password-reset": "임시 비밀번호를 설정했습니다. 다음 로그인에서 비밀번호 변경이 강제됩니다.",
   "password-changed": "비밀번호가 변경되었습니다.",
   "user-deleted": "계정을 완전삭제했습니다.",
+  "user-created": "승인 사용자를 추가했습니다. 임시 비밀번호를 안전하게 전달하세요.",
   "set-locked": "준비 문서 세트를 잠갔습니다.",
   "set-unlocked": "준비 문서 세트의 잠금을 해제했습니다.",
   error: "요청을 처리하지 못했습니다. 입력값을 확인하세요."
