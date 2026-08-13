@@ -6,7 +6,7 @@ import {
   getViewerSearchPayload,
   recordSearchClick
 } from "../domains/search/index.js";
-import { buildFloorPlanLayout, getFloorPlanRegions, getRackSummaries } from "../domains/racks/index.js";
+import { buildFloorPlanLayout, getActiveRacks, getFloorPlanRegions, getRackSummaries } from "../domains/racks/index.js";
 import { getDocumentSets } from "../domains/sets/index.js";
 import { capabilitiesFromSession } from "../domains/identity/index.js";
 import { dashboardPage, qaPage, searchReportPage } from "../views/searchViews.js";
@@ -24,7 +24,7 @@ export async function handleDashboard(request, env, session) {
   const capabilities = capabilitiesFromSession(session);
   const [editableSets, racks, viewerSearch] = await Promise.all([
     capabilities.canManageSets ? getEditableSetsForWorkspace(env) : Promise.resolve([]),
-    filters.rackId ? getRackSummaries(env) : Promise.resolve([]),
+    filters.rackId ? getActiveRacks(env) : Promise.resolve([]),
     getViewerSearchPayload(env, {
       q: parsed.text,
       category: filters.categoryId,

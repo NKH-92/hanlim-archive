@@ -17,7 +17,7 @@ import {
   loadDocumentFormOptions,
   parseDisposalFilters
 } from "../../domains/documents/index.js";
-import { getRackSummaries } from "../../domains/racks/index.js";
+import { getActiveRacks } from "../../domains/racks/index.js";
 import { disposalWorkspacePage } from "../../views/documentViews.js";
 import { errorPage } from "../../views/authViews.js";
 import { redirect } from "../../platform/http/responses.js";
@@ -41,7 +41,7 @@ async function renderDisposalWorkspace(env, session, filters, feedback = null, {
   const campaignsPromise = tab === "history" ? listDisposalBatches(env) : Promise.resolve([]);
   const [{ categories }, racks, years, candidates, history, campaigns] = await Promise.all([
     loadDocumentFormOptions(env, { activeOnly: true, includeSlots: false }),
-    getRackSummaries(env),
+    getActiveRacks(env),
     getDisposalDueYears(env),
     tab === "active"
       ? getDisposalCandidates(env, filters, FREE_TIER_BUDGET.directBulkDisposeMaxItems + 1)
