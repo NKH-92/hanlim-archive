@@ -14,7 +14,7 @@ import {
   updateDisposalBatch
 } from "../domains/disposal/index.js";
 import { getDisposalDueYears, loadDocumentFormOptions } from "../domains/documents/index.js";
-import { getRackSummaries } from "../domains/racks/index.js";
+import { getActiveRacks } from "../domains/racks/index.js";
 import {
   disposalBatchDetailPage,
   disposalBatchFormPage,
@@ -160,7 +160,7 @@ async function renderDisposalBatchEdit(env, session, id, override = null, error 
   };
   const [{ categories }, racks, preview, previewCount] = await Promise.all([
     loadDocumentFormOptions(env, { activeOnly: true, includeSlots: false }),
-    getRackSummaries(env),
+    getActiveRacks(env),
     previewDisposalCandidates(env, values.criteria || values),
     countDisposalCandidates(env, values.criteria || values)
   ]);

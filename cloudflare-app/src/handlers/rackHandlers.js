@@ -6,6 +6,7 @@ import {
 } from "../config.js";
 import {
   configureRackCounts,
+  getActiveRacks,
   getRackConfigurationVersion,
   getRackDetails,
   getRackDocuments,
@@ -90,7 +91,7 @@ export async function handleRackRoute(request, env, session, routeInfo) {
 
 export async function renderRackConfigure(env, session, error = "") {
   const [racks, expectedVersion] = await Promise.all([
-    getRackSummaries(env),
+    getActiveRacks(env),
     getRackConfigurationVersion(env)
   ]);
   const counts = Object.fromEntries(RACK_ZONES.map((zone) => [zone, 0]));

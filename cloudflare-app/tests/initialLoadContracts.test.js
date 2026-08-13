@@ -35,7 +35,8 @@ test("초기 적재 최종 schema는 documents index를 핵심 조회 패턴만 
       "idx_documents_current_identity",
       "idx_documents_current_name",
       "idx_documents_current_status_updated",
-      "idx_documents_excel_row_key"
+      "idx_documents_excel_row_key",
+      "idx_documents_location_current_state"
     ]);
     assert.match(
       plan(database, "SELECT id FROM documents WHERE sync_state = 'current' AND status = 'active' ORDER BY updated_at DESC, id DESC LIMIT 30"),

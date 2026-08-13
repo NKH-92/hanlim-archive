@@ -67,6 +67,27 @@ export async function getRackSummaries(env) {
   return result.results ?? [];
 }
 
+export async function getActiveRacks(env) {
+  const result = await env.DB.prepare(`
+    SELECT
+      id,
+      zone_number,
+      rack_number,
+      code,
+      name,
+      description,
+      is_single_sided,
+      is_active,
+      column_count,
+      shelf_count,
+      row_version
+    FROM racks
+    WHERE is_active = 1
+    ORDER BY zone_number, rack_number
+  `).all();
+  return result.results ?? [];
+}
+
 export async function getRackDetails(env, id) {
   return env.DB.prepare(`
     SELECT id, zone_number, rack_number, code, name, description, is_single_sided, is_active, column_count, shelf_count, row_version

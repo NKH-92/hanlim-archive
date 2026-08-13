@@ -11,6 +11,7 @@ export {
 } from "./domain/rackConfig.js";
 export {
   getFloorPlanRegions,
+  getActiveRacks,
   getRackSummaries,
   getRackConfigurationVersion,
   getRackDetails,
