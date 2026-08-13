@@ -232,6 +232,7 @@ test("문서 browse는 SQL COUNT와 LIMIT/OFFSET page read를 사용한다", asy
   assert.match(pageCall.sql, /LIMIT \? OFFSET \?/);
   assert.match(pageCall.sql, /d\.category_id = \?/);
   assert.match(pageCall.sql, /r\.zone_number, r\.rack_number/);
+  assert.doesNotMatch(pageCall.sql, /GROUP_CONCAT|LEFT JOIN document_tags|GROUP BY d\.id/);
   assert.deepEqual(pageCall.args.slice(-2), [30, 30]);
 });
 

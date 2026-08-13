@@ -332,7 +332,7 @@ function projectionFacets(rows) {
   };
 }
 
-async function getProjectionViewerPage(env, query, filters, offset, pageSize) {
+async function getProjectionViewerPage(env, query, filters, offset, pageSize, { includeFacets = true } = {}) {
   const fuzzyExpression = indexedSearchExpression(query);
   if (!fuzzyExpression) return null;
   try {
@@ -346,23 +346,26 @@ async function getProjectionViewerPage(env, query, filters, offset, pageSize) {
       `).bind(literalExpression, ...filter.binds).first())?.count || 0)
       : 0;
     if (!literalCount) {
-      return getFuzzyProjectionViewerPage(env, query, filters, filter, fuzzyExpression, offset, pageSize);
+      return getFuzzyProjectionViewerPage(env, query, filters, filter, fuzzyExpression, offset, pageSize, { includeFacets });
     }
 
     const binds = [literalExpression, ...filter.binds];
     const locationJoin = filters.sort === "location"
       ? "LEFT JOIN racks projection_rack ON projection_rack.id = matched.rack_id"
       : "";
-    const [pageResult, facetResult] = await Promise.all([
-      env.DB.prepare(`
+    const pagePromise = env.DB.prepare(`
         ${projectionMatchedCte(filter.sql)}
         SELECT matched.document_id, matched.search_rank
         FROM matched
         ${locationJoin}
         ORDER BY ${projectionSort(filters.sort)}
         LIMIT ? OFFSET ?
-      `).bind(...binds, pageSize, offset).all(),
-      env.DB.prepare(projectionFacetsSql(filter.sql)).bind(...binds).all()
+      `).bind(...binds, pageSize, offset).all();
+    const [pageResult, facetResult] = await Promise.all([
+      pagePromise,
+      includeFacets
+        ? env.DB.prepare(projectionFacetsSql(filter.sql)).bind(...binds).all()
+        : Promise.resolve(null)
     ]);
     const ranked = pageResult.results ?? [];
     const ids = ranked.map((row) => Number(row.document_id)).filter(Number.isInteger);
@@ -379,15 +382,16 @@ async function getProjectionViewerPage(env, query, filters, offset, pageSize) {
     }
     return {
       documents: documents.filter((document) => document.relevance_score > 0),
+      consumedItems: ids.length,
       totalItems: literalCount,
-      facets: projectionFacets(facetResult.results ?? [])
+      ...(includeFacets ? { facets: projectionFacets(facetResult?.results ?? []) } : {})
     };
   } catch {
     return null;
   }
 }
 
-async function getFuzzyProjectionViewerPage(env, query, filters, filter, expression, offset, pageSize) {
+async function getFuzzyProjectionViewerPage(env, query, filters, filter, expression, offset, pageSize, { includeFacets = true } = {}) {
   const ranked = await env.DB.prepare(`
     ${projectionMatchedCte(filter.sql)}
     SELECT document_id, search_rank
@@ -412,7 +416,7 @@ async function getFuzzyProjectionViewerPage(env, query, filters, filter, express
   return {
     documents: documents.slice(offset, offset + pageSize),
     totalItems: documents.length,
-    facets: buildViewerFacets(documents)
+    ...(includeFacets ? { facets: buildViewerFacets(documents) } : {})
   };
 }
 
@@ -654,7 +658,7 @@ export function buildViewerFacets(documents) {
   };
 }
 
-export async function getViewerSearchPayload(env, params = {}) {
+export async function getViewerSearchPayload(env, params = {}, { includeFacets = true, includeCursor = true } = {}) {
   const query = clean(params.q || params.query);
   const rawPageSize = Number(params.pageSize);
   const requestedLimit = Number(params.limit);
@@ -665,28 +669,8 @@ export async function getViewerSearchPayload(env, params = {}) {
   const rawPage = Number(params.page);
   const requestedPage = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
   const filters = { ...parseDocumentFilters(params, { query }), status: "active", includeDisposed: false };
-  if (!query) {
-    const totalItems = await getFastDocumentCount(env, filters);
-    const page = requestedPage;
-    const window = await getDocumentPageWindow(env, filters, page, pageSize);
-    const documents = window.items;
-    return {
-      items: documents.map(documentToViewerItem),
-      hasMore: window.hasMore,
-      pagination: {
-        page,
-        pageSize,
-        totalItems,
-        totalPages: totalItems === null ? null : Math.max(1, Math.ceil(totalItems / pageSize)),
-        hasMore: window.hasMore
-      },
-      facets: buildViewerFacets(documents),
-      suggestions: buildSearchSuggestions(documents, 8)
-    };
-  }
-
-  const generation = await getSearchGeneration(env);
-  const cursor = decodeSearchCursor(params.cursor);
+  const generation = includeCursor ? await getSearchGeneration(env) : 1;
+  const cursor = includeCursor ? decodeSearchCursor(params.cursor) : null;
   const fingerprint = searchRequestFingerprint(query, filters);
   if (cursor && (cursor.fingerprint !== fingerprint || cursor.generation !== generation)) {
     return {
@@ -694,6 +678,31 @@ export async function getViewerSearchPayload(env, params = {}) {
       code: "SEARCH_CURSOR_STALE",
       message: "검색 인덱스가 변경되었습니다. 첫 페이지부터 다시 검색하세요.",
       status: 409
+    };
+  }
+  if (!query) {
+    const totalItems = await getFastDocumentCount(env, filters);
+    const offset = cursor ? cursor.offset : Math.max(0, (requestedPage - 1) * pageSize);
+    const page = Math.floor(offset / pageSize) + 1;
+    const window = await getDocumentPageWindow(env, filters, page, pageSize);
+    const documents = window.items;
+    const nextOffset = offset + documents.length;
+    return {
+      ok: true,
+      items: documents.map(documentToViewerItem),
+      hasMore: window.hasMore,
+      nextCursor: includeCursor && window.hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null,
+      candidateCount: totalItems,
+      ...(includeCursor ? { indexGeneration: generation } : {}),
+      pagination: {
+        page,
+        pageSize,
+        totalItems,
+        totalPages: totalItems === null ? null : Math.max(1, Math.ceil(totalItems / pageSize)),
+        hasMore: window.hasMore
+      },
+      ...(includeFacets ? { facets: buildViewerFacets(documents) } : {}),
+      suggestions: buildSearchSuggestions(documents, 8)
     };
   }
   const offset = cursor ? cursor.offset : Math.max(0, (requestedPage - 1) * pageSize);
@@ -704,10 +713,10 @@ export async function getViewerSearchPayload(env, params = {}) {
     return {
       ok: true,
       items: exactNamePage.documents.map(documentToViewerItem),
-      nextCursor: hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null,
+      nextCursor: includeCursor && hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null,
       hasMore,
       candidateCount: exactNamePage.totalItems,
-      indexGeneration: generation,
+      ...(includeCursor ? { indexGeneration: generation } : {}),
       fallback: false,
       pagination: {
         page: Math.floor(offset / pageSize) + 1,
@@ -715,22 +724,22 @@ export async function getViewerSearchPayload(env, params = {}) {
         totalItems: exactNamePage.totalItems,
         totalPages: Math.max(1, Math.ceil(exactNamePage.totalItems / pageSize))
       },
-      facets: buildViewerFacets(exactNamePage.documents),
+      ...(includeFacets ? { facets: buildViewerFacets(exactNamePage.documents) } : {}),
       suggestions: filters.status === "disposed" ? [] : buildSearchSuggestions(exactNamePage.documents, 8)
     };
   }
 
-  const indexedPage = await getProjectionViewerPage(env, query, filters, offset, pageSize);
+  const indexedPage = await getProjectionViewerPage(env, query, filters, offset, pageSize, { includeFacets });
   if (indexedPage) {
-    const nextOffset = offset + indexedPage.documents.length;
+    const nextOffset = offset + Number(indexedPage.consumedItems ?? indexedPage.documents.length);
     const hasMore = nextOffset < indexedPage.totalItems;
     return {
       ok: true,
       items: indexedPage.documents.map(documentToViewerItem),
-      nextCursor: hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null,
+      nextCursor: includeCursor && hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null,
       hasMore,
       candidateCount: indexedPage.totalItems,
-      indexGeneration: generation,
+      ...(includeCursor ? { indexGeneration: generation } : {}),
       fallback: false,
       pagination: {
         page: Math.floor(offset / pageSize) + 1,
@@ -738,7 +747,7 @@ export async function getViewerSearchPayload(env, params = {}) {
         totalItems: indexedPage.totalItems,
         totalPages: Math.max(1, Math.ceil(indexedPage.totalItems / pageSize))
       },
-      facets: indexedPage.facets,
+      ...(includeFacets ? { facets: indexedPage.facets } : {}),
       suggestions: filters.status === "disposed" ? [] : buildSearchSuggestions(indexedPage.documents, 8)
     };
   }
@@ -753,7 +762,7 @@ export async function getViewerSearchPayload(env, params = {}) {
   const items = allDocuments.slice(offset, offset + pageSize);
   const nextOffset = offset + items.length;
   const hasMore = nextOffset < allDocuments.length;
-  const nextCursor = hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null;
+  const nextCursor = includeCursor && hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null;
   const sliced = paginateSlice(allDocuments, requestedPage, pageSize);
 
   return {
@@ -762,7 +771,7 @@ export async function getViewerSearchPayload(env, params = {}) {
     nextCursor,
     hasMore,
     candidateCount: Math.min(allDocuments.length, FREE_TIER_BUDGET.searchCandidateMaxItems),
-    indexGeneration: generation,
+    ...(includeCursor ? { indexGeneration: generation } : {}),
     fallback: await isSearchIndexDegraded(env),
     pagination: {
       page: cursor ? Math.floor(offset / pageSize) + 1 : sliced.page,
@@ -770,7 +779,7 @@ export async function getViewerSearchPayload(env, params = {}) {
       totalItems: allDocuments.length,
       totalPages: Math.max(1, Math.ceil(allDocuments.length / pageSize))
     },
-    facets: buildViewerFacets(allDocuments),
+    ...(includeFacets ? { facets: buildViewerFacets(allDocuments) } : {}),
     suggestions
   };
 }

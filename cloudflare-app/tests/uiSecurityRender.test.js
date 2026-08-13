@@ -37,13 +37,17 @@ test("embedded JSON helper는 script 종료와 Unicode separator를 안전하게
   assert.match(json, /\\u003c\/script>/);
 });
 
-test("전역 CSS와 JS는 source에서 생성된 정적 asset이다", async () => {
-  const [css, js] = await Promise.all([
+test("전역 CSS와 기능별 JS는 source에서 생성된 정적 asset이다", async () => {
+  const [css, js, excelJs] = await Promise.all([
     readFile(new URL("../public/assets/app.css", import.meta.url), "utf8"),
-    readFile(new URL("../public/assets/app.js", import.meta.url), "utf8")
+    readFile(new URL("../public/assets/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/assets/excel-app.js", import.meta.url), "utf8")
   ]);
   assert.match(css, /^\/\* generated from src\/views\/styles\.js/);
   assert.match(js, /^\/\/ generated from src\/views\/clientScript\.js/);
+  assert.match(excelJs, /^\/\/ generated from src\/views\/clientScript\/excelSnapshots\.js/);
   assert.match(css, /@media print/);
   assert.match(js, /keydown/);
+  assert.doesNotMatch(js, /data-excel-snapshot-upload/);
+  assert.match(excelJs, /data-excel-snapshot-upload/);
 });

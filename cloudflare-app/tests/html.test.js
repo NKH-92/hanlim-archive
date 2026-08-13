@@ -361,6 +361,8 @@ test("dashboard page renders search-first row results without a floor plan", asy
   assert.match(html, /role="grid" aria-label="문서 검색 결과"/);
   assert.match(html, /role="row" tabindex="0" aria-selected="false"/);
   assert.equal((viewerHeader.match(/role="columnheader"/g) || []).length, 6);
+  assert.equal((html.match(/class="[^"]*viewer-result-detail-only[^"]*" role="cell"/g) || []).length, 3);
+  assert.match(html, /class="optional-column viewer-result-detail-only"[^>]*data-label="제·개정일"/);
   assert.match(html, /<mark>PV<\/mark>/, "검색어 일치 부분이 하이라이트된다");
   assert.match(APP_SCRIPT, /window\.SearchCore/, "즉시 검색 코어가 정적 자산에 포함된다");
   assert.doesNotMatch(html, /<select name="status"/);
@@ -422,7 +424,9 @@ test("dashboard home mode uses a search-first operational hero without a floor p
   assert.match(html, /data-mobile-viewer-filter/);
   assert.match(html, /data-viewer-filter-reset/);
   assert.match(html, /data-viewer-set-filter="category"/);
+  assert.doesNotMatch(html, /name="(?:rack|column|shelf)" value="0"/);
   assert.match(html, /최근 등록·수정 문서/);
+  assert.doesNotMatch(html, /data-results-count>null건</);
   assert.match(html, /data-viewer-app>/);
   assert.doesNotMatch(html, /data-viewer-app hidden/);
   assert.match(html, /aria-label="빠른 분류"/);
@@ -516,6 +520,7 @@ test("rack filter chip clears dependent face, column, and shelf filters", async 
     },
     categories: [{ id: 2, name: "QA" }],
     tags: [],
+    racks: [{ id: 5, code: "1-05", is_single_sided: 0 }],
     filters: {
       categoryId: 2,
       rackId: 5,
@@ -528,7 +533,63 @@ test("rack filter chip clears dependent face, column, and shelf filters", async 
   }).text();
   const chipNav = html.match(/<nav class="active-filter-chips"[\s\S]*?<\/nav>/)?.[0] || "";
 
+  assert.match(chipNav, />랙 1-05 /);
+  assert.match(chipNav, />1면 /);
+  assert.match(chipNav, />2열 /);
+  assert.match(chipNav, />3선반 /);
   assert.match(chipNav, /href="\/app\?q=slot&category=2&status=active&sort=location"/);
+});
+
+test("unknown filter totals keep visible rows and announce that more results exist", async () => {
+  const html = await dashboardPage({
+    session: { username: "viewer", displayName: "조회자", role: "User", csrfToken: "csrf-token-123" },
+    query: "",
+    viewerSearch: {
+      items: [{
+        id: 7,
+        documentNumber: "SOP-007",
+        revisionNumber: "Rev.1",
+        documentName: "필터 문서",
+        categoryName: "QA",
+        status: "active",
+        location: { label: "1구역 / 1-1번 랙 / 2열 / 3선반" }
+      }],
+      pagination: { page: 1, pageSize: 30, totalItems: null, totalPages: null, hasMore: true }
+    },
+    categories: [{ id: 2, name: "QA" }],
+    tags: [],
+    filters: { categoryId: 2, status: "active", sort: "updated" }
+  }).text();
+
+  assert.match(html, /1건을 표시했습니다\. 다음 결과가 더 있습니다\./);
+  assert.doesNotMatch(html, /검색 결과가 없습니다/);
+  assert.match(html, /data-results-count>1\+건</);
+});
+
+test("home mode keeps visible rows when the fast total is unknown", async () => {
+  const html = await dashboardPage({
+    session: { username: "viewer", displayName: "조회자", role: "User", csrfToken: "csrf-token-123" },
+    mode: "home",
+    viewerSearch: {
+      items: [{
+        id: 7,
+        documentNumber: "SOP-007",
+        revisionNumber: "Rev.1",
+        documentName: "최근 문서",
+        categoryName: "QA",
+        status: "active",
+        location: { label: "1구역 / 1-1번 랙 / 2열 / 3선반" }
+      }],
+      pagination: { page: 1, pageSize: 30, totalItems: null, totalPages: null, hasMore: true }
+    },
+    categories: [{ id: 2, name: "QA" }],
+    tags: [],
+    filters: { status: "active", sort: "updated" }
+  }).text();
+
+  assert.match(html, /최근 등록·수정 문서 1건을 표시합니다\. 다음 결과가 더 있습니다\./);
+  assert.match(html, /data-results-count>1\+건</);
+  assert.doesNotMatch(html, /보관 중인 문서가 없습니다/);
 });
 
 test("floor plan page keeps the map separate from search and opens rack results for every user", async () => {

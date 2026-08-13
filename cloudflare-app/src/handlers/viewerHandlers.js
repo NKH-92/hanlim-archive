@@ -22,11 +22,10 @@ export async function handleDashboard(request, env, session) {
   const filters = { ...search.filters, status: "active", includeDisposed: false };
   const selectedDocumentIds = parseSelectedDocumentIds(url.searchParams.get("selected"));
   const capabilities = capabilitiesFromSession(session);
-  const editableSets = capabilities.canManageSets
-    ? await getEditableSetsForWorkspace(env)
-    : [];
-
-  const viewerSearch = await getViewerSearchPayload(env, {
+  const [editableSets, racks, viewerSearch] = await Promise.all([
+    capabilities.canManageSets ? getEditableSetsForWorkspace(env) : Promise.resolve([]),
+    filters.rackId ? getRackSummaries(env) : Promise.resolve([]),
+    getViewerSearchPayload(env, {
       q: parsed.text,
       category: filters.categoryId,
       zone: filters.zoneNumber,
@@ -39,7 +38,8 @@ export async function handleDashboard(request, env, session) {
       sort: filters.sort,
       page,
       pageSize: 30
-    });
+    }, { includeFacets: false, includeCursor: false })
+  ]);
 
   const totalItems = viewerSearch.pagination?.totalItems ?? viewerSearch.items?.length ?? 0;
   const didYouMean = await resolveSearchOutcome(env, search, totalItems);
@@ -56,7 +56,9 @@ export async function handleDashboard(request, env, session) {
     viewerSearch,
     categories,
     tags,
+    racks,
     filters,
+    explicitFilters: search.explicitFilters,
     didYouMean,
     editableSets,
     selectedDocumentIds
@@ -108,8 +110,26 @@ export async function handleSearchSuggestions(request, env) {
 
 export async function handleViewerSearch(request, env) {
   const url = new URL(request.url);
-  const params = Object.fromEntries(url.searchParams);
-  const payload = await getViewerSearchPayload(env, params);
+  if (url.searchParams.get("resolved") === "1") {
+    const payload = await getViewerSearchPayload(env, Object.fromEntries(url.searchParams), { includeFacets: false });
+    if (payload?.ok === false) return jsonResponse(payload, { status: Number(payload.status || 400) });
+    return jsonResponse(payload);
+  }
+  const search = await resolveSearchRequest(env, url);
+  const params = {
+    ...Object.fromEntries(url.searchParams),
+    q: search.parsed.text,
+    category: search.filters.categoryId,
+    zone: search.filters.zoneNumber,
+    tag: search.filters.tagId,
+    rack: search.filters.rackId,
+    face: search.filters.rackFace,
+    column: search.filters.columnNumber,
+    shelf: search.filters.shelfNumber,
+    status: search.filters.status,
+    sort: search.filters.sort
+  };
+  const payload = await getViewerSearchPayload(env, params, { includeFacets: false });
   if (payload?.ok === false) {
     return jsonResponse(payload, { status: Number(payload.status || 400) });
   }

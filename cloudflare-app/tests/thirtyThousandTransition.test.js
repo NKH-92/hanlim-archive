@@ -109,6 +109,7 @@ test("최초 5,001건은 사용자의 묶음 선택 없이 5,000건씩 재개되
     const activePage = await getDocumentPageWindow(env, activeFilters, 1, 30);
     assert.equal(activePage.items.length, 30);
     assert.equal(activePage.items.every((document) => document.status === "active"), true);
+    assert.equal(activePage.items.every((document) => !Object.hasOwn(document, "tag_names")), true);
     assert.equal(await getFastDocumentCount(env, activeFilters), 4501);
 
     const exportManifest = await createDocumentSnapshotExport(env, {

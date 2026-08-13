@@ -46,6 +46,7 @@ test("정적 client 조립은 직렬화 소스·초기화 순서·검색 계약�
   const searchCoreTag = clientScriptModule.searchCoreScript();
   assert.equal(searchCoreTag, `<script type="module" src="/assets/search-core.js"></script>`);
   assert.doesNotMatch(script, /window\.__name|createSearchCore\.toString/);
+  assert.doesNotMatch(script, /excelSnapshotMaxItems|data-excel-snapshot-upload/);
   assert.ok(script.includes(`var escapeHtmlClient = (${escapeHtml.toString()});`));
 
   const orderedMarkers = [
@@ -68,6 +69,7 @@ test("정적 client 조립은 직렬화 소스·초기화 순서·검색 계약�
   assert.ok(script.includes("검색 중…"));
   assert.ok(script.includes("검색 결과가 없습니다."));
   assert.ok(script.includes("viewer-result-row"));
+  assert.ok(script.includes("viewer-result-detail-only"));
   assert.ok(script.includes("data-search-more"));
   assert.ok(script.includes("payload.nextCursor"));
   assert.doesNotMatch(script, /fetch\('\/api\/search-index'/);
@@ -114,7 +116,9 @@ test("즉시 검색 DOM 교체는 화면에 남은 선택만 일괄 작업 상�
   assert.match(script, /new Set\(Array\.from\(document\.querySelectorAll\('\[data-bulk-item\]:checked'\)\)/);
   assert.match(script, /item\.checked = selectedIds\.has\(item\.value\)/);
   assert.match(script, /replaceResults\(initialResults\.body, false\)/);
-  assert.match(script, /replaceResults\(html, append\)/);
+  assert.match(script, /list\.insertAdjacentHTML\('beforeend', listHtml\)/);
+  assert.match(script, /resultsBody\.insertAdjacentHTML\('beforeend', '<nav class="pagination">/);
+  assert.doesNotMatch(script, /replaceResults\(html, append\)/);
   assert.match(script, /replaceResults\(html, false\)/);
   assert.match(script, /viewerApp\.hidden = false/);
   assert.doesNotMatch(script, /viewerApp\.hidden = true/);
@@ -138,8 +142,20 @@ test("viewer filters use one live-search path on desktop and mobile", () => {
   assert.match(script, /data-viewer-filter-reset/);
   assert.match(script, /data-viewer-clear-filter/);
   assert.match(script, /data-viewer-set-filter/);
+  assert.match(script, /data-viewer-remove-token/);
   assert.match(script, /hasActiveSearchCriteria/);
   assert.match(script, /'필터 검색 결과'/);
+  assert.match(script, /history\.replaceState\(null, '', '\/app'/);
+  assert.match(script, /mobileFilterDialog\?\.close\(\);[\s\S]*syncBrowserUrl\(\);[\s\S]*requestSearch\('', false\)/);
+  assert.match(script, /window\.SearchCore\.parseSearchQuery/);
+  assert.match(script, /params\.set\('resolved', '1'\)/);
+  assert.match(script, /searchRequestParams\(cursor\)\.toString\(\)/);
+  assert.match(script, /viewerContext\.categories/);
+  assert.match(script, /viewerContext\.tags/);
+  assert.match(script, /payload\.candidateCount !== null && payload\.candidateCount !== undefined/);
+  assert.match(script, /Array\.isArray\(payload\.suggestions\)/);
+  assert.match(script, /if \(input\.closest\('\[data-viewer-form\]'\)\) \{/);
+  assert.match(script, /!hasActiveSearchCriteria\(\) && isHomeMode\) \{ syncBrowserUrl\(\); restoreInitial\(\); return; \}/);
   assert.match(script, /control\.form\?\.matches\('\[data-viewer-form\]'\)/);
   assert.doesNotMatch(script, /viewerForm\.addEventListener\?\.\('change', syncWorkspaceReturnTo\)/);
 });
@@ -164,7 +180,7 @@ test("라우트가 생산하는 전역 토스트 키는 모두 표시 문구를 
 });
 
 test("브라우저 CSV helper는 공백·제어문자 뒤 수식 접두어도 실제로 중화한다", () => {
-  const script = clientScriptModule.clientScript();
+  const script = excelSnapshotScript();
   const patternMatch = script.match(/var excelCsvFormulaPrefix = new RegExp\(("(?:\\.|[^"\\])*")\);/);
   const helperMatch = script.match(/function excelCsvCell\(value\) \{([\s\S]*?)\n      \}\n\n      document\.querySelectorAll\('\[data-snapshot-errors-csv\]'/);
   assert.ok(patternMatch);
