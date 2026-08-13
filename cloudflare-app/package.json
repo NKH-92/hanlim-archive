@@ -47,10 +47,10 @@
     "exceljs": "^4.4.0",
     "jszip": "^3.10.1",
     "typescript": "7.0.2",
-    "wrangler": "^4.113.0"
+    "wrangler": "^4.122.0"
   },
   "overrides": {
-    "brace-expansion": "5.0.8",
+    "brace-expansion": "5.0.9",
     "sharp": "0.35.3",
     "uuid": "11.1.1"
   }
