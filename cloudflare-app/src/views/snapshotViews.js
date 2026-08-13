@@ -44,8 +44,9 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
     </tr>
   `).join("");
   return page("엑셀 대장 동기화", `
-    <script src="/assets/jszip.min.js"></script>
-    <script src="/assets/exceljs.min.js"></script>
+    <script defer src="/assets/jszip.min.js"></script>
+    <script defer src="/assets/exceljs.min.js"></script>
+    <script defer src="/assets/excel-app.js"></script>
     <section class="page-head">
       <div><h1>엑셀 대장 동기화</h1><p class="muted">엑셀 파일을 기준으로 전체 문서 대장을 검증하고 안전하게 동기화합니다.</p></div>
       <button type="button" class="button secondary" data-excel-export><i class="fa-solid fa-file-excel"></i> 현재 대장 엑셀 추출</button>
@@ -201,8 +202,9 @@ export function documentSnapshotDetailPage({
         </div>`).join("")}</div>`
     : "";
   return page(`${snapshot.snapshot_code} 엑셀 동기화`, `
-    <script src="/assets/jszip.min.js"></script>
-    <script src="/assets/exceljs.min.js"></script>
+    <script defer src="/assets/jszip.min.js"></script>
+    <script defer src="/assets/exceljs.min.js"></script>
+    <script defer src="/assets/excel-app.js"></script>
     <section class="page-head">
       <div><h1>${escapeHtml(snapshot.snapshot_code)}</h1><p class="muted">${escapeHtml(snapshot.source_name)}</p></div>
       <div class="button-group"><button type="button" class="button secondary" data-excel-export>현재 대장 엑셀 추출</button><a class="button secondary" href="/documents/import">엑셀 대장 동기화</a></div>

@@ -113,7 +113,9 @@ test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한�
   assert.match(css, /input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\):not\(\[type="hidden"\]\), select, textarea \{ min-height: 44px; font-size: 16px; \}/);
   assert.match(css, /input\[type="checkbox"\], input\[type="radio"\] \{ flex: none; width: 20px; min-width: 20px; min-height: 20px; padding: 0; justify-self: start; \}/);
   assert.match(css, /\.viewer-result-table\.is-selectable \.viewer-result-row,[\s\S]*grid-template-columns: 1fr/);
-  assert.match(css, /\.viewer-result-row > \.check-col \{ width: 100%; \}/);
+  assert.match(css, /\.viewer-result-row > \.viewer-result-detail-only \{ display: none; \}/);
+  assert.match(css, /\.viewer-result-row > \.check-col \{ position: absolute;[^}]*width: 20px; \}/);
+  assert.match(css, /\.viewer-result-name a \{ display: -webkit-box;[^}]*-webkit-line-clamp: 2; \}/);
   assert.match(css, /\.viewer-result-row \.mono \.viewer-result-value \{ min-width: 0; white-space: nowrap; overflow-wrap: normal; \}/);
   assert.match(css, /\.workflow-stepper \{ grid-template-columns: repeat\(5, minmax\(104px, 1fr\)\)/);
   assert.match(css, /\.document-detail-head \{ grid-template-columns: minmax\(0, 1fr\); max-inline-size: none; margin: calc\(-1 \* var\(--sp-3\)\) calc\(-1 \* var\(--sp-3\)\) var\(--sp-3\); padding: var\(--sp-5\) calc\(var\(--sp-4\) \+ var\(--sp-3\)\)/);

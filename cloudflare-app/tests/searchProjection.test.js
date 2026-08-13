@@ -342,6 +342,89 @@ test("Core projection 검색은 정확 일치·퍼지·cursor·열화 판정 계
   }
 });
 
+test("projection 후검증에서 제외된 후보도 cursor offset은 소비해 중복 페이지를 만들지 않는다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  try {
+    await readyProjection(env);
+    const ids = database.prepare(`
+      SELECT document_id
+      FROM search_projection_documents
+      ORDER BY document_id
+      LIMIT 2
+    `).all().map((row) => Number(row.document_id));
+    assert.equal(ids.length, 2);
+    database.prepare(`
+      UPDATE search_projection_documents
+      SET normalized_text = 'cursorghostterm'
+      WHERE document_id IN (?, ?)
+    `).run(...ids);
+    database.prepare("INSERT INTO search_projection_fts(search_projection_fts) VALUES('rebuild')").run();
+
+    const first = await getViewerSearchPayload(env, { q: "cursorghostterm", limit: 1 });
+    assert.deepEqual(first.items, []);
+    assert.equal(first.hasMore, true);
+    assert.ok(first.nextCursor);
+
+    const second = await getViewerSearchPayload(env, {
+      q: "cursorghostterm",
+      limit: 1,
+      cursor: first.nextCursor
+    });
+    assert.deepEqual(second.items, []);
+    assert.equal(second.hasMore, false);
+    assert.equal(second.nextCursor, null);
+  } finally {
+    database.close();
+  }
+});
+
+test("필터 전용 검색은 총건수 미계산 상태에서도 opaque cursor로 다음 30건을 이어간다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  try {
+    database.exec(`
+      WITH RECURSIVE sequence(value) AS (
+        SELECT 1
+        UNION ALL
+        SELECT value + 1 FROM sequence WHERE value < 35
+      )
+      INSERT INTO documents (
+        storage_code, category_id, document_number, revision_number, document_name,
+        rack_slot_id, rack_face, status, sync_state
+      )
+      SELECT
+        'ARC-FILTER-' || printf('%03d', sequence.value),
+        source.category_id,
+        'FILTER-' || printf('%03d', sequence.value),
+        'Rev.0',
+        '필터 전용 문서 ' || sequence.value,
+        source.rack_slot_id,
+        source.rack_face,
+        'active',
+        'current'
+      FROM sequence
+      CROSS JOIN (SELECT category_id, rack_slot_id, rack_face FROM documents ORDER BY id LIMIT 1) source;
+    `);
+    const categoryId = database.prepare("SELECT category_id FROM documents ORDER BY id LIMIT 1").get().category_id;
+    const first = await getViewerSearchPayload(env, { category: categoryId, limit: 30 });
+
+    assert.equal(first.items.length, 30);
+    assert.equal(first.pagination.totalItems, null);
+    assert.equal(first.candidateCount, null);
+    assert.equal(first.hasMore, true);
+    assert.ok(first.nextCursor);
+
+    const second = await getViewerSearchPayload(env, { category: categoryId, limit: 30, cursor: first.nextCursor });
+    assert.ok(second.items.length >= 6);
+    assert.equal(second.hasMore, false);
+    assert.equal(second.nextCursor, null);
+    assert.equal(new Set([...first.items, ...second.items].map((item) => item.id)).size, first.items.length + second.items.length);
+  } finally {
+    database.close();
+  }
+});
+
 test("projection 검색은 200건을 넘는 결과의 정확한 페이지·전체 합계·패싯을 반환한다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database) };

@@ -8,12 +8,11 @@ export function suggestionScript() {
           clearTimeout(timer);
           var q = input.value.trim();
           if (!datalist || q.length < 2) return;
-          if (input.closest('[data-viewer-form]') && window.__hanlimSearchIndexReady) {
+          if (input.closest('[data-viewer-form]')) {
             datalist.innerHTML = '';
             return;
           }
           timer = setTimeout(function () {
-            if (input.closest('[data-viewer-form]') && window.__hanlimSearchIndexReady) return;
             var suggestionUrl = '/api/search-suggestions?q=' + encodeURIComponent(q);
             fetch(suggestionUrl, { headers: { Accept: 'application/json' } })
               .then(function (response) { return response.ok ? response.json() : { suggestions: [] }; })

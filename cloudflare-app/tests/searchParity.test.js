@@ -189,8 +189,8 @@ test("server and browser keep the exact-code row fields and key markup", async (
   const expectedNumber = '<span class="mono" role="cell" data-label="문서번호/개정"><span class="viewer-result-value"><mark>PV</mark>-<mark>2026</mark>-<mark>014</mark> <small>Rev.1</small></span></span>';
   assert.match(serverHtml, new RegExp(expectedNumber));
   assert.match(browser.html, new RegExp(expectedNumber));
-  assert.match(serverHtml, /data-label="대분류">PV<\/span>/);
-  assert.match(browser.html, /data-label="보관 위치">1구역 \/ 1-1번 랙 \/ 2열 \/ 3선반<\/span>/);
+  assert.match(serverHtml, /viewer-result-detail-only" role="cell" data-label="대분류">PV<\/span>/);
+  assert.match(browser.html, /viewer-result-location viewer-result-detail-only" role="cell" data-label="보관 위치">1구역 \/ 1-1번 랙 \/ 2열 \/ 3선반<\/span>/);
   assert.match(serverHtml, /status document-active">보관중/);
   assert.match(browser.html, /status document-active">보관중/);
   assert.equal(browser.title, `"${query}" 검색 결과`);

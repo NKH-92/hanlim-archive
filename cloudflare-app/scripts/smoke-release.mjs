@@ -16,6 +16,7 @@ const ADMIN_SETTINGS_MARKERS = Object.freeze([
 const PUBLIC_ASSET_CONTRACTS = Object.freeze([
   Object.freeze({ path: "/assets/app.css", contentType: "text/css" }),
   Object.freeze({ path: "/assets/app.js", contentType: "text/javascript" }),
+  Object.freeze({ path: "/assets/excel-app.js", contentType: "text/javascript" }),
   Object.freeze({ path: "/images/hanlim-pharm-logo.svg", contentType: "image/svg+xml" })
 ]);
 const PUBLIC_ASSET_SECURITY_HEADERS = Object.freeze({

@@ -24,7 +24,9 @@ export function dashboardPage({
   viewerSearch = { items: [], pagination: { totalItems: 0, totalPages: 1, page: 1, pageSize: 30 }, facets: {}, suggestions: [] },
   categories = [],
   tags = [],
+  racks = [],
   filters = {},
+  explicitFilters = {},
   parsedQuery = null,
   didYouMean = [],
   editableSets = [],
@@ -32,19 +34,42 @@ export function dashboardPage({
   mode = "results"
 }) {
   const capabilities = capabilitiesFromSession(session);
+  const uiFilters = Object.keys(explicitFilters || {}).length
+    ? {
+        ...explicitFilters,
+        status: explicitFilters.status || filters.status,
+        sort: explicitFilters.sort || filters.sort
+      }
+    : filters;
   const viewerContext = safeEmbeddedJson({
     categories: categories.map((item) => ({ id: Number(item.id), name: String(item.name || "") })),
-    tags: tags.map((item) => ({ id: Number(item.id), name: String(item.name || "") }))
+    tags: tags.map((item) => ({ id: Number(item.id), name: String(item.name || "") })),
+    racks: racks.map((item) => ({
+      id: Number(item.id),
+      code: String(item.code || ""),
+      zoneNumber: Number(item.zone_number || 0),
+      rackNumber: Number(item.rack_number || 0),
+      isSingleSided: Number(item.is_single_sided || 0) === 1
+    })),
+    explicitFilters: filterUrlValues(uiFilters)
   });
   const documents = viewerSearch.items || [];
   const suggestions = viewerSearch.suggestions || [];
-  const totalItems = Number(viewerSearch.pagination?.totalItems || 0);
+  const rawTotalItems = viewerSearch.pagination?.totalItems;
+  const totalItems = rawTotalItems === null || rawTotalItems === undefined ? null : Number(rawTotalItems || 0);
   const shownItems = documents.length;
-  const resultStatusText = !totalItems
-    ? "검색 결과가 없습니다."
-    : shownItems < totalItems
-      ? `${totalItems.toLocaleString("ko-KR")}건 중 ${shownItems.toLocaleString("ko-KR")}건을 표시했습니다.`
-      : `${totalItems.toLocaleString("ko-KR")}건을 찾았습니다.`;
+  const resultCountLabel = totalItems === null
+    ? `${shownItems.toLocaleString("ko-KR")}${viewerSearch.pagination?.hasMore ? "+" : ""}건`
+    : `${totalItems.toLocaleString("ko-KR")}건`;
+  const resultStatusText = totalItems === null
+    ? !shownItems
+      ? "조건에 맞는 문서가 없습니다."
+      : `${shownItems.toLocaleString("ko-KR")}건을 표시했습니다.${viewerSearch.pagination?.hasMore ? " 다음 결과가 더 있습니다." : ""}`
+    : !totalItems
+      ? "검색 결과가 없습니다."
+      : shownItems < totalItems
+        ? `${totalItems.toLocaleString("ko-KR")}건 중 ${shownItems.toLocaleString("ko-KR")}건을 표시했습니다.`
+        : `${totalItems.toLocaleString("ko-KR")}건을 찾았습니다.`;
 
   // 홈 모드: 검색을 먼저 두되 서버가 기본 30행을 함께 제공한다.
   if (mode === "home") {
@@ -55,15 +80,21 @@ export function dashboardPage({
             <h1 id="viewer-title">문서를 빠르게 찾으세요.</h1>
             <p class="search-home-sub">문서명, 문서번호, 대분류 또는 보관 위치를 입력하면 가장 가까운 결과부터 보여드립니다.</p>
           </div>
-          ${viewerSearchForm({ query: "", suggestions: [], categories, tags, filters, home: true, showFilters: false, formId: "viewer-search-form" })}
+          ${viewerSearchForm({ query: "", suggestions: [], categories, tags, filters: uiFilters, home: true, showFilters: false, formId: "viewer-search-form" })}
         </section>
         ${viewerFilterControls({
           query: "",
           categories,
           tags,
-          filters,
-          statusText: totalItems ? `보관 문서 ${totalItems.toLocaleString("ko-KR")}건 중 최근 등록·수정 ${shownItems.toLocaleString("ko-KR")}건을 표시합니다.` : "보관 중인 문서가 없습니다.",
-          supplemental: `${activeFilterChips({ query: "", filters, categories, tags })}<div data-home-extras>${homeQuickLinks(categories)}</div>`
+          filters: uiFilters,
+          statusText: totalItems === null
+            ? shownItems
+              ? `최근 등록·수정 문서 ${shownItems.toLocaleString("ko-KR")}건을 표시합니다.${viewerSearch.pagination?.hasMore ? " 다음 결과가 더 있습니다." : ""}`
+              : "보관 중인 문서가 없습니다."
+            : totalItems
+              ? `보관 문서 ${totalItems.toLocaleString("ko-KR")}건 중 최근 등록·수정 ${shownItems.toLocaleString("ko-KR")}건을 표시합니다.`
+              : "보관 중인 문서가 없습니다.",
+          supplemental: `${parsedChipRow(null, "")}${activeFilterChips({ query: "", filters: uiFilters, categories, tags, racks })}<div data-home-extras>${homeQuickLinks(categories)}</div>`
         })}
 
         <section class="viewer-workspace is-home" data-viewer-app>
@@ -72,7 +103,7 @@ export function dashboardPage({
               <h2 id="viewer-results-title" data-results-title>최근 등록·수정 문서</h2>
               <div class="viewer-result-tools">
                 ${columnSettings()}
-                <span class="count-badge" data-results-count>${totalItems}건</span>
+                <span class="count-badge" data-results-count>${resultCountLabel}</span>
               </div>
             </div>
             <div data-results-body>
@@ -85,7 +116,7 @@ export function dashboardPage({
         </section>
 
       </section>
-      ${mobileViewerFilterDialog({ query: "", categories, tags, filters })}
+      ${mobileViewerFilterDialog({ query: "", categories, tags, filters: uiFilters })}
       <script type="application/json" data-viewer-context>${viewerContext}</script>
       ${searchCoreScript()}
     `, session);
@@ -98,15 +129,15 @@ export function dashboardPage({
         <h1 id="viewer-title">${query ? `“${escapeHtml(query)}” 검색 결과` : "문서"}</h1>
         <p class="page-sub">문서명과 문서번호를 함께 해석해 위치를 빠르게 비교합니다.</p>
       </div>
-      ${viewerSearchForm({ query, suggestions, categories, tags, filters, showFilters: false, formId: "viewer-search-form" })}
+      ${viewerSearchForm({ query, suggestions, categories, tags, filters: uiFilters, showFilters: false, formId: "viewer-search-form" })}
     </section>
     ${viewerFilterControls({
       query,
       categories,
       tags,
-      filters,
+      filters: uiFilters,
       statusText: resultStatusText,
-      supplemental: `${parsedChipRow(parsedQuery, query)}${activeFilterChips({ query, filters, categories, tags })}`
+      supplemental: `${parsedChipRow(parsedQuery, query)}${activeFilterChips({ query, filters: uiFilters, categories, tags, racks })}`
     })}
 
     <section class="viewer-workspace" data-viewer-app>
@@ -115,7 +146,7 @@ export function dashboardPage({
           <h2 id="viewer-results-title" data-results-title>${query ? `"${escapeHtml(query)}" 검색 결과` : hasExplicitViewerFilter(filters) ? "필터 검색 결과" : "최근 등록·수정 문서"}</h2>
           <div class="viewer-result-tools">
             ${columnSettings()}
-            <span class="count-badge" data-results-count>${viewerSearch.pagination?.totalItems === null ? `${documents.length}${viewerSearch.pagination?.hasMore ? "+" : ""}` : totalItems}건</span>
+            <span class="count-badge" data-results-count>${resultCountLabel}</span>
           </div>
         </div>
         <div data-results-body>
@@ -125,9 +156,9 @@ export function dashboardPage({
         </div>
       </article>
       ${workspacePreview()}
-      ${workspaceBulkActions({ capabilities, editableSets, returnTo: viewerUrl({ query, filters, page: viewerSearch.pagination?.page || 1 }) })}
+      ${workspaceBulkActions({ capabilities, editableSets, returnTo: viewerUrl({ query, filters: uiFilters, page: viewerSearch.pagination?.page || 1 }) })}
     </section>
-    ${mobileViewerFilterDialog({ query, categories, tags, filters })}
+    ${mobileViewerFilterDialog({ query, categories, tags, filters: uiFilters })}
     <script type="application/json" data-viewer-context>${viewerContext}</script>
     ${searchCoreScript()}
   `, session);
@@ -161,7 +192,15 @@ function viewerFilterControls({ query, categories, tags, filters, statusText, su
 }
 
 function activeViewerFilterCount(filters = {}) {
-  return [filters.categoryId, filters.tagId, filters.zoneNumber, filters.rackId].filter(Boolean).length;
+  return [
+    filters.categoryId,
+    filters.tagId,
+    filters.zoneNumber,
+    filters.rackId,
+    filters.rackFace,
+    filters.columnNumber,
+    filters.shelfNumber
+  ].filter(Boolean).length;
 }
 
 function hasExplicitViewerFilter(filters = {}) {
@@ -192,7 +231,9 @@ function viewerLocationFilterInputs(filters = {}) {
     ["face", filters.rackFace],
     ["column", filters.columnNumber],
     ["shelf", filters.shelfNumber]
-  ].filter(([, value]) => value !== undefined && value !== null && value !== "")
+  ].filter(([name, value]) => name === "face"
+    ? value === "A" || value === "B"
+    : Number.isInteger(Number(value)) && Number(value) > 0)
     .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}">`)
     .join("");
 }
@@ -225,10 +266,10 @@ function viewerDocumentCard(document, query = "", selectable = false, selected =
       ${selectable ? `<span class="check-col" role="cell" data-label="선택"><input type="checkbox" value="${Number(document.id)}" data-bulk-item aria-label="${escapeHtml(document.documentName || document.documentNumber)} 선택"${selected ? " checked" : ""}></span>` : ""}
       <span class="viewer-result-name" role="cell" data-label="문서명"><a href="/documents/${document.id}" data-doc-click="${document.id}">${highlight(document.documentName || "문서명 없음", query)}</a></span>
       <span class="mono" role="cell" data-label="문서번호/개정"><span class="viewer-result-value">${highlight(document.documentNumber, query)} <small>${escapeHtml(document.revisionNumber || "-")}</small></span></span>
-      <span role="cell" data-label="대분류">${escapeHtml(document.categoryName || "-")}</span>
-      <span class="viewer-result-location" role="cell" data-label="보관 위치">${escapeHtml(locationText)}</span>
-      <span role="cell" data-label="상태">${statusBadge(document.status)}</span>
-      <span class="optional-column" data-column="revision-date" role="cell" data-label="제·개정일" hidden>${escapeHtml(document.revisionDate || "-")}</span>
+      <span class="viewer-result-detail-only" role="cell" data-label="대분류">${escapeHtml(document.categoryName || "-")}</span>
+      <span class="viewer-result-location viewer-result-detail-only" role="cell" data-label="보관 위치">${escapeHtml(locationText)}</span>
+      <span class="viewer-result-detail-only" role="cell" data-label="상태">${statusBadge(document.status)}</span>
+      <span class="optional-column viewer-result-detail-only" data-column="revision-date" role="cell" data-label="제·개정일" hidden>${escapeHtml(document.revisionDate || "-")}</span>
     </article>
   `;
 }
@@ -276,15 +317,38 @@ function workspaceBulkActions({ capabilities, editableSets = [], returnTo }) {
   return `<div class="bulk-bar workspace-bulk-bar" data-bulk-bar data-document-selection hidden><span data-bulk-count>0건 선택</span><span class="bulk-limit-notice" data-bulk-limit-notice role="status" hidden></span>${setForm}${disposalButton}</div>${disposalDialog}`;
 }
 
-function activeFilterChips({ query, filters = {}, categories = [], tags = [] }) {
+function activeFilterChips({ query, filters = {}, categories = [], tags = [], racks = [] }) {
   const chips = [];
   const add = (name, label, patch) => chips.push(`<a class="chip active" href="${viewerUrl({ query, filters, patch })}" data-viewer-clear-filter="${name}">${escapeHtml(label)} <span aria-hidden="true">×</span></a>`);
   if (filters.categoryId) add("category", categories.find((item) => Number(item.id) === Number(filters.categoryId))?.name || "대분류", { categoryId: 0 });
   if (filters.tagId) add("tag", tags.find((item) => Number(item.id) === Number(filters.tagId))?.name || "태그", { tagId: 0 });
   if (filters.zoneNumber) add("zone", `${filters.zoneNumber}구역`, { zoneNumber: 0 });
-  if (filters.rackId) add("rack", `랙 ${filters.rackId}`, { rackId: 0, rackFace: "", columnNumber: 0, shelfNumber: 0 });
+  if (filters.rackId) {
+    const rack = racks.find((item) => Number(item.id) === Number(filters.rackId));
+    add("rack", rack?.code ? `랙 ${rack.code}` : `랙 ${filters.rackId}`, { rackId: 0, rackFace: "", columnNumber: 0, shelfNumber: 0 });
+  }
+  if (filters.rackFace) {
+    const rack = racks.find((item) => Number(item.id) === Number(filters.rackId));
+    add("face", rack?.is_single_sided || rack?.isSingleSided ? "단면" : filters.rackFace === "B" ? "2면" : "1면", { rackFace: "" });
+  }
+  if (filters.columnNumber) add("column", `${filters.columnNumber}열`, { columnNumber: 0 });
+  if (filters.shelfNumber) add("shelf", `${filters.shelfNumber}선반`, { shelfNumber: 0 });
   if (filters.status && filters.status !== "active") add("status", filters.status === "disposed" ? "폐기" : "전체 상태", { status: "active" });
   return `<div data-active-filter-chips>${chips.length ? `<nav class="active-filter-chips" aria-label="적용된 필터">${chips.join("")}</nav>` : ""}</div>`;
+}
+
+function filterUrlValues(filters = {}) {
+  return {
+    category: Number(filters.categoryId || 0),
+    tag: Number(filters.tagId || 0),
+    zone: Number(filters.zoneNumber || 0),
+    rack: Number(filters.rackId || 0),
+    face: String(filters.rackFace || ""),
+    column: Number(filters.columnNumber || 0),
+    shelf: Number(filters.shelfNumber || 0),
+    status: String(filters.status || ""),
+    sort: String(filters.sort || "")
+  };
 }
 
 function viewerPagination(pagination = {}, { query, filters }) {

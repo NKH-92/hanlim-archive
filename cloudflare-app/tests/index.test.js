@@ -61,7 +61,7 @@ test("root redirects every authenticated role to the search home", async () => {
   }
 });
 
-test("viewer search api returns paginated items, facets, and suggestions", async () => {
+test("viewer search api returns paginated items and suggestions without unused facets", async () => {
   const env = viewerSearchEnv();
   const user = { username: "viewer", displayName: "Viewer", role: "User" };
   const cookie = await createSessionCookie(user, env, false);
@@ -81,8 +81,39 @@ test("viewer search api returns paginated items, facets, and suggestions", async
   assert.equal(payload.items[0].location.label, "1구역 / 1-1번 랙 / 2열 / 3선반");
   assert.equal(payload.items[0].location.rackLabel, "1-1");
   assert.equal(payload.pagination.totalItems, 1);
-  assert.equal(payload.facets.categories[0].label, "PV");
+  assert.equal("facets" in payload, false);
   assert.ok(payload.suggestions.length >= 1);
+});
+
+test("viewer search api applies the same natural-language filters as the server-rendered page", async () => {
+  const env = viewerSearchEnv({ categories: true });
+  const cookie = await createSessionCookie({ username: "viewer", displayName: "Viewer", role: "User" }, env, false);
+  const response = await worker.fetch(new Request(
+    "https://archive.example.com/api/viewer/search?q=" + encodeURIComponent("1구역 PV") + "&limit=30",
+    { headers: { Cookie: cookie, Accept: "application/json" } }
+  ), env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.items.length, 1);
+  assert.equal(payload.items[0].documentNumber, "PV-2026-014");
+  assert.equal(payload.candidateCount, null, "자동 인식 필터가 남은 검색어 없는 필터 전용 경로를 사용한다");
+  assert.ok(env.state.calls.some((call) =>
+    call.sql.includes("d.category_id = ?") &&
+    call.sql.includes("r.zone_number = ?") &&
+    call.args.includes(1)
+  ));
+});
+
+test("resolved viewer search skips repeated category and tag reference reads", async () => {
+  const env = viewerSearchEnv({ categories: true });
+  const cookie = await createSessionCookie({ username: "viewer", displayName: "Viewer", role: "User" }, env, false);
+  const response = await worker.fetch(new Request(
+    "https://archive.example.com/api/viewer/search?resolved=1&q=&category=1&zone=1&limit=30",
+    { headers: { Cookie: cookie, Accept: "application/json" } }
+  ), env);
+  assert.equal(response.status, 200);
+  assert.equal(env.state.calls.some((call) => /FROM categories|FROM tags/.test(call.sql)), false);
 });
 
 test("disposed suggestion requests never expose active-document suggestions", async () => {
@@ -111,6 +142,11 @@ test("일반 dashboard는 상태 파라미터와 무관하게 보관중 문서�
   const homeSearch = authoritativeDocumentSearch(homeEnv.state.calls);
   assert.ok(homeSearch, "초기 /app도 서버에서 기본 문서 목록을 읽어야 한다");
   assert.ok(homeSearch.args.includes(31), "초기 문서 목록은 30행과 다음 페이지 sentinel 1행을 읽어야 한다");
+  assert.equal(
+    homeEnv.state.calls.some((call) => call.sql.includes("SELECT generation FROM search_projection_state")),
+    false,
+    "서버 렌더링 목록은 사용하지 않는 API cursor generation을 읽지 않아야 한다"
+  );
   assert.doesNotMatch(homeHtml, /<select name="status"/);
   assert.match(homeHtml, /<option value="updated" selected>최신순<\/option>/);
   assert.match(homeHtml, /충전 공정 밸리데이션 보고서/);
@@ -547,7 +583,8 @@ function userSessionEnv(role = "User") {
   };
 }
 
-function viewerSearchEnv() {
+function viewerSearchEnv({ categories = false } = {}) {
+  const state = { calls: [] };
   const documents = [{
     id: 7,
     storage_code: "ARC-000007",
@@ -574,19 +611,22 @@ function viewerSearchEnv() {
 
   return {
     SESSION_SECRET,
+    state,
     DB: {
       prepare(sql) {
         return {
           async first() {
+            state.calls.push({ type: "first", sql, args: [] });
             if (sql.includes("SELECT generation FROM search_projection_state")) return { generation: 1 };
             return null;
           },
-          bind(usernameOrLimit) {
+          bind(...args) {
             return {
               async first() {
+                state.calls.push({ type: "first", sql, args });
                 if (sql.includes("FROM app_users")) {
                   return {
-                    username: usernameOrLimit,
+                    username: args[0],
                     display_name: "Viewer",
                     status: "approved",
                     role: "User"
@@ -595,12 +635,18 @@ function viewerSearchEnv() {
                 return null;
               },
               async all() {
+                state.calls.push({ type: "all", sql, args });
                 if (sql.includes("FROM documents d")) {
                   return { results: documents };
                 }
                 return { results: [] };
               }
             };
+          },
+          async all() {
+            state.calls.push({ type: "all", sql, args: [] });
+            if (categories && sql.includes("FROM categories")) return { results: [{ id: 1, name: "PV" }] };
+            return { results: [] };
           }
         };
       }
@@ -753,7 +799,6 @@ function authoritativeDocumentSearch(calls) {
   return calls.find((call) =>
     call.type === "all" &&
     call.sql.includes("FROM documents d") &&
-    call.sql.includes("GROUP BY d.id") &&
     call.sql.includes("ORDER BY d.updated_at DESC, d.id DESC") &&
     call.sql.includes("LIMIT ?")
   );

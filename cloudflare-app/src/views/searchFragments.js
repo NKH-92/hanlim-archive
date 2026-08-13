@@ -15,18 +15,17 @@ export function highlight(text, query) {
 // "2구역 PV"처럼 해석된 검색어를 칩으로 보여주고 클릭으로 해제한다.
 export function parsedChipRow(parsedQuery, query, basePath = "/app") {
   const chips = parsedQuery?.chips || [];
-  if (!chips.length) return "";
   const typeLabels = { zone: "구역", category: "대분류", tag: "태그", status: "상태" };
-  return `
+  return `<div data-parsed-filter-chips>${chips.length ? `
     <div class="parsed-chip-row" aria-label="검색어에서 인식한 조건">
       <span>자동 적용</span>
       ${chips.map((chip) => {
         const token = String(chip.token || chip.label || "");
         const remaining = String(query).split(/\s+/).filter((part) => part !== token).join(" ");
-        return `<a class="chip active" href="${escapeHtml(basePath)}?q=${encodeURIComponent(remaining)}" title="조건 해제">${escapeHtml(typeLabels[chip.type] || chip.type)}: ${escapeHtml(chip.label)} ×</a>`;
+        return `<a class="chip active" href="${escapeHtml(basePath)}?q=${encodeURIComponent(remaining)}" data-viewer-remove-token="${escapeHtml(token)}" title="조건 해제">${escapeHtml(typeLabels[chip.type] || chip.type)}: ${escapeHtml(chip.label)} ×</a>`;
       }).join("")}
     </div>
-  `;
+  ` : ""}</div>`;
 }
 
 export function didYouMeanView(candidates) {

@@ -24,7 +24,8 @@ test("폐기된 브라우저 전체 검색 인덱스 endpoint는 D1 조회 없�
 test("전역 CSS와 JS asset은 인증 없이 정적 asset binding에서 제공한다", async (t) => {
   const contentTypes = new Map([
     ["/assets/app.css", "text/css; charset=utf-8"],
-    ["/assets/app.js", "application/javascript; charset=utf-8"]
+    ["/assets/app.js", "application/javascript; charset=utf-8"],
+    ["/assets/excel-app.js", "application/javascript; charset=utf-8"]
   ]);
   const env = {
     ASSETS: {
@@ -73,7 +74,8 @@ test("공개 GET 경로의 HEAD와 OPTIONS는 본문 없이 정상 method 계약
     { path: "/healthz", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" },
     { path: "/readyz", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" },
     { path: "/login", method: "OPTIONS", status: 204, allow: "GET, HEAD, POST, OPTIONS" },
-    { path: "/assets/app.css", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" }
+    { path: "/assets/app.css", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" },
+    { path: "/assets/excel-app.js", method: "OPTIONS", status: 204, allow: "GET, HEAD, OPTIONS" }
   ];
 
   for (const item of cases) {

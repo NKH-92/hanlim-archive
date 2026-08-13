@@ -132,7 +132,7 @@ test("30,000건 운영 정책은 27,000 경고와 자동 분할 경계를 고정
   assert.equal(FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems, 1000);
   assert.equal(FREE_TIER_BUDGET.searchCandidateMaxItems, 200);
   assert.equal(FREE_TIER_BUDGET.searchResponseMaxItems, 30);
-  assert.equal(FREE_TIER_BUDGET.searchRebuildChunkSize, 50);
+    assert.equal(FREE_TIER_BUDGET.searchRebuildChunkSize, 500);
   assert.equal(FREE_TIER_BUDGET.bootstrapApplyChunkSize, 5000);
   assert.equal(FREE_TIER_BUDGET.initialLoadDailyRowsWrittenStop, 95000);
 });

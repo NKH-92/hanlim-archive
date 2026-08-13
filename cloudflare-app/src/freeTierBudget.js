@@ -35,8 +35,9 @@ export const FREE_TIER_BUDGET = Object.freeze({
   searchCandidateMaxItems: 200,
   searchResponseMaxItems: 30,
   searchOutboxCronChunkSize: 25,
-  // 전체 재색인은 bootstrap/복구 때만 필요하다. Cron마다 50건씩 전진해 foreground 요청과 분리한다.
-  searchRebuildChunkSize: 50,
+  // 전체 재색인은 bootstrap/복구 때만 필요하다. 3만건도 약 5시간 안에 회복하도록
+  // Cron마다 500건씩 전진하되, JSON payload는 projection 계층에서 D1 값 상한에 맞춰 재분할한다.
+  searchRebuildChunkSize: 500,
   // 운영 지표용 일일 정지선. 최초 등록은 5,000건씩 날짜를 나누며 실제 Cloudflare 지표가 최종 권위값이다.
   initialLoadDailyRowsWrittenStop: 95000
 });

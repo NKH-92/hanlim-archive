@@ -98,19 +98,20 @@ export async function getDocumentPage(env, filters = {}, page = 1, pageSize = 30
   const result = await env.DB.prepare(`
     SELECT
       d.id,
-      ${DOCUMENT_CORE_COLUMNS}
+      d.document_number,
+      d.revision_number,
+      d.revision_date,
+      d.disposal_due_year,
+      d.document_name,
+      d.note,
+      d.rack_face,
+      d.status,
       d.updated_at,
       ${DOCUMENT_LOCATION_COLUMNS}
-      r.column_count,
-      r.shelf_count,
       rs.column_number,
-      rs.shelf_number,
-      rs.slot_code,
-      ${DOCUMENT_TAG_CONCAT}
+      rs.shelf_number
     ${DOCUMENT_BASE_JOINS}
-    ${DOCUMENT_TAG_JOINS}
     ${where}
-    GROUP BY d.id
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
   `).bind(...binds, safePageSize, offset).all();
@@ -126,19 +127,20 @@ export async function getDocumentPageWindow(env, filters = {}, page = 1, pageSiz
   const result = await env.DB.prepare(`
     SELECT
       d.id,
-      ${DOCUMENT_CORE_COLUMNS}
+      d.document_number,
+      d.revision_number,
+      d.revision_date,
+      d.disposal_due_year,
+      d.document_name,
+      d.note,
+      d.rack_face,
+      d.status,
       d.updated_at,
       ${DOCUMENT_LOCATION_COLUMNS}
-      r.column_count,
-      r.shelf_count,
       rs.column_number,
-      rs.shelf_number,
-      rs.slot_code,
-      ${DOCUMENT_TAG_CONCAT}
+      rs.shelf_number
     ${DOCUMENT_BASE_JOINS}
-    ${DOCUMENT_TAG_JOINS}
     ${where}
-    GROUP BY d.id
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
   `).bind(...binds, safePageSize + 1, offset).all();

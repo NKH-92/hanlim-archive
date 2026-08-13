@@ -88,6 +88,7 @@ test("운영 공개면 smoke는 HTTPS 전환과 asset MIME·ETag 재검증을 �
   const contentTypes = new Map([
     ["/assets/app.css", "text/css; charset=utf-8"],
     ["/assets/app.js", "text/javascript; charset=utf-8"],
+    ["/assets/excel-app.js", "text/javascript; charset=utf-8"],
     ["/images/hanlim-pharm-logo.svg", "image/svg+xml"]
   ]);
   const result = await verifyReleasePublicSurface({
@@ -131,9 +132,10 @@ test("운영 공개면 smoke는 HTTPS 전환과 asset MIME·ETag 재검증을 �
   assert.deepEqual(result.assets, {
     "/assets/app.css": 200,
     "/assets/app.js": 200,
+    "/assets/excel-app.js": 200,
     "/images/hanlim-pharm-logo.svg": 200
   });
-  assert.equal(calls.length, 7);
+  assert.equal(calls.length, 9);
 });
 
 test("asset-only release smoke는 임시 계정 없이 공개면과 배포 version을 검증한다", async () => {

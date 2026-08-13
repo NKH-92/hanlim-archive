@@ -311,6 +311,7 @@ test("엑셀 대장 동기화 화면은 단일 엑셀 전체 동기화 흐름만
   assert.match(managerMain, /name="syncReason" required minlength="10" maxlength="500"/);
   assert.match(managerMain, /작업 생성 시 감사 이력에 저장됩니다/);
   assert.ok(manager.indexOf('/assets/jszip.min.js') < manager.indexOf('/assets/exceljs.min.js'));
+  assert.ok(manager.indexOf('/assets/exceljs.min.js') < manager.indexOf('/assets/excel-app.js'));
   assert.match(managerMain, /accept="\.xlsx/);
   assert.match(managerMain, /data-excel-export/);
   assert.match(managerMain, /현재 대장 버전/);
