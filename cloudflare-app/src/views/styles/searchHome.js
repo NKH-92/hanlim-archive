@@ -5,17 +5,14 @@ export function searchHomeStyles() {
     .search-home .viewer-search-form.is-home { width: 100%; }
     .search-home-hero { position: relative; display: grid; align-content: center; justify-items: stretch; gap: var(--sp-2); min-height: 160px; padding: var(--sp-5) var(--sp-6); overflow: hidden; border-radius: var(--r-lg); background: var(--hero-bg); color: var(--surface); text-align: left; }
     .search-home-hero::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px); background-size: var(--sp-8) var(--sp-8); pointer-events: none; }
-    .search-home-copy, .search-home-hero .viewer-search-form, .search-home-hero .viewer-recents { position: relative; z-index: 1; width: min(760px, 100%); }
+    .search-home-copy, .search-home-hero .viewer-search-form { position: relative; z-index: 1; width: min(760px, 100%); }
     .search-home-copy { display: grid; gap: var(--sp-2); }
     .search-home-copy h1 { color: var(--surface); font-size: 28px; line-height: 1.2; }
     .search-home-sub { margin: 0; color: rgba(255, 255, 255, .82); max-width: 560px; font-size: 13.5px; }
     .search-home-hero .search-box { margin-top: var(--sp-2); padding: var(--sp-1); border: 0; background: var(--surface); box-shadow: var(--shadow-1); }
     .search-home-hero .search-box button { min-height: 44px; background: var(--action); color: var(--action-ink); }
     .search-home-hero .search-box button:hover { background: var(--action-strong); }
-    .search-home-hero .viewer-recents { color: rgba(255, 255, 255, .82); }
-    .search-home-hero .viewer-recents .chip { background: rgba(255, 255, 255, .12); border-color: transparent; color: var(--surface); }
     .search-home .search-box input { min-height: 44px; font-size: 15px; }
-    .search-home .viewer-recents { justify-content: flex-start; }
     .search-home .search-results-controls { margin-top: 0; }
     .search-home-filter { padding-top: var(--sp-1); }
     .viewer-workspace.is-home { grid-template-columns: 1fr; }
@@ -37,7 +34,6 @@ export function searchHomeStyles() {
       .search-home-copy h1 { font-size: 24px; }
       .search-home-copy .search-home-sub { display: none; }
       .search-home-hero .search-box { margin-top: var(--sp-3); }
-      .search-home-hero .viewer-recents { margin-top: var(--sp-2); }
     }
 `;
 }

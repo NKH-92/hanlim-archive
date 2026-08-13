@@ -378,6 +378,8 @@ test("dashboard page renders search-first row results without a floor plan", asy
   assert.match(html, /data-command-palette/);
   assert.match(html, /Ctrl\+K/);
   assert.doesNotMatch(APP_SCRIPT, /status=disposed/, "일반 검색 자동완성은 폐기 상태 경로를 만들지 않는다");
+  assert.doesNotMatch(html, /data-recent-searches|최근 검색/);
+  assert.doesNotMatch(APP_SCRIPT, /hanlimRecentSearches|data-recent-searches/);
   assert.doesNotMatch(html, />Dashboard</);
 });
 
@@ -478,6 +480,7 @@ test("document workspace exposes permission-scoped selection actions and five de
   assert.match(html, /data-column-toggle="revision-date"/);
   assert.match(html, /<span role="columnheader">문서번호 · 개정<\/span>/);
   assert.match(html, /data-column="revision-date" role="columnheader" hidden>제·개정일/);
+  assert.doesNotMatch(html, /data-bulk-select-all|현재 목록 선택/);
   assert.match(html, /role="grid" aria-label="문서 검색 결과"/);
   assert.match(html, /role="row" tabindex="0" aria-selected="false"/);
   assert.equal((html.match(/data-workspace-return-to/g) || []).length, 2);
@@ -540,7 +543,7 @@ test("floor plan page keeps the map separate from search and opens rack results 
       leftPct: 4.7,
       widthPct: 47.5,
       heightPct: 38.2,
-      racks: [{ id: 3, code: "1-03", rackNumber: 3, documentCount: 2, isSingleSided: false, leftPct: 50, topPct: 50, widthPct: 4 }]
+      racks: [{ id: 3, code: "1-03", description: "장기 보관 문서 전용", rackNumber: 3, documentCount: 2, isSingleSided: false, leftPct: 50, topPct: 50, widthPct: 4 }]
     }]
   }).text();
   const main = html.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] || "";
@@ -551,6 +554,9 @@ test("floor plan page keeps the map separate from search and opens rack results 
   assert.match(main, /data-floor-rack-search/);
   assert.match(main, /data-floor-plan-fit/);
   assert.match(main, /data-rack-inspector/);
+  assert.match(main, /data-rack-description="장기 보관 문서 전용"/);
+  assert.match(main, /<dt>설명<\/dt><dd data-rack-inspector-description>설명 없음<\/dd>/);
+  assert.match(main, /data-rack-inspector-description[^\n]+data-rack-description/);
   assert.match(main, /1면 · 0열 · 0단|data-rack-inspector-structure/);
   assert.match(main, /href="\/app\?rack=3&amp;status=active&amp;sort=location"/);
   assert.doesNotMatch(main, /<a[^>]*data-rack-inspector-edit/);

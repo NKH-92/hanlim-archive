@@ -56,7 +56,6 @@ export function dashboardPage({
             <p class="search-home-sub">문서명, 문서번호, 대분류 또는 보관 위치를 입력하면 가장 가까운 결과부터 보여드립니다.</p>
           </div>
           ${viewerSearchForm({ query: "", suggestions: [], categories, tags, filters, home: true, showFilters: false, formId: "viewer-search-form" })}
-          <div class="quick-row viewer-recents" data-recent-searches></div>
         </section>
         ${viewerFilterControls({
           query: "",
@@ -72,7 +71,6 @@ export function dashboardPage({
             <div class="section-title viewer-results-heading">
               <h2 id="viewer-results-title" data-results-title>최근 등록·수정 문서</h2>
               <div class="viewer-result-tools">
-                ${capabilities.canManageSets || capabilities.canManageDisposals ? `<label class="bulk-select-all-label"><input type="checkbox" data-bulk-select-all> 현재 목록 선택</label>` : ""}
                 ${columnSettings()}
                 <span class="count-badge" data-results-count>${totalItems}건</span>
               </div>
@@ -108,7 +106,7 @@ export function dashboardPage({
       tags,
       filters,
       statusText: resultStatusText,
-      supplemental: `${parsedChipRow(parsedQuery, query)}${activeFilterChips({ query, filters, categories, tags })}<div class="quick-row viewer-recents" data-recent-searches></div>`
+      supplemental: `${parsedChipRow(parsedQuery, query)}${activeFilterChips({ query, filters, categories, tags })}`
     })}
 
     <section class="viewer-workspace" data-viewer-app>
@@ -116,7 +114,6 @@ export function dashboardPage({
         <div class="section-title viewer-results-heading">
           <h2 id="viewer-results-title" data-results-title>${query ? `"${escapeHtml(query)}" 검색 결과` : hasExplicitViewerFilter(filters) ? "필터 검색 결과" : "최근 등록·수정 문서"}</h2>
           <div class="viewer-result-tools">
-            ${capabilities.canManageSets || capabilities.canManageDisposals ? `<label class="bulk-select-all-label"><input type="checkbox" data-bulk-select-all> 현재 목록 선택</label>` : ""}
             ${columnSettings()}
             <span class="count-badge" data-results-count>${viewerSearch.pagination?.totalItems === null ? `${documents.length}${viewerSearch.pagination?.hasMore ? "+" : ""}` : totalItems}건</span>
           </div>
