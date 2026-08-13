@@ -31,7 +31,7 @@ function floorRackMarkup(rack, {
     : `${rack.code} · 양면 (좌 ${rack.rackNumber}-1: 1열 왼쪽 시작 / 우 ${rack.rackNumber}-2: 1열 오른쪽 시작)`;
   const active = hit || Boolean(hitFace);
   const content = `${faces}${active ? `<span class="rack-hit-pin" aria-hidden="true">현재</span>` : ""}<span class="rack-num">${escapeHtml(badgeLabel)}</span>`;
-  const common = `class="${classes.join(" ")}"${faceAttr} data-floor-layout="${layoutKey}" data-rack-select data-rack-id="${Number(rack.id)}" data-rack-code="${escapeHtml(rack.code)}" data-rack-type="${rack.isSingleSided ? "단면" : "양면"}" data-rack-faces="${rack.isSingleSided ? 1 : 2}" data-rack-columns="${Number(rack.columnCount || 0)}" data-rack-shelves="${Number(rack.shelfCount || 0)}" data-rack-documents="${Number(rack.documentCount || 0)}" data-zone="${escapeHtml(String(zoneNumber))}" title="${escapeHtml(title)}"`;
+  const common = `class="${classes.join(" ")}"${faceAttr} data-floor-layout="${layoutKey}" data-rack-select data-rack-id="${Number(rack.id)}" data-rack-code="${escapeHtml(rack.code)}" data-rack-description="${escapeHtml(rack.description || "")}" data-rack-type="${rack.isSingleSided ? "단면" : "양면"}" data-rack-faces="${rack.isSingleSided ? 1 : 2}" data-rack-columns="${Number(rack.columnCount || 0)}" data-rack-shelves="${Number(rack.shelfCount || 0)}" data-rack-documents="${Number(rack.documentCount || 0)}" data-zone="${escapeHtml(String(zoneNumber))}" title="${escapeHtml(title)}"`;
   if (!interactive) return `<span ${common} aria-hidden="true">${content}</span>`;
   return `<a ${common} href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" aria-label="${escapeHtml(title)}">${content}</a>`;
 }
@@ -219,13 +219,14 @@ export function floorPlanPage({ session, floorPlan = [] }) {
       </section>
       ${zoneRows.length ? `<aside class="panel floor-plan-side" aria-labelledby="zone-overview-title">
         <div class="section-title"><h2 id="zone-overview-title">구역·랙 목록</h2><span class="count-badge">${rackCount}개 랙</span></div>
-        <div class="zone-overview">${floorPlan.map((region) => `<details><summary><span><strong>${escapeHtml(region.label)}</strong><small>${region.racks.reduce((sum, rack) => sum + Number(rack.documentCount || 0), 0).toLocaleString("ko-KR")}건</small></span><span>${region.racks.length}개 랙</span></summary><div class="zone-rack-links">${region.racks.map((rack) => `<a href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" data-rack-select data-rack-id="${Number(rack.id)}" data-rack-code="${escapeHtml(rack.code)}" data-rack-type="${rack.isSingleSided ? "단면" : "양면"}" data-rack-faces="${rack.isSingleSided ? 1 : 2}" data-rack-columns="${Number(rack.columnCount || 0)}" data-rack-shelves="${Number(rack.shelfCount || 0)}" data-rack-documents="${Number(rack.documentCount || 0)}" data-zone="${Number(region.zoneNumber)}"><span class="mono">${escapeHtml(rack.code)}</span><span>${Number(rack.documentCount || 0).toLocaleString("ko-KR")}건</span></a>`).join("")}</div></details>`).join("")}</div>
+        <div class="zone-overview">${floorPlan.map((region) => `<details><summary><span><strong>${escapeHtml(region.label)}</strong><small>${region.racks.reduce((sum, rack) => sum + Number(rack.documentCount || 0), 0).toLocaleString("ko-KR")}건</small></span><span>${region.racks.length}개 랙</span></summary><div class="zone-rack-links">${region.racks.map((rack) => `<a href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" data-rack-select data-rack-id="${Number(rack.id)}" data-rack-code="${escapeHtml(rack.code)}" data-rack-description="${escapeHtml(rack.description || "")}" data-rack-type="${rack.isSingleSided ? "단면" : "양면"}" data-rack-faces="${rack.isSingleSided ? 1 : 2}" data-rack-columns="${Number(rack.columnCount || 0)}" data-rack-shelves="${Number(rack.shelfCount || 0)}" data-rack-documents="${Number(rack.documentCount || 0)}" data-zone="${Number(region.zoneNumber)}"><span class="mono">${escapeHtml(rack.code)}</span><span>${Number(rack.documentCount || 0).toLocaleString("ko-KR")}건</span></a>`).join("")}</div></details>`).join("")}</div>
         <section class="floor-rack-inspector" data-rack-inspector aria-live="polite" tabindex="-1">
           <button type="button" class="icon-button floor-rack-inspector-close" data-rack-inspector-close aria-label="랙 정보 닫기"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
           <p class="muted" data-rack-inspector-empty>도면이나 목록에서 랙을 선택하세요.</p>
           <div data-rack-inspector-content hidden>
             <div class="section-title"><h2 data-rack-inspector-title>랙 정보</h2><span class="count-badge" data-rack-inspector-type></span></div>
             <dl class="floor-rack-facts">
+              <div class="floor-rack-description"><dt>설명</dt><dd data-rack-inspector-description>설명 없음</dd></div>
               <div><dt>구조</dt><dd data-rack-inspector-structure>-</dd></div>
               <div><dt>활성 문서</dt><dd data-rack-inspector-count>-</dd></div>
             </dl>
@@ -255,6 +256,7 @@ export function floorPlanPage({ session, floorPlan = [] }) {
           inspector.querySelector('[data-rack-inspector-content]').hidden = false;
           inspector.querySelector('[data-rack-inspector-title]').textContent = code;
           inspector.querySelector('[data-rack-inspector-type]').textContent = link.getAttribute('data-rack-type') || '';
+          inspector.querySelector('[data-rack-inspector-description]').textContent = link.getAttribute('data-rack-description') || '설명 없음';
           inspector.querySelector('[data-rack-inspector-structure]').textContent = (link.getAttribute('data-rack-faces') || '1') + '면 · ' + (link.getAttribute('data-rack-columns') || '0') + '열 · ' + (link.getAttribute('data-rack-shelves') || '0') + '단';
           inspector.querySelector('[data-rack-inspector-count]').textContent = Number(link.getAttribute('data-rack-documents') || 0).toLocaleString('ko-KR') + '건';
           inspector.querySelector('[data-rack-inspector-documents]').href = '/app?rack=' + encodeURIComponent(id) + '&status=active&sort=location';

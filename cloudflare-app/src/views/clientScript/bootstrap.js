@@ -158,31 +158,6 @@ export function bootstrapScript(escapeHtmlSource) {
         });
       });
 
-      document.querySelectorAll('[data-search-form]').forEach(function (form) {
-        form.addEventListener('submit', function () {
-          var input = form.querySelector('input[name="q"]');
-          var value = input ? input.value.trim() : '';
-          if (!value) return;
-          try {
-            var recent = JSON.parse(localStorage.getItem('hanlimRecentSearches') || '[]').filter(function (item) { return item !== value; });
-            recent.unshift(value);
-            localStorage.setItem('hanlimRecentSearches', JSON.stringify(recent.slice(0, 6)));
-          } catch {}
-        });
-      });
-
-      var recentBox = document.querySelector('[data-recent-searches]');
-      if (recentBox) {
-        try {
-          var recent = JSON.parse(localStorage.getItem('hanlimRecentSearches') || '[]');
-          if (recent.length) {
-            recentBox.innerHTML = '<span>최근 검색</span>' + recent.map(function (item) {
-              return '<a class="chip" href="/app?q=' + encodeURIComponent(item) + '">' + escapeHtmlClient(item) + '</a>';
-            }).join('');
-          }
-        } catch {}
-      }
-
       // 즉시검색은 결과 버튼을 innerHTML로 나중에 만든다. 문서에 한 번만 위임해 서버 렌더,
       // 문서 상세, 동적 결과가 모두 같은 복사 동작을 쓰게 한다.
       document.addEventListener('click', function (event) {

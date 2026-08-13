@@ -71,5 +71,7 @@ export function floorPlanStyles() {
     .floor-rack-facts div { display: flex; justify-content: space-between; gap: var(--sp-3); padding-bottom: var(--sp-2); border-bottom: 1px solid var(--gray-100); }
     .floor-rack-facts dt { color: var(--gray-500); font-size: 12px; }
     .floor-rack-facts dd { margin: 0; font-weight: 700; }
+    .floor-rack-facts .floor-rack-description { display: grid; justify-content: stretch; }
+    .floor-rack-description dd { color: var(--gray-700); font-weight: 500; line-height: 1.55; overflow-wrap: anywhere; }
 `;
 }
