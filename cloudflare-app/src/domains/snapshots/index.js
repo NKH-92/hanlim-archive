@@ -43,5 +43,5 @@ export {
   SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS
 } from "./domain/hash.js";
 export { SNAPSHOT_ERROR_CODES } from "./domain/errorCodes.js";
-export { EXCEL_SNAPSHOT_HEADERS } from "./domain/workbookSchema.js";
+export { EXCEL_SNAPSHOT_HEADERS, EXCEL_SNAPSHOT_SCHEMA_VERSION } from "./domain/workbookSchema.js";
 export { validateRevisionHistorySnapshotChanges } from "./domain/revisionPolicy.js";

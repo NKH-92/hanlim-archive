@@ -6,6 +6,7 @@ import {
   computeExportManifestHash,
   computeExportPageChainHash
 } from "../domain/hash.js";
+import { EXCEL_SNAPSHOT_SCHEMA_VERSION } from "../domain/workbookSchema.js";
 import { getDocumentSyncState } from "./queries.js";
 
 export async function createDocumentSnapshotExport(env, actor = {}, attempt = 0) {
@@ -14,7 +15,7 @@ export async function createDocumentSnapshotExport(env, actor = {}, attempt = 0)
     env.DB.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").first(),
     env.DB.prepare("SELECT name FROM categories WHERE is_active = 1 ORDER BY sort_order, name").all(),
     env.DB.prepare("SELECT name FROM tags WHERE is_active = 1 ORDER BY name").all(),
-    env.DB.prepare("SELECT rack_number, code, is_single_sided FROM racks WHERE is_active = 1 ORDER BY zone_number, rack_number").all()
+    env.DB.prepare("SELECT zone_number, rack_number, code, is_single_sided FROM racks WHERE is_active = 1 ORDER BY zone_number, rack_number").all()
   ]);
   const state = await getDocumentSyncState(env);
   if (
@@ -34,7 +35,7 @@ export async function createDocumentSnapshotExport(env, actor = {}, attempt = 0)
       canonical_export_hash, document_count, created_by_user_id, created_by_name,
       status, page_size, finalized_at
     )
-    SELECT ?, 2, state.current_version, NULLIF(state.current_snapshot_id, 0), ?, ?, ?, ?,
+    SELECT ?, ?, state.current_version, NULLIF(state.current_snapshot_id, 0), ?, ?, ?, ?,
            'building', ?, NULL
     FROM document_sync_state state
     WHERE state.id = 1
@@ -43,6 +44,7 @@ export async function createDocumentSnapshotExport(env, actor = {}, attempt = 0)
     RETURNING manifest_id
   `).bind(
     exportManifestId,
+    EXCEL_SNAPSHOT_SCHEMA_VERSION,
     "0".repeat(64),
     documentCount,
     actorSnapshot.userId,
@@ -57,7 +59,7 @@ export async function createDocumentSnapshotExport(env, actor = {}, attempt = 0)
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: EXCEL_SNAPSHOT_SCHEMA_VERSION,
     baseVersion: state.currentVersion,
     currentSnapshotId: state.currentSnapshotId || null,
     exportManifestId,
@@ -68,7 +70,7 @@ export async function createDocumentSnapshotExport(env, actor = {}, attempt = 0)
       categories: (categoryResult.results ?? []).map((row) => row.name),
       tags: (tagResult.results ?? []).map((row) => row.name),
       racks: (rackResult.results ?? []).map((row) => ({
-        rackNumber: Number(row.rack_number), code: row.code, singleSided: Boolean(row.is_single_sided)
+        zoneNumber: Number(row.zone_number), rackNumber: Number(row.rack_number), code: row.code, singleSided: Boolean(row.is_single_sided)
       }))
     }
   };
@@ -81,7 +83,7 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
       SELECT
         d.excel_row_key, d.row_version, d.document_number, d.revision_number, d.revision_date,
         d.disposal_due_year, d.document_name, c.name AS category_name,
-        r.rack_number, r.code AS rack_code, r.is_single_sided,
+        r.zone_number, r.rack_number, r.code AS rack_code, r.is_single_sided,
         rs.column_number, rs.shelf_number, d.rack_face,
         GROUP_CONCAT(t.name, ';') AS tag_names,
         d.note, d.status
@@ -93,11 +95,11 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
       LEFT JOIN tags t ON t.id = dt.tag_id
       WHERE d.sync_state = 'current'
       GROUP BY d.id
-      ORDER BY r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number, d.id
+      ORDER BY r.zone_number, r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number, d.id
     `).all(),
     env.DB.prepare("SELECT name FROM categories WHERE is_active = 1 ORDER BY sort_order, name").all(),
     env.DB.prepare("SELECT name FROM tags WHERE is_active = 1 ORDER BY name").all(),
-    env.DB.prepare("SELECT rack_number, code, is_single_sided FROM racks WHERE is_active = 1 ORDER BY zone_number, rack_number").all()
+    env.DB.prepare("SELECT zone_number, rack_number, code, is_single_sided FROM racks WHERE is_active = 1 ORDER BY zone_number, rack_number").all()
   ]);
   const state = await getDocumentSyncState(env);
   if (
@@ -117,7 +119,7 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
       canonical_export_hash, document_count, created_by_user_id, created_by_name,
       status, page_size, finalized_at
     )
-    SELECT ?, 2, state.current_version, NULLIF(state.current_snapshot_id, 0), ?, ?, ?, ?,
+    SELECT ?, ?, state.current_version, NULLIF(state.current_snapshot_id, 0), ?, ?, ?, ?,
            'completed', ?, CURRENT_TIMESTAMP
     FROM document_sync_state state
     WHERE state.id = 1
@@ -126,6 +128,7 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
     RETURNING manifest_id
   `).bind(
     exportManifestId,
+    EXCEL_SNAPSHOT_SCHEMA_VERSION,
     canonicalExportHash,
     documents.length,
     actorSnapshot.userId,
@@ -139,7 +142,7 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
     return getDocumentSnapshotExport(env, actor, attempt + 1);
   }
   return {
-    schemaVersion: 2,
+    schemaVersion: EXCEL_SNAPSHOT_SCHEMA_VERSION,
     baseVersion: state.currentVersion,
     currentSnapshotId: state.currentSnapshotId || null,
     exportManifestId,
@@ -151,7 +154,7 @@ export async function getDocumentSnapshotExport(env, actor = {}, attempt = 0) {
       categories: (categoryResult.results ?? []).map((row) => row.name),
       tags: (tagResult.results ?? []).map((row) => row.name),
       racks: (rackResult.results ?? []).map((row) => ({
-        rackNumber: Number(row.rack_number), code: row.code, singleSided: Boolean(row.is_single_sided)
+        zoneNumber: Number(row.zone_number), rackNumber: Number(row.rack_number), code: row.code, singleSided: Boolean(row.is_single_sided)
       }))
     }
   };
@@ -164,11 +167,14 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
     return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "export page 요청이 올바르지 않습니다.");
   }
   const manifest = await env.DB.prepare(`
-    SELECT manifest_id, base_version, current_snapshot_id, document_count, page_size
+    SELECT manifest_id, schema_version, base_version, current_snapshot_id, document_count, page_size
     FROM document_snapshot_export_manifests
     WHERE manifest_id = ? AND status IN ('building', 'completed')
   `).bind(id).first();
   if (!manifest) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "export manifest를 찾을 수 없습니다.");
+  if (Number(manifest.schema_version) !== EXCEL_SNAPSHOT_SCHEMA_VERSION) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED, "구역 열이 포함된 최신 대장을 다시 추출하세요.");
+  }
   const state = await getDocumentSyncState(env);
   if (
     Number(manifest.base_version) !== state.currentVersion ||
@@ -185,7 +191,7 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
   const offset = (page - 1) * pageSize;
   const previousCursor = page === 1 ? null : await env.DB.prepare(`
     SELECT
-      cursor_rack_number, cursor_rack_face, cursor_column_number,
+      cursor_zone_number, cursor_rack_number, cursor_rack_face, cursor_column_number,
       cursor_shelf_number, cursor_document_number, cursor_document_id
     FROM document_snapshot_export_pages
     WHERE manifest_id = ? AND page_number = ?
@@ -197,30 +203,33 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
     );
   }
   const cursorWhere = previousCursor ? `AND (
-      r.rack_number > ?
-      OR (r.rack_number = ? AND d.rack_face > ?)
-      OR (r.rack_number = ? AND d.rack_face = ? AND rs.column_number > ?)
-      OR (r.rack_number = ? AND d.rack_face = ? AND rs.column_number = ? AND rs.shelf_number > ?)
-      OR (r.rack_number = ? AND d.rack_face = ? AND rs.column_number = ? AND rs.shelf_number = ? AND d.document_number > ?)
-      OR (r.rack_number = ? AND d.rack_face = ? AND rs.column_number = ? AND rs.shelf_number = ? AND d.document_number = ? AND d.id > ?)
+      r.zone_number > ?
+      OR (r.zone_number = ? AND r.rack_number > ?)
+      OR (r.zone_number = ? AND r.rack_number = ? AND d.rack_face > ?)
+      OR (r.zone_number = ? AND r.rack_number = ? AND d.rack_face = ? AND rs.column_number > ?)
+      OR (r.zone_number = ? AND r.rack_number = ? AND d.rack_face = ? AND rs.column_number = ? AND rs.shelf_number > ?)
+      OR (r.zone_number = ? AND r.rack_number = ? AND d.rack_face = ? AND rs.column_number = ? AND rs.shelf_number = ? AND d.document_number > ?)
+      OR (r.zone_number = ? AND r.rack_number = ? AND d.rack_face = ? AND rs.column_number = ? AND rs.shelf_number = ? AND d.document_number = ? AND d.id > ?)
     )` : "";
   const cursorBinds = previousCursor ? [
-    previousCursor.cursor_rack_number,
-    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face,
-    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number,
-    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number, previousCursor.cursor_shelf_number,
-    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number, previousCursor.cursor_shelf_number, previousCursor.cursor_document_number,
-    previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number, previousCursor.cursor_shelf_number, previousCursor.cursor_document_number, previousCursor.cursor_document_id
+    previousCursor.cursor_zone_number,
+    previousCursor.cursor_zone_number, previousCursor.cursor_rack_number,
+    previousCursor.cursor_zone_number, previousCursor.cursor_rack_number, previousCursor.cursor_rack_face,
+    previousCursor.cursor_zone_number, previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number,
+    previousCursor.cursor_zone_number, previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number, previousCursor.cursor_shelf_number,
+    previousCursor.cursor_zone_number, previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number, previousCursor.cursor_shelf_number, previousCursor.cursor_document_number,
+    previousCursor.cursor_zone_number, previousCursor.cursor_rack_number, previousCursor.cursor_rack_face, previousCursor.cursor_column_number, previousCursor.cursor_shelf_number, previousCursor.cursor_document_number, previousCursor.cursor_document_id
   ] : [];
   const result = await env.DB.prepare(`
     SELECT
       d.excel_row_key, d.row_version, d.document_number, d.revision_number, d.revision_date,
       d.disposal_due_year, d.document_name, c.name AS category_name,
-      r.rack_number, r.code AS rack_code, r.is_single_sided,
+       r.zone_number, r.rack_number, r.code AS rack_code, r.is_single_sided,
       rs.column_number, rs.shelf_number, d.rack_face,
       GROUP_CONCAT(t.name, ';') AS tag_names,
       d.note, d.status,
-      r.rack_number AS cursor_rack_number,
+       r.zone_number AS cursor_zone_number,
+       r.rack_number AS cursor_rack_number,
       d.rack_face AS cursor_rack_face,
       rs.column_number AS cursor_column_number,
       rs.shelf_number AS cursor_shelf_number,
@@ -235,7 +244,7 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
     WHERE d.sync_state = 'current'
     ${cursorWhere}
     GROUP BY d.id
-    ORDER BY r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number, d.id
+    ORDER BY r.zone_number, r.rack_number, d.rack_face, rs.column_number, rs.shelf_number, d.document_number, d.id
     LIMIT ?
   `).bind(...cursorBinds, pageSize).all();
   const rows = result.results ?? [];
@@ -245,14 +254,15 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
   await env.DB.prepare(`
     INSERT INTO document_snapshot_export_pages (
       manifest_id, page_number, row_offset, row_count, page_hash,
-      cursor_rack_number, cursor_rack_face, cursor_column_number,
+      cursor_zone_number, cursor_rack_number, cursor_rack_face, cursor_column_number,
       cursor_shelf_number, cursor_document_number, cursor_document_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(manifest_id, page_number) DO UPDATE SET
       row_offset = excluded.row_offset,
       row_count = excluded.row_count,
       page_hash = excluded.page_hash,
+      cursor_zone_number = excluded.cursor_zone_number,
       cursor_rack_number = excluded.cursor_rack_number,
       cursor_rack_face = excluded.cursor_rack_face,
       cursor_column_number = excluded.cursor_column_number,
@@ -261,6 +271,7 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
       cursor_document_id = excluded.cursor_document_id
   `).bind(
     id, page, offset, documents.length, pageHash,
+    lastRow.cursor_zone_number ?? null,
     lastRow.cursor_rack_number ?? null,
     lastRow.cursor_rack_face ?? null,
     lastRow.cursor_column_number ?? null,
@@ -282,12 +293,15 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
 export async function finalizeDocumentSnapshotExport(env, manifestId) {
   const id = clean(manifestId);
   const manifest = await env.DB.prepare(`
-    SELECT manifest_id, base_version, current_snapshot_id, document_count, page_size,
+    SELECT manifest_id, schema_version, base_version, current_snapshot_id, document_count, page_size,
            canonical_export_hash, status
     FROM document_snapshot_export_manifests
     WHERE manifest_id = ? AND status IN ('building', 'completed')
   `).bind(id).first();
   if (!manifest) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "완료할 export manifest를 찾을 수 없습니다.");
+  if (Number(manifest.schema_version) !== EXCEL_SNAPSHOT_SCHEMA_VERSION) {
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED, "구역 열이 포함된 최신 대장을 다시 추출하세요.");
+  }
   const state = await getDocumentSyncState(env);
   if (
     Number(manifest.base_version) !== state.currentVersion ||
@@ -349,6 +363,7 @@ function exportDocument(row) {
     disposalDueYear: row.disposal_due_year === null || row.disposal_due_year === undefined ? "" : Number(row.disposal_due_year),
     documentName: clean(row.document_name),
     category: clean(row.category_name),
+    zoneNumber: Number(row.zone_number),
     rackNumber: Number(row.rack_number),
     rackColumn: Number(row.column_number),
     shelfNumber: Number(row.shelf_number),

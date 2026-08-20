@@ -28,6 +28,8 @@ function documentToValues(document, lookup = {}) {
     categoryName,
     rackSlotId: document.rack_slot_id,
     rackCode: slot?.code || "",
+    zoneNumber: slot?.zone_number ?? null,
+    rackNumber: slot?.rack_number ?? null,
     rackColumn: slot?.column_number ?? null,
     shelfNumber: slot?.shelf_number ?? null,
     rackFace: document.rack_face,

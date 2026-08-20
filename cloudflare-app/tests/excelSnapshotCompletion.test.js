@@ -34,7 +34,7 @@ test("bootstrap은 입력 확인문구와 backup 확인을 서버에서 요구�
       sourceHash: "1".repeat(64),
       sourceSize: 1024,
       totalCount: 1,
-      schemaVersion: 1,
+      schemaVersion: 3,
       mode: "bootstrap"
     }, actorFixture());
     assert.equal(result.ok, false);
@@ -53,7 +53,7 @@ test("업로드 원본 크기가 예산을 넘으면 staging 생성 전에 거�
       sourceHash: "2".repeat(64),
       sourceSize: FREE_TIER_BUDGET.excelSnapshotMaxFileBytes + 1,
       totalCount: 1,
-      schemaVersion: 1,
+      schemaVersion: 3,
       mode: "bootstrap",
       bootstrapConfirmation: BOOTSTRAP_CONFIRMATION,
       backupConfirmed: true
@@ -76,7 +76,7 @@ test("방치 staging/ready 작업은 문서를 바꾸지 않고 감사 후 cance
       sourceHash: "7".repeat(64),
       sourceSize: 1024,
       totalCount: 1,
-      schemaVersion: 1,
+      schemaVersion: 3,
       mode: "bootstrap",
       bootstrapConfirmation: BOOTSTRAP_CONFIRMATION,
       backupConfirmed: true
@@ -104,7 +104,7 @@ test("managed mode는 현재 상태와 다른 snapshot ID와 미발급 manifest�
       sourceHash: "3".repeat(64),
       sourceSize: 1024,
       totalCount: 1,
-      schemaVersion: 1,
+      schemaVersion: 3,
       mode: "managed",
       baseVersion: state.currentVersion,
       currentSnapshotId: 999999
@@ -117,7 +117,7 @@ test("managed mode는 현재 상태와 다른 snapshot ID와 미발급 manifest�
       sourceHash: "4".repeat(64),
       sourceSize: 1024,
       totalCount: 1,
-      schemaVersion: 1,
+      schemaVersion: 3,
       mode: "managed",
       baseVersion: state.currentVersion,
       exportManifestId: "EXP-NOT-ISSUED"
@@ -250,7 +250,7 @@ async function createPrepared(env, actor, rows, options) {
     sourceHash: options.sourceHash,
     sourceSize: 4096,
     totalCount: rows.length,
-    schemaVersion: 1,
+    schemaVersion: 3,
     mode: options.mode,
     baseVersion: options.baseVersion || "",
     currentSnapshotId: options.currentSnapshotId || "",
@@ -279,6 +279,7 @@ function snapshotRow(rowNumber, documentNumber, sourceRowKey = "") {
       disposalDueYear: "2031",
       documentName: `무결성 검증 ${documentNumber}`,
       category: "PV",
+      zoneNumber: "1",
       rackNumber: "1",
       rackColumn: String((rowNumber - 2) % 7 + 1),
       shelfNumber: String((rowNumber - 2) % 6 + 1),

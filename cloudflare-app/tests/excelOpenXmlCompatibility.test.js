@@ -5,7 +5,7 @@ import JSZip from "jszip";
 import { excelOpenXmlCompatibilityScript } from "../src/views/clientScript/excelOpenXmlCompatibility.js";
 
 const HEADERS = [
-  "문서번호", "개정번호", "제/개정일", "폐기 예정 년도", "문서명", "문서종류", "랙 위치 (번호)",
+  "문서번호", "개정번호", "제/개정일", "폐기 예정 년도", "문서명", "문서종류", "랙 위치 (구역)", "랙 위치 (번호)",
   "랙 위치 (열)", "랙 위치 (선반)", "랙 위치 (단면)", "태그", "비고", "상태"
 ];
 const MAIN_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -22,7 +22,7 @@ async function prefixedAbsoluteRelationshipWorkbook() {
     ref: "A1",
     headerRow: true,
     columns: HEADERS.map((name) => ({ name })),
-    rows: [["DOC-001", "Rev.0", new Date("2026-01-02T00:00:00Z"), 2031, "시험 문서", "PV", "1-02", 1, 1, "A", "원본보관", "", "active"]]
+    rows: [["DOC-001", "Rev.0", new Date("2026-01-02T00:00:00Z"), 2031, "시험 문서", "PV", 1, 2, 1, 1, "A", "원본보관", "", "active"]]
   });
   const zip = await JSZip.loadAsync(await source.xlsx.writeBuffer());
   for (const name of Object.keys(zip.files)) {
