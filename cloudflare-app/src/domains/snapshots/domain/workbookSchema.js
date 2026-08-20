@@ -1,3 +1,5 @@
+export const EXCEL_SNAPSHOT_SCHEMA_VERSION = 3;
+
 export const EXCEL_SNAPSHOT_HEADERS = Object.freeze([
   "문서번호",
   "개정번호",
@@ -5,6 +7,7 @@ export const EXCEL_SNAPSHOT_HEADERS = Object.freeze([
   "폐기 예정 년도",
   "문서명",
   "문서종류",
+  "랙 위치 (구역)",
   "랙 위치 (번호)",
   "랙 위치 (열)",
   "랙 위치 (선반)",

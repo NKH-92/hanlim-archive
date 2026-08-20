@@ -126,7 +126,7 @@ export async function stageDocumentSnapshotMembership(env, snapshotId, rows) {
       FROM json_each(?) item
       WHERE EXISTS (
         SELECT 1 FROM document_snapshots
-        WHERE id = ? AND status = 'staging' AND schema_version = 2
+        WHERE id = ? AND status = 'staging' AND schema_version >= 2
       )
       ON CONFLICT(snapshot_id, row_number) DO UPDATE SET
         row_key = excluded.row_key,
@@ -136,7 +136,7 @@ export async function stageDocumentSnapshotMembership(env, snapshotId, rows) {
     env.DB.prepare(`
       UPDATE document_snapshots
       SET updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'staging' AND schema_version = 2
+      WHERE id = ? AND status = 'staging' AND schema_version >= 2
       RETURNING (
         SELECT COUNT(*) FROM document_snapshot_membership WHERE snapshot_id = ?
       ) AS membership_count
@@ -155,6 +155,7 @@ function normalizeSourceRow(source = {}) {
     disposalDueYear: clean(source.disposalDueYear),
     documentName: clean(source.documentName),
     category: clean(source.category),
+    zoneNumber: clean(source.zoneNumber),
     rackNumber: clean(source.rackNumber || source.rackCode),
     rackColumn: clean(source.rackColumn),
     shelfNumber: clean(source.shelfNumber),

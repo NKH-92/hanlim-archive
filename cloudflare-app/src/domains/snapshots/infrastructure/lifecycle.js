@@ -6,6 +6,7 @@ import { auditActorSnapshot } from "../../identity/index.js";
 import { normalizeSyncReason } from "../domain/authorization.js";
 import { SNAPSHOT_ERROR_CODES, snapshotError } from "../domain/errorCodes.js";
 import { SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS } from "../domain/hash.js";
+import { EXCEL_SNAPSHOT_SCHEMA_VERSION } from "../domain/workbookSchema.js";
 import { getDocumentSnapshot, getDocumentSyncState } from "./queries.js";
 import {
   BOOTSTRAP_CONFIRMATION,
@@ -42,7 +43,12 @@ export async function createDocumentSnapshot(env, input, actor) {
     return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, `엑셀 문서는 1~${FREE_TIER_BUDGET.excelSnapshotMaxItems}건까지 동기화할 수 있습니다.`);
   }
   if (!SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS.has(schemaVersion)) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED, "지원하지 않는 엑셀 스키마 버전입니다.");
+    return snapshotError(
+      SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED,
+      schemaVersion < EXCEL_SNAPSHOT_SCHEMA_VERSION
+        ? "구역 열이 포함된 최신 대장을 다시 추출하세요."
+        : "지원하지 않는 엑셀 스키마 버전입니다."
+    );
   }
   const reason = normalizeSyncReason(input?.syncReason ?? input?.applyReason);
   if (!reason.ok) return reason;

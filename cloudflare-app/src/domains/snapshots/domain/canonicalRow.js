@@ -16,12 +16,8 @@ function fieldError(rowNumber, field, code, message) {
   return { rowNumber, field, code, message };
 }
 
-function normalizeImportRackCode(value) {
-  const raw = clean(value);
-  if (/^\d+$/.test(raw)) return `1-${String(Number(raw)).padStart(2, "0")}`;
-  const match = raw.match(/^(\d+)\s*[-/]\s*(\d+)$/);
-  if (match) return `${Number(match[1])}-${String(Number(match[2])).padStart(2, "0")}`;
-  return raw;
+function normalizedRackCode(zoneNumber, rackNumber) {
+  return `${zoneNumber}-${String(rackNumber).padStart(2, "0")}`;
 }
 
 function parseStrictInteger(raw, { allowLeadingZero = true } = {}) {
@@ -80,7 +76,11 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
     const rowNumber = Number(row.rowNumber) || index + 2;
     const sourceRowKey = clean(row.sourceRowKey ?? row.rowKey);
     const categoryName = clean(row.category);
-    const rackCode = normalizeImportRackCode(row.rackCode || row.rackNumber);
+    const zoneParsed = parseStrictInteger(row.zoneNumber, { allowLeadingZero: false });
+    const rackParsed = parseStrictInteger(row.rackNumber, { allowLeadingZero: false });
+    const rackCode = zoneParsed.ok && rackParsed.ok
+      ? normalizedRackCode(zoneParsed.value, rackParsed.value)
+      : "";
     const columnParsed = parseStrictInteger(row.rackColumn ?? row.columnNumber ?? row.column);
     const shelfParsed = parseStrictInteger(row.shelfNumber ?? row.shelf);
     const disposalParsed = parseStrictInteger(row.disposalDueYear);
@@ -114,8 +114,11 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
     if (!categoryName || !category) {
       errors.push(fieldError(rowNumber, "category", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `존재하지 않는 문서종류(${categoryName || "-"})입니다.`));
     }
-    if (!clean(row.rackNumber || row.rackCode) || !columnParsed.ok || !shelfParsed.ok || !slot) {
-      errors.push(fieldError(rowNumber, "location", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `존재하지 않거나 공란인 위치(${rackCode || "-"} / ${clean(row.rackColumn) || "-"}열 / ${clean(row.shelfNumber) || "-"}선반)입니다.`));
+    if (!zoneParsed.ok || zoneParsed.value < 1 || zoneParsed.value > 3) {
+      errors.push(fieldError(rowNumber, "zoneNumber", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "랙 위치 (구역)은 1, 2, 3 중 하나여야 합니다."));
+    }
+    if (!rackParsed.ok || !columnParsed.ok || !shelfParsed.ok || !slot) {
+      errors.push(fieldError(rowNumber, "location", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `존재하지 않거나 공란인 위치(${zoneParsed.ok ? `${zoneParsed.value}구역` : "-"} / ${rackParsed.ok ? `${rackParsed.value}번 랙` : "-"} / ${clean(row.rackColumn) || "-"}열 / ${clean(row.shelfNumber) || "-"}선반)입니다.`));
     }
     if (!faceParsed.ok) {
       errors.push(fieldError(rowNumber, "rackFace", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "랙 면은 단면/1면/2면(또는 A/B)만 허용하며 공란은 오류입니다."));
@@ -150,6 +153,8 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
       categoryName: category?.name || categoryName,
       rackSlotId: slot?.id ?? 0,
       rackCode: slot?.code || rackCode,
+      zoneNumber: slot ? Number(slot.zone_number) : (zoneParsed.ok ? zoneParsed.value : null),
+      rackNumber: slot ? Number(slot.rack_number) : (rackParsed.ok ? rackParsed.value : null),
       rackColumn: columnParsed.ok ? columnParsed.value : null,
       shelfNumber: shelfParsed.ok ? shelfParsed.value : null,
       rackFace: faceParsed.ok ? faceParsed.value : "",

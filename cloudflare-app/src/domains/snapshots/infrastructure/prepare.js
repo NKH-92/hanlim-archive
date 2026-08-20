@@ -60,7 +60,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
   const stagedRows = rowResult.results ?? [];
   const membershipRows = membershipResult.results ?? [];
   const schemaVersion = Number(snapshot.schema_version || 1);
-  // schema v2 정식 클라이언트는 membership을 먼저 보내지만, 배포 중 열린 탭처럼
+  // schema v2 이상 정식 클라이언트는 membership을 먼저 보내지만, 배포 중 열린 탭처럼
   // 전체 행을 staging한 호출도 전환 릴리스 동안 호환한다.
   const usesMembership = schemaVersion >= 2 && membershipRows.length > 0;
   const receivedCount = usesMembership ? membershipRows.length : stagedRows.length;
@@ -344,7 +344,8 @@ function sourceRowFromCurrentDocument(document, membership, lookup) {
     documentName: clean(document.document_name),
     category: clean(categoryName),
     rackCode: clean(slot?.code),
-    rackNumber: clean(slot?.code),
+    zoneNumber: Number(slot?.zone_number || 0),
+    rackNumber: Number(slot?.rack_number || 0),
     rackColumn: Number(slot?.column_number || 0),
     shelfNumber: Number(slot?.shelf_number || 0),
     rackFace: clean(document.rack_face),

@@ -99,6 +99,15 @@ test("엑셀 준비 단계는 개정 연결 문서의 식별정보 변경과 자
   }, actor);
   assert.equal(revised.ok, true);
 
+  database.prepare(`
+    UPDATE racks SET is_active = 1
+    WHERE id IN (
+      SELECT DISTINCT slots.rack_id FROM documents docs
+      JOIN rack_slots slots ON slots.id = docs.rack_slot_id
+    )
+  `).run();
+  database.prepare("UPDATE rack_slots SET is_active = 1 WHERE id IN (SELECT rack_slot_id FROM documents)").run();
+
   const exported = await getDocumentSnapshotExport(env, actor);
   const rows = exported.documents.map((document, index) => ({
     rowNumber: index + 2,

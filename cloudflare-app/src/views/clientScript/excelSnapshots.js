@@ -1,6 +1,9 @@
 import { excelOpenXmlCompatibilityScript } from "./excelOpenXmlCompatibility.js";
 import { FREE_TIER_BUDGET } from "../../freeTierBudget.js";
-import { EXCEL_SNAPSHOT_HEADERS } from "../../domains/snapshots/domain/workbookSchema.js";
+import {
+  EXCEL_SNAPSHOT_HEADERS,
+  EXCEL_SNAPSHOT_SCHEMA_VERSION
+} from "../../domains/snapshots/domain/workbookSchema.js";
 import { CSV_FORMULA_PREFIX_PATTERN_SOURCE } from "../../shared/csv/writer.js";
 
 // 엑셀 파싱·생성은 브라우저에서 수행해 Worker 무료티어 CPU를 사용하지 않는다.
@@ -9,6 +12,7 @@ export function excelSnapshotScript() {
       var excelRoot = document.querySelector('[data-excel-snapshot]');
       var excelUploadForm = document.querySelector('[data-excel-snapshot-upload]');
       var excelHeaders = ${JSON.stringify(EXCEL_SNAPSHOT_HEADERS)};
+      var excelSchemaVersion = ${EXCEL_SNAPSHOT_SCHEMA_VERSION};
       var excelCachedFile = null;
       var excelCachedParsed = null;
       var excelSnapshotMaxFileBytes = ${FREE_TIER_BUDGET.excelSnapshotMaxFileBytes};
@@ -66,7 +70,7 @@ export function excelSnapshotScript() {
         var canonical = JSON.stringify([
           source.documentNumber || '', source.revisionNumber || '', source.revisionDate || '',
           source.disposalDueYear || '', source.documentName || '', source.category || '',
-          source.rackNumber || '', source.rackColumn || '', source.shelfNumber || '',
+          source.zoneNumber || '', source.rackNumber || '', source.rackColumn || '', source.shelfNumber || '',
           source.rackFace || '', source.tags || '', source.note || '', source.status || ''
         ]);
         var digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
@@ -110,7 +114,7 @@ export function excelSnapshotScript() {
         await excelAssertZipSafety(buffer, excelSnapshotMaxZipUncompressedBytes, excelSnapshotMaxZipEntries);
         var workbook = await excelLoadWorkbook(buffer);
         var sheet = excelDataSheet(workbook);
-        if (!sheet) throw new Error('한글 13개 열이 순서대로 있는 문서데이터 시트를 찾을 수 없습니다.');
+        if (!sheet) throw new Error('랙 위치 (구역)을 포함한 한글 14개 열이 순서대로 있는 최신 문서데이터 시트를 찾을 수 없습니다. 현재 대장을 다시 추출하세요.');
         var meta = excelMeta(workbook);
         var rows = [];
         var originalKeyCount = 0;
@@ -118,19 +122,20 @@ export function excelSnapshotScript() {
           var row = sheet.getRow(rowNumber);
           var visible = excelHeaders.map(function (_, index) { return excelCellText(row.getCell(index + 1)); });
           if (visible.every(function (value) { return !value; })) continue;
-          var originalKey = excelCellText(row.getCell(14));
+          var originalKey = excelCellText(row.getCell(15));
           if (originalKey) originalKeyCount += 1;
           var source = {
             documentNumber: visible[0], revisionNumber: visible[1], revisionDate: excelDateText(row.getCell(3), workbook),
-            disposalDueYear: visible[3], documentName: visible[4], category: visible[5], rackNumber: visible[6],
-            rackColumn: visible[7], shelfNumber: visible[8], rackFace: visible[9], tags: visible[10], note: visible[11], status: visible[12]
+            disposalDueYear: visible[3], documentName: visible[4], category: visible[5], zoneNumber: visible[6],
+            rackNumber: visible[7], rackColumn: visible[8], shelfNumber: visible[9], rackFace: visible[10],
+            tags: visible[11], note: visible[12], status: visible[13]
           };
           rows.push({
             rowNumber: rowNumber,
             sourceRowKey: originalKey || '',
             membershipRowKey: originalKey || ('TMP-CLIENT-' + crypto.randomUUID()),
-            baseRowVersion: Number(excelCellText(row.getCell(15)) || 0),
-            baseHash: excelCellText(row.getCell(16)).toLowerCase(),
+            baseRowVersion: Number(excelCellText(row.getCell(16)) || 0),
+            baseHash: excelCellText(row.getCell(17)).toLowerCase(),
             source: source
           });
         }
@@ -153,7 +158,7 @@ export function excelSnapshotScript() {
           hash: hash,
           mode: meta.hasSystemInfo ? 'managed' : 'bootstrap',
           baseVersion: meta.baseVersion,
-          schemaVersion: meta.hasSystemInfo ? meta.schemaVersion : 1,
+          schemaVersion: meta.hasSystemInfo ? meta.schemaVersion : excelSchemaVersion,
           currentSnapshotId: meta.currentSnapshotId,
           exportManifestId: meta.exportManifestId,
           canonicalExportHash: meta.canonicalExportHash,
@@ -386,7 +391,7 @@ export function excelSnapshotScript() {
       function excelDataValues(document) {
         var revisionDate = document.revisionDate ? excelDateOnlyToUtcDate(document.revisionDate) : '';
         return [document.documentNumber, document.revisionNumber, revisionDate || '', document.disposalDueYear || '', document.documentName,
-          document.category, document.rackNumber, document.rackColumn, document.shelfNumber, document.rackFace,
+          document.category, document.zoneNumber, document.rackNumber, document.rackColumn, document.shelfNumber, document.rackFace,
           document.tags || '', document.note || '', document.status, document.rowKey, document.baseRowVersion || '', document.baseHash || ''];
       }
 
@@ -405,43 +410,47 @@ export function excelSnapshotScript() {
             documentNumber: String(values[0] || ''), revisionNumber: String(values[1] || ''),
             revisionDate: document.revisionDate || '', disposalDueYear: String(values[3] || ''),
             documentName: String(values[4] || ''), category: String(values[5] || ''),
-            rackNumber: String(values[6] || ''), rackColumn: String(values[7] || ''),
-            shelfNumber: String(values[8] || ''), rackFace: String(values[9] || ''),
-            tags: String(values[10] || ''), note: String(values[11] || ''), status: String(values[12] || '')
+            zoneNumber: String(values[6] || ''), rackNumber: String(values[7] || ''), rackColumn: String(values[8] || ''),
+            shelfNumber: String(values[9] || ''), rackFace: String(values[10] || ''),
+            tags: String(values[11] || ''), note: String(values[12] || ''), status: String(values[13] || '')
           };
           return Object.assign({}, document, { baseHash: await excelRowBaseHash(source) });
         }));
         var data = workbook.addWorksheet('문서데이터', { views: [{ state: 'frozen', ySplit: 1 }] });
         data.columns = [
           { width: 18 }, { width: 12 }, { width: 13 }, { width: 15 }, { width: 32 }, { width: 16 },
-          { width: 14 }, { width: 13 }, { width: 15 }, { width: 15 }, { width: 24 }, { width: 30 }, { width: 12 },
+          { width: 14 }, { width: 14 }, { width: 13 }, { width: 15 }, { width: 15 }, { width: 24 }, { width: 30 }, { width: 12 },
           { width: 40, hidden: true }, { width: 16, hidden: true }, { width: 66, hidden: true }
         ];
         data.addRow(excelHeaders.concat(['_엑셀관리ID', '_기준행버전', '_기준행해시']));
         excelHeaderStyle(data.getRow(1));
         payload.documents.forEach(function (document) { data.addRow(excelDataValues(document)); });
-        data.autoFilter = { from: 'A1', to: 'M' + Math.max(1, payload.documents.length + 1) };
+        data.autoFilter = { from: 'A1', to: 'N' + Math.max(1, payload.documents.length + 1) };
         data.getColumn(3).numFmt = 'yyyy-mm-dd';
         data.getColumn(4).numFmt = '0';
-        data.getColumn(7).numFmt = '0'; data.getColumn(8).numFmt = '0'; data.getColumn(9).numFmt = '0';
-        data.getColumn(14).hidden = true; data.getColumn(15).hidden = true; data.getColumn(16).hidden = true;
+        data.getColumn(7).numFmt = '0"구역"';
+        data.getColumn(8).numFmt = '0'; data.getColumn(9).numFmt = '0'; data.getColumn(10).numFmt = '0';
+        data.getColumn(15).hidden = true; data.getColumn(16).hidden = true; data.getColumn(17).hidden = true;
         for (var rowIndex = 2; rowIndex <= payload.documents.length + 1; rowIndex += 1) {
           var row = data.getRow(rowIndex);
           row.height = 22;
           row.eachCell({ includeEmpty: true }, function (cell, column) {
             cell.font = { name: '맑은 고딕', size: 10 };
-            cell.alignment = { vertical: 'middle', horizontal: [2,3,4,7,8,9,10,13].indexOf(column) >= 0 ? 'center' : 'left' };
+            cell.alignment = { vertical: 'middle', horizontal: [2,3,4,7,8,9,10,11,14].indexOf(column) >= 0 ? 'center' : 'left' };
             cell.border = { bottom: { style: 'hair', color: { argb: 'FFD9E2F3' } } };
           });
         }
 
         var codes = workbook.addWorksheet('_코드값', { state: 'veryHidden' });
-        codes.addRow(['문서종류','랙번호','랙 단면','상태','태그']);
-        var codeLength = Math.max(payload.codes.categories.length, payload.codes.racks.length, payload.codes.tags.length, 2);
+        var zoneNumbers = Array.from(new Set(payload.codes.racks.map(function (rack) { return Number(rack.zoneNumber); }))).filter(Boolean).sort(function (a, b) { return a - b; });
+        var rackNumbers = Array.from(new Set(payload.codes.racks.map(function (rack) { return Number(rack.rackNumber); }))).filter(Boolean).sort(function (a, b) { return a - b; });
+        codes.addRow(['문서종류','구역','랙번호','랙 단면','상태','태그']);
+        var codeLength = Math.max(payload.codes.categories.length, zoneNumbers.length, rackNumbers.length, payload.codes.tags.length, 2);
         for (var codeIndex = 0; codeIndex < codeLength; codeIndex += 1) {
           codes.addRow([
             payload.codes.categories[codeIndex] || '',
-            payload.codes.racks[codeIndex] ? payload.codes.racks[codeIndex].rackNumber : '',
+            zoneNumbers[codeIndex] || '',
+            rackNumbers[codeIndex] || '',
             ['단면','1면','2면'][codeIndex] || '',
             ['보관중','폐기'][codeIndex] || '',
             payload.codes.tags[codeIndex] || ''
@@ -450,22 +459,23 @@ export function excelSnapshotScript() {
         var validationEnd = Math.max(payload.documents.length + 51, 100);
         for (var validationRow = 2; validationRow <= validationEnd; validationRow += 1) {
           data.getCell(validationRow, 6).dataValidation = { type: 'list', allowBlank: false, formulae: ["'_코드값'!$A$2:$A$" + (payload.codes.categories.length + 1)] };
-          data.getCell(validationRow, 7).dataValidation = { type: 'list', allowBlank: false, formulae: ["'_코드값'!$B$2:$B$" + (payload.codes.racks.length + 1)] };
-          data.getCell(validationRow, 10).dataValidation = { type: 'list', allowBlank: false, formulae: ["'_코드값'!$C$2:$C$4"] };
-          data.getCell(validationRow, 13).dataValidation = { type: 'list', allowBlank: false, formulae: ["'_코드값'!$D$2:$D$3"] };
+          data.getCell(validationRow, 7).dataValidation = { type: 'list', allowBlank: false, formulae: ["'_코드값'!$B$2:$B$" + (zoneNumbers.length + 1)] };
+          data.getCell(validationRow, 8).dataValidation = { type: 'list', allowBlank: false, formulae: ["'_코드값'!$C$2:$C$" + (rackNumbers.length + 1)] };
+          data.getCell(validationRow, 11).dataValidation = { type: 'list', allowBlank: false, formulae: ["'_코드값'!$D$2:$D$4"] };
+          data.getCell(validationRow, 14).dataValidation = { type: 'list', allowBlank: false, formulae: ["'_코드값'!$E$2:$E$3"] };
         }
 
         var print = workbook.addWorksheet('인쇄용 관리대장', { views: [{ state: 'frozen', ySplit: 4 }] });
         var printDocuments = payload.documents.filter(function (document) { return String(document.status || '') !== '폐기'; });
-        print.mergeCells('A1:M1');
+        print.mergeCells('A1:N1');
         print.getCell('A1').value = '한림 문서고 관리대장';
         print.getCell('A1').font = { name: '맑은 고딕', bold: true, size: 18, color: { argb: 'FF17365D' } };
         print.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
         print.getRow(1).height = 34;
-        print.mergeCells('A2:I3');
+        print.mergeCells('A2:J3');
         [
-          ['J2:K2', 'J3:K3', '담당자\\nThe Person in charge'],
-          ['L2:M2', 'L3:M3', '확인자\\nConfirmed by']
+          ['K2:L2', 'K3:L3', '담당자\\nThe Person in charge'],
+          ['M2:N2', 'M3:N3', '확인자\\nConfirmed by']
         ].forEach(function (signatureBlock) {
           print.mergeCells(signatureBlock[0]);
           print.mergeCells(signatureBlock[1]);
@@ -488,20 +498,21 @@ export function excelSnapshotScript() {
         print.getRow(3).height = 60;
         print.addRow(excelHeaders);
         excelHeaderStyle(print.getRow(4));
-        printDocuments.forEach(function (document) { print.addRow(excelDataValues(document).slice(0, 13)); });
-        print.columns = data.columns.slice(0, 13).map(function (column) { return { width: column.width }; });
+        printDocuments.forEach(function (document) { print.addRow(excelDataValues(document).slice(0, 14)); });
+        print.columns = data.columns.slice(0, 14).map(function (column) { return { width: column.width }; });
         print.getColumn(3).numFmt = 'yyyy-mm-dd';
+        print.getColumn(7).numFmt = '0"구역"';
         for (var printRow = 5; printRow <= printDocuments.length + 4; printRow += 1) {
           print.getRow(printRow).height = 21;
           print.getRow(printRow).eachCell({ includeEmpty: true }, function (cell, column) {
             cell.font = { name: '맑은 고딕', size: 8 };
-            cell.alignment = { vertical: 'middle', horizontal: [2,3,4,7,8,9,10,13].indexOf(column) >= 0 ? 'center' : 'left', shrinkToFit: true };
+            cell.alignment = { vertical: 'middle', horizontal: [2,3,4,7,8,9,10,11,14].indexOf(column) >= 0 ? 'center' : 'left', shrinkToFit: true };
             cell.border = { bottom: { style: 'thin', color: { argb: 'FFD9D9D9' } } };
           });
         }
         var printLastRow = Math.max(4, printDocuments.length + 4);
         print.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
-          printArea: 'A1:M' + printLastRow, printTitlesRow: '1:4',
+          printArea: 'A1:N' + printLastRow, printTitlesRow: '1:4',
           margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } };
         print.headerFooter.oddHeader = '&L별첨 15. 문서 목록 Document List';
         print.headerFooter.oddFooter = '&C&P / &N&RHLF-GR-04-15 / Rev.2';
@@ -510,13 +521,13 @@ export function excelSnapshotScript() {
         guide.columns = [{ width: 24 }, { width: 90 }];
         guide.addRow(['항목','작성 방법']); excelHeaderStyle(guide.getRow(1));
         [
-          ['문서데이터','첫 행의 한글 13개 열 제목과 순서를 변경하지 마세요. 필터·정렬과 행 추가는 가능합니다.'],
-          ['숨김 관리 정보','N~P열은 문서 이력, 기준 버전, 변경 탐지를 위한 시스템 값입니다. 열을 삭제하거나 값을 복사하지 마세요. 인쇄에는 나오지 않습니다.'],
+          ['문서데이터','첫 행의 한글 14개 열 제목과 순서를 변경하지 마세요. 필터·정렬과 행 추가는 가능합니다.'],
+          ['숨김 관리 정보','O~Q열은 문서 이력, 기준 버전, 변경 탐지를 위한 시스템 값입니다. 열을 삭제하거나 값을 복사하지 마세요. 인쇄에는 나오지 않습니다.'],
           ['태그','여러 태그는 세미콜론(;)으로 구분합니다. 관리자 화면에 등록된 태그만 사용할 수 있습니다.'],
-          ['랙 위치','1번 랙은 단면, 2~13번 랙은 1면 또는 2면을 사용합니다. 열은 1~7, 선반은 1~6입니다.'],
+          ['랙 위치','구역은 1~3 중 하나를 선택하고, 현재 운영 중인 구역·랙·열·선반 조합과 랙의 단면/양면 규칙을 사용합니다.'],
           ['상태','보관중 또는 폐기만 입력합니다.'],
           ['동기화','업로드 후 추가·변경·제외 내역을 확인하고 현재 대장으로 반영하세요. 오류가 있으면 기존 대장은 바뀌지 않습니다.'],
-          ['인쇄','인쇄용 관리대장 시트는 폐기 문서를 제외하며, A4 가로, A~M열 한 페이지 너비와 마지막 데이터 행까지로 설정되어 있습니다.']
+          ['인쇄','인쇄용 관리대장 시트는 폐기 문서를 제외하며, A4 가로, A~N열 한 페이지 너비와 마지막 데이터 행까지로 설정되어 있습니다.']
         ].forEach(function (row) { guide.addRow(row); });
         guide.eachRow(function (row, index) { if (index > 1) { row.height = 34; row.eachCell(function (cell) { cell.alignment = { vertical: 'middle', wrapText: true }; cell.font = { name: '맑은 고딕', size: 10 }; }); } });
 

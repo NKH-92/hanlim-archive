@@ -1,6 +1,6 @@
 import { buildCanonicalValues } from "./diff.js";
 
-export const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = Object.freeze(new Set([1, 2]));
+export const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = Object.freeze(new Set([3]));
 
 function stableStringify(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);

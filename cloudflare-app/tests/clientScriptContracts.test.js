@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 import { escapeHtml } from "../src/ui/html/escape.js";
+import { EXCEL_SNAPSHOT_HEADERS } from "../src/domains/snapshots/domain/workbookSchema.js";
 import * as clientScriptModule from "../src/views/clientScript.js";
 import { excelSnapshotScript } from "../src/views/clientScript/excelSnapshots.js";
 import { TOAST_MESSAGES } from "../src/views/clientScript/navigationFeedback.js";
@@ -201,9 +202,11 @@ test("브라우저 CSV helper는 공백·제어문자 뒤 수식 접두어도 �
 test("인쇄용 관리대장은 담당자·확인자 서명란을 반복 인쇄되는 셀로 만든다", () => {
   const script = excelSnapshotScript();
 
-  assert.ok(script.includes("print.mergeCells('A2:I3')"));
-  assert.ok(script.includes("['J2:K2', 'J3:K3', '담당자"));
-  assert.ok(script.includes("['L2:M2', 'L3:M3', '확인자"));
+  assert.deepEqual(EXCEL_SNAPSHOT_HEADERS.slice(5, 8), ["문서종류", "랙 위치 (구역)", "랙 위치 (번호)"]);
+  assert.match(script, /한글 14개 열[\s\S]*현재 대장을 다시 추출하세요/);
+  assert.ok(script.includes("print.mergeCells('A2:J3')"));
+  assert.ok(script.includes("['K2:L2', 'K3:L3', '담당자"));
+  assert.ok(script.includes("['M2:N2', 'M3:N3', '확인자"));
   assert.equal((script.match(/print\.mergeCells\(signatureBlock\[[01]\]\)/g) || []).length, 2);
   assert.match(script, /담당자\\nThe Person in charge/);
   assert.match(script, /확인자\\nConfirmed by/);
@@ -213,10 +216,10 @@ test("인쇄용 관리대장은 담당자·확인자 서명란을 반복 인쇄�
   assert.match(script, /String\(document\.status \|\| ''\) !== '폐기'/);
   assert.match(script, /var printLastRow = Math\.max\(4, printDocuments\.length \+ 4\)/);
   assert.match(script, /paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0/);
-  assert.match(script, /printArea: 'A1:M' \+ printLastRow/);
+  assert.match(script, /printArea: 'A1:N' \+ printLastRow/);
   assert.match(script, /printTitlesRow: '1:4'/);
   assert.doesNotMatch(script, /addPageBreak|printMaxRowsPerPage|printBreakOffset/);
-  assert.match(script, /폐기 문서를 제외하며, A4 가로, A~M열 한 페이지 너비와 마지막 데이터 행까지/);
+  assert.match(script, /폐기 문서를 제외하며, A4 가로, A~N열 한 페이지 너비와 마지막 데이터 행까지/);
   assert.match(script, /oddHeader = '&L별첨 15\. 문서 목록 Document List'/);
   assert.match(script, /oddFooter = '&C&P \/ &N&RHLF-GR-04-15 \/ Rev\.2'/);
   assert.doesNotMatch(script, /&L한림 문서고/);

@@ -33,7 +33,36 @@ test("서버 export를 실제 XLSX로 생성·재파싱한 무수정 파일은 0
             LIMIT 1
           )
     `).run();
+    database.prepare("UPDATE racks SET is_active = 1 WHERE zone_number IN (2, 3) AND rack_number = 1").run();
+    database.prepare(`
+      UPDATE rack_slots
+      SET is_active = 1
+      WHERE rack_id IN (SELECT id FROM racks WHERE zone_number IN (2, 3) AND rack_number = 1)
+    `).run();
+    database.prepare(`
+      UPDATE documents
+      SET rack_slot_id = (
+        SELECT slot.id FROM rack_slots slot
+        JOIN racks rack ON rack.id = slot.rack_id
+        WHERE rack.zone_number = 2 AND rack.is_active = 1
+        ORDER BY rack.rack_number, slot.column_number, slot.shelf_number
+        LIMIT 1
+      )
+      WHERE id = (SELECT MIN(id) FROM documents)
+    `).run();
+    database.prepare(`
+      UPDATE documents
+      SET rack_slot_id = (
+        SELECT slot.id FROM rack_slots slot
+        JOIN racks rack ON rack.id = slot.rack_id
+        WHERE rack.zone_number = 3 AND rack.is_active = 1
+        ORDER BY rack.rack_number, slot.column_number, slot.shelf_number
+        LIMIT 1
+      )
+      WHERE id = (SELECT MAX(id) FROM documents)
+    `).run();
     const exported = await getDocumentSnapshotExport(env, actor);
+    assert.deepEqual(exported.documents.map((document) => document.zoneNumber), [2, 3]);
     const workbookBytes = await buildWorkbook(exported);
     const rows = await parseWorkbook(workbookBytes);
     const digest = await crypto.subtle.digest("SHA-256", workbookBytes);
@@ -88,6 +117,7 @@ async function buildWorkbook(payload) {
       document.disposalDueYear,
       document.documentName,
       document.category,
+      document.zoneNumber,
       document.rackNumber,
       document.rackColumn,
       document.shelfNumber,
@@ -98,7 +128,7 @@ async function buildWorkbook(payload) {
       document.rowKey
     ]);
   }
-  data.getColumn(14).hidden = true;
+  data.getColumn(15).hidden = true;
   const meta = workbook.addWorksheet("_시스템정보", { state: "veryHidden" });
   meta.addRows([
     ["schemaVersion", payload.schemaVersion],
@@ -115,13 +145,13 @@ async function parseWorkbook(buffer) {
   await workbook.xlsx.load(buffer);
   const data = workbook.getWorksheet("문서데이터");
   assert.deepEqual(EXCEL_SNAPSHOT_HEADERS.map((_, index) => cellText(data.getCell(1, index + 1))), [...EXCEL_SNAPSHOT_HEADERS]);
-  assert.equal(data.getColumn(14).hidden, true);
+  assert.equal(data.getColumn(15).hidden, true);
   return Array.from({ length: data.actualRowCount - 1 }, (_, index) => {
     const rowNumber = index + 2;
     const row = data.getRow(rowNumber);
     return {
       rowNumber,
-      sourceRowKey: cellText(row.getCell(14)),
+      sourceRowKey: cellText(row.getCell(15)),
       source: {
         documentNumber: cellText(row.getCell(1)),
         revisionNumber: cellText(row.getCell(2)),
@@ -129,13 +159,14 @@ async function parseWorkbook(buffer) {
         disposalDueYear: cellText(row.getCell(4)),
         documentName: cellText(row.getCell(5)),
         category: cellText(row.getCell(6)),
-        rackNumber: cellText(row.getCell(7)),
-        rackColumn: cellText(row.getCell(8)),
-        shelfNumber: cellText(row.getCell(9)),
-        rackFace: cellText(row.getCell(10)),
-        tags: cellText(row.getCell(11)),
-        note: cellText(row.getCell(12)),
-        status: cellText(row.getCell(13))
+        zoneNumber: cellText(row.getCell(7)),
+        rackNumber: cellText(row.getCell(8)),
+        rackColumn: cellText(row.getCell(9)),
+        shelfNumber: cellText(row.getCell(10)),
+        rackFace: cellText(row.getCell(11)),
+        tags: cellText(row.getCell(12)),
+        note: cellText(row.getCell(13)),
+        status: cellText(row.getCell(14))
       }
     };
   });

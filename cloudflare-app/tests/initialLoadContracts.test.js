@@ -177,7 +177,7 @@ test("용량 trigger는 하드 상한의 다음 current 문서를 원자 차단�
   }
 });
 
-test("schema v2 membership은 30,000행 상한에서도 source JSON 재전송을 요구하지 않는다", async () => {
+test("schema v3 membership은 30,000행 상한에서도 source JSON 재전송을 요구하지 않는다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };
   const actor = actorFixture();
@@ -191,12 +191,12 @@ test("schema v2 membership은 30,000행 상한에서도 source JSON 재전송을
             FROM rack_slots slot
             JOIN racks rack ON rack.id = slot.rack_id
             WHERE slot.is_active = 1 AND rack.is_active = 1
-            ORDER BY rack.rack_number, slot.column_number, slot.shelf_number
+            ORDER BY rack.zone_number, rack.rack_number, slot.column_number, slot.shelf_number
             LIMIT 1
           )
     `).run();
     const exportManifest = await createDocumentSnapshotExport(env, actor);
-    assert.equal(exportManifest.schemaVersion, 2);
+    assert.equal(exportManifest.schemaVersion, 3);
     assert.equal("documents" in exportManifest, false, "manifest 생성은 문서 전량을 메모리에 적재하지 않는다");
     const exportPage = await getDocumentSnapshotExportPage(env, exportManifest.exportManifestId, 1);
     assert.equal(exportPage.ok, true, exportPage.message);
@@ -211,12 +211,12 @@ test("schema v2 membership은 30,000행 상한에서도 source JSON 재전송을
       canonicalExportHash: finalized.canonicalExportHash
     };
     const created = await createDocumentSnapshot(env, {
-      sourceName: "membership-v2.xlsx",
+      sourceName: "membership-v3.xlsx",
       sourceHash: "a".repeat(64),
       sourceSize: 4096,
-      syncReason: "schema v2 membership 무변경 검증",
+      syncReason: "schema v3 membership 무변경 검증",
       totalCount: exported.documents.length,
-      schemaVersion: 2,
+      schemaVersion: 3,
       mode: "managed",
       baseVersion: exported.baseVersion,
       currentSnapshotId: exported.currentSnapshotId || "",
@@ -244,6 +244,45 @@ test("schema v2 membership은 30,000행 상한에서도 source JSON 재전송을
     assert.equal(Number(prepared.snapshot.staged_count), 0);
     assert.equal(Number(prepared.snapshot.unchanged_count), exported.documents.length);
     assert.equal(Number(prepared.snapshot.update_count), 0);
+  } finally {
+    database.close();
+  }
+});
+
+test("구역 cursor는 같은 랙 번호의 export page를 누락·중복 없이 잇는다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  const actor = actorFixture();
+  try {
+    database.prepare("UPDATE racks SET is_active = 1 WHERE zone_number = 2 AND rack_number = 1").run();
+    database.prepare(`
+      UPDATE rack_slots SET is_active = 1
+      WHERE rack_id = (SELECT id FROM racks WHERE zone_number = 2 AND rack_number = 1)
+    `).run();
+    database.prepare(`
+      UPDATE documents
+      SET rack_slot_id = (
+        SELECT slot.id FROM rack_slots slot
+        JOIN racks rack ON rack.id = slot.rack_id
+        WHERE rack.zone_number = 2 AND rack.rack_number = 1
+        ORDER BY slot.column_number, slot.shelf_number LIMIT 1
+      )
+      WHERE id = (SELECT MAX(id) FROM documents)
+    `).run();
+
+    const manifest = await createDocumentSnapshotExport(env, actor);
+    database.prepare("UPDATE document_snapshot_export_manifests SET page_size = 1 WHERE manifest_id = ?")
+      .run(manifest.exportManifestId);
+    const first = await getDocumentSnapshotExportPage(env, manifest.exportManifestId, 1);
+    const second = await getDocumentSnapshotExportPage(env, manifest.exportManifestId, 2);
+    assert.equal(first.ok, true, first.message);
+    assert.equal(second.ok, true, second.message);
+    assert.deepEqual([first.documents[0].zoneNumber, second.documents[0].zoneNumber], [1, 2]);
+    assert.equal(first.documents[0].rackNumber, second.documents[0].rackNumber);
+    assert.notEqual(first.documents[0].rowKey, second.documents[0].rowKey);
+    const finalized = await finalizeDocumentSnapshotExport(env, manifest.exportManifestId);
+    assert.equal(finalized.ok, true, finalized.message);
+    assert.equal(finalized.pageCount, 2);
   } finally {
     database.close();
   }

@@ -90,8 +90,9 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
     `sync_state = 'excluded'`로 이력만 보존한다. 최종 반영은 전용 권한과 위치·폐기 권한을 우회하지 않으며,
     날짜는 UTC calendar date로만 왕복한다. 동기화 사유는 작업 생성 전에 필수로 입력받아 snapshot과
     시작 감사에 저장하고, 최종 반영 시 저장된 사유를 다시 확인한다.
-12. **엑셀 행 식별자**: 보이는 13개 한글 열의 순서와 이름은 고정한다. `excel_row_key`는 숨김 14열에만
-    기록하며 `storage_code`를 대체 공개하지 않는다. 파일의 `baseVersion`이 현재 버전과 다르면 반영을 막는다.
+12. **엑셀 행 식별자**: 보이는 14개 한글 열의 순서와 이름은 고정하며 `랙 위치 (구역)`은 `문서종류`와
+    `랙 위치 (번호)` 사이에 둔다. `excel_row_key`는 숨김 15열에만 기록하며 `storage_code`를 대체 공개하지 않는다.
+    파일의 `baseVersion`이 현재 버전과 다르면 반영을 막는다.
 13. **OOXML 호환성**: 일반 XLSX는 ExcelJS로 바로 읽고, 표준 namespace 접두사와 절대 relationship을 쓰는
     XLSX만 브라우저에서 상대 경로·기본 namespace 형태로 정규화한 뒤 다시 읽는다. 원본 파일 hash는 바꾸지 않는다.
 14. **엑셀 출처와 압축 예산**: export API는 DB에 manifest ID·base version·현재 snapshot·canonical export hash를
