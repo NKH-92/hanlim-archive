@@ -1,4 +1,4 @@
-export const EXCEL_SNAPSHOT_SCHEMA_VERSION = 3;
+export const EXCEL_SNAPSHOT_SCHEMA_VERSION = 4;
 
 export const EXCEL_SNAPSHOT_HEADERS = Object.freeze([
   "문서번호",

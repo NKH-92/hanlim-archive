@@ -1,5 +1,6 @@
 import { FREE_TIER_BUDGET } from "../../../freeTierBudget.js";
 import { clean } from "../../../shared/text/normalize.js";
+import { NOT_APPLICABLE, revisionForExcel } from "../../../shared/documents/revision.js";
 import { auditActorSnapshot } from "../../identity/index.js";
 import { SNAPSHOT_ERROR_CODES, snapshotError } from "../domain/errorCodes.js";
 import {
@@ -358,9 +359,9 @@ function exportDocument(row) {
     rowKey: clean(row.excel_row_key),
     baseRowVersion: Number(row.row_version || 0),
     documentNumber: clean(row.document_number),
-    revisionNumber: clean(row.revision_number),
-    revisionDate: clean(row.revision_date),
-    disposalDueYear: row.disposal_due_year === null || row.disposal_due_year === undefined ? "" : Number(row.disposal_due_year),
+    revisionNumber: revisionForExcel(row.revision_number),
+    revisionDate: clean(row.revision_date) || NOT_APPLICABLE,
+    disposalDueYear: row.disposal_due_year === null || row.disposal_due_year === undefined ? NOT_APPLICABLE : Number(row.disposal_due_year),
     documentName: clean(row.document_name),
     category: clean(row.category_name),
     zoneNumber: Number(row.zone_number),
@@ -368,8 +369,8 @@ function exportDocument(row) {
     rackColumn: Number(row.column_number),
     shelfNumber: Number(row.shelf_number),
     rackFace: Number(row.is_single_sided) ? "단면" : row.rack_face === "B" ? "2면" : "1면",
-    tags: clean(row.tag_names),
-    note: clean(row.note),
+    tags: clean(row.tag_names) || NOT_APPLICABLE,
+    note: clean(row.note) || NOT_APPLICABLE,
     status: row.status === "disposed" ? "폐기" : "보관중"
   };
 }

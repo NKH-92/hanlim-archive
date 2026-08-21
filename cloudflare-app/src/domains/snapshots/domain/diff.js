@@ -1,4 +1,5 @@
 import { clean } from "../../../shared/text/normalize.js";
+import { normalizeImportedRevision } from "../../../shared/documents/revision.js";
 
 export const CHANGE_FLAGS = Object.freeze({
   CREATE: "CREATE",
@@ -56,8 +57,8 @@ export function buildCanonicalValues({
 }) {
   return {
     documentNumber: clean(documentNumber),
-    revisionNumber: clean(revisionNumber),
-    revisionDate: clean(revisionDate),
+    revisionNumber: normalizeImportedRevision(revisionNumber),
+    revisionDate: clean(revisionDate) || null,
     disposalDueYear: nullableNumber(disposalDueYear),
     documentName: clean(documentName),
     categoryId: Number(categoryId) || 0,
@@ -71,7 +72,7 @@ export function buildCanonicalValues({
     rackFace: clean(rackFace),
     tagIds: [...new Set(tagIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))].sort((a, b) => a - b),
     tagNames: [...new Set(tagNames.map(clean).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko")),
-    note: clean(note),
+    note: clean(note) || null,
     status: clean(status),
     syncState: clean(syncState) || "current"
   };

@@ -2,6 +2,7 @@ import { FREE_TIER_BUDGET } from "../../../freeTierBudget.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 import { isD1ValuePayloadWithinLimit } from "../../../platform/d1/valueSize.js";
 import { clean } from "../../../shared/text/normalize.js";
+import { NOT_APPLICABLE, revisionForExcel } from "../../../shared/documents/revision.js";
 import { auditActorSnapshot } from "../../identity/index.js";
 import {
   approvalReferenceRequired,
@@ -338,9 +339,9 @@ function sourceRowFromCurrentDocument(document, membership, lookup) {
     sourceRowKey: clean(membership.row_key),
     rowKey: clean(membership.row_key),
     documentNumber: clean(document.document_number),
-    revisionNumber: clean(document.revision_number),
-    revisionDate: clean(document.revision_date),
-    disposalDueYear: document.disposal_due_year,
+    revisionNumber: revisionForExcel(document.revision_number),
+    revisionDate: clean(document.revision_date) || NOT_APPLICABLE,
+    disposalDueYear: document.disposal_due_year ?? NOT_APPLICABLE,
     documentName: clean(document.document_name),
     category: clean(categoryName),
     rackCode: clean(slot?.code),
@@ -349,8 +350,8 @@ function sourceRowFromCurrentDocument(document, membership, lookup) {
     rackColumn: Number(slot?.column_number || 0),
     shelfNumber: Number(slot?.shelf_number || 0),
     rackFace: clean(document.rack_face),
-    tags: tagNames.join(";"),
-    note: clean(document.note),
+    tags: tagNames.join(";") || NOT_APPLICABLE,
+    note: clean(document.note) || NOT_APPLICABLE,
     status: document.status === "disposed" ? "폐기" : "보관중"
   };
 }

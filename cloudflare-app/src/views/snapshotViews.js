@@ -1,5 +1,6 @@
 import { hasPermission, PERMISSIONS, PERMISSION_LABELS } from "../permissions.js";
 import { escapeHtml } from "../ui/html/escape.js";
+import { formatRevisionLabel } from "../shared/documents/revision.js";
 import { alertDanger, page } from "./layout.js";
 
 const STATUS_LABELS = Object.freeze({
@@ -100,6 +101,7 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
         <li>오류가 한 건이라도 있으면 현재 문서대장은 변경하지 않습니다.</li>
         <li>엑셀에서 사라진 문서는 삭제 대신 대장에서 제외해 감사·세트·이동 이력을 보존합니다.</li>
         <li>시스템에서 개별 처리한 추가·정보 수정·개정·위치 이동·폐기는 다음 엑셀 추출과 인쇄용 관리대장에 포함됩니다.</li>
+        <li>개정번호는 숫자만 입력하며 화면에서는 Rev.가 붙습니다. 공란 또는 N/A는 DB에 NULL로 저장되고 검색 화면과 다음 추출에서는 N/A로 표시됩니다.</li>
         <li>개정 이력의 문서번호·개정번호 변경과 자동 폐기된 이전본의 복원은 엑셀로 처리할 수 없습니다.</li>
         <li>최종 반영은 전용 권한과 위치·폐기 권한이 필요할 수 있습니다.</li>
         <li>추출 후 시스템에서 건별 작업이 발생하면 기존 엑셀은 오래된 파일이 되므로 최신 대장을 다시 추출해야 합니다.</li>
@@ -147,7 +149,7 @@ export function documentSnapshotDetailPage({
         <td data-label="엑셀 행">${number(row.row_number)}</td>
         <td data-label="처리">${flagBadges(row.changeFlags, row.action)}</td>
         <td class="mono" data-label="문서번호">${escapeHtml(values.documentNumber || "-")}</td>
-        <td data-label="개정">${escapeHtml(values.revisionNumber || "-")}</td>
+        <td data-label="개정">${escapeHtml(formatRevisionLabel(values.revisionNumber))}</td>
         <td data-label="문서명">${escapeHtml(values.documentName || "-")}</td>
         <td data-label="변경 필드">${escapeHtml((row.changedFields || []).join(", ") || "-")}</td>
         <td data-label="변경 전">${diffCell(beforeValues, row.changedFields)}</td>
@@ -167,7 +169,7 @@ export function documentSnapshotDetailPage({
     return `
       <tr>
         <td class="mono" data-label="문서번호">${escapeHtml(values.documentNumber || "-")}</td>
-        <td data-label="개정">${escapeHtml(values.revisionNumber || "-")}</td>
+        <td data-label="개정">${escapeHtml(formatRevisionLabel(values.revisionNumber))}</td>
         <td data-label="문서명">${escapeHtml(values.documentName || "-")}</td>
         <td data-label="현재 상태">${escapeHtml(statusText(values.status))}</td>
         <td data-label="현재 위치">${escapeHtml(locationText(values))}</td>

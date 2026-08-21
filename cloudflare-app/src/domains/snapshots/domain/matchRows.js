@@ -1,4 +1,5 @@
 import { clean } from "../../../shared/text/normalize.js";
+import { isCompleteDocumentIdentity } from "../../../shared/documents/revision.js";
 import { SNAPSHOT_ERROR_CODES } from "./errorCodes.js";
 import {
   buildCanonicalValues,
@@ -54,6 +55,7 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
     const key = clean(document.excel_row_key);
     if (key) byKey.set(key, document);
     const identity = documentIdentity(document.document_number, document.revision_number);
+    if (!isCompleteDocumentIdentity(document.document_number, document.revision_number)) continue;
     if (document.sync_state === "current") {
       const list = byIdentityCurrent.get(identity) || [];
       list.push(document);
@@ -74,7 +76,8 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
 
   for (const item of items) {
     const identity = documentIdentity(item.values.documentNumber, item.values.revisionNumber);
-    if (fileIdentity.has(identity)) {
+    const completeIdentity = isCompleteDocumentIdentity(item.values.documentNumber, item.values.revisionNumber);
+    if (completeIdentity && fileIdentity.has(identity)) {
       const priorRow = fileIdentity.get(identity);
       errors.push({
         rowNumber: item.rowNumber,
@@ -85,7 +88,7 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
         revisionNumber: item.values.revisionNumber,
         conflictRowNumber: priorRow
       });
-    } else {
+    } else if (completeIdentity) {
       fileIdentity.set(identity, item.rowNumber);
     }
 
@@ -110,7 +113,7 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
     if (sourceKey) {
       document = byKey.get(sourceKey) || null;
       if (!document) {
-        const currentHits = byIdentityCurrent.get(identity) || [];
+        const currentHits = completeIdentity ? (byIdentityCurrent.get(identity) || []) : [];
         if (currentHits.length) {
           const hit = currentHits[0];
           errors.push({
@@ -140,8 +143,8 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
         }
       }
     } else {
-      const currentHits = byIdentityCurrent.get(identity) || [];
-      const excludedHits = byIdentityExcluded.get(identity) || [];
+      const currentHits = completeIdentity ? (byIdentityCurrent.get(identity) || []) : [];
+      const excludedHits = completeIdentity ? (byIdentityExcluded.get(identity) || []) : [];
       if (currentHits.length) {
         const hit = currentHits[0];
         errors.push({
@@ -188,7 +191,7 @@ export function matchCanonicalSnapshotRows(items, documents, { managedMode = tru
 
     if (document) {
       const documentIdentityKey = documentIdentity(document.document_number, document.revision_number);
-      if (documentIdentityKey !== identity && (byIdentityCurrent.get(identity) || []).some((candidate) => Number(candidate.id) !== Number(document.id))) {
+      if (completeIdentity && documentIdentityKey !== identity && (byIdentityCurrent.get(identity) || []).some((candidate) => Number(candidate.id) !== Number(document.id))) {
         const conflict = (byIdentityCurrent.get(identity) || []).find((candidate) => Number(candidate.id) !== Number(document.id));
         errors.push({
           rowNumber: item.rowNumber,

@@ -54,7 +54,7 @@ test("동기화 작업 생성은 사유를 필수로 저장하고 시작 감사�
       sourceHash: "0".repeat(64),
       sourceSize: 4096,
       totalCount: 1,
-      schemaVersion: 3,
+      schemaVersion: 4,
       mode: "bootstrap",
       bootstrapConfirmation: "BOOTSTRAP",
       backupConfirmed: true
@@ -116,7 +116,7 @@ test("날짜 전용 값은 시간대와 무관하게 YYYY-MM-DD로 왕복한다"
   }
 });
 
-test("strict parser는 공란 개정·상태·위치를 기본값으로 보정하지 않는다", async () => {
+test("schema v4 parser는 공란 개정·날짜·폐기연도를 NULL로 정규화하고 상태·위치는 엄격히 검증한다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database) };
   try {
@@ -138,7 +138,9 @@ test("strict parser는 공란 개정·상태·위치를 기본값으로 보정�
       status: "정상"
     }], options);
     assert.equal(prepared.ok, false);
-    assert.ok(prepared.errors.some((error) => error.field === "revisionNumber"));
+    assert.equal(prepared.items[0].values.revisionNumber, null);
+    assert.equal(prepared.items[0].values.revisionDate, null);
+    assert.equal(prepared.items[0].values.disposalDueYear, null);
     assert.ok(prepared.errors.some((error) => error.field === "status"));
     assert.ok(prepared.errors.some((error) => error.field === "location"));
   } finally {
@@ -146,7 +148,7 @@ test("strict parser는 공란 개정·상태·위치를 기본값으로 보정�
   }
 });
 
-test("schema v3 parser는 같은 랙 번호를 구역별 위치로 구분한다", async () => {
+test("schema v4 parser는 같은 랙 번호를 구역별 위치로 구분한다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database) };
   try {
@@ -183,7 +185,7 @@ test("파일 내부 identity 중복과 case-only 중복은 prepare에서 실패�
       row(3, "doc-dup", "rev.1")
     ];
     const created = await createDocumentSnapshot(env, {
-      sourceName: "dup.xlsx", sourceHash: "e".repeat(64), totalCount: 2, schemaVersion: 3, mode: "bootstrap"
+      sourceName: "dup.xlsx", sourceHash: "e".repeat(64), totalCount: 2, schemaVersion: 4, mode: "bootstrap"
     }, actor);
     assert.equal(created.ok, true);
     assert.equal((await stageDocumentSnapshotRows(env, created.id, rows)).ok, true);
@@ -201,7 +203,7 @@ test("managed 모드에서 메타데이터 없는 파일과 unsupported schema�
   const actor = actorFixture();
   try {
     const missing = await createDocumentSnapshot(env, {
-      sourceName: "no-meta.xlsx", sourceHash: "f".repeat(64), totalCount: 1, schemaVersion: 3, mode: "managed"
+      sourceName: "no-meta.xlsx", sourceHash: "f".repeat(64), totalCount: 1, schemaVersion: 4, mode: "managed"
     }, actor);
     assert.equal(missing.ok, false);
     assert.equal(missing.code, "SNAPSHOT_METADATA_REQUIRED");
@@ -223,7 +225,7 @@ test("권한 부족 apply는 문서와 snapshot 상태를 바꾸지 않는다", 
   try {
     const rows = [row(2, "DOC-AUTH", "Rev.0")];
     const created = await createDocumentSnapshot(env, {
-      sourceName: "auth.xlsx", sourceHash: "2".repeat(64), totalCount: 1, schemaVersion: 3, mode: "bootstrap"
+      sourceName: "auth.xlsx", sourceHash: "2".repeat(64), totalCount: 1, schemaVersion: 4, mode: "bootstrap"
     }, admin);
     await stageDocumentSnapshotRows(env, created.id, rows);
     const prepared = await prepareDocumentSnapshot(env, created.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, admin);
@@ -260,7 +262,7 @@ test("위치 변경은 movement log를, 폐기는 disposal log를 남긴다", as
   try {
     const first = [row(2, "DOC-MOVE", "Rev.0", { rackColumn: "1", shelfNumber: "1", status: "보관중" })];
     const created = await createDocumentSnapshot(env, {
-      sourceName: "move.xlsx", sourceHash: "3".repeat(64), totalCount: 1, schemaVersion: 3, mode: "bootstrap"
+      sourceName: "move.xlsx", sourceHash: "3".repeat(64), totalCount: 1, schemaVersion: 4, mode: "bootstrap"
     }, actor);
     await stageDocumentSnapshotRows(env, created.id, first);
     const prepared = await prepareDocumentSnapshot(env, created.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, actor);
@@ -300,7 +302,7 @@ test("위치 변경은 movement log를, 폐기는 disposal log를 남긴다", as
       sourceName: "move2.xlsx",
       sourceHash: "4".repeat(64),
       totalCount: 1,
-      schemaVersion: 3,
+      schemaVersion: 4,
       mode: "managed",
       baseVersion: state.current_version,
       currentSnapshotId: state.current_snapshot_id,
@@ -463,7 +465,7 @@ test("exclusion 목록 API와 table 행 수가 일치한다", async () => {
     `).run(linked.id, linked.document_number, linked.rack_slot_id, linked.rack_face, linked.rack_slot_id, linked.rack_face);
     const rows = [row(2, "DOC-ONLY", "Rev.0")];
     const created = await createDocumentSnapshot(env, {
-      sourceName: "ex.xlsx", sourceHash: "5".repeat(64), totalCount: 1, schemaVersion: 3, mode: "bootstrap"
+      sourceName: "ex.xlsx", sourceHash: "5".repeat(64), totalCount: 1, schemaVersion: 4, mode: "bootstrap"
     }, actor);
     await stageDocumentSnapshotRows(env, created.id, rows);
     const prepared = await prepareDocumentSnapshot(env, created.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, actor);
@@ -643,7 +645,7 @@ test("같은 위치 유지 update는 movement 0이고 폐기 해제는 restore l
   try {
     const first = [row(2, "DOC-REST", "Rev.0", { status: "폐기" })];
     const created = await createDocumentSnapshot(env, {
-      sourceName: "restore.xlsx", sourceHash: "9".repeat(64), totalCount: 1, schemaVersion: 3, mode: "bootstrap"
+      sourceName: "restore.xlsx", sourceHash: "9".repeat(64), totalCount: 1, schemaVersion: 4, mode: "bootstrap"
     }, actor);
     await stageDocumentSnapshotRows(env, created.id, first);
     const prepared = await prepareDocumentSnapshot(env, created.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, actor);
@@ -680,7 +682,7 @@ test("같은 위치 유지 update는 movement 0이고 폐기 해제는 restore l
       sourceName: "restore2.xlsx",
       sourceHash: "a".repeat(64),
       totalCount: 1,
-      schemaVersion: 3,
+      schemaVersion: 4,
       mode: "managed",
       baseVersion: state.current_version,
       currentSnapshotId: state.current_snapshot_id,
@@ -712,7 +714,7 @@ test("prepare 중 문서고 version이 바뀌면 snapshot이 failed로 terminal 
   try {
     const rows = [row(2, "DOC-STALE-P", "Rev.0")];
     const created = await createDocumentSnapshot(env, {
-      sourceName: "stale-prepare.xlsx", sourceHash: "c".repeat(64), totalCount: 1, schemaVersion: 3, mode: "bootstrap"
+      sourceName: "stale-prepare.xlsx", sourceHash: "c".repeat(64), totalCount: 1, schemaVersion: 4, mode: "bootstrap"
     }, actor);
     await stageDocumentSnapshotRows(env, created.id, rows);
     database.prepare("UPDATE document_sync_state SET current_version = current_version + 1 WHERE id = 1").run();
@@ -732,7 +734,7 @@ test("identity 중복 오류는 문서번호·개정·충돌 행을 포함한다
   try {
     const rows = [row(2, "DOC-MSG", "Rev.1"), row(5, "DOC-MSG", "Rev.1")];
     const created = await createDocumentSnapshot(env, {
-      sourceName: "msg.xlsx", sourceHash: "b".repeat(64), totalCount: 2, schemaVersion: 3, mode: "bootstrap"
+      sourceName: "msg.xlsx", sourceHash: "b".repeat(64), totalCount: 2, schemaVersion: 4, mode: "bootstrap"
     }, actor);
     await stageDocumentSnapshotRows(env, created.id, rows);
     const prepared = await prepareDocumentSnapshot(env, created.id, await loadDocumentFormOptions(env, { activeOnly: true }), null, actor);
@@ -853,7 +855,7 @@ async function bootstrapReadySnapshot(env, actor, rows, sourceHash) {
     sourceName: "race.xlsx",
     sourceHash,
     totalCount: rows.length,
-    schemaVersion: 3,
+    schemaVersion: 4,
     mode: "bootstrap"
   }, actor);
   assert.equal(created.ok, true, created.message);
