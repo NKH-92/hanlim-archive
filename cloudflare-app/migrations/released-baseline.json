@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "releasedThrough": "0058_excel_auto_categories.sql",
+  "releasedThrough": "0059_excel_revision_date_precision.sql",
   "checksums": {
     "0001_initial.sql": "78e8a85c74054df41e11d2f3ceaf259ebe78b37db9333cfeedbbdf01d92ccdca",
     "0002_app_users.sql": "a47068f668577b71e2f484362205c73a7a9774b6a2a5fba5bba35ad37bf550e7",
@@ -59,7 +59,8 @@
     "0055_document_location_covering_index.sql": "64bc352cf3ece927a94f8f3052b3d3b039a1279ecd8d21dfad32993977bd3289",
     "0056_excel_snapshot_zone_cursor.sql": "604c4dd5fe9833a274582d8b75f71f06a9236ecb48adfc9a20fc911d17de6109",
     "0057_nullable_excel_revision_and_na_defaults.sql": "6600efdfe76356930b1aad965c5cba95ff119a772d686c7850daf6281fbe3070",
-    "0058_excel_auto_categories.sql": "ef937d368e0946ccc3e410b06ea03e646ab0f6c4719a6ced44b749b63a2181a7"
+    "0058_excel_auto_categories.sql": "ef937d368e0946ccc3e410b06ea03e646ab0f6c4719a6ced44b749b63a2181a7",
+    "0059_excel_revision_date_precision.sql": "c2dcc01d16fc80cda902d06382e285c0dcaade681188be06a8a8f4b0afca4ef7"
   },
   "schema": {
     "tables": [
