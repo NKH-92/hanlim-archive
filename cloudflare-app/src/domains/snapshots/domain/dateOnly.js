@@ -41,3 +41,14 @@ export function excelSerialToDateOnly(serial, { date1904 = false } = {}) {
 export function isValidDateOnly(value) {
   return dateOnlyToUtcDate(value) !== null;
 }
+
+export function normalizeImportedRevisionDate(value) {
+  const text = String(value || "").trim();
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replaceAll(".", "-");
+  return text;
+}
+
+export function isValidImportedRevisionDate(value) {
+  const normalized = normalizeImportedRevisionDate(value);
+  return /^\d{4}$/.test(normalized) || isValidDateOnly(normalized);
+}

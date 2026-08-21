@@ -58,6 +58,7 @@ export function excelSnapshotScript() {
         var value = cell && cell.value;
         if (value instanceof Date) return excelUtcDateOnly(value);
         if (typeof value === 'number' && Number.isFinite(value)) {
+          if (Number.isInteger(value) && value >= 1000 && value <= 9999) return String(value);
           var date1904 = !!(workbook && workbook.properties && workbook.properties.date1904);
           var epoch = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
           var date = new Date(epoch + Math.round(value * 86400000));
@@ -528,6 +529,7 @@ export function excelSnapshotScript() {
           ['문서데이터','첫 행의 한글 14개 열 제목과 순서를 변경하지 마세요. 필터·정렬과 행 추가는 가능합니다.'],
           ['선택 입력','문서번호, 제/개정일, 폐기 예정 년도, 문서종류, 태그, 비고는 공란 또는 N/A로 입력할 수 있으며 다음 추출에는 N/A로 표시됩니다.'],
           ['개정번호','숫자만 입력합니다(예: 3). 화면에는 Rev.3으로 표시됩니다. 묶음 바인더처럼 개정번호가 없는 문서는 공란 또는 N/A로 입력하며 화면과 다음 추출에는 N/A로 표시됩니다.'],
+          ['제/개정일','연도만 아는 경우 YYYY(예: 2026)로 입력할 수 있습니다. 전체 날짜는 YYYY-MM-DD 또는 YYYY.MM.DD로 입력하며 점 표기는 하이픈 표기로 자동 변환됩니다.'],
           ['문서종류','등록된 목록에서 선택하거나 새 문서종류를 직접 입력할 수 있습니다. 새 이름은 업로드 검토에 표시되고 최종 반영 시 기준정보에 자동 등록됩니다.'],
           ['숨김 관리 정보','O~Q열은 문서 이력, 기준 버전, 변경 탐지를 위한 시스템 값입니다. 열을 삭제하거나 값을 복사하지 마세요. 인쇄에는 나오지 않습니다.'],
           ['태그','여러 태그는 세미콜론(;)으로 구분합니다. 관리자 화면에 등록된 태그만 사용할 수 있습니다.'],

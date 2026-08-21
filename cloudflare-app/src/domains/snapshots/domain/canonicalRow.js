@@ -2,7 +2,7 @@ import { validateDocumentRecordFields, validateDocumentTextFields } from "../../
 import { normalizeRackFace } from "../../racks/index.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { NOT_APPLICABLE, normalizeImportedRevision } from "../../../shared/documents/revision.js";
-import { isValidDateOnly } from "./dateOnly.js";
+import { isValidImportedRevisionDate, normalizeImportedRevisionDate } from "./dateOnly.js";
 import { SNAPSHOT_ERROR_CODES } from "./errorCodes.js";
 import { isStableRowKey } from "./identity.js";
 
@@ -97,10 +97,11 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
     const tagIds = [];
     const tagLabels = [];
 
-    const revisionDate = clean(row.revisionDate);
-    const revisionDateMissing = !revisionDate || revisionDate.toUpperCase() === NOT_APPLICABLE;
-    if (!revisionDateMissing && !isValidDateOnly(revisionDate)) {
-      errors.push(fieldError(rowNumber, "revisionDate", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "제·개정일은 YYYY-MM-DD 형식이어야 합니다."));
+    const revisionDateRaw = clean(row.revisionDate);
+    const revisionDateMissing = !revisionDateRaw || revisionDateRaw.toUpperCase() === NOT_APPLICABLE;
+    const revisionDate = revisionDateMissing ? "" : normalizeImportedRevisionDate(revisionDateRaw);
+    if (!revisionDateMissing && !isValidImportedRevisionDate(revisionDate)) {
+      errors.push(fieldError(rowNumber, "revisionDate", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "제·개정일은 YYYY, YYYY-MM-DD 또는 YYYY.MM.DD 형식의 유효한 값이어야 합니다."));
     }
     if (!disposalParsed.ok) {
       errors.push(fieldError(rowNumber, "disposalDueYear", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "폐기 예정 년도는 정수 또는 N/A여야 합니다."));
@@ -163,7 +164,7 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
     if (textError) {
       errors.push(fieldError(rowNumber, "text", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, textError));
     }
-    const recordError = validateDocumentRecordFields(values, { required: false });
+    const recordError = validateDocumentRecordFields(values, { required: false, allowYearOnlyRevisionDate: true });
     if (recordError) {
       errors.push(fieldError(rowNumber, "record", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, recordError));
     }
