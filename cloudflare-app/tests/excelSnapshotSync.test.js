@@ -11,6 +11,7 @@ import {
   stageDocumentSnapshotRows
 } from "../src/domains/snapshots/index.js";
 import { FREE_TIER_BUDGET } from "../src/freeTierBudget.js";
+import { formatRevisionLabel } from "../src/shared/documents/revision.js";
 import { actorFixture } from "./helpers/fixtures.js";
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 
@@ -157,7 +158,7 @@ test("300건 엑셀 한 파일을 현재 대장으로 반영하고 다음 파일
       sourceName: "오래된 관리대장.xlsx",
       sourceHash: "c".repeat(64),
       totalCount: 1,
-      schemaVersion: 3,
+      schemaVersion: 4,
       mode: "managed",
       baseVersion: exported.baseVersion,
       currentSnapshotId: exported.currentSnapshotId || 1,
@@ -246,7 +247,7 @@ test("엑셀 동기화는 오류 행이 있으면 ready 상태가 되지 않고 
       sourceName: "오류.xlsx",
       sourceHash: "d".repeat(64),
       totalCount: rows.length,
-      schemaVersion: 3,
+      schemaVersion: 4,
       mode: "bootstrap",
       hasRowKeys: false
     }, actor);
@@ -265,12 +266,85 @@ test("엑셀 동기화는 오류 행이 있으면 ready 상태가 되지 않고 
   }
 });
 
+test("공란 선택값과 숫자 개정은 NULL·Rev 표시·N/A 재추출로 왕복한다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };
+  const actor = actorFixture();
+  try {
+    const rows = buildRows(2);
+    rows[0].source = {
+      ...rows[0].source,
+      documentNumber: "",
+      revisionNumber: "",
+      revisionDate: "",
+      disposalDueYear: "",
+      category: "",
+      tags: "",
+      note: ""
+    };
+    rows[1].source.revisionNumber = "3";
+    const prepared = await createAndPrepare(env, actor, rows, {
+      sourceHash: "9".repeat(64), mode: "bootstrap", hasRowKeys: false
+    });
+    const applied = await applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+      applyReason: "N/A와 숫자 개정번호 왕복 검증",
+      approvalReference: "NA-ROUNDTRIP",
+      confirmedExcludeCount: 0,
+      confirmExclude: true,
+      ...reviewConfirmation(prepared.snapshot)
+    });
+    assert.equal(applied.ok, true, applied.message);
+
+    const missing = database.prepare(`
+      SELECT d.*, c.name AS category_name
+      FROM documents d JOIN categories c ON c.id = d.category_id
+      WHERE d.document_name = ?
+    `).get(rows[0].source.documentName);
+    assert.equal(missing.document_number, "N/A");
+    assert.equal(missing.revision_number, null);
+    assert.equal(missing.revision_date, null);
+    assert.equal(missing.disposal_due_year, null);
+    assert.equal(missing.category_name, "N/A");
+    assert.equal(missing.note, null);
+    assert.equal(formatRevisionLabel(missing.revision_number), "N/A");
+    assert.equal(database.prepare("SELECT COUNT(*) count FROM document_tags WHERE document_id = ?").get(missing.id).count, 0);
+
+    const numeric = database.prepare("SELECT revision_number FROM documents WHERE document_name = ?").get(rows[1].source.documentName);
+    assert.equal(numeric.revision_number, "Rev.3");
+    assert.equal(formatRevisionLabel(numeric.revision_number), "Rev.3");
+
+    const exported = await getDocumentSnapshotExport(env, actor);
+    const missingExport = exported.documents.find((document) => document.documentName === rows[0].source.documentName);
+    const numericExport = exported.documents.find((document) => document.documentName === rows[1].source.documentName);
+    assert.deepEqual(
+      [missingExport.documentNumber, missingExport.revisionNumber, missingExport.revisionDate, missingExport.disposalDueYear, missingExport.category, missingExport.tags, missingExport.note],
+      ["N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"]
+    );
+    assert.equal(numericExport.revisionNumber, "3");
+
+    const roundTripRows = exported.documents.map((document, index) => ({
+      rowNumber: index + 2,
+      sourceRowKey: document.rowKey,
+      source: document
+    }));
+    const roundTrip = await createAndPrepare(env, actor, roundTripRows, {
+      sourceHash: "8".repeat(64), mode: "managed", hasRowKeys: true,
+      baseVersion: exported.baseVersion, currentSnapshotId: exported.currentSnapshotId,
+      exportManifestId: exported.exportManifestId, canonicalExportHash: exported.canonicalExportHash
+    });
+    assert.equal(Number(roundTrip.snapshot.update_count), 0);
+    assert.equal(Number(roundTrip.snapshot.unchanged_count), 2);
+  } finally {
+    database.close();
+  }
+});
+
 async function createAndPrepare(env, actor, rows, options) {
   const created = await createDocumentSnapshot(env, {
     sourceName: "한림_문서고_관리대장.xlsx",
     sourceHash: options.sourceHash,
     totalCount: rows.length,
-    schemaVersion: options.schemaVersion || 3,
+    schemaVersion: options.schemaVersion || 4,
     mode: options.mode || "managed",
     baseVersion: options.baseVersion || "",
     currentSnapshotId: options.currentSnapshotId || "",

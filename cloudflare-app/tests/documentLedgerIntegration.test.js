@@ -115,7 +115,7 @@ test("엑셀 준비 단계는 개정 연결 문서의 식별정보 변경과 자
     source: {
       ...document,
       ...(document.status === "폐기" ? { status: "보관중" } : {}),
-      ...(document.revisionNumber === "Rev.77" ? { revisionNumber: "Rev.78" } : {})
+      ...(document.revisionNumber === "77" ? { revisionNumber: "78" } : {})
     }
   }));
   const created = await createDocumentSnapshot(env, {

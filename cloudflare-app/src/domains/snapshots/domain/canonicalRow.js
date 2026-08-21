@@ -1,6 +1,7 @@
 import { validateDocumentRecordFields, validateDocumentTextFields } from "../../documents/index.js";
 import { normalizeRackFace } from "../../racks/index.js";
 import { clean } from "../../../shared/text/normalize.js";
+import { NOT_APPLICABLE, normalizeImportedRevision } from "../../../shared/documents/revision.js";
 import { isValidDateOnly } from "./dateOnly.js";
 import { SNAPSHOT_ERROR_CODES } from "./errorCodes.js";
 import { isStableRowKey } from "./identity.js";
@@ -48,7 +49,7 @@ function normalizeStrictFace(raw) {
 
 function parseTagNames(raw) {
   const text = clean(raw);
-  if (!text) return [];
+  if (!text || text.toUpperCase() === NOT_APPLICABLE) return [];
   const names = text.split(/[;,|]/).map((name) => clean(name)).filter(Boolean);
   const seen = new Set();
   const unique = [];
@@ -75,7 +76,7 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
     const row = rows[index] || {};
     const rowNumber = Number(row.rowNumber) || index + 2;
     const sourceRowKey = clean(row.sourceRowKey ?? row.rowKey);
-    const categoryName = clean(row.category);
+    const categoryName = clean(row.category) || NOT_APPLICABLE;
     const zoneParsed = parseStrictInteger(row.zoneNumber, { allowLeadingZero: false });
     const rackParsed = parseStrictInteger(row.rackNumber, { allowLeadingZero: false });
     const rackCode = zoneParsed.ok && rackParsed.ok
@@ -83,7 +84,9 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
       : "";
     const columnParsed = parseStrictInteger(row.rackColumn ?? row.columnNumber ?? row.column);
     const shelfParsed = parseStrictInteger(row.shelfNumber ?? row.shelf);
-    const disposalParsed = parseStrictInteger(row.disposalDueYear);
+    const disposalText = clean(row.disposalDueYear);
+    const disposalMissing = !disposalText || disposalText.toUpperCase() === NOT_APPLICABLE;
+    const disposalParsed = disposalMissing ? { ok: true, value: null } : parseStrictInteger(disposalText);
     const statusParsed = normalizeStrictStatus(row.status);
     const faceParsed = normalizeStrictFace(row.rackFace);
     const category = categoryByName.get(categoryName.toLowerCase());
@@ -94,19 +97,13 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
     const tagIds = [];
     const tagLabels = [];
 
-    if (!clean(row.documentNumber)) {
-      errors.push(fieldError(rowNumber, "documentNumber", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "문서번호는 필수입니다."));
-    }
-    if (!clean(row.revisionNumber)) {
-      errors.push(fieldError(rowNumber, "revisionNumber", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "개정번호는 필수입니다. 공란을 Rev.0으로 바꾸지 않습니다."));
-    }
-    if (!clean(row.revisionDate)) {
-      errors.push(fieldError(rowNumber, "revisionDate", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "제·개정일은 필수입니다."));
-    } else if (!isValidDateOnly(row.revisionDate)) {
+    const revisionDate = clean(row.revisionDate);
+    const revisionDateMissing = !revisionDate || revisionDate.toUpperCase() === NOT_APPLICABLE;
+    if (!revisionDateMissing && !isValidDateOnly(revisionDate)) {
       errors.push(fieldError(rowNumber, "revisionDate", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "제·개정일은 YYYY-MM-DD 형식이어야 합니다."));
     }
     if (!disposalParsed.ok) {
-      errors.push(fieldError(rowNumber, "disposalDueYear", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "폐기 예정 년도는 정수로 필수입니다."));
+      errors.push(fieldError(rowNumber, "disposalDueYear", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "폐기 예정 년도는 정수 또는 N/A여야 합니다."));
     }
     if (!clean(row.documentName)) {
       errors.push(fieldError(rowNumber, "documentName", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "문서명은 필수입니다."));
@@ -144,9 +141,9 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
     }
 
     const values = {
-      documentNumber: clean(row.documentNumber),
-      revisionNumber: clean(row.revisionNumber),
-      revisionDate: clean(row.revisionDate),
+      documentNumber: clean(row.documentNumber) || NOT_APPLICABLE,
+      revisionNumber: normalizeImportedRevision(row.revisionNumber),
+      revisionDate: revisionDateMissing ? null : revisionDate,
       disposalDueYear: disposalParsed.ok ? disposalParsed.value : null,
       documentName: clean(row.documentName),
       categoryId: category?.id ?? 0,
@@ -158,16 +155,16 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
       rackColumn: columnParsed.ok ? columnParsed.value : null,
       shelfNumber: shelfParsed.ok ? shelfParsed.value : null,
       rackFace: faceParsed.ok ? faceParsed.value : "",
-      note: clean(row.note),
+      note: clean(row.note).toUpperCase() === NOT_APPLICABLE ? null : (clean(row.note) || null),
       tagIds: [...new Set(tagIds)].sort((a, b) => a - b),
       tagNames: [...new Set(tagLabels)].sort((a, b) => a.localeCompare(b, "ko"))
     };
 
-    const textError = validateDocumentTextFields(values);
+    const textError = validateDocumentTextFields({ ...values, revisionNumber: values.revisionNumber || NOT_APPLICABLE });
     if (textError) {
       errors.push(fieldError(rowNumber, "text", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, textError));
     }
-    const recordError = validateDocumentRecordFields(values, { required: true });
+    const recordError = validateDocumentRecordFields(values, { required: false });
     if (recordError) {
       errors.push(fieldError(rowNumber, "record", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, recordError));
     }

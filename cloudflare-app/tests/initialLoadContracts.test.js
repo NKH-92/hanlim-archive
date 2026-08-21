@@ -43,7 +43,7 @@ test("초기 적재 최종 schema는 documents index를 핵심 조회 패턴만 
       /idx_documents_current_status_updated/
     );
     assert.match(
-      plan(database, "SELECT id FROM documents WHERE sync_state = 'current' AND UPPER(document_number) = UPPER('MR-2026-001')"),
+      plan(database, "SELECT id FROM documents WHERE sync_state = 'current' AND UPPER(document_number) <> 'N/A' AND revision_number IS NOT NULL AND UPPER(document_number) = UPPER('MR-2026-001')"),
       /idx_documents_current_identity/
     );
     assert.match(
@@ -177,7 +177,7 @@ test("용량 trigger는 하드 상한의 다음 current 문서를 원자 차단�
   }
 });
 
-test("schema v3 membership은 30,000행 상한에서도 source JSON 재전송을 요구하지 않는다", async () => {
+test("schema v4 membership은 30,000행 상한에서도 source JSON 재전송을 요구하지 않는다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };
   const actor = actorFixture();
@@ -196,7 +196,7 @@ test("schema v3 membership은 30,000행 상한에서도 source JSON 재전송을
           )
     `).run();
     const exportManifest = await createDocumentSnapshotExport(env, actor);
-    assert.equal(exportManifest.schemaVersion, 3);
+    assert.equal(exportManifest.schemaVersion, 4);
     assert.equal("documents" in exportManifest, false, "manifest 생성은 문서 전량을 메모리에 적재하지 않는다");
     const exportPage = await getDocumentSnapshotExportPage(env, exportManifest.exportManifestId, 1);
     assert.equal(exportPage.ok, true, exportPage.message);
@@ -214,9 +214,9 @@ test("schema v3 membership은 30,000행 상한에서도 source JSON 재전송을
       sourceName: "membership-v3.xlsx",
       sourceHash: "a".repeat(64),
       sourceSize: 4096,
-      syncReason: "schema v3 membership 무변경 검증",
+      syncReason: "schema v4 membership 무변경 검증",
       totalCount: exported.documents.length,
-      schemaVersion: 3,
+      schemaVersion: 4,
       mode: "managed",
       baseVersion: exported.baseVersion,
       currentSnapshotId: exported.currentSnapshotId || "",

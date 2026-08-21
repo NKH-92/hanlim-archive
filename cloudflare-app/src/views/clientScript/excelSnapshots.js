@@ -114,7 +114,7 @@ export function excelSnapshotScript() {
         await excelAssertZipSafety(buffer, excelSnapshotMaxZipUncompressedBytes, excelSnapshotMaxZipEntries);
         var workbook = await excelLoadWorkbook(buffer);
         var sheet = excelDataSheet(workbook);
-        if (!sheet) throw new Error('랙 위치 (구역)을 포함한 한글 14개 열이 순서대로 있는 최신 문서데이터 시트를 찾을 수 없습니다. 현재 대장을 다시 추출하세요.');
+        if (!sheet) throw new Error('schema v4 한글 14개 열이 순서대로 있는 최신 문서데이터 시트를 찾을 수 없습니다. 현재 대장을 다시 추출하세요.');
         var meta = excelMeta(workbook);
         var rows = [];
         var originalKeyCount = 0;
@@ -390,9 +390,9 @@ export function excelSnapshotScript() {
 
       function excelDataValues(document) {
         var revisionDate = document.revisionDate ? excelDateOnlyToUtcDate(document.revisionDate) : '';
-        return [document.documentNumber, document.revisionNumber, revisionDate || '', document.disposalDueYear || '', document.documentName,
+        return [document.documentNumber || 'N/A', document.revisionNumber || 'N/A', revisionDate || document.revisionDate || 'N/A', document.disposalDueYear || 'N/A', document.documentName,
           document.category, document.zoneNumber, document.rackNumber, document.rackColumn, document.shelfNumber, document.rackFace,
-          document.tags || '', document.note || '', document.status, document.rowKey, document.baseRowVersion || '', document.baseHash || ''];
+          document.tags || 'N/A', document.note || 'N/A', document.status, document.rowKey, document.baseRowVersion || '', document.baseHash || ''];
       }
 
       async function buildExcelSnapshot(payload) {
@@ -522,6 +522,8 @@ export function excelSnapshotScript() {
         guide.addRow(['항목','작성 방법']); excelHeaderStyle(guide.getRow(1));
         [
           ['문서데이터','첫 행의 한글 14개 열 제목과 순서를 변경하지 마세요. 필터·정렬과 행 추가는 가능합니다.'],
+          ['선택 입력','문서번호, 제/개정일, 폐기 예정 년도, 문서종류, 태그, 비고는 공란 또는 N/A로 입력할 수 있으며 다음 추출에는 N/A로 표시됩니다.'],
+          ['개정번호','숫자만 입력합니다(예: 3). 화면에는 Rev.3으로 표시됩니다. 묶음 바인더처럼 개정번호가 없는 문서는 공란 또는 N/A로 입력하며 화면과 다음 추출에는 N/A로 표시됩니다.'],
           ['숨김 관리 정보','O~Q열은 문서 이력, 기준 버전, 변경 탐지를 위한 시스템 값입니다. 열을 삭제하거나 값을 복사하지 마세요. 인쇄에는 나오지 않습니다.'],
           ['태그','여러 태그는 세미콜론(;)으로 구분합니다. 관리자 화면에 등록된 태그만 사용할 수 있습니다.'],
           ['랙 위치','구역은 1~3 중 하나를 선택하고, 현재 운영 중인 구역·랙·열·선반 조합과 랙의 단면/양면 규칙을 사용합니다.'],

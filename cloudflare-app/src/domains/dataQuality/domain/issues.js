@@ -7,7 +7,7 @@ export const DATA_QUALITY_ISSUES = Object.freeze({
     JOIN (
       SELECT UPPER(document_number) AS document_number_key, UPPER(revision_number) AS revision_number_key
       FROM documents
-      WHERE sync_state = 'current'
+      WHERE sync_state = 'current' AND UPPER(document_number) <> 'N/A' AND revision_number IS NOT NULL
       GROUP BY UPPER(document_number), UPPER(revision_number)
       HAVING COUNT(*) > 1
     ) duplicate_keys
