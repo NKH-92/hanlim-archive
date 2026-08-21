@@ -139,7 +139,7 @@ export async function reviseDocument(env, sourceId, values, actor) {
       WHERE replacement.storage_code = ?
     `).bind(
       sourceId,
-      source.revision_number,
+      source.revision_number || "N/A",
       validation.values.revisionNumber,
       actorInfo.userId,
       actorInfo.username,

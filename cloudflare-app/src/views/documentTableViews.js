@@ -2,6 +2,7 @@
 
 import { locationLabel, rackFaceLabel } from "../domains/racks/index.js";
 import { escapeHtml } from "../ui/html/escape.js";
+import { formatRevisionLabel } from "../shared/documents/revision.js";
 import { emptyResult, statusBadge } from "./layout.js";
 import { highlight } from "./searchFragments.js";
 
@@ -37,7 +38,7 @@ function documentRow(doc, opts = {}) {
         ${opts.showScore && doc.match_reason ? `<small class="match-line">${escapeHtml(doc.match_reason)}</small>` : ""}
       </td>
       <td class="mono-cell" data-label="문서번호">${highlight(doc.document_number, opts.query || "")}</td>
-      <td class="revision-cell" data-label="개정번호">${escapeHtml(doc.revision_number)}</td>
+      <td class="revision-cell" data-label="개정번호">${escapeHtml(formatRevisionLabel(doc.revision_number))}</td>
       <td data-label="제·개정일">${escapeHtml(doc.revision_date || "미입력")}</td>
       <td data-label="폐기 예정 연도">${escapeHtml(doc.disposal_due_year ?? "미입력")}</td>
       <td class="loc-cell" data-label="보관 위치" title="${escapeHtml(locationLabel(doc))}">

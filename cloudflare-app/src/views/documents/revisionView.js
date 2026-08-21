@@ -1,5 +1,6 @@
 import { locationLabel } from "../../domains/racks/index.js";
 import { escapeHtml } from "../../ui/html/escape.js";
+import { formatRevisionLabel } from "../../shared/documents/revision.js";
 import { page } from "../layout.js";
 
 export function documentRevisionPage({ session, document, values = {}, validation = null }) {
@@ -32,7 +33,7 @@ export function documentRevisionPage({ session, document, values = {}, validatio
           <dl class="revision-source-summary">
             <div><dt>문서번호</dt><dd class="mono">${escapeHtml(document.document_number)}</dd></div>
             <div><dt>문서명</dt><dd>${escapeHtml(document.document_name)}</dd></div>
-            <div><dt>현재 개정</dt><dd>${escapeHtml(document.revision_number)} · ${escapeHtml(document.revision_date || "미입력")}</dd></div>
+            <div><dt>현재 개정</dt><dd>${escapeHtml(formatRevisionLabel(document.revision_number))} · ${escapeHtml(document.revision_date || "N/A")}</dd></div>
             <div><dt>보관 위치</dt><dd class="mono">${escapeHtml(locationLabel(document))}</dd></div>
           </dl>
         </fieldset>

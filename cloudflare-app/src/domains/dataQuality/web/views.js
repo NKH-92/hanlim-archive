@@ -2,6 +2,7 @@
 
 import { locationLabel } from "../../racks/index.js";
 import { escapeHtml } from "../../../ui/html/escape.js";
+import { formatRevisionLabel } from "../../../shared/documents/revision.js";
 import { emptyState, page, paginationNav, sectionHeader, statusBadge } from "../../../views/layout.js";
 
 export function dataQualityPage({ session, result }) {
@@ -19,7 +20,7 @@ export function dataQualityPage({ session, result }) {
         <thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>현재 위치</th><th>상태</th><th>수정</th></tr></thead>
         <tbody>${result.items.map((document) => `<tr>
           <td>${escapeHtml(document.document_number)}</td>
-          <td>${escapeHtml(document.revision_number)}</td>
+          <td>${escapeHtml(formatRevisionLabel(document.revision_number))}</td>
           <td><a href="/documents/${document.id}">${escapeHtml(document.document_name)}</a></td>
           <td>${escapeHtml(document.category_name || "누락")}</td>
           <td>${escapeHtml(locationLabel(document) || "누락")}</td>

@@ -745,7 +745,7 @@
           var disposed = item.status === 'disposed';
           var itemName = item.documentName || '문서명 없음';
           var itemNumber = item.documentNumber || '';
-          var itemRevision = item.revisionNumber || '-';
+          var itemRevision = item.revisionLabel || item.revisionNumber || 'N/A';
           var itemCategory = item.categoryName || '-';
           var itemLocation = location.label || '위치 미지정';
           return '<article class="viewer-result-row' + (workspaceSelectable ? ' is-selectable' : '') + (disposed ? ' is-disposed' : '') + '" role="row" tabindex="0" aria-selected="false" data-document-row data-document-url="/documents/' + Number(item.id) + '" data-document-name="' + escapeHtmlClient(itemName) + '" data-document-number="' + escapeHtmlClient(itemNumber) + '" data-document-revision="' + escapeHtmlClient(itemRevision) + '" data-document-category="' + escapeHtmlClient(itemCategory) + '" data-document-location="' + escapeHtmlClient(itemLocation) + '" data-document-status="' + (disposed ? '폐기' : '보관중') + '">' +
