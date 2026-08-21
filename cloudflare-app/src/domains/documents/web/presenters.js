@@ -1,3 +1,5 @@
+import { formatRevisionLabel } from "../../../shared/documents/revision.js";
+
 export function documentToFormValues(document) {
   return {
     documentNumber: document.document_number,
@@ -20,6 +22,7 @@ export function documentRowToPublicReadModel(row) {
     id: Number(row.id),
     documentNumber: row.document_number,
     revisionNumber: row.revision_number,
+    revisionLabel: formatRevisionLabel(row.revision_number),
     revisionDate: row.revision_date || "",
     disposalDueYear: row.disposal_due_year ?? null,
     documentName: row.document_name,

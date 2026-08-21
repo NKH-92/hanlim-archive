@@ -234,7 +234,7 @@ export async function createSelectedDisposalBatch(env, rawValues, actor) {
         disposal_due_year_snapshot, expected_updated_at, expected_document_version
       )
       SELECT
-        b.id, d.id, d.document_number, d.revision_number, d.document_name, c.name,
+        b.id, d.id, d.document_number, COALESCE(d.revision_number, 'N/A'), d.document_name, c.name,
         ${locationSnapshotSql("d", "r", "rs")}, d.disposal_due_year, d.updated_at, d.row_version
       FROM disposal_batches b
       CROSS JOIN documents d
@@ -399,7 +399,7 @@ export async function freezeDisposalBatch(env, id, actor, expectedUpdatedAt = nu
         disposal_due_year_snapshot, expected_updated_at, expected_document_version
       )
       SELECT
-        b.id, d.id, d.document_number, d.revision_number, d.document_name, c.name,
+        b.id, d.id, d.document_number, COALESCE(d.revision_number, 'N/A'), d.document_name, c.name,
         ${locationSnapshotSql("d", "r", "rs")}, d.disposal_due_year, d.updated_at, d.row_version
       FROM disposal_batches b
       CROSS JOIN documents d

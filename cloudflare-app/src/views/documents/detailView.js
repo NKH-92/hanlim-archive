@@ -2,6 +2,7 @@
 
 import { locationLabel, rackFaceLabel } from "../../domains/racks/index.js";
 import { readBoolean } from "../../shared/coercion.js";
+import { formatRevisionLabel } from "../../shared/documents/revision.js";
 import { escapeHtml } from "../../ui/html/escape.js";
 import { hasPermission, PERMISSIONS } from "../../permissions.js";
 import { zoneFloorPlanView } from "../floorPlanViews.js";
@@ -29,7 +30,7 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
   return page(document.document_name, `<div class="document-detail-page" data-document-detail>
     <section class="document-detail-head">
       <nav class="breadcrumb" aria-label="경로"><a href="/app" data-back-to-results>검색 결과로</a><span>/</span><span>문서 상세</span></nav>
-      <div class="document-title-row"><div class="document-title-copy"><h1>${escapeHtml(document.document_name)}</h1><p><span class="mono">${escapeHtml(document.document_number)}</span> · ${escapeHtml(document.revision_number)}</p></div><div class="document-state-badges">${statusBadge(document.status)} ${syncBadge}</div></div>
+      <div class="document-title-row"><div class="document-title-copy"><h1>${escapeHtml(document.document_name)}</h1><p><span class="mono">${escapeHtml(document.document_number)}</span> · ${escapeHtml(formatRevisionLabel(document.revision_number))}</p></div><div class="document-state-badges">${statusBadge(document.status)} ${syncBadge}</div></div>
     </section>
 
     <div class="document-detail-alerts">
@@ -57,20 +58,20 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
         <h2>기본 정보</h2>
         <dl>
           ${detailRow("문서번호", document.document_number, true)}
-          ${detailRow("개정번호", document.revision_number)}
+          ${detailRow("개정번호", formatRevisionLabel(document.revision_number))}
           ${detailRow("문서명", document.document_name)}
-          ${detailRow("제·개정일", document.revision_date || "미입력")}
-          ${detailRow("대분류", document.category_name || "-")}
-          ${detailRow("태그", tags.length ? tags.map((tag) => tag.name).join(", ") : "-")}
+          ${detailRow("제·개정일", document.revision_date || "N/A")}
+          ${detailRow("대분류", document.category_name || "N/A")}
+          ${detailRow("태그", tags.length ? tags.map((tag) => tag.name).join(", ") : "N/A")}
         </dl>
       </article>
       <article class="panel detail-section">
         <h2>보존 정보</h2>
         <dl>
-          ${detailRow("폐기 예정 연도", document.disposal_due_year ? `${document.disposal_due_year}년` : "미입력")}
+          ${detailRow("폐기 예정 연도", document.disposal_due_year ? `${document.disposal_due_year}년` : "N/A")}
           ${detailRow("문서 상태", document.status === "active" ? "보관중" : "폐기")}
           ${detailRow("대장 포함 상태", isExcluded ? "현재 대장 제외" : "현재 대장 포함")}
-          ${detailRow("비고", document.note || "-")}
+          ${detailRow("비고", document.note || "N/A")}
           ${document.status === "disposed" ? detailRow("폐기 사유", latestDisposal?.reason || "-") : ""}
           ${document.status === "disposed" ? detailRow("폐기 처리일", latestDisposal?.created_at || "-") : ""}
         </dl>
@@ -135,7 +136,7 @@ function renderRevisionHistory(items, currentDocumentId) {
   return `<section class="panel revision-history" aria-labelledby="revision-history-title">
     <div class="section-title"><h2 id="revision-history-title">개정 이력</h2><span class="count-badge">${items.length}개정</span></div>
     <ol>${items.map((item) => `<li class="${Number(item.id) === Number(currentDocumentId) ? "current" : ""}">
-      <a href="/documents/${Number(item.id)}"><strong>${escapeHtml(item.revision_number)}</strong><span>${escapeHtml(item.revision_date || "일자 미입력")}</span></a>
+      <a href="/documents/${Number(item.id)}"><strong>${escapeHtml(formatRevisionLabel(item.revision_number))}</strong><span>${escapeHtml(item.revision_date || "N/A")}</span></a>
       ${statusBadge(item.status)}
     </li>`).join("")}</ol>
   </section>`;

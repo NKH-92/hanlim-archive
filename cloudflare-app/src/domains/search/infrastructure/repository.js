@@ -4,6 +4,7 @@ import { locationLabel, rackFaceLabel } from "../../racks/index.js";
 import { paginateSlice } from "../../../shared/pagination.js";
 import { readBoolean } from "../../../shared/coercion.js";
 import { clean } from "../../../shared/text/normalize.js";
+import { formatRevisionLabel } from "../../../shared/documents/revision.js";
 import {
   buildDocumentFilterWhere,
   getFastDocumentCount,
@@ -542,6 +543,7 @@ export function documentToViewerItem(document) {
     id: Number(document.id),
     documentNumber: clean(document.document_number),
     revisionNumber: clean(document.revision_number),
+    revisionLabel: formatRevisionLabel(document.revision_number),
     revisionDate: clean(document.revision_date),
     disposalDueYear: document.disposal_due_year === null || document.disposal_due_year === undefined ? null : Number(document.disposal_due_year),
     documentName: clean(document.document_name),
