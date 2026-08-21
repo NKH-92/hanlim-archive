@@ -57,7 +57,8 @@
     "0054_main_admin_display_name.sql": "b1f43fdd4d378796fda3d144aa0bcd524ee1f5ca5d67fb00af76ac0dcbef3ccb",
     "0055_document_location_covering_index.sql": "64bc352cf3ece927a94f8f3052b3d3b039a1279ecd8d21dfad32993977bd3289",
     "0056_excel_snapshot_zone_cursor.sql": "604c4dd5fe9833a274582d8b75f71f06a9236ecb48adfc9a20fc911d17de6109",
-    "0057_nullable_excel_revision_and_na_defaults.sql": "6600efdfe76356930b1aad965c5cba95ff119a772d686c7850daf6281fbe3070"
+    "0057_nullable_excel_revision_and_na_defaults.sql": "6600efdfe76356930b1aad965c5cba95ff119a772d686c7850daf6281fbe3070",
+    "0058_excel_auto_categories.sql": "ef937d368e0946ccc3e410b06ea03e646ab0f6c4719a6ced44b749b63a2181a7"
   },
   "schema": {
     "tables": [

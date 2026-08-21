@@ -30,7 +30,8 @@ export function buildSystemApplyAuditDetails({
   approvalReference,
   canonicalRowsHash,
   mode,
-  permissionSnapshot
+  permissionSnapshot,
+  autoCategoryNames = []
 }) {
   return {
     schemaVersion,
@@ -40,6 +41,7 @@ export function buildSystemApplyAuditDetails({
     approvalReference: approvalReference || null,
     canonicalRowsHash,
     mode,
-    permissionSnapshot
+    permissionSnapshot,
+    autoCategoryNames
   };
 }

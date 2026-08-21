@@ -1,5 +1,6 @@
 // 엑셀 반영 BatchPlan. 감사·이력 INSERT를 문서 UPDATE보다 먼저 두고, set-based SQL로 statement ≤40을 유지한다.
 import { exactChangeCountAssertionSql } from "../../../platform/d1/expectedChange.js";
+import { autoCategoryInsertStatement, resolvedSnapshotCategoryIdSql } from "./categoryResolution.js";
 
 export function buildApplyStatements(env, {
   snapshotId,
@@ -25,6 +26,9 @@ export function buildApplyStatements(env, {
         SELECT current_version FROM document_sync_state WHERE id = 1
       )
     `).bind(reason, approval, id),
+
+    // 최종 승인된 파일의 미등록 문서종류를 문서 변경과 같은 transaction에서 먼저 만든다.
+    autoCategoryInsertStatement(env, id),
 
     // 02. update 대상 document audit INSERT
     env.DB.prepare(`
@@ -169,7 +173,7 @@ export function buildApplyStatements(env, {
     env.DB.prepare(`
       UPDATE documents AS d
       SET excel_row_key = row.row_key,
-          category_id = CAST(json_extract(row.after_json, '$.values.categoryId') AS INTEGER),
+          category_id = ${resolvedSnapshotCategoryIdSql("row.after_json")},
           document_number = json_extract(row.after_json, '$.values.documentNumber'),
           revision_number = json_extract(row.after_json, '$.values.revisionNumber'),
           revision_date = NULLIF(json_extract(row.after_json, '$.values.revisionDate'), ''),
@@ -229,7 +233,7 @@ export function buildApplyStatements(env, {
           ELSE 'SNP-' || row.snapshot_id || '-' || row.row_number
         END,
         row.row_key,
-        CAST(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.categoryId') AS INTEGER),
+        ${resolvedSnapshotCategoryIdSql()},
         json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.documentNumber'),
         json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.revisionNumber'),
         NULLIF(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.revisionDate'), ''),

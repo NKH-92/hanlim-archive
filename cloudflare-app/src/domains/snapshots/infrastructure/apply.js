@@ -125,7 +125,8 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
     approvalReference: reason.approvalReference,
     canonicalRowsHash: snapshot.canonical_rows_hash,
     mode: auth.mode,
-    permissionSnapshot: permissionSnapshot(actor)
+    permissionSnapshot: permissionSnapshot(actor),
+    autoCategoryNames: storedWarnings.find((warning) => warning?.code === "AUTO_CATEGORY_CREATE")?.categoryNames || []
   });
   if (
     snapshot.mode === "bootstrap" &&

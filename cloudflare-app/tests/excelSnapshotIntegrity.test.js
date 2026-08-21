@@ -175,6 +175,55 @@ test("schema v4 parser는 같은 랙 번호를 구역별 위치로 구분한다"
   }
 });
 
+test("미등록 문서종류는 검토에 표시되고 최종 반영과 함께 자동 등록된다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "admin-only" };
+  const actor = actorFixture();
+  const categoryName = "신규 자동 문서종류";
+  try {
+    const prepared = await bootstrapReadySnapshot(env, actor, [
+      row(2, "DOC-AUTO-CATEGORY", "Rev.0", { category: categoryName })
+    ], "a".repeat(64));
+
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM categories WHERE name = ?").get(categoryName).count,
+      0,
+      "검토만으로 기준정보를 변경하지 않는다"
+    );
+    const warnings = JSON.parse(prepared.snapshot.warnings_json || "[]");
+    const warning = warnings.find((item) => item.code === "AUTO_CATEGORY_CREATE");
+    assert.deepEqual(warning?.categoryNames, [categoryName]);
+
+    const applied = await applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+      applyReason: "미등록 문서종류 자동 등록 검증",
+      approvalReference: "AUTO-CATEGORY-1",
+      confirmedExcludeCount: 0,
+      confirmExclude: true,
+      ...reviewConfirmation(prepared.snapshot)
+    });
+    assert.equal(applied.ok, true, applied.message);
+
+    const category = database.prepare(`
+      SELECT id, description, is_active FROM categories WHERE name = ?
+    `).get(categoryName);
+    assert.ok(category?.id);
+    assert.equal(category.is_active, 1);
+    assert.match(category.description, /엑셀 문서대장/);
+    const document = database.prepare(`
+      SELECT category_id FROM documents WHERE document_number = 'DOC-AUTO-CATEGORY'
+    `).get();
+    assert.equal(document.category_id, category.id);
+
+    const audit = JSON.parse(database.prepare(`
+      SELECT details_json FROM system_audit_logs
+      WHERE entity_type = 'document_snapshot' AND entity_id = ? AND action = 'apply'
+    `).get(String(prepared.snapshot.id)).details_json);
+    assert.deepEqual(audit.autoCategoryNames, [categoryName]);
+  } finally {
+    database.close();
+  }
+});
+
 test("파일 내부 identity 중복과 case-only 중복은 prepare에서 실패한다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database) };

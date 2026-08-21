@@ -18,6 +18,7 @@ import { sqliteD1 } from "./helpers/sqliteD1.js";
 test("최초 5,001건은 사용자의 묶음 선택 없이 5,000건씩 재개되어 최종 공개된다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database) };
+  const autoCategoryName = "대량 자동 문서종류";
   try {
     const reference = database.prepare(`
       SELECT d.category_id, d.rack_slot_id
@@ -58,7 +59,8 @@ test("최초 5,001건은 사용자의 묶음 선택 없이 5,000건씩 재개되
           'schemaVersion', 1,
           'rowKey', 'HLM-AUTO-' || printf('%06d', n),
           'values', json_object(
-            'categoryId', ?,
+            'categoryId', 0,
+            'categoryName', ?,
             'documentNumber', 'AUTO-' || printf('%06d', n),
             'revisionNumber', 'Rev.0',
             'revisionDate', '2026-07-29',
@@ -73,12 +75,18 @@ test("최초 5,001건은 사용자의 묶음 선택 없이 5,000건씩 재개되
         ),
         'create'
       FROM sequence
-    `).run(snapshot.id, reference.category_id, reference.rack_slot_id);
+    `).run(snapshot.id, autoCategoryName, reference.rack_slot_id);
 
     const first = await runScheduledBootstrapApplication(env, { force: true });
     assert.equal(first.ok, true);
     assert.equal(first.completed, false);
     assert.equal(first.progressCount, 5000);
+    const autoCategory = database.prepare("SELECT id FROM categories WHERE name = ?").get(autoCategoryName);
+    assert.ok(autoCategory?.id);
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM documents WHERE category_id = ?").get(autoCategory.id).count,
+      5000
+    );
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents").get().count, 5000);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 0);
     assert.throws(() => database.prepare(`

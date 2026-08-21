@@ -108,9 +108,8 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots }) 
     if (!clean(row.documentName)) {
       errors.push(fieldError(rowNumber, "documentName", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "문서명은 필수입니다."));
     }
-    if (!categoryName || !category) {
-      errors.push(fieldError(rowNumber, "category", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `존재하지 않는 문서종류(${categoryName || "-"})입니다.`));
-    }
+    // 등록되지 않은 문서종류는 검토 단계에서 임시 categoryId=0으로 유지한다.
+    // 실제 기준정보 생성과 ID 해석은 사용자가 최종 반영할 때 같은 DB batch 안에서 수행한다.
     if (!zoneParsed.ok || zoneParsed.value < 1 || zoneParsed.value > 3) {
       errors.push(fieldError(rowNumber, "zoneNumber", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "랙 위치 (구역)은 1, 2, 3 중 하나여야 합니다."));
     }

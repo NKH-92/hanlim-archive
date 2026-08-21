@@ -176,7 +176,8 @@ export function computeRiskWarnings({
   missingPermissions = [],
   identityChangeCount = 0,
   blankKeyCreateCount = 0,
-  baseVersionAge = 0
+  baseVersionAge = 0,
+  autoCategoryNames = []
 }) {
   const warnings = [];
   const total = Math.max(Number(currentDocumentCount) || 0, 1);
@@ -197,6 +198,14 @@ export function computeRiskWarnings({
   }
   if (blankKeyCreateCount > 0) {
     warnings.push({ code: "BLANK_KEY_CREATE", level: "info", message: `관리 ID 없는 신규 행 ${blankKeyCreateCount}건은 서버가 관리 ID를 생성합니다.` });
+  }
+  if (autoCategoryNames.length > 0) {
+    warnings.push({
+      code: "AUTO_CATEGORY_CREATE",
+      level: "info",
+      message: `미등록 문서종류 ${autoCategoryNames.length}건(${autoCategoryNames.join(", ")})은 최종 반영 시 자동 등록됩니다.`,
+      categoryNames: autoCategoryNames
+    });
   }
   if (baseVersionAge > 0) {
     warnings.push({ code: "STALE_BASE", level: "warning", message: "기준 버전이 현재보다 오래되었습니다. 최신 추출 파일을 사용하세요." });
