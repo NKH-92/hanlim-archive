@@ -228,3 +228,10 @@ test("인쇄용 관리대장은 담당자·확인자 서명란을 반복 인쇄�
   assert.doesNotMatch(script, /print\.getCell\('A2'\)\.(?:value|font|alignment)/);
   assert.doesNotMatch(script, /대장 버전/);
 });
+
+test("Excel 숫자 연도와 제·개정일 작성 안내는 연도 정밀도를 보존한다", () => {
+  const script = excelSnapshotScript();
+  assert.match(script, /Number\.isInteger\(value\) && value >= 1000 && value <= 9999/);
+  assert.match(script, /연도만 아는 경우 YYYY/);
+  assert.match(script, /YYYY\.MM\.DD/);
+});

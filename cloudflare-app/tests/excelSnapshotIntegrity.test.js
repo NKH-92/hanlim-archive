@@ -175,6 +175,29 @@ test("schema v4 parser는 같은 랙 번호를 구역별 위치로 구분한다"
   }
 });
 
+test("Excel 제·개정일은 연도만 보존하고 점 구분 전체 날짜를 하이픈으로 정규화한다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  try {
+    const options = await loadDocumentFormOptions(env, { activeOnly: true });
+    const source = row(2, "DOC-DATE", "Rev.0").source;
+    const prepared = prepareCanonicalSnapshotRows([
+      { ...source, rowNumber: 2, revisionDate: "2026" },
+      { ...source, rowNumber: 3, documentNumber: "DOC-DATE-DOT", revisionDate: "2026.08.21" }
+    ], options);
+    assert.equal(prepared.ok, true, JSON.stringify(prepared.errors));
+    assert.deepEqual(prepared.items.map((item) => item.values.revisionDate), ["2026", "2026-08-21"]);
+
+    const invalid = prepareCanonicalSnapshotRows([
+      { ...source, rowNumber: 4, revisionDate: "2026.02.30" }
+    ], options);
+    assert.equal(invalid.ok, false);
+    assert.ok(invalid.errors.some((error) => error.field === "revisionDate"));
+  } finally {
+    database.close();
+  }
+});
+
 test("미등록 문서종류는 검토에 표시되고 최종 반영과 함께 자동 등록된다", async () => {
   const database = await createMigratedDatabase();
   const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "admin-only" };

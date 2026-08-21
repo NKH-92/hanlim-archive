@@ -33,6 +33,7 @@ test("서버 export를 실제 XLSX로 생성·재파싱한 무수정 파일은 0
             LIMIT 1
           )
     `).run();
+    database.prepare("UPDATE documents SET revision_date = '2026' WHERE id = (SELECT MIN(id) FROM documents)").run();
     database.prepare("UPDATE racks SET is_active = 1 WHERE zone_number IN (2, 3) AND rack_number = 1").run();
     database.prepare(`
       UPDATE rack_slots
@@ -62,6 +63,7 @@ test("서버 export를 실제 XLSX로 생성·재파싱한 무수정 파일은 0
       WHERE id = (SELECT MAX(id) FROM documents)
     `).run();
     const exported = await getDocumentSnapshotExport(env, actor);
+    assert.ok(exported.documents.some((document) => document.revisionDate === "2026"));
     assert.deepEqual(exported.documents.map((document) => document.zoneNumber), [2, 3]);
     const workbookBytes = await buildWorkbook(exported);
     const rows = await parseWorkbook(workbookBytes);
@@ -173,6 +175,7 @@ async function parseWorkbook(buffer) {
 }
 
 function utcDate(value) {
+  if (/^\d{4}$/.test(String(value))) return String(value);
   const [year, month, day] = String(value).split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }

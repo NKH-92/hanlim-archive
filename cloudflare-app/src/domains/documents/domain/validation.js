@@ -40,11 +40,15 @@ export function collectDocumentFieldErrors(values = {}) {
   return errors;
 }
 
-export function validateDocumentRecordFields(values = {}, { required = false } = {}) {
+export function validateDocumentRecordFields(values = {}, { required = false, allowYearOnlyRevisionDate = false } = {}) {
   const revisionDate = clean(values.revisionDate);
   const disposalDueYearText = clean(values.disposalDueYear);
   if (required && (!revisionDate || !disposalDueYearText)) return "제·개정일과 폐기 예정 연도는 필수입니다.";
-  if (revisionDate && !isValidIsoDate(revisionDate)) return "제·개정일은 YYYY-MM-DD 형식의 유효한 날짜여야 합니다.";
+  if (revisionDate && !(isValidIsoDate(revisionDate) || (allowYearOnlyRevisionDate && /^\d{4}$/.test(revisionDate)))) {
+    return allowYearOnlyRevisionDate
+      ? "제·개정일은 YYYY 또는 YYYY-MM-DD 형식의 유효한 값이어야 합니다."
+      : "제·개정일은 YYYY-MM-DD 형식의 유효한 날짜여야 합니다.";
+  }
   if (disposalDueYearText && !validYear(disposalDueYearText)) return "폐기 예정 연도는 1900년부터 9999년 사이의 정수여야 합니다.";
   return "";
 }

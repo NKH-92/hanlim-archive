@@ -339,6 +339,50 @@ test("공란 선택값과 숫자 개정은 NULL·Rev 표시·N/A 재추출로 �
   }
 });
 
+test("연도 및 점 구분 제·개정일은 정밀도를 보존해 저장하고 재추출한다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database), EXCEL_SNAPSHOT_APPLY_MODE: "permissioned" };
+  const actor = actorFixture();
+  try {
+    const rows = buildRows(2);
+    rows[0].source.documentNumber = "DATE-YEAR";
+    rows[0].source.revisionDate = "2026";
+    rows[1].source.documentNumber = "DATE-DOT";
+    rows[1].source.revisionDate = "2026.08.21";
+    const prepared = await createAndPrepare(env, actor, rows, {
+      sourceHash: "7".repeat(64),
+      mode: "bootstrap",
+      hasRowKeys: false
+    });
+    const applied = await applyDocumentSnapshot(env, prepared.snapshot.id, actor, {
+      applyReason: "제개정일 입력 형식 정규화 검증",
+      approvalReference: "DATE-FORMAT-1",
+      confirmedExcludeCount: 0,
+      confirmExclude: true,
+      ...reviewConfirmation(prepared.snapshot)
+    });
+    assert.equal(applied.ok, true, applied.message);
+
+    const stored = database.prepare(`
+      SELECT document_number, revision_date
+      FROM documents
+      WHERE document_number IN ('DATE-YEAR', 'DATE-DOT')
+      ORDER BY document_number
+    `).all().map((item) => ({ ...item }));
+    assert.deepEqual(stored, [
+      { document_number: "DATE-DOT", revision_date: "2026-08-21" },
+      { document_number: "DATE-YEAR", revision_date: "2026" }
+    ]);
+
+    const exported = await getDocumentSnapshotExport(env, actor);
+    const dates = new Map(exported.documents.map((document) => [document.documentNumber, document.revisionDate]));
+    assert.equal(dates.get("DATE-DOT"), "2026-08-21");
+    assert.equal(dates.get("DATE-YEAR"), "2026");
+  } finally {
+    database.close();
+  }
+});
+
 async function createAndPrepare(env, actor, rows, options) {
   const created = await createDocumentSnapshot(env, {
     sourceName: "한림_문서고_관리대장.xlsx",
