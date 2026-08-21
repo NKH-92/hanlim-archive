@@ -4,6 +4,7 @@ import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 import { clean } from "../../../shared/text/normalize.js";
 import { SNAPSHOT_ERROR_CODES, snapshotError } from "../domain/errorCodes.js";
 import { createSnapshotPlan } from "./support.js";
+import { autoCategoryInsertStatement, resolvedSnapshotCategoryIdSql } from "./categoryResolution.js";
 
 const SEED_PREDICATE = `
   note = 'Cloudflare 테스트 기본 문서'
@@ -193,7 +194,8 @@ function buildChunkStatements(env, {
             WHERE id = ? AND status = 'applying' AND bootstrap_processing_token = ?
           )
       `).bind(id, token),
-      env.DB.prepare(exactChangeCountAssertionSql("2"))
+      env.DB.prepare(exactChangeCountAssertionSql("2")),
+      autoCategoryInsertStatement(env, id, { bootstrapToken: token })
     );
   }
 
@@ -208,7 +210,7 @@ function buildChunkStatements(env, {
       SELECT
         'ARC-' || printf('%06d', row.row_number - 1),
         row.row_key,
-        CAST(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.categoryId') AS INTEGER),
+        ${resolvedSnapshotCategoryIdSql()},
         json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.documentNumber'),
         json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.revisionNumber'),
         NULLIF(json_extract(COALESCE(row.after_json, row.normalized_json), '$.values.revisionDate'), ''),

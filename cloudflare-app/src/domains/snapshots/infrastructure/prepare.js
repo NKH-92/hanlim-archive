@@ -187,6 +187,12 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
   }
 
   const summary = summarizeChangeFlags(match.items, match.exclusions.length);
+  const autoCategoryNames = [...new Map(
+    prepared.items
+      .filter((item) => Number(item.values.categoryId || 0) === 0)
+      .map((item) => [clean(item.values.categoryName).toLowerCase(), clean(item.values.categoryName)])
+      .filter(([key]) => Boolean(key))
+  ).values()].sort((left, right) => left.localeCompare(right, "ko"));
   const requiredPermissions = requiredPermissionsForDiff(summary);
   const missing = missingPermissionsForSession(actor, requiredPermissions);
   if (Number(summary.restoreCount) > 0 && actor?.role !== "Admin" && !missing.includes("Admin")) {
@@ -198,7 +204,8 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     currentDocumentCount: baselineCurrentDocumentCount,
     missingPermissions: missing,
     identityChangeCount: match.identityChangeCount,
-    blankKeyCreateCount: match.blankKeyCreateCount
+    blankKeyCreateCount: match.blankKeyCreateCount,
+    autoCategoryNames
   });
   const approvalRequired = approvalReferenceRequired(summary, {
     identityChangeCount: match.identityChangeCount,
@@ -286,7 +293,8 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
       baselineCurrentDocumentCount,
       approvalRequired: Boolean(approvalRequired),
       approvalPolicyVersion: APPROVAL_POLICY_VERSION,
-      applyMode: resolveSnapshotApplyMode(env)
+      applyMode: resolveSnapshotApplyMode(env),
+      autoCategoryNames
     }, "ready")
   ];
   const results = await executeMutationBatch(env, createSnapshotPlan("prepare", statements));

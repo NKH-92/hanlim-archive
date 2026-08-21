@@ -195,8 +195,8 @@ test("1,000건 엑셀 반영은 단일 batch와 statement 예산 안에서 원�
     });
     assert.equal(applied.ok, true, applied.message);
     assert.ok(applied.statementCount <= FREE_TIER_BUDGET.maxD1StatementsPerRequest);
-    // 0048 이후 bootstrap batch는 Core projection 재색인 예약 1문장을 함께 포함한다.
-    assert.equal(applied.statementCount, 28);
+    // 0058 이후 bootstrap batch는 미등록 문서종류 자동 생성 1문장을 함께 포함한다.
+    assert.equal(applied.statementCount, 29);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'current'").get().count, 1000);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents WHERE sync_state = 'excluded'").get().count, 0);
     assert.equal(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(prepared.snapshot.id).status, "completed");
@@ -242,7 +242,7 @@ test("엑셀 동기화는 오류 행이 있으면 ready 상태가 되지 않고 
   const actor = actorFixture();
   try {
     const rows = buildRows(2);
-    rows[1].source.category = "존재하지 않는 문서종류";
+    rows[1].source.tags = "존재하지 않는 태그";
     const created = await createDocumentSnapshot(env, {
       sourceName: "오류.xlsx",
       sourceHash: "d".repeat(64),
@@ -256,10 +256,10 @@ test("엑셀 동기화는 오류 행이 있으면 ready 상태가 되지 않고 
     const options = await loadDocumentFormOptions(env, { activeOnly: true });
     const prepared = await prepareDocumentSnapshot(env, created.id, options, null, actor);
     assert.equal(prepared.ok, false);
-    assert.match(prepared.message, /존재하지 않는 문서종류|문서종류/);
+    assert.match(prepared.message, /존재하지 않는 태그|태그/);
     assert.equal(database.prepare("SELECT status FROM document_snapshots WHERE id = ?").get(created.id).status, "failed");
     const storedErrors = JSON.parse(database.prepare("SELECT validation_errors_json FROM document_snapshots WHERE id = ?").get(created.id).validation_errors_json);
-    assert.ok(storedErrors.some((error) => error.rowNumber === 3 && error.field === "category"));
+    assert.ok(storedErrors.some((error) => error.rowNumber === 3 && error.field === "tags"));
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM documents").get().count, 2);
   } finally {
     database.close();
