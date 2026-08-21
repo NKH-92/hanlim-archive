@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "releasedThrough": "0056_excel_snapshot_zone_cursor.sql",
+  "releasedThrough": "0057_nullable_excel_revision_and_na_defaults.sql",
   "checksums": {
     "0001_initial.sql": "78e8a85c74054df41e11d2f3ceaf259ebe78b37db9333cfeedbbdf01d92ccdca",
     "0002_app_users.sql": "a47068f668577b71e2f484362205c73a7a9774b6a2a5fba5bba35ad37bf550e7",
@@ -57,7 +57,8 @@
     "0053_thirty_thousand_capacity_and_bootstrap.sql": "1288b3ec29d68aa83b657c9a0a00019f290573c767fc4043a7f46e432b0ef7d0",
     "0054_main_admin_display_name.sql": "b1f43fdd4d378796fda3d144aa0bcd524ee1f5ca5d67fb00af76ac0dcbef3ccb",
     "0055_document_location_covering_index.sql": "64bc352cf3ece927a94f8f3052b3d3b039a1279ecd8d21dfad32993977bd3289",
-    "0056_excel_snapshot_zone_cursor.sql": "604c4dd5fe9833a274582d8b75f71f06a9236ecb48adfc9a20fc911d17de6109"
+    "0056_excel_snapshot_zone_cursor.sql": "604c4dd5fe9833a274582d8b75f71f06a9236ecb48adfc9a20fc911d17de6109",
+    "0057_nullable_excel_revision_and_na_defaults.sql": "6600efdfe76356930b1aad965c5cba95ff119a772d686c7850daf6281fbe3070"
   },
   "schema": {
     "tables": [
