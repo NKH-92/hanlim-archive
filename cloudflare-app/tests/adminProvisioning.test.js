@@ -159,6 +159,7 @@ test("guarded Admin provisioning verifies a unique marker after Wrangler bulk-fi
     assert.equal(result.ok, true);
     assert.equal(result.provisioned, 1);
     assert.equal(calls.length, 3);
+    assert.ok(calls.every(({ args }) => args.includes(PRODUCTION_ID)));
     assert.equal(calls[0].command, "node-runtime");
     assert.ok(calls[0].args.includes("--command"));
     assert.equal(calls[1].command, "node-runtime");

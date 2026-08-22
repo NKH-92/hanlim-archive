@@ -194,7 +194,7 @@ export async function runMainAdminRemediation({
       execPath,
       spawn,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.expectedDatabaseId,
         "--remote", "--env", checked.envName,
         "--command", mainAdminPrecheckSql(operationId),
         "--json"
@@ -237,7 +237,7 @@ export async function runMainAdminRemediation({
       execPath,
       spawn,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.expectedDatabaseId,
         "--remote", "--env", checked.envName,
         "--file", sqlPath,
         "--json"
@@ -257,7 +257,7 @@ export async function runMainAdminRemediation({
       execPath,
       spawn,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.expectedDatabaseId,
         "--remote", "--env", checked.envName,
         "--command", mainAdminVerificationSql(operationId),
         "--json"

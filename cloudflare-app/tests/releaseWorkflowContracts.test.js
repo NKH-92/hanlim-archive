@@ -11,6 +11,14 @@ const smokeRelease = await readFile(new URL("../scripts/smoke-release.mjs", impo
 const wrangler = await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
 const assetHeaders = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+const guardedD1Scripts = await Promise.all([
+  "check-admin-readiness.mjs",
+  "migrate-remote-guarded.mjs",
+  "provision-admin-guarded.mjs",
+  "provision-users-guarded.mjs",
+  "release-smoke-principal.mjs",
+  "remediate-main-admin-guarded.mjs"
+].map(async (name) => [name, await readFile(new URL(`../scripts/${name}`, import.meta.url), "utf8")]));
 
 test("PR required CI는 verify, audit, Worker dry-run과 증빙 보존을 강제한다", () => {
   assert.match(ci, /pull_request:[\s\S]*branches: \[main\]/);
@@ -161,6 +169,12 @@ test("Cloudflare token은 필요한 step에만 있고 D1 복구 증빙에는 데
   assert.doesNotMatch(deploy, /release-backup\/|\*\.sql|\*\.enc|\*\.age/);
   assert.equal((deploy.match(/environment:\s*\n\s+name: production/g)?.length || 0), 1);
   assert.doesNotMatch(deploy, /name: production-backup/);
+});
+
+test("guarded D1 명령은 과거 database 이름을 mutation·조회 대상으로 고정하지 않는다", () => {
+  for (const [name, source] of guardedD1Scripts) {
+    assert.doesNotMatch(source, /"d1",\s*"(?:execute|migrations)"[\s\S]{0,80}"hanlim-archive"/, name);
+  }
 });
 
 test("기본 Wrangler 환경은 운영 Worker와 D1을 직접 가리키지 않고 production preview를 차단한다", () => {
