@@ -178,6 +178,7 @@ test("guarded 메인 관리자 복구는 secret을 파일·로그 인자에 노�
     assert.equal(result.ok, true);
     assert.equal(result.remediated, 1);
     assert.equal(calls.length, 3);
+    assert.ok(calls.every(({ args }) => args.includes(PRODUCTION_ID)));
     assert.ok(calls[0].args.includes("--command"));
     assert.ok(calls[1].args.includes("--file"));
     assert.ok(calls[2].args.includes("--command"));

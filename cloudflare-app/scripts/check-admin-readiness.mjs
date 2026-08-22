@@ -49,7 +49,7 @@ export function runAdminReadinessCheck({
     execPath,
     spawn,
     args: [
-      "d1", "execute", "hanlim-archive",
+      "d1", "execute", target.configuredId,
       "--remote", "--env", envName, "--command", sql, "--json"
     ]
   });

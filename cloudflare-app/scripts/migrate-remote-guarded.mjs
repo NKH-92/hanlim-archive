@@ -144,6 +144,16 @@ export function preflightRemoteMigrate({
   };
 }
 
+export function remoteMigrateArgs({ databaseId, envName, dryRun = false }) {
+  const args = [
+    "d1", "migrations", "apply", databaseId,
+    "--remote",
+    "--env", envName
+  ];
+  if (dryRun) args.push("--dry-run");
+  return args;
+}
+
 const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 if (isMain) {
   const envName = required("D1_MIGRATE_ENV");
@@ -175,12 +185,11 @@ if (isMain) {
     approvalContext: result.approvalContext
   }));
 
-  const args = [
-    "d1", "migrations", "apply", "hanlim-archive",
-    "--remote",
-    "--env", envName
-  ];
-  if (result.dryRun) args.push("--dry-run");
+  const args = remoteMigrateArgs({
+    databaseId: result.configuredId,
+    envName,
+    dryRun: result.dryRun
+  });
 
   const spawned = spawnSync("npx", ["wrangler", ...args], {
     stdio: "inherit",

@@ -136,14 +136,14 @@ function verificationSql(actor) {
   `;
 }
 
-function executeSql({ envName, sql, environment, spawn, execPath }) {
+function executeSql({ databaseId, envName, sql, environment, spawn, execPath }) {
   return runWranglerCaptured({
     appRoot: APP_ROOT,
     execPath,
     spawn,
     environment,
     args: [
-      "d1", "execute", "hanlim-archive",
+      "d1", "execute", databaseId,
       "--remote", "--env", envName,
       "--command", sql,
       "--json"
@@ -165,6 +165,7 @@ export async function runSmokePrincipal({
 
   if (action === "cleanup") {
     const cleaned = executeSql({
+      databaseId: checked.target.configuredId,
       envName: checked.envName,
       sql: cleanupSql(),
       environment,
@@ -188,6 +189,7 @@ export async function runSmokePrincipal({
   }
 
   const precleaned = executeSql({
+    databaseId: checked.target.configuredId,
     envName: checked.envName,
     sql: cleanupSql(),
     environment,
@@ -221,7 +223,7 @@ export async function runSmokePrincipal({
       spawn,
       environment,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.target.configuredId,
         "--remote", "--env", checked.envName,
         "--file", sqlPath,
         "--json"
@@ -231,6 +233,7 @@ export async function runSmokePrincipal({
       return { ok: false, errors: ["Release smoke principal provisioning failed."] };
     }
     const verified = executeSql({
+      databaseId: checked.target.configuredId,
       envName: checked.envName,
       sql: verificationSql(actor),
       environment,

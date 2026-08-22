@@ -138,7 +138,7 @@ export async function runAdminProvision({
         execPath,
         spawn,
         args: [
-          "d1", "execute", "hanlim-archive",
+          "d1", "execute", checked.expectedDatabaseId,
           "--remote", "--env", checked.envName,
           "--command", adminProvisionCleanupSql({ username: checked.username, provisioningActor }),
           "--json"
@@ -176,7 +176,7 @@ export async function runAdminProvision({
       execPath,
       spawn,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.expectedDatabaseId,
         "--remote", "--env", checked.envName,
         "--command", adminProvisionPrecheckSql({ username: checked.username, provisioningActor }),
         "--json"
@@ -208,7 +208,7 @@ export async function runAdminProvision({
       execPath,
       spawn,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.expectedDatabaseId,
         "--remote", "--env", checked.envName, "--file", sqlPath, "--json"
       ]
     });
@@ -218,7 +218,7 @@ export async function runAdminProvision({
       execPath,
       spawn,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.expectedDatabaseId,
         "--remote", "--env", checked.envName,
         "--command", adminProvisionVerificationSql({ username: checked.username, provisioningActor }),
         "--json"

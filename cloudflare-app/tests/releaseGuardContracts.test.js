@@ -4,7 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { preflightRemoteMigrate } from "../scripts/migrate-remote-guarded.mjs";
+import { preflightRemoteMigrate, remoteMigrateArgs } from "../scripts/migrate-remote-guarded.mjs";
 import { preflightDeploy, runWranglerCaptured, runWranglerDeploy } from "../scripts/deploy-guarded.mjs";
 import { verifyReleasedBaselineAgainstBase } from "../scripts/check-released-baseline-history.mjs";
 
@@ -122,6 +122,17 @@ test("remote migrate는 env database_id 불일치·placeholder·누락 승인을
     ...migrationEvidence({ approvalContext: "approval-token-16+" }),
     config
   }).ok, false);
+});
+
+test("remote migrate는 검증된 database UUID를 Wrangler mutation 대상에 직접 사용한다", () => {
+  assert.deepEqual(remoteMigrateArgs({
+    databaseId: TEST_PRODUCTION_ID,
+    envName: "production",
+    dryRun: false
+  }), [
+    "d1", "migrations", "apply", TEST_PRODUCTION_ID,
+    "--remote", "--env", "production"
+  ]);
 });
 
 test("deploy preflight는 unscoped env와 staging placeholder를 거부한다", () => {

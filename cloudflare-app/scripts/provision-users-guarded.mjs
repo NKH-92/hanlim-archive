@@ -243,7 +243,7 @@ export async function runUserProvision({ execPath = process.execPath, spawn = sp
         execPath,
         spawn,
         args: [
-          "d1", "execute", "hanlim-archive",
+          "d1", "execute", checked.expectedDatabaseId,
           "--remote", "--env", checked.envName,
           "--command", userProvisionCleanupSql({ provisioningActor }),
           "--json"
@@ -281,7 +281,7 @@ export async function runUserProvision({ execPath = process.execPath, spawn = sp
       execPath,
       spawn,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.expectedDatabaseId,
         "--remote", "--env", checked.envName,
         "--command", userProvisionPrecheckSql({ entries: checked.entries, provisioningActor }),
         "--json"
@@ -303,7 +303,7 @@ export async function runUserProvision({ execPath = process.execPath, spawn = sp
       execPath,
       spawn,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.expectedDatabaseId,
         "--remote", "--env", checked.envName, "--file", sqlPath, "--json"
       ]
     });
@@ -314,7 +314,7 @@ export async function runUserProvision({ execPath = process.execPath, spawn = sp
       execPath,
       spawn,
       args: [
-        "d1", "execute", "hanlim-archive",
+        "d1", "execute", checked.expectedDatabaseId,
         "--remote", "--env", checked.envName,
         "--command", userProvisionVerificationSql({ entries: checked.entries, provisioningActor }),
         "--json"

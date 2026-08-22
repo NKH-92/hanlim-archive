@@ -209,6 +209,7 @@ test("release smoke provisioning accepts Wrangler progress text before JSON", as
     assert.equal(result.ok, true);
     assert.equal(result.provisioned, 2);
     assert.equal(calls.length, 3);
+    assert.ok(calls.every(({ args }) => args.includes(CORE_ID)));
     assert.doesNotMatch(provisionSql, /pbkdf2-sha256\$/);
     const credentials = JSON.parse(await readFile(credentialPath, "utf8"));
     assert.match(credentials.reader.username, /^release-reader-/);
