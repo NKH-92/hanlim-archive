@@ -2,7 +2,19 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-import { buildIdentityCopyBatch } from "../../.github/scripts/prepare-fresh-core.mjs";
+import {
+  buildIdentityCopyBatch,
+  ROLE_TEMPLATE_COMPARISON_COLUMNS,
+  roleTemplateComparisonSql
+} from "../../.github/scripts/prepare-fresh-core.mjs";
+
+test("fresh Core 역할 템플릿 비교는 권한 의미만 비교하고 생성 시각은 제외한다", () => {
+  const sql = roleTemplateComparisonSql();
+  assert.doesNotMatch(sql, /updated_at/);
+  assert.match(sql, /updated_by/);
+  assert.match(sql, /can_apply_document_snapshots/);
+  assert.equal(ROLE_TEMPLATE_COMPARISON_COLUMNS.length, 12);
+});
 
 test("fresh Core identity copy는 보호된 역할 템플릿을 건드리지 않고 2문장 원자 bulk plan을 만든다", () => {
   const users = [

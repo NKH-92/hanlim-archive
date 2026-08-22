@@ -6,6 +6,13 @@ import { pathToFileURL } from "node:url";
 let accountId = "";
 let apiToken = "";
 
+export const ROLE_TEMPLATE_COMPARISON_COLUMNS = Object.freeze([
+  "key", "label",
+  "can_manage_documents", "can_move_documents", "can_manage_disposals", "can_manage_sets",
+  "can_manage_masters", "can_manage_users", "can_view_audit", "can_apply_document_snapshots",
+  "row_version", "updated_by"
+]);
+
 async function main() {
   accountId = required("CLOUDFLARE_ACCOUNT_ID");
   apiToken = required("CLOUDFLARE_API_TOKEN");
@@ -31,8 +38,9 @@ async function main() {
     throw new Error("app_users identity 열을 확인할 수 없습니다.");
   }
 
-  const roleTemplates = await query(sourceDatabaseId, "SELECT * FROM user_role_templates ORDER BY key");
-  const targetRoleTemplates = await query(targetDatabaseId, "SELECT * FROM user_role_templates ORDER BY key");
+  const roleTemplateSql = roleTemplateComparisonSql();
+  const roleTemplates = await query(sourceDatabaseId, roleTemplateSql);
+  const targetRoleTemplates = await query(targetDatabaseId, roleTemplateSql);
   if (JSON.stringify(roleTemplates) !== JSON.stringify(targetRoleTemplates)) {
     throw new Error("운영 Core와 새 Core의 역할 템플릿이 일치하지 않습니다.");
   }
@@ -94,6 +102,10 @@ export function buildIdentityCopyBatch({ sourceUsers, userColumns }) {
     { sql: "DELETE FROM app_users", params: [] },
     bulkInsertStatement("app_users", userColumns, sourceUsers)
   ];
+}
+
+export function roleTemplateComparisonSql() {
+  return `SELECT ${ROLE_TEMPLATE_COMPARISON_COLUMNS.map(quoteIdentifier).join(", ")} FROM user_role_templates ORDER BY key`;
 }
 
 function quoteIdentifier(value) {
