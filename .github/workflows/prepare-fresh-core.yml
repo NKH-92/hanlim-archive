@@ -52,7 +52,8 @@ jobs:
       - name: Apply the complete migration chain to the fresh Core
         run: |
           set -o pipefail
-          npx wrangler d1 migrations apply "$TARGET_D1_DATABASE_NAME" --remote 2>&1 \
+          npx wrangler d1 migrations apply DB --remote \
+            --config ../.github/fresh-core.wrangler.jsonc 2>&1 \
             | tee release-evidence/fresh-core/migrations.txt
       - name: Preserve approved identities without test audit history
         run: >-
