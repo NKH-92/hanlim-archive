@@ -1,0 +1,14 @@
+{
+  "$schema": "../cloudflare-app/node_modules/wrangler/config-schema.json",
+  "name": "hanlim-archive-fresh-core-preparation",
+  "main": "../cloudflare-app/src/index.js",
+  "compatibility_date": "2026-04-13",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hanlim-archive-core-20260823",
+      "database_id": "a07324c0-7547-48a6-836e-3f0c50b85c36",
+      "migrations_dir": "../cloudflare-app/migrations"
+    }
+  ]
+}
