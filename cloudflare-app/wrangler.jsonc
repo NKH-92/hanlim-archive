@@ -65,8 +65,8 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "hanlim-archive",
-          "database_id": "1262ca00-b431-490c-aad2-539d77d4f73f",
+          "database_name": "hanlim-archive-core-20260823",
+          "database_id": "a07324c0-7547-48a6-836e-3f0c50b85c36",
           "migrations_dir": "migrations"
         }
       ]

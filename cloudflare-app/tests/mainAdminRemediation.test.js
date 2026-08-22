@@ -12,7 +12,7 @@ import {
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 import { sqliteD1 } from "./helpers/sqliteD1.js";
 
-const PRODUCTION_ID = "1262ca00-b431-490c-aad2-539d77d4f73f";
+const PRODUCTION_ID = "a07324c0-7547-48a6-836e-3f0c50b85c36";
 const OPERATION_ID = "github-run-87654321";
 const TEMPORARY_PASSWORD = "a1b2c3";
 const REMEDIATION_ENV_NAMES = [

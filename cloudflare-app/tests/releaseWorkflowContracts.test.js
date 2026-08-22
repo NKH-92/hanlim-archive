@@ -22,7 +22,7 @@ test("PR required CI는 verify, audit, Worker dry-run과 증빙 보존을 강제
   assert.match(ci, /fetch-depth: 0/);
   assert.match(ci, /github\.event\.pull_request\.base\.sha \|\| github\.event\.before/);
   assert.match(ci, /check-released-baseline-history\.mjs --base-ref "\$RELEASED_BASE_SHA"/);
-  assert.match(ci, /CLOUDFLARE_ENV: production[\s\S]*D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f[\s\S]*npm run deploy:dry/);
+  assert.match(ci, /CLOUDFLARE_ENV: production[\s\S]*D1_TARGET_DATABASE_ID: a07324c0-7547-48a6-836e-3f0c50b85c36[\s\S]*npm run deploy:dry/);
 });
 
 test("free-tier production deploy는 복구 지점, migration, 직접 배포, smoke, Worker rollback 순서를 고정한다", () => {
@@ -35,9 +35,13 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
   assert.match(deploy, /name: Classify release scope[\s\S]*id: classify_release/);
   assert.match(deploy, /if \[ "\$GITHUB_EVENT_NAME" = "workflow_dispatch" \]; then[\s\S]*RELEASE_BASE_SHA="\$GITHUB_SHA"/);
   assert.match(deploy, /classify-release\.mjs --base "\$RELEASE_BASE_SHA" --head "\$GITHUB_SHA"/);
+  assert.match(deploy, /BINDING_TRANSITION="\$\(jq -r \.bindingTransition\.changed/);
+  assert.match(deploy, /Capture previous Core binding recovery point[\s\S]*binding_transition == 'true'/);
+  assert.match(deploy, /previous-core-recovery\.json/);
   assert.match(deploy, /D1_RECOVERY_SCOPE: \$\{\{ steps\.classify_release\.outputs\.recovery_scope \}\}/);
   assert.match(deploy, /Apply D1 migrations\s+if: steps\.classify_release\.outputs\.release_class == 'database'/);
   assert.match(deploy, /Provision release-scoped smoke principals[\s\S]*if: steps\.classify_release\.outputs\.release_class != 'asset-only'/);
+  assert.match(deploy, /Verify rollback Worker against migrated schema[\s\S]*binding_transition != 'true'/);
   assert.match(deploy, /SMOKE_PUBLIC_ONLY: \$\{\{ steps\.classify_release\.outputs\.release_class == 'asset-only'/);
 
   const markers = [
@@ -95,7 +99,7 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
   assert.match(deploy, /Verify released migrations against release base[\s\S]*check-released-baseline-history\.mjs --base-ref "\$RELEASED_BASE_SHA"/);
   assert.match(deploy, /PRODUCTION_URL: https:\/\/hanlim-archive\.skarhkdgus7\.workers\.dev[\s\S]*SMOKE_ALLOWED_HOSTS: hanlim-archive\.skarhkdgus7\.workers\.dev/);
   assert.ok((deploy.match(/SMOKE_REQUIRE_ADMIN: "1"/g)?.length || 0) >= 1);
-  assert.ok((deploy.match(/SMOKE_REQUIRE_ADMIN: \$\{\{ steps\.classify_release/g)?.length || 0) >= 2);
+  assert.ok((deploy.match(/SMOKE_REQUIRE_ADMIN: \$\{\{[^\n]*steps\.classify_release/g)?.length || 0) >= 2);
   assert.ok((deploy.match(/SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"/g)?.length || 0) >= 3);
   assert.ok((deploy.match(/npm run smoke:release/g)?.length || 0) >= 3);
   for (const removed of [
@@ -164,11 +168,15 @@ test("기본 Wrangler 환경은 운영 Worker와 D1을 직접 가리키지 않�
   assert.match(topLevel, /"name": "hanlim-archive-local"/);
   assert.match(topLevel, /"workers_dev": false/);
   assert.match(topLevel, /"preview_urls": false/);
-  assert.doesNotMatch(topLevel, /1262ca00-b431-490c-aad2-539d77d4f73f/);
+  assert.doesNotMatch(topLevel, /a07324c0-7547-48a6-836e-3f0c50b85c36/);
   assert.doesNotMatch(topLevel, /e9dc4469-30ca-47c7-ad01-6aa9aea0b3ac/);
   assert.match(
     wrangler,
     /"production": \{[\s\S]*"name": "hanlim-archive"[\s\S]*"workers_dev": true[\s\S]*"preview_urls": false/
+  );
+  assert.match(
+    wrangler,
+    /"production": \{[\s\S]*"database_name": "hanlim-archive-core-20260823"[\s\S]*"database_id": "a07324c0-7547-48a6-836e-3f0c50b85c36"/
   );
   assert.match(
     wrangler,

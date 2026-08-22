@@ -3,8 +3,24 @@ import test from "node:test";
 
 import {
   changedFilesBetween,
-  classifyReleaseFiles
+  classifyReleaseFiles,
+  detectProductionCoreTransition,
+  productionCoreBindingAt
 } from "../scripts/classify-release.mjs";
+
+function wranglerConfig(databaseId, databaseName = "core") {
+  return JSON.stringify({
+    env: {
+      production: {
+        d1_databases: [{
+          binding: "DB",
+          database_id: databaseId,
+          database_name: databaseName
+        }]
+      }
+    }
+  });
+}
 
 test("release classifier는 정적 자산만 바뀌면 D1 mutation 없는 경로를 선택한다", () => {
   const result = classifyReleaseFiles([
@@ -101,4 +117,39 @@ test("changedFilesBetween은 shell 없이 Git diff의 파일 목록만 읽는다
   ]);
   assert.equal(calls[0].options.shell, false);
   assert.equal(calls[0].options.cwd, "repo-root");
+});
+
+test("production Core binding 전환은 base와 head의 실제 Wrangler 설정으로 판정한다", () => {
+  const calls = [];
+  const spawn = (command, args, options) => {
+    calls.push({ command, args, options });
+    const ref = args[1].split(":", 1)[0];
+    return {
+      status: 0,
+      stdout: ref === "base-sha"
+        ? wranglerConfig("1262ca00-b431-490c-aad2-539d77d4f73f", "hanlim-archive")
+        : wranglerConfig("a07324c0-7547-48a6-836e-3f0c50b85c36", "hanlim-archive-core-20260823")
+    };
+  };
+
+  const result = detectProductionCoreTransition("base-sha", "head-sha", {
+    repositoryRoot: "repo-root",
+    spawn
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.previous.databaseId, "1262ca00-b431-490c-aad2-539d77d4f73f");
+  assert.equal(result.target.databaseId, "a07324c0-7547-48a6-836e-3f0c50b85c36");
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].args, ["show", "base-sha:cloudflare-app/wrangler.jsonc"]);
+  assert.equal(calls[0].options.shell, false);
+});
+
+test("production Core binding 판정은 설정 누락 시 실패해 배포를 닫는다", () => {
+  assert.throws(
+    () => productionCoreBindingAt("bad-ref", {
+      spawn: () => ({ status: 0, stdout: wranglerConfig("", "") })
+    }),
+    /binding이 비어 있습니다/
+  );
 });
