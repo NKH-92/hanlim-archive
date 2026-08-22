@@ -24,7 +24,7 @@ if (!userColumns.includes("id") || !userColumns.includes("username")) {
   throw new Error("app_users identity 열을 확인할 수 없습니다.");
 }
 
-const roleTemplates = await query(sourceDatabaseId, "SELECT * FROM user_role_templates ORDER BY id");
+const roleTemplates = await query(sourceDatabaseId, "SELECT * FROM user_role_templates ORDER BY key");
 const sourceTemplateColumns = await tableColumns(sourceDatabaseId, "user_role_templates");
 const targetTemplateColumns = await tableColumns(targetDatabaseId, "user_role_templates");
 const templateColumns = sourceTemplateColumns.filter((column) => targetTemplateColumns.includes(column));
