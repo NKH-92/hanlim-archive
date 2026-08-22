@@ -10,7 +10,7 @@ import {
 import { buildMainAdminRemediationSql, MAIN_ADMIN_USERNAME } from "../scripts/remediate-main-admin-guarded.mjs";
 import { createMigratedDatabase } from "./helpers/migratedDatabase.js";
 
-const PRODUCTION_ID = "1262ca00-b431-490c-aad2-539d77d4f73f";
+const PRODUCTION_ID = "a07324c0-7547-48a6-836e-3f0c50b85c36";
 
 const PROVISION_ENV_NAMES = [
   "CLOUDFLARE_ENV",

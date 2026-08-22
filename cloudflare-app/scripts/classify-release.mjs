@@ -71,6 +71,41 @@ export function changedFilesBetween(baseRef, headRef = "HEAD", {
   return String(result.stdout || "").split(/\r?\n/).map((file) => file.trim()).filter(Boolean);
 }
 
+export function productionCoreBindingAt(ref, {
+  spawn = spawnSync,
+  repositoryRoot = REPOSITORY_ROOT
+} = {}) {
+  const gitRef = String(ref || "").trim();
+  if (!gitRef) throw new Error("production binding을 읽을 Git ref가 필요합니다.");
+  const result = spawn("git", ["show", `${gitRef}:cloudflare-app/wrangler.jsonc`], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    shell: false
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`Git ref '${gitRef}'의 production binding을 읽지 못했습니다.`);
+  }
+  const config = JSON.parse(stripJsonComments(String(result.stdout || "")));
+  const databases = config?.env?.production?.d1_databases || [];
+  const binding = databases.find((item) => item.binding === "DB") || databases[0];
+  const databaseId = String(binding?.database_id || "").trim();
+  const databaseName = String(binding?.database_name || "").trim();
+  if (!databaseId || !databaseName) {
+    throw new Error(`Git ref '${gitRef}'의 production Core D1 binding이 비어 있습니다.`);
+  }
+  return Object.freeze({ databaseId, databaseName });
+}
+
+export function detectProductionCoreTransition(baseRef, headRef = "HEAD", options = {}) {
+  const previous = productionCoreBindingAt(baseRef, options);
+  const target = productionCoreBindingAt(headRef, options);
+  return Object.freeze({
+    changed: previous.databaseId !== target.databaseId,
+    previous,
+    target
+  });
+}
+
 function releaseResult(releaseClass, changedFiles, reason) {
   return Object.freeze({
     schemaVersion: 1,
@@ -87,6 +122,12 @@ function normalizePath(file) {
   return String(file || "").trim().replaceAll("\\", "/").replace(/^\.\//, "");
 }
 
+function stripJsonComments(raw) {
+  return raw
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+}
+
 function readArgument(name) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : "";
@@ -96,8 +137,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   try {
     const baseRef = readArgument("--base");
     const headRef = readArgument("--head") || "HEAD";
-    const result = classifyReleaseFiles(changedFilesBetween(baseRef, headRef));
-    console.log(JSON.stringify(result));
+    const classification = classifyReleaseFiles(changedFilesBetween(baseRef, headRef));
+    const bindingTransition = detectProductionCoreTransition(baseRef, headRef);
+    console.log(JSON.stringify({ ...classification, bindingTransition }));
   } catch (error) {
     console.error(`[release-classifier] ${error.message}`);
     process.exit(1);

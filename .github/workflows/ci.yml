@@ -47,7 +47,7 @@ jobs:
       - name: Worker dry-run and bundle report
         env:
           CLOUDFLARE_ENV: production
-          D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
+          D1_TARGET_DATABASE_ID: a07324c0-7547-48a6-836e-3f0c50b85c36
         run: |
           set -o pipefail
           npm run deploy:dry 2>&1 | tee release-evidence/bundle-report.txt

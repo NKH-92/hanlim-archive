@@ -114,7 +114,7 @@ export function captureD1Recovery({
         spawn,
         environment,
         args: [
-          "d1", "time-travel", "info", database.name,
+          "d1", "time-travel", "info", database.databaseId,
           "--env", checked.envName,
           "--json"
         ]

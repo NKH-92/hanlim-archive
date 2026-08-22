@@ -12,7 +12,7 @@ import {
 } from "../scripts/capture-d1-recovery.mjs";
 import { preflightSmokePrincipal, runSmokePrincipal } from "../scripts/release-smoke-principal.mjs";
 
-const CORE_ID = "1262ca00-b431-490c-aad2-539d77d4f73f";
+const CORE_ID = "a07324c0-7547-48a6-836e-3f0c50b85c36";
 const RELEASE_SHA = "a".repeat(40);
 const CORE_BOOKMARK = `00000001-00000002-00000003-${"a".repeat(32)}`;
 
@@ -116,7 +116,7 @@ test("D1 recovery captures the Core Time Travel bookmark and rejects tampering",
     assert.equal(result.ok, true);
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].args.slice(-7), [
-      "d1", "time-travel", "info", "hanlim-archive", "--env", "production", "--json"
+      "d1", "time-travel", "info", CORE_ID, "--env", "production", "--json"
     ]);
     assert.equal(calls[0].options.shell, false);
 

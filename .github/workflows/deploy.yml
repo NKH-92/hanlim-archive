@@ -33,7 +33,7 @@ jobs:
       CLOUDFLARE_ENV: production
       D1_MIGRATE_ENV: production
       D1_RECOVERY_ENV: production
-      D1_TARGET_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
+      D1_TARGET_DATABASE_ID: a07324c0-7547-48a6-836e-3f0c50b85c36
       PRODUCTION_URL: https://hanlim-archive.skarhkdgus7.workers.dev
       SMOKE_ALLOWED_HOSTS: hanlim-archive.skarhkdgus7.workers.dev
       WORKER_VERSION_TAG: release-${{ github.sha }}
@@ -72,12 +72,21 @@ jobs:
           CLASSIFICATION="$(node scripts/classify-release.mjs --base "$RELEASE_BASE_SHA" --head "$GITHUB_SHA")"
           RELEASE_CLASS="$(jq -r .releaseClass <<< "$CLASSIFICATION")"
           RECOVERY_SCOPE="$(jq -r .recoveryScope <<< "$CLASSIFICATION")"
+          BINDING_TRANSITION="$(jq -r .bindingTransition.changed <<< "$CLASSIFICATION")"
+          PREVIOUS_CORE_DATABASE_ID="$(jq -r .bindingTransition.previous.databaseId <<< "$CLASSIFICATION")"
+          TARGET_CORE_DATABASE_ID="$(jq -r .bindingTransition.target.databaseId <<< "$CLASSIFICATION")"
           test "$RELEASE_CLASS" = "asset-only" \
             || test "$RELEASE_CLASS" = "runtime-only" \
             || test "$RELEASE_CLASS" = "database"
           echo "release_class=$RELEASE_CLASS" >> "$GITHUB_OUTPUT"
           echo "recovery_scope=$RECOVERY_SCOPE" >> "$GITHUB_OUTPUT"
+          echo "binding_transition=$BINDING_TRANSITION" >> "$GITHUB_OUTPUT"
+          echo "previous_core_database_id=$PREVIOUS_CORE_DATABASE_ID" >> "$GITHUB_OUTPUT"
+          echo "target_core_database_id=$TARGET_CORE_DATABASE_ID" >> "$GITHUB_OUTPUT"
           echo "RELEASE_CLASS=$RELEASE_CLASS" >> "$GITHUB_ENV"
+          echo "CORE_BINDING_TRANSITION=$BINDING_TRANSITION" >> "$GITHUB_ENV"
+          echo "PREVIOUS_CORE_DATABASE_ID=$PREVIOUS_CORE_DATABASE_ID" >> "$GITHUB_ENV"
+          test "$TARGET_CORE_DATABASE_ID" = "$D1_TARGET_DATABASE_ID"
           mkdir -p release-evidence
           printf '%s\n' "$CLASSIFICATION" > release-evidence/release-classification.json
       - name: Verify released migrations against release base
@@ -113,6 +122,16 @@ jobs:
           npx wrangler versions view "$PREVIOUS_VERSION_ID" --env production --json \
             > release-evidence/version-before.json
           echo "PREVIOUS_VERSION_ID=$PREVIOUS_VERSION_ID" >> "$GITHUB_ENV"
+      - name: Capture previous Core binding recovery point
+        if: steps.classify_release.outputs.binding_transition == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx wrangler d1 time-travel info "$PREVIOUS_CORE_DATABASE_ID" --json \
+            > release-evidence/previous-core-recovery.json
+          jq -e '.bookmark | strings | test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{8}-[0-9a-fA-F]{8}-[0-9a-fA-F]{32}$")' \
+            release-evidence/previous-core-recovery.json
       - name: Verify deployment administrator before migration
         if: steps.classify_release.outputs.release_class == 'database'
         env:
@@ -145,6 +164,7 @@ jobs:
           name: pre-mutation-evidence-${{ github.sha }}-${{ github.run_id }}
           path: |
             cloudflare-app/release-evidence/d1-recovery.json
+            cloudflare-app/release-evidence/previous-core-recovery.json
             cloudflare-app/release-evidence/release-classification.json
             cloudflare-app/release-evidence/migration-manifest.json
             cloudflare-app/release-evidence/release-evidence.json
@@ -178,7 +198,9 @@ jobs:
       # 서비스할 수 있는가"이므로 healthz·session-epoch 호환·로그인·검색·관리 화면으로 판정한다.
       # readiness는 이번에 배포하는 version에만 요구한다(아래 post-deploy smoke).
       - name: Verify rollback Worker against migrated schema
-        if: steps.classify_release.outputs.release_class == 'database'
+        if: >-
+          steps.classify_release.outputs.release_class == 'database' &&
+          steps.classify_release.outputs.binding_transition != 'true'
         env:
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
           SMOKE_REQUIRE_ADMIN: "1"
@@ -251,13 +273,13 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           SMOKE_BASE_URL: ${{ env.PRODUCTION_URL }}
-          SMOKE_REQUIRE_ADMIN: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '0' || '1' }}
-          SMOKE_PUBLIC_ONLY: ${{ steps.classify_release.outputs.release_class == 'asset-only' && '1' || '0' }}
+          SMOKE_REQUIRE_ADMIN: ${{ (steps.classify_release.outputs.release_class == 'asset-only' || steps.classify_release.outputs.binding_transition == 'true') && '0' || '1' }}
+          SMOKE_PUBLIC_ONLY: ${{ (steps.classify_release.outputs.release_class == 'asset-only' || steps.classify_release.outputs.binding_transition == 'true') && '1' || '0' }}
           SMOKE_REQUIRE_SESSION_EPOCH_COMPAT: "1"
           SMOKE_REQUIRE_READINESS: "0"
         run: |
           set -euo pipefail
-          if [ "$RELEASE_CLASS" != "asset-only" ]; then
+          if [ "$RELEASE_CLASS" != "asset-only" ] && [ "$CORE_BINDING_TRANSITION" != "true" ]; then
             export SMOKE_USERNAME="$(jq -r .reader.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
             export SMOKE_PASSWORD="$(jq -r .reader.password "$RELEASE_SMOKE_CREDENTIAL_PATH")"
             export SMOKE_ADMIN_USERNAME="$(jq -r .admin.username "$RELEASE_SMOKE_CREDENTIAL_PATH")"
