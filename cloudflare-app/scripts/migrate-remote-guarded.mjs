@@ -38,8 +38,10 @@ function databaseIdsForEnv(config, envName) {
   const binding = (envBlock.d1_databases || []).find((item) => item.binding === "DB")
     || (envBlock.d1_databases || [])[0];
   const coreId = String(binding?.database_id || "").trim();
+  const coreBinding = String(binding?.binding || "").trim();
   if (!coreId) throw new Error(`wrangler env '${envName}'에 Core D1 database_id가 없습니다.`);
-  return { coreId };
+  if (!coreBinding) throw new Error(`wrangler env '${envName}'에 Core D1 binding 이름이 없습니다.`);
+  return { coreId, coreBinding };
 }
 
 function assertSafeDatabaseId(id, label) {
@@ -84,8 +86,11 @@ export function preflightRemoteMigrate({
   }
 
   let configuredId;
+  let configuredBinding;
   try {
-    configuredId = databaseIdsForEnv(config, envName).coreId;
+    const configured = databaseIdsForEnv(config, envName);
+    configuredId = configured.coreId;
+    configuredBinding = configured.coreBinding;
   } catch (error) {
     return { ok: false, errors: [error.message], dryRun: true };
   }
@@ -133,6 +138,7 @@ export function preflightRemoteMigrate({
     envName,
     expectedDatabaseId,
     configuredId,
+    configuredBinding,
     recoveryEvidencePath: String(recoveryEvidencePath || ""),
     recoveryBookmarks: {
       core: parsedRecoveryEvidence.databases.core.bookmark
@@ -144,14 +150,12 @@ export function preflightRemoteMigrate({
   };
 }
 
-export function remoteMigrateArgs({ databaseId, envName, dryRun = false }) {
-  const args = [
-    "d1", "migrations", "apply", databaseId,
+export function remoteMigrateArgs({ databaseBinding, envName }) {
+  return [
+    "d1", "migrations", "apply", databaseBinding,
     "--remote",
     "--env", envName
   ];
-  if (dryRun) args.push("--dry-run");
-  return args;
 }
 
 const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
@@ -177,6 +181,7 @@ if (isMain) {
     env: result.envName,
     databaseId: result.expectedDatabaseId,
     configuredDatabaseId: result.configuredId,
+    configuredDatabaseBinding: result.configuredBinding,
     recoveryEvidencePath: result.recoveryEvidencePath,
     recoveryBookmarks: result.recoveryBookmarks,
     runId: result.runId,
@@ -185,10 +190,11 @@ if (isMain) {
     approvalContext: result.approvalContext
   }));
 
+  if (result.dryRun) process.exit(0);
+
   const args = remoteMigrateArgs({
-    databaseId: result.configuredId,
-    envName,
-    dryRun: result.dryRun
+    databaseBinding: result.configuredBinding,
+    envName
   });
 
   const spawned = spawnSync("npx", ["wrangler", ...args], {
