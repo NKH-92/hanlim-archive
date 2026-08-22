@@ -1,0 +1,81 @@
+name: Prepare Fresh Production Core
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "PREPARE:a07324c0-7547-48a6-836e-3f0c50b85c36 입력"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d1-production-maintenance
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: approved fresh Core preparation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: production
+    defaults:
+      run:
+        working-directory: cloudflare-app
+    env:
+      CLOUDFLARE_ACCOUNT_ID: e2b9c1d94dc8f0f6e349bfbfb36cfa30
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      SOURCE_D1_DATABASE_ID: 1262ca00-b431-490c-aad2-539d77d4f73f
+      TARGET_D1_DATABASE_ID: a07324c0-7547-48a6-836e-3f0c50b85c36
+      TARGET_D1_DATABASE_NAME: hanlim-archive-core-20260823
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Verify explicit target confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = "PREPARE:$TARGET_D1_DATABASE_ID"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cloudflare-app/package-lock.json
+      - run: npm ci
+      - name: Initialize private evidence directory
+        run: mkdir -p release-evidence/fresh-core
+      - name: Capture existing Core recovery bookmark
+        run: >-
+          npx wrangler d1 time-travel info "$SOURCE_D1_DATABASE_ID" --json
+          > release-evidence/fresh-core/source-time-travel.json
+      - name: Apply the complete migration chain to the fresh Core
+        run: |
+          set -o pipefail
+          npx wrangler d1 migrations apply "$TARGET_D1_DATABASE_NAME" --remote 2>&1 \
+            | tee release-evidence/fresh-core/migrations.txt
+      - name: Preserve approved identities without test audit history
+        run: >-
+          node ../.github/scripts/prepare-fresh-core.mjs
+          > release-evidence/fresh-core/identity-summary.json
+      - name: Verify fresh Core baseline
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute "$TARGET_D1_DATABASE_ID" --remote --json \
+            --command "SELECT COUNT(*) AS applied_migrations FROM d1_migrations" \
+            > release-evidence/fresh-core/migration-count.json
+          npx wrangler d1 execute "$TARGET_D1_DATABASE_ID" --remote --json \
+            --command "SELECT COUNT(*) AS document_count FROM documents" \
+            > release-evidence/fresh-core/document-count.json
+          jq -e '.[0].results[0].applied_migrations == 59' \
+            release-evidence/fresh-core/migration-count.json
+          jq -e '.[0].results[0].document_count == 2' \
+            release-evidence/fresh-core/document-count.json
+      - name: Upload fresh Core preparation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fresh-core-preparation-${{ github.sha }}-${{ github.run_id }}
+          path: cloudflare-app/release-evidence/fresh-core/
+          if-no-files-found: error
+          retention-days: 8
