@@ -44,12 +44,15 @@ test("free-tier production deploy는 복구 지점, migration, 직접 배포, sm
   assert.match(deploy, /if \[ "\$GITHUB_EVENT_NAME" = "workflow_dispatch" \]; then[\s\S]*RELEASE_BASE_SHA="\$GITHUB_SHA"/);
   assert.match(deploy, /classify-release\.mjs --base "\$RELEASE_BASE_SHA" --head "\$GITHUB_SHA"/);
   assert.match(deploy, /BINDING_TRANSITION="\$\(jq -r \.bindingTransition\.changed/);
-  assert.match(deploy, /Capture previous Core binding recovery point[\s\S]*binding_transition == 'true'/);
+  assert.match(deploy, /Capture current Worker rollback target[\s\S]*id: capture_previous/);
+  assert.match(deploy, /version-before\.json[\s\S]*\.resources\.bindings\[\][\s\S]*\.database_id/);
+  assert.match(deploy, /PREVIOUS_DEPLOYED_CORE_DATABASE_ID" = "\$D1_TARGET_DATABASE_ID"/);
+  assert.match(deploy, /Capture previous Core binding recovery point[\s\S]*steps\.capture_previous\.outputs\.binding_transition == 'true'/);
   assert.match(deploy, /previous-core-recovery\.json/);
   assert.match(deploy, /D1_RECOVERY_SCOPE: \$\{\{ steps\.classify_release\.outputs\.recovery_scope \}\}/);
   assert.match(deploy, /Apply D1 migrations\s+if: steps\.classify_release\.outputs\.release_class == 'database'/);
   assert.match(deploy, /Provision release-scoped smoke principals[\s\S]*if: steps\.classify_release\.outputs\.release_class != 'asset-only'/);
-  assert.match(deploy, /Verify rollback Worker against migrated schema[\s\S]*binding_transition != 'true'/);
+  assert.match(deploy, /Verify rollback Worker against migrated schema[\s\S]*steps\.capture_previous\.outputs\.binding_transition != 'true'/);
   assert.match(deploy, /SMOKE_PUBLIC_ONLY: \$\{\{ steps\.classify_release\.outputs\.release_class == 'asset-only'/);
 
   const markers = [
