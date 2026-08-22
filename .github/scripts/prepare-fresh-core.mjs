@@ -32,15 +32,14 @@ async function main() {
   }
 
   const roleTemplates = await query(sourceDatabaseId, "SELECT * FROM user_role_templates ORDER BY key");
-  const sourceTemplateColumns = await tableColumns(sourceDatabaseId, "user_role_templates");
-  const targetTemplateColumns = await tableColumns(targetDatabaseId, "user_role_templates");
-  const templateColumns = sourceTemplateColumns.filter((column) => targetTemplateColumns.includes(column));
+  const targetRoleTemplates = await query(targetDatabaseId, "SELECT * FROM user_role_templates ORDER BY key");
+  if (JSON.stringify(roleTemplates) !== JSON.stringify(targetRoleTemplates)) {
+    throw new Error("운영 Core와 새 Core의 역할 템플릿이 일치하지 않습니다.");
+  }
 
   await batch(targetDatabaseId, buildIdentityCopyBatch({
     sourceUsers,
-    userColumns,
-    roleTemplates,
-    templateColumns
+    userColumns
   }));
 
   const verification = await query(targetDatabaseId, `
@@ -90,12 +89,10 @@ export function bulkInsertStatement(tableName, columns, rows) {
   };
 }
 
-export function buildIdentityCopyBatch({ sourceUsers, userColumns, roleTemplates, templateColumns }) {
+export function buildIdentityCopyBatch({ sourceUsers, userColumns }) {
   return [
     { sql: "DELETE FROM app_users", params: [] },
-    bulkInsertStatement("app_users", userColumns, sourceUsers),
-    { sql: "DELETE FROM user_role_templates", params: [] },
-    bulkInsertStatement("user_role_templates", templateColumns, roleTemplates)
+    bulkInsertStatement("app_users", userColumns, sourceUsers)
   ];
 }
 

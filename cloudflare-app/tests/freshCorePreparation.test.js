@@ -4,26 +4,21 @@ import test from "node:test";
 
 import { buildIdentityCopyBatch } from "../../.github/scripts/prepare-fresh-core.mjs";
 
-test("fresh Core identity copy는 credential을 SQL에 넣지 않고 4문장 원자 bulk plan을 만든다", () => {
+test("fresh Core identity copy는 보호된 역할 템플릿을 건드리지 않고 2문장 원자 bulk plan을 만든다", () => {
   const users = [
     { id: 5, username: "admin@example.com", password_hash: "secret-verifier", must_change_password: 0 },
     { id: 51, username: "reader@example.com", password_hash: "reader-verifier", must_change_password: 1 }
   ];
-  const templates = [
-    { key: "reader", label: "조회", can_manage_documents: 0 },
-    { key: "manager", label: "관리", can_manage_documents: 1 }
-  ];
   const plan = buildIdentityCopyBatch({
     sourceUsers: users,
-    userColumns: ["id", "username", "password_hash", "must_change_password"],
-    roleTemplates: templates,
-    templateColumns: ["key", "label", "can_manage_documents"]
+    userColumns: ["id", "username", "password_hash", "must_change_password"]
   });
 
-  assert.equal(plan.length, 4);
+  assert.equal(plan.length, 2);
   assert.match(plan[1].sql, /FROM json_each\(\?\)/);
   assert.doesNotMatch(plan[1].sql, /secret-verifier|admin@example\.com/);
   assert.equal(plan[1].params.length, 1);
+  assert.equal(plan.some((statement) => /user_role_templates/.test(statement.sql)), false);
 
   const db = new DatabaseSync(":memory:");
   db.exec(`
@@ -40,7 +35,13 @@ test("fresh Core identity copy는 credential을 SQL에 넣지 않고 4문장 원
       can_manage_documents INTEGER NOT NULL
     );
     INSERT INTO app_users VALUES (1, 'seed@example.com', 'seed', 1);
-    INSERT INTO user_role_templates VALUES ('seed', '시드', 0);
+    INSERT INTO user_role_templates VALUES ('system_admin', '시스템관리', 1);
+    CREATE TRIGGER trg_system_role_template_no_delete
+    BEFORE DELETE ON user_role_templates
+    WHEN OLD.key = 'system_admin'
+    BEGIN
+      SELECT RAISE(ABORT, '시스템관리 역할 템플릿은 삭제할 수 없습니다.');
+    END;
   `);
   db.exec("BEGIN");
   try {
@@ -57,6 +58,6 @@ test("fresh Core identity copy는 credential을 SQL에 넣지 않고 4문장 원
   );
   assert.deepEqual(
     db.prepare("SELECT key, label, can_manage_documents FROM user_role_templates ORDER BY key").all().map((row) => ({ ...row })),
-    [...templates].sort((a, b) => a.key.localeCompare(b.key))
+    [{ key: "system_admin", label: "시스템관리", can_manage_documents: 1 }]
   );
 });
