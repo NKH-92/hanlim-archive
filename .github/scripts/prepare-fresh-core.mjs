@@ -1,64 +1,72 @@
 #!/usr/bin/env node
 
-const accountId = required("CLOUDFLARE_ACCOUNT_ID");
-const apiToken = required("CLOUDFLARE_API_TOKEN");
-const sourceDatabaseId = required("SOURCE_D1_DATABASE_ID");
-const targetDatabaseId = required("TARGET_D1_DATABASE_ID");
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-if (sourceDatabaseId === targetDatabaseId) {
-  throw new Error("source와 target D1은 서로 달라야 합니다.");
+let accountId = "";
+let apiToken = "";
+
+async function main() {
+  accountId = required("CLOUDFLARE_ACCOUNT_ID");
+  apiToken = required("CLOUDFLARE_API_TOKEN");
+  const sourceDatabaseId = required("SOURCE_D1_DATABASE_ID");
+  const targetDatabaseId = required("TARGET_D1_DATABASE_ID");
+
+  if (sourceDatabaseId === targetDatabaseId) {
+    throw new Error("source와 target D1은 서로 달라야 합니다.");
+  }
+
+  const sourceUsers = await query(sourceDatabaseId, `
+    SELECT *
+    FROM app_users
+    WHERE status = 'approved'
+    ORDER BY id
+  `);
+  if (sourceUsers.length === 0) throw new Error("보존할 승인 사용자가 없습니다.");
+
+  const sourceColumns = await tableColumns(sourceDatabaseId, "app_users");
+  const targetColumns = await tableColumns(targetDatabaseId, "app_users");
+  const userColumns = sourceColumns.filter((column) => targetColumns.includes(column));
+  if (!userColumns.includes("id") || !userColumns.includes("username")) {
+    throw new Error("app_users identity 열을 확인할 수 없습니다.");
+  }
+
+  const roleTemplates = await query(sourceDatabaseId, "SELECT * FROM user_role_templates ORDER BY key");
+  const sourceTemplateColumns = await tableColumns(sourceDatabaseId, "user_role_templates");
+  const targetTemplateColumns = await tableColumns(targetDatabaseId, "user_role_templates");
+  const templateColumns = sourceTemplateColumns.filter((column) => targetTemplateColumns.includes(column));
+
+  await batch(targetDatabaseId, buildIdentityCopyBatch({
+    sourceUsers,
+    userColumns,
+    roleTemplates,
+    templateColumns
+  }));
+
+  const verification = await query(targetDatabaseId, `
+    SELECT
+      COUNT(*) AS approved_user_count,
+      SUM(CASE WHEN role = 'Admin'
+        AND can_manage_users = 1
+        AND must_change_password = 0
+        AND COALESCE(security_review_required, 0) = 0
+        THEN 1 ELSE 0 END) AS ready_admin_count
+    FROM app_users
+    WHERE status = 'approved'
+  `);
+  const approvedUserCount = Number(verification[0]?.approved_user_count || 0);
+  const readyAdminCount = Number(verification[0]?.ready_admin_count || 0);
+  if (approvedUserCount !== sourceUsers.length || readyAdminCount < 1) {
+    throw new Error("새 Core의 승인 사용자 또는 Admin readiness 검증에 실패했습니다.");
+  }
+
+  console.log(JSON.stringify({
+    action: "prepare-fresh-core-identity",
+    approvedUserCount,
+    readyAdminCount,
+    roleTemplateCount: roleTemplates.length
+  }));
 }
-
-const sourceUsers = await query(sourceDatabaseId, `
-  SELECT *
-  FROM app_users
-  WHERE status = 'approved'
-  ORDER BY id
-`);
-if (sourceUsers.length === 0) throw new Error("보존할 승인 사용자가 없습니다.");
-
-const sourceColumns = await tableColumns(sourceDatabaseId, "app_users");
-const targetColumns = await tableColumns(targetDatabaseId, "app_users");
-const userColumns = sourceColumns.filter((column) => targetColumns.includes(column));
-if (!userColumns.includes("id") || !userColumns.includes("username")) {
-  throw new Error("app_users identity 열을 확인할 수 없습니다.");
-}
-
-const roleTemplates = await query(sourceDatabaseId, "SELECT * FROM user_role_templates ORDER BY key");
-const sourceTemplateColumns = await tableColumns(sourceDatabaseId, "user_role_templates");
-const targetTemplateColumns = await tableColumns(targetDatabaseId, "user_role_templates");
-const templateColumns = sourceTemplateColumns.filter((column) => targetTemplateColumns.includes(column));
-
-await batch(targetDatabaseId, [
-  { sql: "DELETE FROM app_users", params: [] },
-  ...sourceUsers.map((user) => insertStatement("app_users", userColumns, user)),
-  { sql: "DELETE FROM user_role_templates", params: [] },
-  ...roleTemplates.map((template) => insertStatement("user_role_templates", templateColumns, template))
-]);
-
-const verification = await query(targetDatabaseId, `
-  SELECT
-    COUNT(*) AS approved_user_count,
-    SUM(CASE WHEN role = 'Admin'
-      AND can_manage_users = 1
-      AND must_change_password = 0
-      AND COALESCE(security_review_required, 0) = 0
-      THEN 1 ELSE 0 END) AS ready_admin_count
-  FROM app_users
-  WHERE status = 'approved'
-`);
-const approvedUserCount = Number(verification[0]?.approved_user_count || 0);
-const readyAdminCount = Number(verification[0]?.ready_admin_count || 0);
-if (approvedUserCount !== sourceUsers.length || readyAdminCount < 1) {
-  throw new Error("새 Core의 승인 사용자 또는 Admin readiness 검증에 실패했습니다.");
-}
-
-console.log(JSON.stringify({
-  action: "prepare-fresh-core-identity",
-  approvedUserCount,
-  readyAdminCount,
-  roleTemplateCount: roleTemplates.length
-}));
 
 function required(name) {
   const value = String(process.env[name] || "").trim();
@@ -71,13 +79,24 @@ async function tableColumns(databaseId, tableName) {
   return rows.map((row) => String(row.name));
 }
 
-function insertStatement(tableName, columns, row) {
+export function bulkInsertStatement(tableName, columns, rows) {
+  if (!Array.isArray(columns) || columns.length === 0) throw new Error("복제할 열이 없습니다.");
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error("복제할 행이 없습니다.");
   const names = columns.map(quoteIdentifier).join(", ");
-  const placeholders = columns.map(() => "?").join(", ");
+  const selectors = columns.map((column) => `json_extract(value, '$.${column}')`).join(", ");
   return {
-    sql: `INSERT INTO ${quoteIdentifier(tableName)} (${names}) VALUES (${placeholders})`,
-    params: columns.map((column) => row[column] ?? null)
+    sql: `INSERT INTO ${quoteIdentifier(tableName)} (${names}) SELECT ${selectors} FROM json_each(?)`,
+    params: [JSON.stringify(rows)]
   };
+}
+
+export function buildIdentityCopyBatch({ sourceUsers, userColumns, roleTemplates, templateColumns }) {
+  return [
+    { sql: "DELETE FROM app_users", params: [] },
+    bulkInsertStatement("app_users", userColumns, sourceUsers),
+    { sql: "DELETE FROM user_role_templates", params: [] },
+    bulkInsertStatement("user_role_templates", templateColumns, roleTemplates)
+  ];
 }
 
 function quoteIdentifier(value) {
@@ -117,4 +136,8 @@ async function request(databaseId, body) {
     throw new Error(`D1 API 요청이 실패했습니다(code=${code}).`);
   }
   return envelope.result;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  await main();
 }
