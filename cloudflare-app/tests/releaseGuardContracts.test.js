@@ -124,13 +124,12 @@ test("remote migrate는 env database_id 불일치·placeholder·누락 승인을
   }).ok, false);
 });
 
-test("remote migrate는 검증된 database UUID를 Wrangler mutation 대상에 직접 사용한다", () => {
+test("remote migrate는 검증된 Wrangler Core binding을 migration 대상에 사용한다", () => {
   assert.deepEqual(remoteMigrateArgs({
-    databaseId: TEST_PRODUCTION_ID,
-    envName: "production",
-    dryRun: false
+    databaseBinding: "DB",
+    envName: "production"
   }), [
-    "d1", "migrations", "apply", TEST_PRODUCTION_ID,
+    "d1", "migrations", "apply", "DB",
     "--remote", "--env", "production"
   ]);
 });
