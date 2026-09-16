@@ -6,10 +6,11 @@ import { secureHtmlDocument } from "../platform/web/htmlSecurity.js";
 import { createRenderContext } from "../platform/web/renderContext.js";
 import { htmlContentSecurityPolicy } from "../security.js";
 
-export function page(title, body, session, status = 200) {
+export function page(title, body, session, status = 200, options = {}) {
   // 요청별 CSP nonce. 인라인 <script>/<style>에 주입하고 응답 헤더의 script-src와 짝을 맞춘다.
   const renderContext = createRenderContext(session);
   const nonce = renderContext.nonce;
+  const mainClass = options.mainClass || (session ? "app-shell" : "login-main");
 
   // CSRF는 헤더 로그아웃 폼까지 포함해 전체 HTML의 POST form에 주입한다.
   const html = `<!doctype html>
@@ -28,7 +29,7 @@ export function page(title, body, session, status = 200) {
   <a href="#main-content" class="skip-nav">본문 바로가기</a>
   ${session ? header(session) : ""}
   ${session && capabilitiesFromSession(session).isDemoReadOnly ? '<div class="demo-readonly-banner" role="status"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><strong>시연 및 조회용</strong><span>모든 화면은 조회만 가능하며 저장·수정·삭제·다운로드는 차단됩니다.</span></div>' : ""}
-  <main id="main-content" class="${session ? "app-shell" : "login-main"}">${body}</main>
+  <main id="main-content" class="${escapeHtml(mainClass)}">${body}</main>
 </body>
 </html>`;
 

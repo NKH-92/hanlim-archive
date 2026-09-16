@@ -5,6 +5,7 @@ import { iconStyles } from "./icons.js";
 import { adminStyles } from "./styles/admin.js";
 import { baseStyles } from "./styles/base.js";
 import { floorPlanStyles } from "./styles/floorPlan.js";
+import { landingStyles } from "./styles/landing.js";
 import { experienceStyles } from "./styles/experience.js";
 import { responsivePrintStyles } from "./styles/responsivePrint.js";
 import { searchStyles } from "./styles/search.js";
@@ -22,7 +23,8 @@ const styleFragments = Object.freeze([
   searchHomeStyles,
   experienceStyles,
   responsivePrintStyles,
-  workspaceStyles
+  workspaceStyles,
+  landingStyles
 ]);
 
 export function styles() {

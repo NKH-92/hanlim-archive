@@ -30,7 +30,7 @@ export async function handleLogin(request, env) {
   if (declaredLength > 8192) {
     const throttle = loginThrottleContext(request, "");
     await recordLoginFailure(env, throttle);
-    return redirect("/login?error=1&returnUrl=%2Fapp");
+    return redirect("/login?error=1&returnUrl=%2Fapp#login");
   }
   const form = await request.formData();
   const username = clean(form.get("username"));
@@ -39,7 +39,7 @@ export async function handleLogin(request, env) {
   const throttleIdentity = loginThrottleContext(request, username);
 
   if (await isLoginLocked(env, throttleIdentity)) {
-    return redirect(`/login?error=locked&returnUrl=${encodeURIComponent(returnUrl)}`);
+    return redirect(`/login?error=locked&returnUrl=${encodeURIComponent(returnUrl)}#login`);
   }
 
   const inputIsBounded = username.length <= 320 && isPasswordInputBounded(password);
@@ -47,7 +47,7 @@ export async function handleLogin(request, env) {
 
   if (!user) {
     await recordLoginFailure(env, throttleIdentity);
-    return redirect(`/login?error=1&returnUrl=${encodeURIComponent(returnUrl)}`);
+    return redirect(`/login?error=1&returnUrl=${encodeURIComponent(returnUrl)}#login`);
   }
 
   const secureCookie = new URL(request.url).protocol === "https:";
