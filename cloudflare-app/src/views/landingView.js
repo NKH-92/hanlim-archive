@@ -57,7 +57,9 @@ function landingHeaderAndHero() {
           <p class="landing-account-note">승인된 사내 계정으로 이용할 수 있습니다.</p>
         </div>
 
-        <div class="landing-product-window landing-hero-preview" role="img" aria-label="정적인 검색 화면 예시. 제품표준서 QA-SP-001 개정 04의 위치는 1구역 13-2면, 4열 3선반입니다.">
+        <div class="landing-hero-stage">
+          <img class="landing-hero-rack" src="/images/landing/archive-rack.png" width="1672" height="941" alt="" fetchpriority="high" decoding="async">
+          <div class="landing-product-window landing-hero-preview" role="img" aria-label="정적인 검색 화면 예시. 제품표준서 QA-SP-001 개정 04의 위치는 1구역 13-2면, 4열 3선반입니다.">
           <div class="landing-window-bar">
             <span class="landing-window-brand"><i class="fa-solid fa-box-archive" aria-hidden="true"></i> 한림문서고</span>
             <span class="landing-window-user">화면 예시</span>
@@ -71,6 +73,7 @@ function landingHeaderAndHero() {
               <div class="landing-demo-row"><span><strong>제조위생관리 기준서</strong><small class="mono">QA-SOP-021 · Rev.07</small></span><span class="landing-demo-location"><b>1구역 · 04-1면</b><small>6열 · 2선반</small></span></div>
             </div>
             <div class="landing-window-foot"><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span>검색한 문서의 위치까지 한눈에.</span></div>
+          </div>
           </div>
         </div>
       </div>
