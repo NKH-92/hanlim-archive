@@ -23,7 +23,7 @@ export function loginPage({ returnUrl, error, setupWarning, support = { departme
     landingLoginSection({ returnUrl: escapeHtml(returnUrl), setupAlert, loginAlert, supportAction, supportContext }),
     landingFooter()
   ].join("");
-  return page("로그인", `<div class="landing-page">${body}</div>`, null, 200, { mainClass: "landing-main" });
+  return page("로그인", `<div class="landing-page">${body}</div>`, null, 200, { mainClass: "landing-main", skipTarget: "top" });
 }
 
 function landingHeaderAndHero() {
@@ -44,11 +44,17 @@ function landingHeaderAndHero() {
       </div>
     </header>
 
-    <section class="landing-hero" id="top">
+    <section class="landing-hero" id="top" tabindex="-1" aria-labelledby="landing-title">
       <div class="landing-container landing-hero-grid">
-        <div class="landing-hero-copy">
-          <p class="landing-kicker">문서를 찾는 일, 더 간결하게</p>
-          <h1>찾는 문서부터,<br><span>보관 위치까지.</span></h1>
+        <div class="landing-hero-heading">
+          <p class="landing-kicker">한림제약 · 문서고 관리 시스템</p>
+          <h1 id="landing-title">찾는 문서부터,<br><span>보관 위치까지.</span></h1>
+        </div>
+        <picture class="landing-hero-art">
+          <source media="(max-width: 900px)" srcset="/images/landing/archive-hero-mobile-v2.webp" width="1122" height="1402">
+          <img class="landing-hero-rack" src="/images/landing/archive-hero-desktop-v2.webp" width="1672" height="941" fetchpriority="high" alt="금속 이동식 랙에 노랑과 청록색 문서 바인더가 정리된 모습">
+        </picture>
+        <div class="landing-hero-details">
           <p class="landing-lead">문서번호와 이름으로 찾고,<br>어느 랙, 몇 번째 선반인지 바로 확인하세요.</p>
           <div class="landing-hero-actions">
             <a class="button landing-primary-cta" href="#login">문서고 로그인 <span aria-hidden="true">→</span></a>
@@ -56,58 +62,30 @@ function landingHeaderAndHero() {
           </div>
           <p class="landing-account-note">승인된 사내 계정으로 이용할 수 있습니다.</p>
         </div>
-
-        <div class="landing-hero-stage">
-          <img class="landing-hero-rack" src="/images/landing/archive-rack.png" width="1672" height="941" alt="" fetchpriority="high" decoding="async">
-          <div class="landing-product-window landing-hero-preview" role="img" aria-label="정적인 검색 화면 예시. 제품표준서 QA-SP-001 개정 04의 위치는 1구역 13-2면, 4열 3선반입니다.">
-          <div class="landing-window-bar">
-            <span class="landing-window-brand"><i class="fa-solid fa-box-archive" aria-hidden="true"></i> 한림문서고</span>
-            <span class="landing-window-user">화면 예시</span>
-          </div>
-          <div class="landing-window-body">
-            <div class="landing-demo-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>문서명, 문서번호로 검색</span></div>
-            <div class="landing-demo-list-title"><strong>보관중인 문서</strong><span>보관 위치</span></div>
-            <div class="landing-demo-table">
-              <div class="landing-demo-row is-selected"><span><strong>제품표준서</strong><small class="mono">QA-SP-001 · Rev.04</small></span><span class="landing-demo-location"><b>1구역 · 13-2면</b><small>4열 · 3선반</small></span></div>
-              <div class="landing-demo-row"><span><strong>밸리데이션 계획서</strong><small class="mono">QA-VP-014 · Rev.02</small></span><span class="landing-demo-location"><b>2구역 · 07-1면</b><small>2열 · 5선반</small></span></div>
-              <div class="landing-demo-row"><span><strong>제조위생관리 기준서</strong><small class="mono">QA-SOP-021 · Rev.07</small></span><span class="landing-demo-location"><b>1구역 · 04-1면</b><small>6열 · 2선반</small></span></div>
-            </div>
-            <div class="landing-window-foot"><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span>검색한 문서의 위치까지 한눈에.</span></div>
-          </div>
-          </div>
-        </div>
       </div>
-    </section>
-    <div class="landing-container">
-      <dl class="landing-hero-facts" aria-label="핵심 기능">
-        <div><dt>쉽게 찾고</dt><dd>문서명·번호·키워드 검색</dd></div>
-        <div><dt>정확히 확인하고</dt><dd>구역부터 선반까지 위치 확인</dd></div>
-        <div><dt>기록으로 이어갑니다</dt><dd>개정·이동·폐기 이력 조회</dd></div>
-      </dl>
-    </div>`;
+    </section>`;
 }
 
 function landingSearchSection() {
   return `
-    <section class="landing-section landing-section-soft" id="search">
-      <div class="landing-container landing-split">
+    <section class="landing-section" id="search">
+      <div class="landing-container landing-split landing-search-layout">
         <div class="landing-copy-block">
-          <h2>이름의 일부만 알아도,<br>필요한 문서를 찾도록.</h2>
-          <p>기억나는 단어로 검색해 보세요.<br>대분류와 태그, 보관 구역을 더하면 원하는 문서에 가까워집니다.</p>
-          <ul class="landing-check-list">
-            <li><i class="fa-solid fa-list-check" aria-hidden="true"></i><span><strong>현재 보관중인 문서부터</strong>폐기 문서는 별도 화면에서 확인합니다.</span></li>
-            <li><i class="fa-solid fa-list-check" aria-hidden="true"></i><span><strong>조건을 더해 정확하게</strong>분류·태그·구역으로 결과를 좁힙니다.</span></li>
-          </ul>
+          <h2>기억나는 이름으로,<br>필요한 문서를.</h2>
+          <p>문서명이나 번호로 검색하고,<br>분류·태그·구역으로 원하는 문서를 좁혀보세요.</p>
+
         </div>
-        <div class="landing-feature-visual landing-search-visual" role="img" aria-label="정적인 검색 예시. 세척 밸리데이션을 검색하고 분류와 1구역 필터로 세 문서를 좁힌 모습입니다.">
+        <div class="landing-search-demo">
+        <div class="landing-feature-visual landing-search-visual" role="img" aria-label="정적인 검색 예시. 제품표준서를 검색해 선택한 QA-SP-001 개정 04의 위치가 1구역 13-2면, 4열 3선반으로 표시됩니다.">
           <div class="landing-visual-label"><span>문서 검색</span><small>화면 예시</small></div>
-          <div class="landing-search-query"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><strong>세척 밸리데이션</strong></div>
-          <div class="landing-filter-line"><b>대분류 · 밸리데이션</b><b>1구역</b><b>최신순</b></div>
+          <div class="landing-search-query"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><strong>제품표준서</strong></div>
+          <div class="landing-filter-line"><b>보관중</b><b>1구역</b></div>
           <div class="landing-result-list">
-            <div class="landing-result-item is-selected"><span><strong><mark>세척 밸리데이션</mark> 계획서</strong><small class="mono">QA-CV-001 · Rev.03</small></span><b class="mono">1구역 · 08-1</b></div>
-            <div class="landing-result-item"><span><strong><mark>세척 밸리데이션</mark> 보고서</strong><small class="mono">QA-CV-002 · Rev.02</small></span><b class="mono">1구역 · 08-1</b></div>
-            <div class="landing-result-item"><span><strong><mark>세척 밸리데이션</mark> 연간 검토</strong><small class="mono">QA-CV-017 · Rev.00</small></span><b class="mono">1구역 · 08-2</b></div>
+            <div class="landing-result-item is-selected"><span><small class="landing-selection-label">선택한 문서</small><strong><mark>제품표준서</mark></strong><small class="mono">QA-SP-001 · Rev.04</small></span><span class="landing-result-location"><b>1구역 · 13-2면</b><small class="landing-slot-label">4열 · 3선반</small></span></div>
+            <div class="landing-result-item"><span><strong><mark>제품표준서</mark> 작성 지침</strong><small class="mono">QA-SOP-012 · Rev.02</small></span><span class="landing-result-location"><b>1구역 · 04-1면</b><small>6열 · 2선반</small></span></div>
           </div>
+        </div>
+        <a class="landing-example-link" href="#location">이 문서의 보관 위치 보기 <span aria-hidden="true">→</span></a>
         </div>
       </div>
     </section>`;
@@ -115,16 +93,16 @@ function landingSearchSection() {
 
 function landingLocationSection() {
   return `
-    <section class="landing-section" id="location">
+    <section class="landing-section landing-section-soft" id="location" tabindex="-1" aria-labelledby="landing-location-title">
       <div class="landing-container landing-split landing-split-reverse">
         <div class="landing-feature-visual landing-location-visual" role="img" aria-label="1구역 13-2면의 4열 3선반을 강조한 보관 위치 예시">
           <div class="landing-visual-label"><span>보관 위치</span><small>화면 예시</small></div>
-          <div class="landing-location-head"><span><small>제품표준서 · QA-SP-001</small><strong>1구역 · 13-2면</strong></span><b>4열 · 3선반</b></div>
+          <div class="landing-location-head"><span><small>제품표준서 · QA-SP-001 · Rev.04</small><strong>1구역 · 13-2면</strong></span><b>4열 · 3선반</b></div>
           ${landingRackExample()}
           <div class="landing-rack-axis"><span>면을 바라본 모습</span><span>왼쪽 1열 · 아래 1선반</span></div>
         </div>
         <div class="landing-copy-block">
-          <h2>찾았다면,<br>이제 꺼낼 위치까지.</h2>
+          <h2 id="landing-location-title">찾았다면,<br>이제 꺼낼 위치까지.</h2>
           <p>구역과 랙, 면과 열, 선반까지.<br>문서 상세의 위치 표시를 따라 실제 문서가 있는 곳으로 이동하세요.</p>
           <div class="landing-inline-note"><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span><strong>현장에서도 같은 기준으로</strong>모든 랙은 왼쪽부터 1열, 아래부터 1선반입니다.</span></div>
         </div>
@@ -147,34 +125,48 @@ function landingRackExample() {
 
 function landingWorkflowSection() {
   return `
-    <section class="landing-section landing-section-soft" id="workflow">
-      <div class="landing-container">
+    <section class="landing-section landing-workflow-section" id="workflow">
+      <div class="landing-container landing-workflow-layout">
         <div class="landing-section-heading">
-          <h2>문서는 바뀌어도,<br>그 과정은 남도록.</h2>
+          <h2>문서가 바뀌어도,<br>이력은 이어집니다.</h2>
           <p>등록부터 개정, 이동, 폐기까지.<br>현재 상태와 함께 문서가 지나온 이력을 확인합니다.</p>
         </div>
-        <ol class="landing-workflow" aria-label="문서 생애주기">
-          <li><span>01</span><strong>등록</strong><p>문서 식별정보와 보관 위치를 함께 등록합니다.</p></li>
-          <li><span>02</span><strong>개정</strong><p>새 개정을 만들고 이전본과 현재본을 연결합니다.</p></li>
-          <li><span>03</span><strong>이동</strong><p>보관 위치가 바뀌면 변경 전·후 위치와 사유를 남깁니다.</p></li>
-          <li><span>04</span><strong>폐기</strong><p>폐기 후에도 문서의 상태와 처리 기록을 조회할 수 있습니다.</p></li>
-        </ol>
+        <div class="landing-history">
+          <div class="landing-history-current">
+            <div class="landing-visual-label"><span>현재 보관 정보</span><small>화면 예시</small></div>
+            <h3>제품표준서</h3><p class="mono">QA-SP-001</p>
+            <dl class="landing-current-facts">
+              <div><dt>현재 개정</dt><dd class="mono">Rev.04</dd></div>
+              <div><dt>보관 위치</dt><dd>1구역 · 13-2면<br><span>4열 · 3선반</span></dd></div>
+              <div><dt>상태</dt><dd>보관중</dd></div>
+            </dl>
+          </div>
+          <div class="landing-history-records">
+            <div class="landing-visual-label"><span>변경 기록</span><small>최근 변경부터 · 예시</small></div>
+            <ol class="landing-record-list" aria-label="제품표준서 변경 기록 예시">
+              <li><span class="landing-record-kind">이동</span><div><p class="landing-record-change"><span><small>이전 위치</small>13-1면</span><span class="landing-record-arrow" aria-label="에서">→</span><span><small>현재 위치</small><strong>13-2면</strong></span></p><p class="landing-record-note">1구역 · 4열 · 3선반 / 사유: 보관 위치 재배치</p></div></li>
+              <li><span class="landing-record-kind">개정</span><div><p class="landing-record-change"><span><small>이전본</small><span class="mono">Rev.03</span></span><span class="landing-record-arrow" aria-label="에서">→</span><span><small>현재본</small><strong class="mono">Rev.04</strong></span></p><p class="landing-record-note">사유: 문서 내용 개정</p></div></li>
+              <li><span class="landing-record-kind">등록</span><div><p class="landing-record-change"><strong class="mono">Rev.01</strong><span>최초 등록</span></p><p class="landing-record-note">문서번호와 최초 보관 위치 기록</p></div></li>
+            </ol>
+            <p class="landing-history-retention">폐기 이후에도 처리 기록은 이어집니다.</p>
+          </div>
+        </div>
       </div>
     </section>`;
 }
 
 function landingControlSection() {
   return `
-    <section class="landing-section" id="control">
+    <section class="landing-section landing-control-section" id="control">
       <div class="landing-container">
         <div class="landing-section-heading">
-          <h2>일상의 편리함 아래,<br>분명한 운영 원칙.</h2>
+          <h2>믿고 사용하는 업무의 기준</h2>
           <p>필요한 권한으로 일하고, 변경은 기록으로 남깁니다.</p>
         </div>
         <div class="landing-control-grid">
-          <article><span class="landing-control-icon"><i class="fa-solid fa-user" aria-hidden="true"></i></span><h3>역할에 맞는 권한</h3><p>조회·등록·이동·폐기를 맡은 업무와 권한에 따라 이용합니다.</p></article>
-          <article><span class="landing-control-icon"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></span><h3>변경 과정의 기록</h3><p>문서와 위치의 변경, 주요 관리 작업의 이력을 확인합니다.</p></article>
-          <article><span class="landing-control-icon"><i class="fa-solid fa-lock" aria-hidden="true"></i></span><h3>계정 접근 보호</h3><p>반복 로그인 실패를 제한하고 사용중지된 계정의 접근을 막습니다.</p></article>
+          <article><h3>역할에 맞는 권한</h3><p>조회·등록·이동·폐기를 맡은 업무와 권한에 따라 이용합니다.</p></article>
+          <article><h3>변경 과정의 기록</h3><p>문서와 위치의 변경, 주요 관리 작업의 이력을 확인합니다.</p></article>
+          <article><h3>계정 접근 보호</h3><p>반복 로그인 실패를 제한하고 사용중지된 계정의 접근을 막습니다.</p></article>
         </div>
         <div class="landing-source-principle">
           <strong>공식 원본은 승인·서명된 문서대장입니다.</strong>
@@ -186,16 +178,15 @@ function landingControlSection() {
 
 function landingLoginSection({ returnUrl, setupAlert, loginAlert, supportAction, supportContext }) {
   return `
-    <section class="landing-login-section" id="login">
+    <section class="landing-login-section" aria-label="문서고 접속">
       <div class="landing-container landing-login-grid">
         <div class="landing-login-copy">
-          <h2>찾는 일은 간결하게.<br>관리하는 일은 정확하게.</h2>
-          <p>한림문서고에서 오늘의 업무를 시작하세요.<br>사내 계정으로 로그인하면 이용할 수 있습니다.</p>
+          <h2>문서고에서<br>업무를 이어가세요.</h2>
+          <p>승인된 사내 계정으로 이용할 수 있습니다.</p>
           <div class="landing-login-signature"><span>한림제약</span><span>QA 문서고 관리 시스템</span></div>
         </div>
-        <div class="login-panel landing-login-card">
-          <img class="login-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약">
-          <div class="landing-login-title"><h2>문서고 로그인</h2><p>등록된 사내 이메일 계정으로 접속하세요.</p></div>
+        <div class="login-panel landing-login-card" id="login" tabindex="-1" aria-labelledby="landing-login-title">
+          <div class="landing-login-title"><div class="landing-login-brand"><img class="login-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약"><h2 id="landing-login-title">문서고 로그인</h2></div><p>사내 이메일과 비밀번호를 입력하세요.</p></div>
           ${setupAlert}
           ${loginAlert}
           <form method="post" action="/login" class="stack landing-login-form">
