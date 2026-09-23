@@ -198,7 +198,6 @@ export function landingStyles() {
       .landing-hero-grid { width: 100%; min-height: 0; aspect-ratio: auto; grid-template-columns: minmax(0, 1fr); gap: var(--sp-6); padding: var(--sp-6) 0 var(--sp-8); border-radius: 0; }
       .landing-hero-heading, .landing-hero-details { width: min(560px, calc(100% - var(--landing-gutter) * 2)); margin-inline: auto; }
       .landing-hero-art { position: relative; inset: auto; width: min(560px, calc(100% - var(--sp-4) * 2)); margin-inline: auto; aspect-ratio: 1122 / 1402; overflow: hidden; border-radius: var(--landing-control-radius); }
-      .landing-hero-rack { height: auto; }
       .landing-hero-details .landing-lead { margin-top: 0; }
       .landing-feature-visual { width: 100%; max-width: 640px; }
       .landing-split-reverse .landing-copy-block { order: -1; }
