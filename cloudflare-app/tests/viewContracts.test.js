@@ -96,7 +96,7 @@ test("랙 목록·설정·상세·폼은 위치 구조와 입력 계약을 공�
     session: admin,
     racks: [{ id: 7, zone_number: 1, rack_number: 2, code: `1-02<script>bad()</script>`, is_single_sided: 0, active_document_count: 3 }]
   }), "랙 관리");
-  assert.match(list, /<h1>보관 랙 목록<\/h1>/);
+  assert.match(list, /<h1>랙 관리<\/h1>/);
   assert.match(list, /href="\/racks\/7"/);
   assert.match(list, /1-02&lt;script&gt;bad\(\)&lt;\/script&gt;/);
   assert.doesNotMatch(list, /<script>bad\(\)<\/script>/);
@@ -169,6 +169,11 @@ test("위치 이동 화면은 권한 판정·낙관적 잠금·이력 escape 계
   assert.match(form, /name="expectedRowVersion" value="9"/);
   assert.match(form, /1구역 &lt;위치&gt;/);
   assert.doesNotMatch(form, /<script>이유<\/script>|<img src=x>/);
+  // 이동 미리보기는 현재 위치와 같은 표기로 비교하고, 같은 위치면 이동 버튼을 쓰지 않게 한다.
+  assert.match(form, /data-current-location="1구역 \/ 2-1번 랙 \/ 3열 \/ 4선반"/);
+  assert.match(form, /<button type="submit" class="primary" data-movement-submit>위치 이동<\/button>/);
+  assert.match(form, /지금 위치와 같아요\./);
+  assert.match(form, /'구역 \/ ' \+ rack \+ '번 랙 \/ '/);
 
   const history = await htmlPage(movementsPage({
     session: mover,
@@ -443,6 +448,27 @@ test("폐기 캠페인 목록과 초안 폼은 조건 필드·민감 값 escape 
   assert.match(periodic, /전체 275건 선택됨/);
   assert.match(periodic, /폐기할 문서가 총 <strong>275건<\/strong>이 맞나요/);
   assert.match(periodic, /네, 275건 모두 폐기할게요/);
+});
+
+test("하위 화면은 제목 위 상위 화면 링크 하나로 돌아가고, 제목 옆에 되돌아가기 버튼을 두지 않는다", async () => {
+  const pages = [
+    [rackConfigurePage({ session: admin, counts: { 1: 2, 2: 0, 3: 0 }, expectedVersion: 1 }), "랙 설정", "/racks", "랙 관리"],
+    [rackFormPage({ session: admin, action: "/racks", title: "랙 추가" }), "랙 추가", "/racks", "랙 관리"],
+    [userPasswordResetPage({ session: admin, user: { id: 7, username: "u@hanlim.com", display_name: "사용자" }, minLength: 6 }), "비밀번호 초기화", "/admin/settings", "사용자 관리"],
+    [searchReportPage({ session: admin, report: {} }), "검색 리포트", "/admin", "운영 관리"],
+    [setsPage({ session: admin, sets: [] }), "준비 문서 세트", "/admin", "운영 관리"],
+    [disposalBatchListPage({ session: admin, batches: [] }), "정기폐기 캠페인 이력", "/documents/disposal?tab=history", "폐기 관리"],
+    [documentImportJobsPage({ session: admin, jobs: [] }), "CSV 가져오기 작업", "/admin", "운영 관리"]
+  ];
+  for (const [response, title, href, label] of pages) {
+    const html = await htmlPage(response, title);
+    const head = html.match(/<section class="page-head[^"]*">[\s\S]*?<\/section>/)?.[0] || "";
+    assert.match(head, new RegExp(`<nav class="breadcrumb page-back" aria-label="경로"><a href="${escapePattern(href.replaceAll("&", "&amp;"))}">${label}</a></nav>`), title);
+    assert.doesNotMatch(head, /돌아가기|>목록<|>관리 설정</, title);
+  }
+  // 메뉴에서 바로 가는 화면은 상위 링크 없이 제목만 둔다.
+  const racks = await htmlPage(racksPage({ session: admin, racks: [] }), "랙 관리");
+  assert.doesNotMatch(racks.match(/<section class="page-head[\s\S]*?<\/section>/)?.[0] || "", /page-back|breadcrumb/);
 });
 
 async function htmlPage(response, title) {

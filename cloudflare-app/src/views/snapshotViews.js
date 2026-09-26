@@ -3,7 +3,7 @@ import { escapeHtml } from "../ui/html/escape.js";
 import { formatRevisionLabel } from "../shared/documents/revision.js";
 import { FREE_TIER_BUDGET } from "../freeTierBudget.js";
 import { EXCEL_SNAPSHOT_FIELD_LABELS } from "../domains/snapshots/domain/workbookSchema.js";
-import { alertDanger, page } from "./layout.js";
+import { alertDanger, page, pageHead } from "./layout.js";
 
 const STATUS_LABELS = Object.freeze({
   staging: "업로드 중",
@@ -221,10 +221,7 @@ export function documentSnapshotDetailPage({
     <script defer src="/assets/jszip.min.js"></script>
     <script defer src="/assets/exceljs.min.js"></script>
     <script defer src="/assets/excel-app.js"></script>
-    <section class="page-head">
-      <div><h1>${escapeHtml(snapshot.snapshot_code)}</h1><p class="page-sub">${escapeHtml(snapshot.source_name)}</p></div>
-      <div class="button-group"><button type="button" class="button secondary" data-excel-export>현재 대장 엑셀 추출</button></div>
-    </section>
+    ${pageHead({ title: snapshot.snapshot_code, parent: { href: "/documents/import", label: "엑셀 대장 동기화" }, subtitle: escapeHtml(snapshot.source_name), actions: `<button type="button" class="button secondary" data-excel-export>현재 대장 엑셀 추출</button>` })}
     ${workflowStepper(snapshotStep(snapshot.status))}
     ${notice}
     ${scheduledNotice}

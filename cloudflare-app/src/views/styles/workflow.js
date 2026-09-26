@@ -10,7 +10,7 @@ export function workflowStyles() {
     .bulk-bar input { background: rgba(255, 255, 255, .12); color: var(--surface); border-color: transparent; min-height: 32px; }
     .bulk-bar input::placeholder { color: rgba(255, 255, 255, .55); }
     .bulk-bar input:focus { background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .4); box-shadow: none; }
-    .pagination { display: flex; justify-content: center; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); color: var(--gray-600); font-weight: 600; font-size: 12.5px; }
+    .pagination { display: flex; justify-content: center; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); color: var(--gray-600); font-weight: 600; font-size: var(--text-meta); }
     .workspace-tabs { display: flex; gap: var(--sp-1); border-bottom: 1px solid var(--line); }
     .workspace-tabs a { padding: var(--sp-3) var(--sp-4); border-bottom: 2px solid transparent; color: var(--gray-500); text-decoration: none; font-size: 13.5px; font-weight: 700; }
     .workspace-tabs a[aria-current="page"] { border-color: var(--primary); color: var(--primary); }
@@ -35,7 +35,7 @@ export function workflowStyles() {
     .form-grid.two-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .field-group { display: grid; gap: var(--sp-1); min-width: 0; }
     .mono-input { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-    .field-error { margin: 0; color: var(--danger); font-size: 12.5px; font-weight: 600; }
+    .field-error { margin: 0; color: var(--danger); font-size: var(--text-meta); font-weight: 600; }
     .form-error-summary { padding: var(--sp-4); border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--danger-soft); color: var(--danger); }
     .form-error-summary p { margin: var(--sp-1) 0; }
     .form-error-summary ul { margin: var(--sp-2) 0 0; padding-left: var(--sp-5); }
@@ -76,12 +76,10 @@ export function workflowStyles() {
     .check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--sp-2); border-radius: var(--r-md); padding: var(--sp-3); background: var(--gray-50); border: 0; }
     .check-item, .check-inline { display: inline-flex; align-items: center; gap: var(--sp-2); width: max-content; font-weight: 500; font-size: 13px; color: var(--ink); }
     .check-item input, .check-inline input { width: auto; min-height: auto; accent-color: var(--primary); }
-    .master-list { display: grid; gap: var(--sp-2); }
-    .master-row, .master-form { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) auto auto; gap: var(--sp-2); align-items: center; }
     .master-page-head { align-items: center; }
     .master-page-head > div:first-child { max-width: 760px; }
     .master-page-head h1 { margin-bottom: var(--sp-1); }
-    .master-page-head p, .master-section-title p, .master-list-heading p { margin: 0; color: var(--gray-500); font-size: 12.5px; }
+    .master-page-head p, .master-section-title p, .master-list-heading p { margin: 0; color: var(--gray-500); font-size: var(--text-meta); }
     .master-create-panel, .master-management { max-width: 1120px; margin-inline: auto; }
     .master-section-title { align-items: flex-start; }
     .master-section-title h2, .master-list-heading h2 { margin: 0 0 var(--sp-1); }
@@ -91,7 +89,7 @@ export function workflowStyles() {
     .master-create-form label small, .category-master-edit-form label small { color: var(--gray-500); font-size: 11.5px; font-weight: 500; }
     .master-list-heading { display: flex; justify-content: space-between; align-items: end; gap: var(--sp-5); padding-bottom: var(--sp-4); border-bottom: 1px solid var(--line); }
     .master-list-tools { display: grid; grid-template-columns: minmax(220px, 320px) auto; align-items: end; gap: var(--sp-3); }
-    .master-inactive-toggle { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 36px; color: var(--gray-700); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+    .master-inactive-toggle { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 36px; color: var(--gray-700); font-size: var(--text-meta); font-weight: 600; white-space: nowrap; }
     .master-inactive-toggle input { width: auto; min-height: auto; accent-color: var(--primary); }
     .category-master-list { display: grid; margin-top: var(--sp-2); }
     .category-master-item { border-bottom: 1px solid var(--line); }
@@ -104,13 +102,13 @@ export function workflowStyles() {
     .category-master-copy strong, .category-master-copy small { overflow-wrap: anywhere; }
     .category-master-copy strong { font-size: 13.5px; }
     .category-master-copy small { color: var(--gray-500); font-size: 12px; font-weight: 500; }
-    .category-master-toggle { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--primary); font-size: 12.5px; font-weight: 700; }
+    .category-master-toggle { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--primary); font-size: var(--text-meta); font-weight: 700; }
     .category-master-toggle::after { content: "▾"; color: var(--gray-400); }
     .category-master-item[open] .category-master-toggle::after { content: "▴"; }
     .category-master-edit { display: grid; gap: var(--sp-4); padding: var(--sp-4); border-top: 1px solid var(--line); background: var(--gray-50); }
     .category-master-edit-form { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr) auto; align-items: end; gap: var(--sp-3); }
     .category-master-state-action { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
-    .category-master-state-action p { margin: 0; color: var(--gray-600); font-size: 12.5px; }
+    .category-master-state-action p { margin: 0; color: var(--gray-600); font-size: var(--text-meta); }
     .master-filter-empty { margin-top: var(--sp-4); }
     .master-filter-empty small { color: var(--gray-500); }
 
@@ -118,10 +116,10 @@ export function workflowStyles() {
     .manual-list li { display: grid; gap: var(--sp-1); padding-bottom: var(--sp-3); border-bottom: 1px solid var(--gray-100); }
     .manual-list li:last-child { border-bottom: 0; padding-bottom: 0; }
     .manual-list strong { font-size: 13.5px; }
-    .manual-list span { color: var(--gray-500); font-size: 12.5px; }
+    .manual-list span { color: var(--gray-500); font-size: var(--text-meta); }
     .contact-list { margin: 0; display: grid; gap: var(--sp-2); }
     .contact-list div { display: flex; justify-content: space-between; gap: var(--sp-3); }
-    .contact-list dt { color: var(--gray-500); font-size: 12.5px; font-weight: 600; }
+    .contact-list dt { color: var(--gray-500); font-size: var(--text-meta); font-weight: 600; }
     .contact-list dd { margin: 0; font-size: 13px; font-weight: 600; }
 
     .modal { max-width: calc(100vw - var(--sp-8)); max-height: calc(100dvh - var(--sp-6)); overflow-x: clip; overflow-y: auto; border: 0; border-radius: var(--r-lg); padding: 0; width: min(440px, calc(100vw - var(--sp-8))); box-shadow: var(--shadow-2); }
@@ -149,7 +147,7 @@ export function workflowStyles() {
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
     .print-only { display: none; }
 
-    .set-doc-table td strong { white-space: nowrap; font-size: 12.5px; font-weight: 600; color: var(--primary); }
+    .set-doc-table td strong { white-space: nowrap; font-size: var(--text-meta); font-weight: 600; color: var(--primary); }
     .set-doc-table tr.is-disposed td:first-child { border-left: 3px solid var(--gray-300); }
     .set-add-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-5); }
     .set-candidate-list { display: grid; gap: var(--sp-2); }

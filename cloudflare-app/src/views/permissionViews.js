@@ -6,7 +6,7 @@ import {
   samePermissions
 } from "../permissions.js";
 import { escapeHtml } from "../ui/html/escape.js";
-import { alertDanger, alertWarning, emptyState, page, sectionHeader } from "./layout.js";
+import { alertDanger, alertWarning, emptyState, page, pageHead, sectionHeader } from "./layout.js";
 
 export function userPermissionsPage({ session, user, templates, error = "" }) {
   const flags = permissionFlags(user);
@@ -22,10 +22,7 @@ export function userPermissionsPage({ session, user, templates, error = "" }) {
     templates.map((template) => [template.key, Number(template.row_version)])
   ));
   return page("사용자 권한", `
-    <section class="page-head">
-      <div><h1>사용자 권한</h1><p class="page-sub">${escapeHtml(user.display_name)} (${escapeHtml(user.username)})</p></div>
-      <a class="button secondary" href="/admin/settings">사용자 관리</a>
-    </section>
+    ${pageHead({ title: "사용자 권한", parent: { href: "/admin/settings", label: "사용자 관리" }, subtitle: `${escapeHtml(user.display_name)} (${escapeHtml(user.username)})` })}
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="/admin/users/${Number(user.id)}/permissions" class="stack">
@@ -58,10 +55,7 @@ export function userPermissionsPage({ session, user, templates, error = "" }) {
 
 export function roleTemplatesPage({ session, templates }) {
   return page("역할 템플릿", `
-    <section class="page-head">
-      <h1>역할 템플릿</h1>
-      <a class="button secondary" href="/admin/settings">사용자 관리</a>
-    </section>
+    ${pageHead({ title: "역할 템플릿", parent: { href: "/admin/settings", label: "사용자 관리" } })}
     <section class="panel">
       <div class="table-wrap"><table class="doc-table">
         <caption class="sr-only">역할 템플릿 목록</caption>
@@ -79,10 +73,7 @@ export function roleTemplatesPage({ session, templates }) {
 export function roleTemplateEditPage({ session, template, users, error = "" }) {
   const flags = permissionFlags(template);
   return page("역할 템플릿 편집", `
-    <section class="page-head">
-      <h1>${escapeHtml(template.label)}</h1>
-      <a class="button secondary" href="/admin/role-templates">역할 템플릿</a>
-    </section>
+    ${pageHead({ title: template.label, parent: { href: "/admin/role-templates", label: "역할 템플릿" } })}
     ${error ? `<section class="panel narrow">${alertDanger(error)}</section>` : ""}
     ${template.fixed ? `<section class="panel narrow">${alertWarning("시스템관리 역할은 운영 복구 경계라서 이름과 권한을 수정할 수 없어요.")}<h2>고정 권한</h2><p>${permissionSummary(template)}</p></section>` : `
       <section class="panel narrow">

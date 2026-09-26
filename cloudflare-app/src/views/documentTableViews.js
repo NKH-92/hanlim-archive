@@ -1,6 +1,6 @@
 // 문서 결과 테이블: /documents 목록과 /racks/:id 상세가 같은 표 마크업을 쓴다.
 
-import { locationLabel, rackFaceLabel } from "../domains/racks/index.js";
+import { locationLabel } from "../domains/racks/index.js";
 import { escapeHtml } from "../ui/html/escape.js";
 import { formatRevisionLabel } from "../shared/documents/revision.js";
 import { emptyResult, statusBadge } from "./layout.js";
@@ -41,10 +41,7 @@ function documentRow(doc, opts = {}) {
       <td class="revision-cell" data-label="개정번호">${escapeHtml(formatRevisionLabel(doc.revision_number))}</td>
       <td data-label="제·개정일">${escapeHtml(doc.revision_date || "미입력")}</td>
       <td data-label="폐기 예정 연도">${escapeHtml(doc.disposal_due_year ?? "미입력")}</td>
-      <td class="loc-cell" data-label="보관 위치" title="${escapeHtml(locationLabel(doc))}">
-        <span class="loc-cell-main">${doc.zone_number ? `${doc.zone_number}구역 ` : ""}${escapeHtml(rackFaceLabel(doc) || doc.rack_code)}</span>
-        <small class="loc-cell-sub">${escapeHtml(doc.column_number)}열 ${escapeHtml(doc.shelf_number)}선반</small>
-      </td>
+      <td class="loc-cell" data-label="보관 위치"><span class="loc-cell-main">${escapeHtml(locationLabel(doc))}</span></td>
     </tr>
   `;
 }

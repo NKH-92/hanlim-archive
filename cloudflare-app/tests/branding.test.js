@@ -62,7 +62,7 @@ test("일반 navigation은 검색 중심이며 업무 권한별 등록·동기�
     ...base,
     can_manage_disposals: true
   }).text();
-  assert.match(disposalManagerHtml, /href="\/documents\/disposal"[\s\S]*문서 폐기/);
+  assert.match(disposalManagerHtml, /href="\/documents\/disposal"[\s\S]*폐기 관리/);
   assert.doesNotMatch(disposalManagerHtml, /href="\/documents\/new"|href="\/documents\/import"/);
 });
 

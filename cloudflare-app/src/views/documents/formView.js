@@ -3,7 +3,7 @@
 import { documentLink } from "../../shared/documents/navigation.js";
 import { escapeHtml } from "../../ui/html/escape.js";
 import { locationPicker, locationPickerScript } from "../documentLocationPicker.js";
-import { formValue, option, page } from "../layout.js";
+import { formValue, option, page, pageHead } from "../layout.js";
 
 export function documentFormPage({
   session,
@@ -25,7 +25,7 @@ export function documentFormPage({
   const submitLabel = isInformationEdit ? "정보 저장" : "등록";
   const noteLabel = title === "새 개정 등록" ? "필요한 변경사항" : "비고";
   return page(title, `
-    <section class="page-head"><h1>${escapeHtml(title)}</h1></section>
+    ${pageHead({ title, parent: cancelUrl === "/app" ? null : { href: cancelUrl, label: "문서 상세" } })}
     <section class="document-form-layout" data-document-form-layout>
       <form method="post" action="${escapeHtml(action)}" class="panel document-form" data-document-form data-current-revision="${escapeHtml(formValue(values, "revisionNumber", "revision_number"))}">
         ${formErrorSummary(normalizedValidation, title)}

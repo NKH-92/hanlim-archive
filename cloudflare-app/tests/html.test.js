@@ -177,7 +177,7 @@ test("도움말은 메뉴를 되풀이하지 않고 검색 요령과 선택적 �
   const adminHelp = await qaPage({ session: { ...session, role: "Admin" }, support: {} }).text();
   const adminMain = adminHelp.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] || "";
 
-  assert.match(configured, /<h1>도움말·문의<\/h1>/);
+  assert.match(configured, /<h1>도움말<\/h1>/);
   assert.match(configured, /<h2>검색 방법<\/h2>/);
   // 사이드바·하단 탭과 같은 작업 바로가기 타일과 작업 개수 배지를 두지 않는다.
   assert.doesNotMatch(adminMain, /주요 작업 바로가기|help-task|개 작업|어떤 작업을 할까요/);
@@ -628,7 +628,7 @@ test("floor plan page keeps the map separate from search and opens rack results 
   }).text();
   const main = html.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] || "";
 
-  assert.match(main, /<h1>문서고 도면<\/h1>/);
+  assert.match(main, /<h1>보관 위치<\/h1>/);
   assert.match(main, /src="\/images\/Archive\.png"/);
   assert.match(main, /data-rack-code="1-03"/);
   assert.match(main, /<details open><summary>/);
@@ -675,7 +675,7 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   assert.match(nav, /href="\/floor-plan"[^>]*>[\s\S]*?보관 위치/);
   assert.match(nav, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀 대장 동기화/);
   assert.match(nav, /href="\/documents\/new"[^>]*>[\s\S]*?문서 등록/);
-  assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?문서 폐기/);
+  assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?폐기 관리/);
   // 운영 그룹 안에 다시 접는 하위 그룹(기준정보·이력·증적)을 두지 않고 한 목록으로 둔다.
   assert.doesNotMatch(nav, /class="nav-settings"|>기준정보<\/summary>|>이력·증적<\/summary>/);
   for (const href of ["/racks", "/categories", "/tags", "/admin/audit", "/admin/movements"]) {
@@ -688,9 +688,11 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   assert.match(commands, /href="\/racks"[^>]*>[\s\S]*?랙/);
   assert.match(commands, /href="\/categories"[^>]*>[\s\S]*?대분류/);
   assert.match(commands, /href="\/tags"[^>]*>[\s\S]*?태그/);
-  assert.match(commands, /href="\/admin\/settings"[^>]*>[\s\S]*?사용자·권한/);
+  assert.match(commands, /href="\/admin\/settings"[^>]*>[\s\S]*?사용자 관리/);
   assert.match(commands, /href="\/admin\/audit"[^>]*>[\s\S]*?감사 이력/);
-  assert.match(nav, /href="\/admin"[^>]*>[\s\S]*?확인할 일/);
+  // 메뉴 이름은 도착 화면의 제목과 같다.
+  assert.match(nav, /href="\/admin"[^>]*>[\s\S]*?운영 관리/);
+  assert.doesNotMatch(nav, /확인할 일|사용자·권한|랙·보관 위치|>문서 폐기</);
 
   assert.match(html, /<h1>운영 관리<\/h1>/);
   assert.match(html, /class="panel admin-status-panel is-attention"/);

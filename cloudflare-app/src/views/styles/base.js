@@ -16,7 +16,7 @@ export function baseStyles() {
     h1 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.3; letter-spacing: 0; }
     h2 { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.35; letter-spacing: 0; }
     h3 { margin: 0; font-size: 13.5px; font-weight: 700; line-height: 1.4; }
-    .page-sub { margin: var(--sp-1) 0 0; color: var(--gray-500); font-size: 12.5px; font-weight: 500; }
+    .page-sub { margin: var(--sp-1) 0 0; color: var(--gray-500); font-size: var(--text-meta); font-weight: 500; }
     .muted { color: var(--gray-500); font-size: 13px; }
 
     .topbar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) clamp(12px, 3vw, 24px); background: var(--surface); border-bottom: 1px solid var(--line); }
@@ -45,7 +45,7 @@ export function baseStyles() {
     .mobile-tabs { display: none; }
     .nav-user { margin-left: auto; display: flex; align-items: center; gap: var(--sp-1); }
     .session-pill { padding: var(--sp-1) var(--sp-3); background: var(--gray-100); border-radius: 999px; color: var(--gray-700); font-size: 12px; font-weight: 600; white-space: nowrap; }
-    .demo-readonly-banner { position: sticky; top: 0; z-index: 44; display: flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--action-strong); background: var(--action-soft); color: var(--warning); font-size: 12.5px; }
+    .demo-readonly-banner { position: sticky; top: 0; z-index: 44; display: flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--action-strong); background: var(--action-soft); color: var(--warning); font-size: var(--text-meta); }
     .demo-readonly-banner strong { white-space: nowrap; }
     form[data-demo-disabled] { opacity: .72; }
     form[data-demo-disabled] :is(input, select, textarea, button) { cursor: not-allowed; }

@@ -98,7 +98,7 @@ test("auditPage는 변경 전후를 표로 표시하고 사용자 값을 escape�
   });
   const html = await response.text();
 
-  assert.match(html, /전역 감사로그/);
+  assert.match(html, /<h1>감사 이력<\/h1>/);
   // 대상·동작 조건은 영문 저장값을 직접 입력하지 않고 한국어 목록에서 고른다.
   assert.match(html, /<select name="entityType"><option value="">전체<\/option>[\s\S]*<option value="user">사용자<\/option>/);
   assert.match(html, /<select name="action"><option value="">전체<\/option>[\s\S]*<option value="permissions_update">권한 변경<\/option>/);

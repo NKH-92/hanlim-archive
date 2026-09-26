@@ -115,7 +115,7 @@ export function responsivePrintStyles() {
       button, .button, .sm, .icon-button { min-height: 44px; }
       .icon-button { width: 44px; }
       .filter-row, .viewer-filter-row, .disposal-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .master-row, .master-form, .set-add-grid { grid-template-columns: 1fr; }
+      .set-add-grid { grid-template-columns: 1fr; }
       .master-create-form, .category-master-edit-form { grid-template-columns: 1fr; }
       .master-list-heading { align-items: stretch; flex-direction: column; }
       .master-list-tools { width: 100%; grid-template-columns: minmax(0, 1fr) auto; }

@@ -4,11 +4,11 @@ import { readBoolean } from "../shared/coercion.js";
 import { escapeHtml } from "../ui/html/escape.js";
 import { documentResults } from "./documentTableViews.js";
 import { displayedColumns, rackColumnOrigin } from "../domains/racks/domain/orientation.js";
-import { alertDanger, page } from "./layout.js";
+import { alertDanger, page, pageHead } from "./layout.js";
 
 export function racksPage({ session, racks }) {
   return page("랙 관리", `
-    <section class="page-head"><h1>보관 랙 목록</h1><div class="button-group"><a class="button secondary" href="/racks/configure">구역별 설정</a><a class="button" href="/racks/new">랙 추가</a></div></section>
+    <section class="page-head"><h1>랙 관리</h1><div class="button-group"><a class="button secondary" href="/racks/configure">구역별 설정</a><a class="button" href="/racks/new">랙 추가</a></div></section>
     <section class="rack-grid">
       ${racks.map((rack) => `
         <a class="panel rack-card" href="/racks/${rack.id}">
@@ -23,7 +23,7 @@ export function racksPage({ session, racks }) {
 
 export function rackConfigurePage({ session, counts, expectedVersion = 0, error = "" }) {
   return page("랙 설정", `
-    <section class="page-head"><h1>구역별 랙 수</h1></section>
+    ${pageHead({ title: "구역별 랙 수", parent: { href: "/racks", label: "랙 관리" } })}
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="/racks/configure" class="stack">
@@ -42,10 +42,7 @@ export function rackDetailsPage({ session, rack, documents, grid = [], selectedF
     : documents.filter((document) => document.rack_face === face);
   // 랙 규격(7열×6선반)은 격자가 보여 주므로 문장으로 되풀이하지 않고, 식별 코드와 문서 수만 제목 아래에 둔다.
   return page(`${rack.code} 랙`, `
-    <section class="page-head">
-      <div><h1>${rack.zone_number}구역 ${rack.rack_number}번 랙</h1><p class="page-sub"><span class="mono">${escapeHtml(rack.code)}</span> · ${readBoolean(rack.is_single_sided) ? "단면" : "양면"} · 문서 ${documents.length}건</p></div>
-      <div class="button-group"><a class="button secondary" href="/app?rack=${rack.id}&face=${face}&status=active&sort=location">이 면의 문서 검색</a><a class="button" href="/racks/${rack.id}/edit">랙 수정</a></div>
-    </section>
+    ${pageHead({ title: `${rack.zone_number}구역 ${rack.rack_number}번 랙`, parent: { href: "/racks", label: "랙 관리" }, subtitle: `<span class="mono">${escapeHtml(rack.code)}</span> · ${readBoolean(rack.is_single_sided) ? "단면" : "양면"} · 문서 ${documents.length}건`, actions: `<a class="button secondary" href="/app?rack=${rack.id}&face=${face}&status=active&sort=location">이 면의 문서 검색</a><a class="button" href="/racks/${rack.id}/edit">랙 수정</a>` })}
     ${rackGridView({ rack, grid, face, selectedColumn, selectedShelf })}
     <section class="panel" aria-labelledby="rack-documents-title">
       <div class="section-title"><h2 id="rack-documents-title">${readBoolean(rack.is_single_sided) ? "등록 문서" : `${rack.rack_number}-${face === "B" ? "2" : "1"}면 등록 문서`}</h2><span class="count-badge">${faceDocuments.length}건</span></div>
@@ -99,7 +96,7 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
 export function rackFormPage({ session, values = {}, action, title, error = "" }) {
   const expectedRowVersion = Number(values.row_version ?? values.expectedRowVersion ?? values.rowVersion ?? 0);
   return page(title, `
-    <section class="page-head"><h1>${escapeHtml(title)}</h1></section>
+    ${pageHead({ title, parent: { href: "/racks", label: "랙 관리" } })}
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="${escapeHtml(action)}" class="stack">

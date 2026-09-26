@@ -226,7 +226,7 @@ test("every authenticated role can open the dedicated floor plan", async () => {
     const html = await response.text();
 
     assert.equal(response.status, 200);
-    assert.match(html, /<h1>문서고 도면<\/h1>/);
+    assert.match(html, /<h1>보관 위치<\/h1>/);
     assert.match(html, /src="\/images\/Archive\.png"/);
     assert.match(html, /href="\/app\?rack=3&amp;status=active&amp;sort=location"/);
   }

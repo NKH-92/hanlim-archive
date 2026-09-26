@@ -70,6 +70,30 @@ test("태그 수정 입력란은 각 태그 이름을 포함한 접근 가능한
   assert.match(html, /name="description" value="우선 관리" aria-label="중요문서 태그 설명"/);
 });
 
+test("태그 관리는 대분류와 같이 목록에서 펼쳐 수정하고, 수정 저장이 사용 상태를 바꾸지 않는다", async () => {
+  const response = masters.tagsPage({
+    session: { username: "admin", displayName: "관리자", role: "Admin", csrfToken: "csrf-token-123" },
+    tags: [
+      { id: 3, name: "중요문서", description: "우선 관리", is_active: 1, row_version: 7 },
+      { id: 4, name: "이전태그", description: "", is_active: 0, row_version: 2 }
+    ]
+  });
+  const html = await response.text();
+
+  assert.match(html, /<h1>태그 관리<\/h1>/);
+  assert.match(html, /data-master-management/);
+  assert.match(html, /data-master-search/);
+  assert.equal((html.match(/<details class="category-master-item" data-master-row/g) || []).length, 2);
+  // 행마다 열린 입력 폼과 빨간 사용중지 버튼을 늘어놓지 않는다.
+  assert.doesNotMatch(html, /class="master-row"|class="master-form"/);
+  // 사용 중인 태그의 수정 폼은 사용 상태를 유지하도록 isActive를 함께 보낸다.
+  const activeEdit = html.match(/<form method="post" action="\/tags\/3\/edit"[\s\S]*?<\/form>/)?.[0] || "";
+  assert.match(activeEdit, /name="isActive" value="1"/);
+  assert.match(html, /action="\/tags\/3\/delete"/);
+  assert.match(html, /<form method="post" action="\/tags\/4\/edit">[\s\S]*?name="isActive" value="1"[\s\S]*?다시 사용/);
+  assert.equal((html.match(/class="status master-inactive">사용중지</g) || []).length, 1);
+});
+
 test("masters의 SQL은 infrastructure에만 존재한다", async () => {
   const nonInfrastructure = [
     "../src/domains/masters/domain/policy.js",

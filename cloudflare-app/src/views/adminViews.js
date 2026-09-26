@@ -3,9 +3,11 @@
 import { escapeHtml } from "../ui/html/escape.js";
 import { hasReadPermission, isDemoReadOnly, PERMISSIONS } from "../permissions.js";
 import { PASSWORD_POLICY } from "../domains/identity/index.js";
-import { alertDanger, alertInfo, alertNote, alertWarning, emptyState, page, sectionHeader } from "./layout.js";
+import { alertDanger, alertInfo, alertNote, alertWarning, emptyState, page, pageHead, sectionHeader } from "./layout.js";
 
 export { categoriesPage, tagsPage } from "../domains/masters/index.js";
+
+const USERS_PARENT = Object.freeze({ href: "/admin/settings", label: "사용자 관리" });
 
 export function adminDashboardPage({ session, pendingCount, quality = null, capacity = null, searchIndex = null }) {
   const pending = Number(pendingCount || 0);
@@ -21,8 +23,8 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
   }
   if (hasReadPermission(session, PERMISSIONS.MANAGE_MASTERS)) {
     groups.push(managementGroup("문서고 기준정보", [
-      ["/racks", "fa-box-archive", "랙 관리", "랙 목록과 위치 확인"],
-      ["/racks/configure", "fa-table-cells-large", "랙 구성", "구역별 랙 수 조정"],
+      ["/racks", "fa-table-cells-large", "랙 관리", "랙 목록과 위치 확인"],
+      ["/racks/configure", "fa-gear", "랙 구성", "구역별 랙 수 조정"],
       ["/categories", "fa-layer-group", "대분류 관리", "문서 분류 기준"],
       ["/tags", "fa-tags", "태그 관리", "검색 보조 키워드"]
     ]));
@@ -33,7 +35,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
     dataLinks.push(["/documents/new", "fa-file-circle-plus", "문서 등록", "새 문서를 현재 대장에 바로 등록"]);
   }
   if (hasReadPermission(session, PERMISSIONS.VIEW_AUDIT)) {
-    dataLinks.push(["/admin/audit", "fa-list-check", "감사 이력", "전역 변경 이력"]);
+    dataLinks.push(["/admin/audit", "fa-clock-rotate-left", "감사 이력", "전역 변경 이력"]);
   }
   if (hasReadPermission(session, PERMISSIONS.MOVE_DOCUMENTS) || hasReadPermission(session, PERMISSIONS.VIEW_AUDIT)) {
     dataLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력", "문서 위치 변경 조회"]);
@@ -43,7 +45,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
   }
   const advancedLinks = [];
   if (hasReadPermission(session, PERMISSIONS.MANAGE_SETS)) {
-    advancedLinks.push(["/sets", "fa-layer-group", "준비 문서 세트", "문서 묶음 생성·잠금·인쇄"]);
+    advancedLinks.push(["/sets", "fa-clone", "준비 문서 세트", "문서 묶음 생성·잠금·인쇄"]);
   }
   if (hasReadPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
     advancedLinks.push(["/document-import-jobs", "fa-file-csv", "CSV 가져오기", "이전 방식의 CSV 문서 등록 작업"]);
@@ -191,10 +193,7 @@ export function approvedUserCreatePage({ session, values = {}, error = "", minLe
   const displayName = String(values.displayName ?? "").trim();
   const team = String(values.team ?? "").trim();
   return page("승인 사용자 추가", `
-    <section class="page-head">
-      <h1>승인 사용자 추가</h1>
-      <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
-    </section>
+    ${pageHead({ title: "승인 사용자 추가", parent: USERS_PARENT })}
     <section class="panel narrow">
       ${alertNote("새 계정은 조회 전용으로 승인돼요. 사용자는 임시 비밀번호로 로그인한 뒤 새 비밀번호로 바꿔야 해요. 추가 권한은 계정을 만든 뒤 사용자 권한 화면에서 설정해 주세요.")}
       ${error ? alertDanger(error) : ""}
@@ -268,10 +267,7 @@ function userDeleteLink(user, session) {
 
 export function userDeletePage({ session, user, error = "" }) {
   return page("계정 완전삭제", `
-    <section class="page-head">
-      <div><h1>계정 완전삭제</h1><p class="muted">${escapeHtml(user.display_name)} (${escapeHtml(user.username)})</p></div>
-      <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
-    </section>
+    ${pageHead({ title: "계정 완전삭제", parent: USERS_PARENT, subtitle: `${escapeHtml(user.display_name)} (${escapeHtml(user.username)})` })}
     <section class="panel narrow">
       ${alertWarning("계정 정보와 로그인 수단을 삭제하며 되돌릴 수 없어요. 이 계정이 남긴 문서 작업과 감사 이력은 그대로 남아요.")}
       ${error ? alertDanger(error) : ""}
@@ -293,10 +289,7 @@ export function userDeletePage({ session, user, error = "" }) {
 
 export function userPasswordResetPage({ session, user, error = "", minLength = PASSWORD_POLICY.minLength }) {
   return page("비밀번호 초기화", `
-    <section class="page-head">
-      <div><h1>비밀번호 초기화</h1><p class="muted">${escapeHtml(user.display_name)} (${escapeHtml(user.username)})</p></div>
-      <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
-    </section>
+    ${pageHead({ title: "비밀번호 초기화", parent: USERS_PARENT, subtitle: `${escapeHtml(user.display_name)} (${escapeHtml(user.username)})` })}
     <section class="panel narrow">
       ${alertWarning("초기화하면 이 계정의 기존 로그인 세션이 모두 바로 끝나요. 사용자는 임시 비밀번호로 로그인한 뒤 새 비밀번호로 바꿔야 시스템을 쓸 수 있어요.")}
       ${error ? alertDanger(error) : ""}

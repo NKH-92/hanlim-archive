@@ -6,7 +6,7 @@ import { FREE_TIER_BUDGET } from "../config.js";
 import { safeEmbeddedJson } from "../platform/web/renderContext.js";
 import { capabilitiesFromSession } from "../domains/identity/index.js";
 import { searchCoreScript } from "./clientScript.js";
-import { alertNote, emptyState, filterSelectRow, listUrl, page, paginationNav, sectionHeader } from "./layout.js";
+import { alertNote, emptyState, filterSelectRow, listUrl, page, pageHead, paginationNav, sectionHeader } from "./layout.js";
 import {
   didYouMeanView,
   highlight,
@@ -300,9 +300,9 @@ function viewerUrl({ query, filters = {}, patch = {}, page = 1 }) {
 export function qaPage({ session, support = {} }) {
   const contactName = [support.department, support.name].filter(Boolean).join(" / ");
   const contactEmail = support.email || "";
-  return page("도움말·문의", `
+  return page("도움말", `
     <section class="page-head">
-      <h1>도움말·문의</h1>
+      <h1>도움말</h1>
       ${contactEmail ? `<a class="button secondary" href="mailto:${escapeHtml(contactEmail)}">담당자 문의</a>` : ""}
     </section>
     <section class="content-grid">
@@ -329,10 +329,7 @@ export function qaPage({ session, support = {} }) {
 export function searchReportPage({ session, report }) {
   const { topQueries = [], failedQueries = [], topDocuments = [] } = report || {};
   return page("검색 리포트", `
-    <section class="page-head">
-      <h1>검색 리포트</h1>
-      <a class="button secondary" href="/admin">운영 관리</a>
-    </section>
+    ${pageHead({ title: "검색 리포트", parent: { href: "/admin", label: "운영 관리" } })}
     ${report?.unavailable ? alertNote("검색 기록을 아직 모으지 않았어요. 0014_search_analytics 마이그레이션을 적용하면 집계를 시작해요.") : ""}
     <section class="content-grid report-grid">
       <article class="panel">

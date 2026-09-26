@@ -4,17 +4,12 @@ import { hasReadPermission, PERMISSIONS } from "../permissions.js";
 import { locationLabel } from "../domains/racks/index.js";
 import { escapeHtml } from "../ui/html/escape.js";
 import { archiveMap } from "./floorPlanViews.js";
-import { alertDanger, alertWarning, emptyState, metric, page, sectionHeader, statusBadge, timeline, timelineItem } from "./layout.js";
+import { alertDanger, alertWarning, emptyState, metric, page, pageHead, sectionHeader, statusBadge, timeline, timelineItem } from "./layout.js";
 
 export function setsPage({ session, sets, filters = {} }) {
   const canManage = hasReadPermission(session, PERMISSIONS.MANAGE_SETS);
   return page("준비 문서 세트", `
-    <section class="page-head">
-      <h1>준비 문서 세트</h1>
-      <div class="button-group">
-        ${canManage ? `<a class="button" href="/sets/new">세트 만들기</a>` : ""}
-      </div>
-    </section>
+    ${pageHead({ title: "준비 문서 세트", parent: { href: "/admin", label: "운영 관리" }, actions: canManage ? `<a class="button" href="/sets/new">세트 만들기</a>` : "" })}
     <section class="panel">
       <form method="get" action="/sets" class="filter-row set-list-filters">
         <label class="search-input"><span>세트 검색</span><input type="search" name="q" value="${escapeHtml(filters.q || "")}" placeholder="세트 이름 또는 설명"></label>
@@ -49,7 +44,7 @@ export function setsPage({ session, sets, filters = {} }) {
 export function setFormPage({ session, values = {}, action, title, error = "" }) {
   const expectedRowVersion = Number(values.row_version ?? values.expectedRowVersion ?? values.rowVersion ?? 0);
   return page(title, `
-    <section class="page-head"><h1>${escapeHtml(title)}</h1></section>
+    ${pageHead({ title, parent: { href: "/sets", label: "준비 문서 세트" } })}
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="${escapeHtml(action)}" class="stack">
@@ -65,7 +60,7 @@ export function setFormPage({ session, values = {}, action, title, error = "" })
 export function setClonePage({ session, set, documentCount = 0, values = {}, error = "" }) {
   const suggestedName = values.name || `${set.name} 복사본`;
   return page("준비 문서 세트 복제", `
-    <section class="page-head"><div><h1>준비 문서 세트 복제</h1><p class="page-sub">${escapeHtml(set.name)} · 문서 ${Number(documentCount).toLocaleString("ko-KR")}건</p></div></section>
+    ${pageHead({ title: "준비 문서 세트 복제", parent: { href: `/sets/${Number(set.id)}`, label: set.name }, subtitle: `${escapeHtml(set.name)} · 문서 ${Number(documentCount).toLocaleString("ko-KR")}건` })}
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <dl class="detail-list">
@@ -92,15 +87,7 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
   const hits = new Set(currentDocuments.map((doc) => `${doc.rack_code}:${doc.rack_face}`));
 
   return page(`${set.name} 세트`, `
-    <section class="page-head">
-      <div><h1>${escapeHtml(set.name)}</h1>${set.description ? `<p class="page-sub">${escapeHtml(set.description)}</p>` : ""}</div>
-      <div class="button-group">
-        <button type="button" class="button secondary" data-print><i class="fa-solid fa-print"></i> 목록 인쇄</button>
-        <a class="button secondary" href="/sets/${set.id}/export.csv">CSV 내보내기</a>
-        ${canManage ? `<a class="button secondary" href="/sets/${set.id}/clone">세트 복제</a>` : ""}
-        ${canManage && !isLocked ? `<a class="button secondary" href="/sets/${set.id}/edit">세트 수정</a>` : ""}
-      </div>
-    </section>
+    ${pageHead({ title: set.name, parent: { href: "/sets", label: "준비 문서 세트" }, subtitle: set.description ? escapeHtml(set.description) : "", actions: `<button type="button" class="button secondary" data-print><i class="fa-solid fa-print"></i> 목록 인쇄</button><a class="button secondary" href="/sets/${set.id}/export.csv">CSV 내보내기</a>${canManage ? `<a class="button secondary" href="/sets/${set.id}/clone">세트 복제</a>` : ""}${canManage && !isLocked ? `<a class="button secondary" href="/sets/${set.id}/edit">세트 수정</a>` : ""}` })}
     ${error ? alertDanger(error) : ""}
     ${isLocked ? alertWarning(`이 세트는 편집이 잠겨 있어요.${set.lock_reason ? ` 사유: ${set.lock_reason}` : ""}`) : ""}
     ${excludedCount ? alertWarning(`대장에서 제외된 문서 ${excludedCount}건이 세트에 들어 있어요. 연결은 감사 근거로 보존하고, 랙 지도에는 현재 대장에 있는 문서만 표시해요.`) : ""}

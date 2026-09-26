@@ -1,5 +1,5 @@
 import { escapeHtml } from "../ui/html/escape.js";
-import { alertDanger, option, page } from "./layout.js";
+import { alertDanger, option, page, pageHead } from "./layout.js";
 
 const STATUS_LABELS = Object.freeze({
   draft: "초안",
@@ -28,10 +28,7 @@ export function disposalBatchListPage({ session, batches = [] }) {
     </tr>
   `).join("");
   return page("정기폐기 캠페인 이력", `
-    <section class="page-head">
-      <h1>정기폐기 캠페인 이력</h1>
-      <div class="button-group"><a class="button secondary" href="/documents/disposal">소량 폐기</a><a class="button" href="/disposal-batches/new">새 정기폐기</a></div>
-    </section>
+    ${pageHead({ title: "정기폐기 캠페인 이력", parent: { href: "/documents/disposal?tab=history", label: "폐기 관리" }, actions: `<a class="button" href="/disposal-batches/new">새 정기폐기</a>` })}
     <section class="panel results-panel">
       <div class="section-title"><h2>캠페인 목록</h2><span class="count-badge">${batches.length}건</span></div>
       <div class="table-wrap"><table class="doc-table">
@@ -73,10 +70,7 @@ export function periodicDisposalPage({
     : `정기폐기${category?.name ? ` · ${category.name}` : ""}`);
 
   return page("정기폐기 캠페인", `
-    <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/documents/disposal">문서 폐기</a><span>/</span><span>정기폐기</span></nav><h1>정기폐기 캠페인</h1></div>
-      <div class="button-group"><a class="button secondary" href="/disposal-batches">캠페인 이력</a><a class="button secondary" href="/documents/disposal">돌아가기</a></div>
-    </section>
+    ${pageHead({ title: "정기폐기 캠페인", parent: { href: "/documents/disposal", label: "폐기 관리" } })}
     ${error ? alertDanger(error) : ""}
     <section class="panel">
       <div class="section-title"><h2>1. 정기폐기 대상 조회</h2>${hasCriteria ? `<span class="count-badge">전체 ${number(targetCount)}건</span>` : ""}</div>
@@ -154,10 +148,7 @@ export function disposalBatchFormPage({
     </tr>
   `).join("");
   return page(title, `
-    <section class="page-head">
-      <h1>${title}</h1>
-      <a class="button secondary" href="${batch ? `/disposal-batches/${batch.id}` : "/disposal-batches"}">돌아가기</a>
-    </section>
+    ${pageHead({ title, parent: batch ? { href: `/disposal-batches/${batch.id}`, label: batch.title || batch.batch_code } : { href: "/documents/disposal?tab=history", label: "폐기 관리" } })}
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="${action}" class="stack">
@@ -224,14 +215,7 @@ export function disposalBatchDetailPage({
     </tr>
   `).join("");
   return page(`${batch.batch_code} 폐기 캠페인`, `
-    <section class="page-head">
-      <div><h1>${escapeHtml(batch.title)}</h1><p class="mono muted">${escapeHtml(batch.batch_code)}</p></div>
-      <div class="button-group">
-        <a class="button secondary" href="/disposal-batches/${batch.id}/export.csv">CSV</a>
-        <button type="button" class="button secondary" data-print-page>인쇄</button>
-        <a class="button secondary" href="/disposal-batches">목록</a>
-      </div>
-    </section>
+    ${pageHead({ title: batch.title, parent: { href: "/documents/disposal?tab=history", label: "폐기 관리" }, subtitle: `<span class="mono">${escapeHtml(batch.batch_code)}</span>`, actions: `<a class="button secondary" href="/disposal-batches/${batch.id}/export.csv">CSV</a><button type="button" class="button secondary" data-print-page>인쇄</button>` })}
     ${error ? alertDanger(error) : ""}
     <section class="panel detail-grid">
       ${detail("상태", STATUS_LABELS[batch.status] || batch.status)}

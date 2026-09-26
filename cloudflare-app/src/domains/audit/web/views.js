@@ -50,9 +50,9 @@ export function auditPage({ session, items = [], filters = {}, pagination = { pa
   const currentPage = Number(pagination.page || 1);
   const totalPages = Math.max(1, Number(pagination.totalPages || 1));
   const totalItems = Number(pagination.totalItems || 0);
-  return page("전역 감사로그", `
+  return page("감사 이력", `
     <section class="page-head">
-      <h1>전역 감사로그</h1>
+      <h1>감사 이력</h1>
     </section>
     ${auditFilterForm(filters)}
     <section class="panel">
@@ -90,7 +90,7 @@ function labelOptions(labels, selected = "") {
 function auditTable(items) {
   return `
     <div class="table-wrap"><table>
-      <caption class="sr-only">전역 감사로그 목록</caption>
+      <caption class="sr-only">감사 이력 목록</caption>
       <thead><tr><th>일시</th><th>행위자</th><th>대상</th><th>동작</th><th>요약</th><th>상세</th></tr></thead>
       <tbody>${items.map((item) => `
         <tr>

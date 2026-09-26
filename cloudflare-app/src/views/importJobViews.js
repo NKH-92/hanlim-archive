@@ -1,5 +1,5 @@
 import { escapeHtml } from "../ui/html/escape.js";
-import { alertDanger, page } from "./layout.js";
+import { alertDanger, page, pageHead } from "./layout.js";
 
 const STATUS_LABELS = Object.freeze({ ready: "준비", processing: "처리 중", completed: "완료", cancelled: "취소", pending: "대기", failed: "실패" });
 
@@ -14,7 +14,7 @@ export function documentImportJobsPage({ session, jobs = [] }) {
     </tr>
   `).join("");
   return page("CSV 가져오기 작업", `
-    <section class="page-head"><h1>CSV 가져오기 작업</h1><a class="button" href="/documents/import">새 가져오기</a></section>
+    ${pageHead({ title: "CSV 가져오기 작업", parent: { href: "/admin", label: "운영 관리" }, actions: `<a class="button" href="/documents/import">새 가져오기</a>` })}
     <section class="panel results-panel">
       <div class="section-title"><h2>작업 목록</h2><span class="count-badge">${jobs.length}건</span></div>
       <div class="table-wrap"><table class="doc-table"><thead><tr><th>작업 번호</th><th>원본</th><th>상태</th><th>전체</th><th>완료</th><th>실패</th><th>대기</th><th>생성자</th><th>생성일</th></tr></thead>
@@ -35,7 +35,7 @@ export function documentImportJobCreatePage({ session, error = "", preview = [],
     <td data-label="상태">${escapeHtml(item.status)}</td>
   </tr>`).join("");
   return page("CSV 가져오기", `
-    <section class="page-head"><h1>문서 대량 등록</h1><a class="button secondary" href="/document-import-jobs">작업 목록</a></section>
+    ${pageHead({ title: "문서 대량 등록", parent: { href: "/document-import-jobs", label: "CSV 가져오기 작업" } })}
     <section class="panel${preview.length ? "" : " narrow"}">
       ${error ? alertDanger(error) : ""}
       ${preview.length ? `
@@ -71,10 +71,7 @@ export function documentImportJobDetailPage({ session, job, items = [], itemStat
     </tr>
   `).join("");
   return page(`${job.job_code} CSV 가져오기`, `
-    <section class="page-head">
-      <div><h1>문서 가져오기 ${escapeHtml(job.job_code)}</h1><p class="muted">${escapeHtml(job.source_name || "붙여넣기")}</p></div>
-      <div class="button-group"><a class="button secondary" href="/document-import-jobs/${job.id}/failures.csv">실패 CSV</a><a class="button secondary" href="/document-import-jobs">목록</a></div>
-    </section>
+    ${pageHead({ title: `문서 가져오기 ${job.job_code}`, parent: { href: "/document-import-jobs", label: "CSV 가져오기 작업" }, subtitle: escapeHtml(job.source_name || "붙여넣기"), actions: `<a class="button secondary" href="/document-import-jobs/${job.id}/failures.csv">실패 CSV</a>` })}
     ${error ? alertDanger(error) : ""}
     <section class="panel">
       <div class="metric-grid" data-import-progress>

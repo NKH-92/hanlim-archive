@@ -4,7 +4,7 @@ export function floorPlanStyles() {
   return `    .rack-zone { border-radius: var(--r-md); padding: var(--sp-4); background: var(--gray-50); }
     .rack-zone h3 { margin: 0 0 var(--sp-2); }
     .rack-zone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: var(--sp-2); }
-    .rack-tile { min-height: 68px; display: grid; place-items: center; gap: 0; padding: var(--sp-2); border-radius: var(--r-sm); background: var(--surface); border: 1px solid var(--line); text-decoration: none; text-align: center; font-size: 12.5px; transition: border-color .15s ease; }
+    .rack-tile { min-height: 68px; display: grid; place-items: center; gap: 0; padding: var(--sp-2); border-radius: var(--r-sm); background: var(--surface); border: 1px solid var(--line); text-decoration: none; text-align: center; font-size: var(--text-meta); transition: border-color .15s ease; }
     .rack-tile:hover { border-color: var(--gray-400); }
     .rack-tile.is-hit { background: var(--primary); border-color: var(--primary); color: var(--surface); font-weight: 700; }
     .legend-box { display: inline-block; width: 8px; height: 13px; border-radius: 2px; background: var(--surface); border: 1px solid var(--gray-300); margin-right: var(--sp-1); }
@@ -12,7 +12,7 @@ export function floorPlanStyles() {
     .legend-box.hit { background: var(--primary); border-color: var(--primary); }
 
     .floor-plan-shell { display: grid; gap: var(--sp-2); }
-    .floor-plan-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); color: var(--gray-500); font-size: 12.5px; }
+    .floor-plan-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); color: var(--gray-500); font-size: var(--text-meta); }
     .floor-rack-search { flex: 1 1 260px; max-width: 420px; }
     .archive-floor-plan-page { overflow: hidden; }
     .floor-plan-scroll { width: 100%; overflow-x: auto; padding-bottom: var(--sp-1); scrollbar-gutter: stable; }
@@ -55,7 +55,7 @@ export function floorPlanStyles() {
     .floor-zoom.is-spotlight .floor-rack[data-face-hit="B"] .rack-face-b { background: var(--action); }
     .floor-zoom.is-spotlight .floor-rack[data-face-hit] .rack-num,
     .floor-zoom.is-spotlight .floor-rack.is-hit .rack-num { border-color: var(--action); background: var(--action); color: var(--action-ink); box-shadow: 0 0 0 3px var(--action-soft); }
-    .floor-plan-summary { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; color: var(--gray-500); font-size: 12.5px; }
+    .floor-plan-summary { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; color: var(--gray-500); font-size: var(--text-meta); }
     .floor-plan-summary span { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-3); border-radius: 999px; background: var(--gray-100); text-decoration: none; font-weight: 600; }
     .zone-overview details { border-bottom: 1px solid var(--gray-100); }
     .zone-overview details:last-child { border-bottom: 0; }

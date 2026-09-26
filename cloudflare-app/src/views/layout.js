@@ -61,8 +61,8 @@ function header(session) {
     workLinks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화"]);
   }
   if (capabilities.canPreviewDisposals) {
-    workLinks.push(["/documents/disposal", "fa-box-archive", "문서 폐기"]);
-    workLinks.push(["/documents/disposal?tab=documents", "fa-box-archive", "폐기 문서"]);
+    workLinks.push(["/documents/disposal", "fa-box-archive", "폐기 관리"]);
+    workLinks.push(["/documents/disposal?tab=documents", "fa-file-circle-xmark", "폐기 문서"]);
   }
   if (capabilities.canPreviewDocuments) {
     workLinks.push(["/documents/new", "fa-file-circle-plus", "문서 등록"]);
@@ -70,16 +70,16 @@ function header(session) {
 
   const masterLinks = [];
   if (capabilities.canPreviewMasters) {
-    masterLinks.push(["/racks", "fa-table-cells-large", "랙·보관 위치"]);
-    masterLinks.push(["/categories", "fa-list-check", "대분류"]);
-    masterLinks.push(["/tags", "fa-tags", "태그"]);
+    masterLinks.push(["/racks", "fa-table-cells-large", "랙 관리"]);
+    masterLinks.push(["/categories", "fa-layer-group", "대분류 관리"]);
+    masterLinks.push(["/tags", "fa-tags", "태그 관리"]);
   }
   const operationLinks = [];
   if (capabilities.canOpenManagement) {
-    operationLinks.push(["/admin", "fa-list-check", "확인할 일"]);
+    operationLinks.push(["/admin", "fa-gauge", "운영 관리"]);
   }
   if (capabilities.canPreviewUsers) {
-    operationLinks.push(["/admin/settings", "fa-users-gear", "사용자·권한"]);
+    operationLinks.push(["/admin/settings", "fa-users-gear", "사용자 관리"]);
   }
   const evidenceLinks = [];
   if (capabilities.canPreviewAudit) {
@@ -102,7 +102,7 @@ function header(session) {
     ...evidenceLinks
   ];
   const mobileTabs = `${documentLinks.map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${text === "보관 위치" ? "위치" : "검색"}</span></a>`).join("")}<button type="button" class="archive-nav-item mobile-tab" data-mobile-more aria-controls="primary-navigation" aria-expanded="false"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>더보기</span></button>`;
-  const utilityLinks = [["/qa", "fa-circle-info", "도움말·문의"]];
+  const utilityLinks = [["/qa", "fa-circle-info", "도움말"]];
   const commandLinks = [...allLinks, ...utilityLinks].map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
   const roleLabel = capabilities.isDemoReadOnly
     ? "시연 및 조회용"
@@ -141,6 +141,16 @@ function header(session) {
     </header>
     <nav class="mobile-tabs" aria-label="주요 메뉴">${mobileTabs}</nav>
   `;
+}
+
+// 화면 제목(Top). 메뉴에서 바로 가는 화면은 제목만, 하위 화면은 제목 위에 상위 화면으로 돌아가는 링크 하나를 둔다.
+// 상위 화면으로 가는 버튼을 제목 옆에 따로 두지 않아 모든 화면에서 제목 위치와 버튼 의미가 같게 유지된다.
+// subtitle은 호출부가 escape한 HTML(문서번호 mono 등)을 받는다.
+export function pageHead({ title, parent = null, subtitle = "", actions = "", className = "" }) {
+  const back = parent
+    ? `<nav class="breadcrumb page-back" aria-label="경로"><a href="${escapeHtml(parent.href)}">${escapeHtml(parent.label)}</a></nav>`
+    : "";
+  return `<section class="page-head${className ? ` ${escapeHtml(className)}` : ""}"><div class="page-head-copy">${back}<h1>${escapeHtml(title)}</h1>${subtitle ? `<p class="page-sub">${subtitle}</p>` : ""}</div>${actions ? `<div class="button-group">${actions}</div>` : ""}</section>`;
 }
 
 export function alertDanger(message) {

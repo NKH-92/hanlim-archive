@@ -192,9 +192,9 @@ export function floorPlanPage({ session, floorPlan = [] }) {
     rackCount: region.racks.length,
     documentCount: region.racks.reduce((sum, rack) => sum + Number(rack.documentCount || 0), 0)
   }));
-  return page("문서고 도면", `
+  return page("보관 위치", `
     <section class="page-head floor-plan-page-head">
-      <h1>문서고 도면</h1>
+      <h1>보관 위치</h1>
       <div class="button-group"><button type="button" class="button secondary" data-print><i class="fa-solid fa-print" aria-hidden="true"></i>도면 인쇄</button></div>
     </section>
     <div class="floor-plan-layout">

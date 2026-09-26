@@ -2,7 +2,7 @@ import { documentLink } from "../../shared/documents/navigation.js";
 import { locationLabel } from "../../domains/racks/index.js";
 import { escapeHtml } from "../../ui/html/escape.js";
 import { formatRevisionLabel } from "../../shared/documents/revision.js";
-import { page } from "../layout.js";
+import { page, pageHead } from "../layout.js";
 
 export function documentRevisionPage({ session, document, values = {}, validation = null }) {
   const fieldErrors = validation?.fieldErrors || {};
@@ -11,10 +11,7 @@ export function documentRevisionPage({ session, document, values = {}, validatio
   const revisionDate = values.revisionDate || "";
 
   return page("문서 개정", `
-    <section class="page-head">
-      <nav class="breadcrumb" aria-label="경로"><a href="${escapeHtml(documentLink(document.id, "", values.returnTo))}">문서 상세</a><span>/</span><span>문서 개정</span></nav>
-      <h1>문서 개정</h1>
-    </section>
+    ${pageHead({ title: "문서 개정", parent: { href: documentLink(document.id, "", values.returnTo), label: "문서 상세" } })}
 
     <section class="document-form-layout revision-form-layout">
       <form method="post" action="/documents/${Number(document.id)}/revise" class="panel document-form" data-revision-form>

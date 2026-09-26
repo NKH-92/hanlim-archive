@@ -61,6 +61,14 @@ export function appStyles() {
     :where(.app-body) .breadcrumb { align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); color: var(--gray-500); font-size: var(--text-meta); font-weight: 500; }
     :where(.app-body) .breadcrumb a { color: var(--gray-600); text-decoration: none; }
     :where(.app-body) .breadcrumb a:hover { color: var(--primary); }
+    /* 제목 줄 높이를 버튼 높이와 같게 두어 행동 버튼 유무와 관계없이 모든 화면의 제목 위치를 같게 한다. */
+    :where(.app-body) .page-head h1 { display: flex; align-items: center; min-height: var(--control-height); margin: 0; }
+    :where(.app-body) .page-head-copy { display: grid; gap: var(--sp-1); min-width: 0; }
+    :where(.app-body) .page-head-copy .page-sub { margin: 0; }
+    :where(.app-body) .page-back { margin: 0; }
+    :where(.app-body) .page-back a { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--gray-600); font-weight: 600; text-decoration: none; }
+    :where(.app-body) .page-back a::before { content: ""; width: 16px; height: 16px; background: currentColor; -webkit-mask: var(--icon-arrow-left) center/contain no-repeat; mask: var(--icon-arrow-left) center/contain no-repeat; }
+    :where(.app-body) .page-back a:hover { color: var(--primary); }
 
     /* 행동 위계: 주요 행동은 파랑 채움 하나, 노랑은 위치 강조 전용 */
     :where(.app-body) :is(.action-button, button.action-button, .button.action-button) { background: var(--primary); border-color: var(--primary); color: var(--surface); }
@@ -266,7 +274,7 @@ export function appStyles() {
     :where(.app-body) nav.filter-row > .button { min-height: 36px; padding: 0 var(--sp-4); border-radius: 999px; }
     :where(.app-body) nav.filter-row > .button[aria-current="page"] { background: var(--gray-900); color: var(--surface); }
     :where(.app-body) .location-value { font-weight: 600; font-variant-numeric: tabular-nums; word-break: keep-all; }
-    :where(.app-body) td strong + small { display: block; margin-top: 2px; color: var(--gray-500); font-size: 12.5px; font-weight: 400; }
+    :where(.app-body) td strong + small { display: block; margin-top: 2px; color: var(--gray-500); font-size: var(--text-meta); font-weight: 400; }
     :where(.app-body) form.panel.filter-bar { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; gap: var(--sp-3) var(--sp-4); }
     :where(.app-body) form.panel.filter-bar label { display: grid; gap: var(--sp-1); color: var(--gray-600); font-size: var(--text-meta); }
     :where(.app-body) form.panel.filter-bar label > input { margin: 0; }
@@ -275,6 +283,14 @@ export function appStyles() {
     :where(.app-body) .search-inline-form .search-input { flex: 1 1 280px; min-width: 0; margin: 0; }
     :where(.app-body) .search-inline-form .search-input input { margin: 0; }
     :where(.app-body) .report-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+    /* 폭 규칙: 목록은 전체 폭, 입력 폼은 720px까지 왼쪽 정렬. 가운데 떠 있는 좁은 카드를 두지 않는다. */
+    :where(.app-body) .narrow { max-width: 720px; margin-inline: 0; }
+    :where(.app-body) .revision-form-layout { justify-content: start; }
+    :where(.app-body) :is(.master-create-panel, .master-management) { max-width: none; margin-inline: 0; }
+    /* 조회 조건 줄의 버튼은 입력칸과 같은 높이로 아래선에 맞춘다(격자 칸 높이로 늘어나지 않게). */
+    :where(.app-body) :is(.filter-bar, .filter-row) > :is(button, .button) { align-self: end; }
+    /* 장식용 왼쪽 강조선은 쓰지 않는다(면 우선). */
+    :where(.app-body) .locator-hero { border: 0; }
     :where(.app-body) fieldset:not([class]) { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); min-width: 0; margin: 0; padding: var(--sp-4); border: 0; border-radius: var(--r-md); background: var(--gray-50); }
     :where(.app-body) fieldset:not([class]) > legend { float: left; width: 100%; margin: 0 0 var(--sp-1); padding: 0; color: var(--gray-800); font-size: 14px; font-weight: 700; }
     :where(.app-body) fieldset:not([class]) .check-inline { min-height: 32px; font-size: 14px; }
@@ -282,14 +298,7 @@ export function appStyles() {
     :where(.app-body) .user-group-title::before, :where(.app-body) .user-group[open] .user-group-title::before { content: ""; width: 20px; height: 20px; background: var(--gray-400); -webkit-mask: var(--icon-chevron-right) center/contain no-repeat; mask: var(--icon-chevron-right) center/contain no-repeat; transition: transform .15s ease; }
     :where(.app-body) .user-group[open] .user-group-title::before { transform: rotate(90deg); }
     :where(.app-body) .user-group-body { border-top-color: var(--gray-100); }
-    :where(.app-body) .master-list { gap: 0; }
-    :where(.app-body) .master-row { grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-3); padding: var(--sp-3) 0; border-bottom: 1px solid var(--gray-100); }
     :where(.app-body) .master-row:last-child { border-bottom: 0; }
-    :where(.app-body) .master-form { grid-template-columns: minmax(140px, 1fr) minmax(160px, 1.4fr) auto auto; }
-    :where(.app-body) .master-form button[type="submit"] { background: var(--gray-100); color: var(--gray-800); }
-    :where(.app-body) .master-form button[type="submit"]:hover { background: var(--gray-200); color: var(--gray-900); }
-    :where(.app-body) .master-row .danger-button { background: transparent; }
-    :where(.app-body) .master-row .danger-button:hover { background: var(--danger-soft); color: var(--danger); }
     :where(.app-body) .rack-card { gap: var(--sp-1); padding: var(--sp-5); }
     :where(.app-body) .rack-card small { color: var(--gray-500); font-size: var(--text-meta); }
     :where(.app-body) .rack-card strong { color: var(--gray-900); font-size: var(--text-lead); }
@@ -397,7 +406,7 @@ export function appStyles() {
       :where(.app-body) details > summary { min-height: var(--touch-height); padding-block: var(--sp-2); }
     }
     :where(.app-body) .workflow-step small { font-size: var(--text-caption); }
-    :where(.app-body) .loc-cell-sub, :where(.app-body) td small, :where(.app-body) :is(.master-create-form, .category-master-edit-form) label small { font-size: var(--text-caption); }
+    :where(.app-body) td small, :where(.app-body) :is(.master-create-form, .category-master-edit-form) label small { font-size: var(--text-caption); }
     @media (max-width: 520px) {
       :where(.app-body) .modal-actions { grid-template-columns: 1fr; }
     }
