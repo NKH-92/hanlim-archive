@@ -357,7 +357,7 @@ export function searchReportPage({ session, report }) {
       <a class="button secondary" href="/admin">운영 관리</a>
     </section>
     ${report?.unavailable ? alertNote("검색 기록을 아직 모으지 않았어요. 0014_search_analytics 마이그레이션을 적용하면 집계를 시작해요.") : ""}
-    <section class="content-grid">
+    <section class="content-grid report-grid">
       <article class="panel">
         ${sectionHeader("자주 찾는 검색어", `${topQueries.length}건`)}
         ${topQueries.length ? `

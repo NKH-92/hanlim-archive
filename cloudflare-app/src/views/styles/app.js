@@ -274,6 +274,10 @@ export function appStyles() {
     :where(.app-body) form.panel.filter-bar label { display: grid; gap: var(--sp-1); color: var(--gray-600); font-size: var(--text-meta); }
     :where(.app-body) form.panel.filter-bar label > input { margin: 0; }
     :where(.app-body) form.panel.filter-bar > .button-group { min-height: var(--control-height); }
+    :where(.app-body) .search-inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+    :where(.app-body) .search-inline-form .search-input { flex: 1 1 280px; min-width: 0; margin: 0; }
+    :where(.app-body) .search-inline-form .search-input input { margin: 0; }
+    :where(.app-body) .report-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
     :where(.app-body) fieldset:not([class]) { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); min-width: 0; margin: 0; padding: var(--sp-4); border: 0; border-radius: var(--r-md); background: var(--gray-50); }
     :where(.app-body) fieldset:not([class]) > legend { float: left; width: 100%; margin: 0 0 var(--sp-1); padding: 0; color: var(--gray-800); font-size: 14px; font-weight: 700; }
     :where(.app-body) fieldset:not([class]) .check-inline { min-height: 32px; font-size: 14px; }
@@ -333,7 +337,10 @@ export function appStyles() {
     @media (max-width: 760px) {
       :where(.app-body) .app-shell { padding-top: var(--sp-4); }
       :where(.app-body) .panel { padding: var(--sp-5) var(--sp-4); }
-      :where(.app-body) .page-head { margin-bottom: var(--sp-5); }
+      /* 데스크톱의 아래 정렬(flex-end)이 세로 배치에서는 제목을 오른쪽으로 민다. 모바일은 왼쪽 기준으로 쌓는다. */
+      :where(.app-body) .page-head { flex-direction: column; align-items: stretch; gap: var(--sp-3); margin-bottom: var(--sp-5); }
+      :where(.app-body) .page-head .button-group { justify-content: flex-start; }
+      :where(.app-body) .page-head .button-group > * { flex: 0 1 auto; }
       :where(.app-body) .page-head p { font-size: 14px; }
       :where(.app-body) .search-box { min-height: 0; padding: var(--sp-2); }
       :where(.app-body) .search-box button { min-height: var(--control-height-lg); }
@@ -362,7 +369,14 @@ export function appStyles() {
       :where(.app-body) .document-location-visuals .panel { padding: var(--sp-4); }
       :where(.app-body) .detail-section dl div { grid-template-columns: 104px minmax(0, 1fr); }
       :where(.app-body) .document-form { padding: var(--sp-5) var(--sp-4); }
-      :where(.app-body) .sticky-save-bar { padding: var(--sp-3); }
+      /* 저장 바: 완료도는 얇은 한 줄, 버튼은 한 줄. 좁아서 넘치면 주요 버튼만 아래 줄로 내려간다. */
+      :where(.app-body) .sticky-save-bar { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-3); }
+      :where(.app-body) .sticky-save-bar .form-completion { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+      :where(.app-body) .sticky-save-bar .form-completion strong { flex: none; }
+      :where(.app-body) .sticky-save-bar .form-completion progress { flex: 1 1 auto; }
+      :where(.app-body) .sticky-save-bar .button-group { flex-wrap: wrap; }
+      :where(.app-body) .sticky-save-bar .button-group > * { flex: 0 0 auto; padding-inline: var(--sp-3); }
+      :where(.app-body) .sticky-save-bar .button-group > :last-child { flex: 1 1 72px; }
       :where(.app-body) .modal-body { padding: var(--sp-5); }
       :where(.app-body) .modal-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       :where(.app-body) .mobile-filter-dialog[open] { border-radius: var(--r-xl) var(--r-xl) 0 0; }

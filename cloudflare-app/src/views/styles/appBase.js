@@ -4,6 +4,8 @@
 
 export function appBaseStyles() {
   return `    :where(.app-body) { line-height: 1.55; }
+    /* 한글은 단어 중간에서 줄을 바꾸지 않는다. 한 단어가 줄보다 길 때만 요소별 overflow-wrap이 끊는다. */
+    :where(.app-body) { word-break: keep-all; }
     :where(.app-body) :is(h1, h2, h3) { color: var(--gray-900); letter-spacing: 0; }
     :where(.app-body) h1 { font-weight: 700; line-height: 1.4; }
     :where(.app-body) h2 { font-weight: 700; line-height: 1.45; }

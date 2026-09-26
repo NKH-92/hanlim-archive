@@ -188,6 +188,22 @@ test("업무 화면 보강 조각은 .app-body 범위에만 적용되어 공개 
   assert.match(css, /:where\(\.app-body\) \.alert\.neutral \{ background: var\(--gray-50\);/);
 });
 
+test("업무 화면 레이아웃 회귀: 모바일 제목·저장 바·드로어·줄바꿈·표 체크 칸", () => {
+  const css = styles();
+  // 한글은 단어 단위로 줄을 바꾼다(랜딩과 같은 기준).
+  assert.match(appBaseStyles(), /:where\(\.app-body\) \{ word-break: keep-all; \}/);
+  // 데스크톱 flex-end 정렬이 모바일 세로 배치에서 제목을 오른쪽으로 밀지 않는다.
+  assert.match(appStyles(), /@media \(max-width: 760px\) \{[\s\S]*?:where\(\.app-body\) \.page-head \{ flex-direction: column; align-items: stretch;/);
+  // 저장 바 버튼은 한 줄에 두고 좁을 때만 주요 버튼이 아래 줄로 내려간다.
+  assert.match(appStyles(), /\.sticky-save-bar \{ display: grid; grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(appStyles(), /\.sticky-save-bar \.button-group > :last-child \{ flex: 1 1 72px; \}/);
+  // 닫힌 드로어의 그림자가 화면 오른쪽에 비치지 않는다.
+  assert.doesNotMatch(css, /\.topbar nav \{ position: fixed;[^}]*box-shadow/);
+  assert.match(css, /\.topbar nav\.is-open \{ transform: translateX\(0\); box-shadow: var\(--shadow-2\); \}/);
+  // 표 셀의 display를 바꾸면 체크 칸 구분선이 행과 어긋난다.
+  assert.doesNotMatch(css, /\.check-col \{ display: grid;/);
+});
+
 test("CSS 변수 참조는 토큰 또는 명시적인 런타임 기하 변수로 해석된다", () => {
   const css = styles();
   const defined = new Set(

@@ -47,7 +47,8 @@ export function workflowStyles() {
     .duplicate-notice { padding: var(--sp-4); border: 1px solid var(--warning); border-radius: var(--r-md); background: var(--warning-soft); color: var(--gray-900); }
     .duplicate-notice[hidden] { display: none; }
     .duplicate-notice p { margin: var(--sp-2) 0; color: var(--gray-700); }
-    .location-picker-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-2); }
+    /* 랙·면 선택지는 "7번 랙 · 양면", "7-2 · 2면"처럼 길어서 구역·열·선반보다 넓게 둔다. */
+    .location-picker-steps { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.35fr) minmax(0, 1.2fr) minmax(0, .85fr) minmax(0, .9fr); gap: var(--sp-2); }
     .location-picker-steps label { gap: var(--sp-1); }
     .location-picker-steps label > span { color: var(--gray-600); font-size: 12px; font-weight: 600; }
     .enhanced-control-hidden { display: none !important; }

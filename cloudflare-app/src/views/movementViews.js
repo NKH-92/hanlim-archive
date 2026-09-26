@@ -87,8 +87,8 @@ export function movementsPage({ session, result, query = "" }) {
   return page("위치 이동 이력", `
     <section class="page-head"><div><h1>위치 이동 이력</h1><p class="page-sub">문서를 어디에서 어디로 옮겼는지와 그 사유를 확인할 수 있어요.</p></div></section>
     <section class="panel">
-      <form method="get" action="/admin/movements" class="filter-row movement-filter">
-        <label>문서번호 또는 수행자<input name="q" value="${escapeHtml(query)}" placeholder="검색어"></label>
+      <form method="get" action="/admin/movements" class="search-inline-form movement-filter">
+        <label class="search-input"><span class="sr-only">문서번호 또는 수행자</span><input type="search" name="q" value="${escapeHtml(query)}" placeholder="문서번호 또는 수행자"></label>
         <button type="submit" class="button">조회</button>
       </form>
     </section>

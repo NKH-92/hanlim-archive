@@ -23,9 +23,10 @@ export function responsivePrintStyles() {
       .topbar { justify-content: space-between; }
       .drawer-close { display: inline-flex; align-self: flex-end; width: 44px; min-height: 44px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: var(--r-md); font-size: 15px; padding: 0; }
       .drawer-close:hover { background: var(--gray-50); }
-      .topbar nav { position: fixed; inset: 0 0 0 auto; width: min(320px, 86vw); max-height: 100dvh; background: var(--surface); padding: var(--sp-4) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom)); flex-direction: column; align-items: stretch; transform: translateX(100%); transition: transform .22s ease; box-shadow: var(--shadow-2); z-index: 60; -webkit-overflow-scrolling: touch; }
+      .topbar nav { position: fixed; inset: 0 0 0 auto; width: min(320px, 86vw); max-height: 100dvh; background: var(--surface); padding: var(--sp-4) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom)); flex-direction: column; align-items: stretch; transform: translateX(100%); transition: transform .22s ease; z-index: 60; -webkit-overflow-scrolling: touch; }
       .topbar nav:not(.is-open) { pointer-events: none; }
-      .topbar nav.is-open { transform: translateX(0); }
+      /* 닫힌 드로어는 화면 밖에 있어도 그림자가 오른쪽 가장자리에 비치므로 열렸을 때만 그림자를 준다. */
+      .topbar nav.is-open { transform: translateX(0); box-shadow: var(--shadow-2); }
       .nav-user { margin: auto 0 0; flex-direction: column; align-items: stretch; padding-top: var(--sp-2); border-top: 1px solid var(--line); }
       .nav-scrim.is-open { position: fixed; inset: 0; background: var(--scrim); z-index: 55; }
       .mobile-tabs { position: fixed; inset: auto 0 0; z-index: 45; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); padding: 0 var(--sp-2) env(safe-area-inset-bottom); border-top: 1px solid var(--line); background: var(--surface); }

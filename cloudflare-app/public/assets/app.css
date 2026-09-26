@@ -244,7 +244,8 @@
     tbody tr { transition: background .12s ease; }
     tbody tr:hover { background: var(--gray-50); }
     tr.is-disposed td:first-child { border-left: 3px solid var(--gray-300); }
-    .check-col { display: grid; width: 44px; min-height: 44px; place-items: center; }
+    /* 표 셀의 display를 바꾸면 행 높이와 구분선이 어긋난다. 가운데 정렬은 표 셀 속성으로 한다. */
+    .check-col { width: 44px; text-align: center; vertical-align: middle; }
     .check-col input { width: auto; min-height: auto; accent-color: var(--primary); }
     .bulk-check-target { display: grid; width: 44px; min-height: 44px; place-items: center; cursor: pointer; }
     .bulk-select-all-label { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--gray-700); font-size: 12.5px; font-weight: 600; cursor: pointer; }
@@ -272,6 +273,8 @@
     .index-row:hover, .index-row:hover strong { color: var(--primary); }
     .archive-map { display: grid; gap: var(--sp-3); min-width: 720px; }
     :where(.app-body) { line-height: 1.55; }
+    /* 한글은 단어 중간에서 줄을 바꾸지 않는다. 한 단어가 줄보다 길 때만 요소별 overflow-wrap이 끊는다. */
+    :where(.app-body) { word-break: keep-all; }
     :where(.app-body) :is(h1, h2, h3) { color: var(--gray-900); letter-spacing: 0; }
     :where(.app-body) h1 { font-weight: 700; line-height: 1.4; }
     :where(.app-body) h2 { font-weight: 700; line-height: 1.45; }
@@ -551,7 +554,8 @@
     .duplicate-notice { padding: var(--sp-4); border: 1px solid var(--warning); border-radius: var(--r-md); background: var(--warning-soft); color: var(--gray-900); }
     .duplicate-notice[hidden] { display: none; }
     .duplicate-notice p { margin: var(--sp-2) 0; color: var(--gray-700); }
-    .location-picker-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-2); }
+    /* 랙·면 선택지는 "7번 랙 · 양면", "7-2 · 2면"처럼 길어서 구역·열·선반보다 넓게 둔다. */
+    .location-picker-steps { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.35fr) minmax(0, 1.2fr) minmax(0, .85fr) minmax(0, .9fr); gap: var(--sp-2); }
     .location-picker-steps label { gap: var(--sp-1); }
     .location-picker-steps label > span { color: var(--gray-600); font-size: 12px; font-weight: 600; }
     .enhanced-control-hidden { display: none !important; }
@@ -921,9 +925,10 @@
       .topbar { justify-content: space-between; }
       .drawer-close { display: inline-flex; align-self: flex-end; width: 44px; min-height: 44px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: var(--r-md); font-size: 15px; padding: 0; }
       .drawer-close:hover { background: var(--gray-50); }
-      .topbar nav { position: fixed; inset: 0 0 0 auto; width: min(320px, 86vw); max-height: 100dvh; background: var(--surface); padding: var(--sp-4) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom)); flex-direction: column; align-items: stretch; transform: translateX(100%); transition: transform .22s ease; box-shadow: var(--shadow-2); z-index: 60; -webkit-overflow-scrolling: touch; }
+      .topbar nav { position: fixed; inset: 0 0 0 auto; width: min(320px, 86vw); max-height: 100dvh; background: var(--surface); padding: var(--sp-4) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom)); flex-direction: column; align-items: stretch; transform: translateX(100%); transition: transform .22s ease; z-index: 60; -webkit-overflow-scrolling: touch; }
       .topbar nav:not(.is-open) { pointer-events: none; }
-      .topbar nav.is-open { transform: translateX(0); }
+      /* 닫힌 드로어는 화면 밖에 있어도 그림자가 오른쪽 가장자리에 비치므로 열렸을 때만 그림자를 준다. */
+      .topbar nav.is-open { transform: translateX(0); box-shadow: var(--shadow-2); }
       .nav-user { margin: auto 0 0; flex-direction: column; align-items: stretch; padding-top: var(--sp-2); border-top: 1px solid var(--line); }
       .nav-scrim.is-open { position: fixed; inset: 0; background: var(--scrim); z-index: 55; }
       .mobile-tabs { position: fixed; inset: auto 0 0; z-index: 45; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); padding: 0 var(--sp-2) env(safe-area-inset-bottom); border-top: 1px solid var(--line); background: var(--surface); }
@@ -1477,6 +1482,10 @@
     :where(.app-body) form.panel.filter-bar label { display: grid; gap: var(--sp-1); color: var(--gray-600); font-size: var(--text-meta); }
     :where(.app-body) form.panel.filter-bar label > input { margin: 0; }
     :where(.app-body) form.panel.filter-bar > .button-group { min-height: var(--control-height); }
+    :where(.app-body) .search-inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+    :where(.app-body) .search-inline-form .search-input { flex: 1 1 280px; min-width: 0; margin: 0; }
+    :where(.app-body) .search-inline-form .search-input input { margin: 0; }
+    :where(.app-body) .report-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
     :where(.app-body) fieldset:not([class]) { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); min-width: 0; margin: 0; padding: var(--sp-4); border: 0; border-radius: var(--r-md); background: var(--gray-50); }
     :where(.app-body) fieldset:not([class]) > legend { float: left; width: 100%; margin: 0 0 var(--sp-1); padding: 0; color: var(--gray-800); font-size: 14px; font-weight: 700; }
     :where(.app-body) fieldset:not([class]) .check-inline { min-height: 32px; font-size: 14px; }
@@ -1536,7 +1545,10 @@
     @media (max-width: 760px) {
       :where(.app-body) .app-shell { padding-top: var(--sp-4); }
       :where(.app-body) .panel { padding: var(--sp-5) var(--sp-4); }
-      :where(.app-body) .page-head { margin-bottom: var(--sp-5); }
+      /* 데스크톱의 아래 정렬(flex-end)이 세로 배치에서는 제목을 오른쪽으로 민다. 모바일은 왼쪽 기준으로 쌓는다. */
+      :where(.app-body) .page-head { flex-direction: column; align-items: stretch; gap: var(--sp-3); margin-bottom: var(--sp-5); }
+      :where(.app-body) .page-head .button-group { justify-content: flex-start; }
+      :where(.app-body) .page-head .button-group > * { flex: 0 1 auto; }
       :where(.app-body) .page-head p { font-size: 14px; }
       :where(.app-body) .search-box { min-height: 0; padding: var(--sp-2); }
       :where(.app-body) .search-box button { min-height: var(--control-height-lg); }
@@ -1565,7 +1577,14 @@
       :where(.app-body) .document-location-visuals .panel { padding: var(--sp-4); }
       :where(.app-body) .detail-section dl div { grid-template-columns: 104px minmax(0, 1fr); }
       :where(.app-body) .document-form { padding: var(--sp-5) var(--sp-4); }
-      :where(.app-body) .sticky-save-bar { padding: var(--sp-3); }
+      /* 저장 바: 완료도는 얇은 한 줄, 버튼은 한 줄. 좁아서 넘치면 주요 버튼만 아래 줄로 내려간다. */
+      :where(.app-body) .sticky-save-bar { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-3); }
+      :where(.app-body) .sticky-save-bar .form-completion { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+      :where(.app-body) .sticky-save-bar .form-completion strong { flex: none; }
+      :where(.app-body) .sticky-save-bar .form-completion progress { flex: 1 1 auto; }
+      :where(.app-body) .sticky-save-bar .button-group { flex-wrap: wrap; }
+      :where(.app-body) .sticky-save-bar .button-group > * { flex: 0 0 auto; padding-inline: var(--sp-3); }
+      :where(.app-body) .sticky-save-bar .button-group > :last-child { flex: 1 1 72px; }
       :where(.app-body) .modal-body { padding: var(--sp-5); }
       :where(.app-body) .modal-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       :where(.app-body) .mobile-filter-dialog[open] { border-radius: var(--r-xl) var(--r-xl) 0 0; }

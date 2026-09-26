@@ -93,7 +93,8 @@ export function searchStyles() {
     tbody tr { transition: background .12s ease; }
     tbody tr:hover { background: var(--gray-50); }
     tr.is-disposed td:first-child { border-left: 3px solid var(--gray-300); }
-    .check-col { display: grid; width: 44px; min-height: 44px; place-items: center; }
+    /* 표 셀의 display를 바꾸면 행 높이와 구분선이 어긋난다. 가운데 정렬은 표 셀 속성으로 한다. */
+    .check-col { width: 44px; text-align: center; vertical-align: middle; }
     .check-col input { width: auto; min-height: auto; accent-color: var(--primary); }
     .bulk-check-target { display: grid; width: 44px; min-height: 44px; place-items: center; cursor: pointer; }
     .bulk-select-all-label { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--gray-700); font-size: 12.5px; font-weight: 600; cursor: pointer; }

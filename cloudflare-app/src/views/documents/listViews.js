@@ -152,7 +152,7 @@ function disposalHistoryView(history, pagination, filters) {
   const query = escapeHtml(filters.query || "");
   return `
     <section class="panel">
-      <form method="get" action="/documents/disposal" class="filter-row">
+      <form method="get" action="/documents/disposal" class="search-inline-form">
         <input type="hidden" name="tab" value="documents">
         <label class="search-input"><span class="sr-only">폐기 문서 검색</span><input type="search" name="q" value="${query}" placeholder="문서명, 문서번호, 개정번호"></label>
         <button type="submit" class="button">검색</button>

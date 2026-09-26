@@ -488,7 +488,8 @@ window.HanlimResults = { resultRow, resultTable };
       var currentUrl = new URL(location.href);
       var parentNavigation = /^\/documents\/\d+(?:\/|$)/.test(currentPath) ? '/app'
         : currentPath.startsWith('/document-snapshots/') ? '/documents/import'
-        : currentPath.startsWith('/disposal-batches') ? '/documents/disposal' : '';
+        : currentPath.startsWith('/disposal-batches') ? '/documents/disposal'
+        : currentPath.startsWith('/admin/users/') || currentPath.startsWith('/admin/role-templates') ? '/admin/settings' : '';
       var activeNavItems = Array.from(document.querySelectorAll('.archive-nav-item, .nav-sub-link, [data-command-item]')).filter(function (item) {
         var href = item.getAttribute('href') || '';
         if (!href) return false;
