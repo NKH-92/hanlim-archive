@@ -16,9 +16,9 @@ export function validateMasterValues(type, values = {}) {
     ...(values.id ? { expectedRowVersion: positiveId(values.expectedRowVersion ?? values.rowVersion) } : {}),
     ...(type === "category" ? { sortOrder: Number.isFinite(values.sortOrder) ? values.sortOrder : 0 } : {})
   };
-  if (!normalized.name) return { ok: false, message: `${spec.noun} 이름은 필수입니다.`, values: normalized };
+  if (!normalized.name) return { ok: false, message: `${spec.noun} 이름을 입력해 주세요.`, values: normalized };
   if (normalized.id && !normalized.expectedRowVersion) {
-    return { ok: false, message: `${spec.noun} 버전 정보가 없습니다. 새로고침 후 다시 시도하세요.`, values: normalized };
+    return { ok: false, message: `${spec.noun} 버전 정보가 없어요. 새로고침한 뒤 다시 시도해 주세요.`, values: normalized };
   }
   return { ok: true, values: normalized };
 }

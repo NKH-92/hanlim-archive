@@ -291,7 +291,7 @@ test("직접 소량 폐기는 누락되거나 불일치한 건수 확인을 muta
     const html = await response.text();
 
     assert.equal(response.status, 409);
-    assert.match(html, /현재 선택한 폐기 대상은 2건입니다/);
+    assert.match(html, /현재 선택한 폐기 대상은 2건이에요/);
     assert.equal(env.state.batches.length, 0);
   }
 });

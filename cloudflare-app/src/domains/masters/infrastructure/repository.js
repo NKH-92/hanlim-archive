@@ -23,7 +23,7 @@ export async function saveMaster(env, type, values, actor) {
   try {
     if (values.id) {
       const before = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(values.id).first();
-      if (!before) return { ok: false, message: `${spec.noun}를 찾을 수 없습니다.` };
+      if (!before) return { ok: false, message: `${spec.noun}를 찾지 못했어요.` };
       if (Number(before.row_version) !== Number(values.expectedRowVersion)) return staleMasterResult(spec.noun);
       const action = auditAction(before, values);
       const update = updateStatement(env, type, values);
@@ -43,7 +43,7 @@ export async function saveMaster(env, type, values, actor) {
         .expectChanged(`${type}.update`)
         .withBudget(2);
       const results = await executeMutationBatch(env, plan);
-      return Number(results[1]?.meta?.changes || 0) > 0 ? { ok: true } : { ok: false, message: `${spec.noun}를 찾을 수 없습니다.` };
+      return Number(results[1]?.meta?.changes || 0) > 0 ? { ok: true } : { ok: false, message: `${spec.noun}를 찾지 못했어요.` };
     }
 
     const insert = insertStatement(env, type, values);
@@ -70,7 +70,7 @@ export async function deactivateMaster(env, type, id, actor, expectedRowVersion 
   const spec = MASTER_TYPES[type];
   const table = tableFor(type);
   const before = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first();
-  if (!before) return { ok: false, message: `${spec.noun}를 찾을 수 없습니다.` };
+  if (!before) return { ok: false, message: `${spec.noun}를 찾지 못했어요.` };
   if (Number(before.is_active) === 0) return { ok: true };
   if (!Number.isInteger(expectedRowVersion) || expectedRowVersion < 1 || Number(before.row_version) !== expectedRowVersion) {
     return staleMasterResult(spec.noun);
@@ -148,5 +148,5 @@ function auditAction(before, values) {
   return Number(before.is_active) === nextActive ? "update" : nextActive ? "reactivate" : "deactivate";
 }
 function actionLabel(action) { return action === "reactivate" ? "다시 사용" : action === "deactivate" ? "사용중지" : "수정"; }
-function uniqueViolationMessage(error, noun) { return error.message.includes("UNIQUE") ? `같은 이름의 ${noun}가 이미 있습니다.` : error.message; }
-function staleMasterResult(noun) { return { ok: false, message: `${noun}가 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요.` }; }
+function uniqueViolationMessage(error, noun) { return error.message.includes("UNIQUE") ? `같은 이름의 ${noun}가 이미 있어요. 다른 이름을 입력해 주세요.` : error.message; }
+function staleMasterResult(noun) { return { ok: false, message: `${noun}가 다른 요청에서 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.` }; }

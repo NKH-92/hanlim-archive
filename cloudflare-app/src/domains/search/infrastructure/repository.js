@@ -678,7 +678,7 @@ export async function getViewerSearchPayload(env, params = {}, { includeFacets =
     return {
       ok: false,
       code: "SEARCH_CURSOR_STALE",
-      message: "검색 인덱스가 변경되었습니다. 첫 페이지부터 다시 검색하세요.",
+      message: "검색 인덱스가 바뀌었어요. 첫 페이지부터 다시 검색해 주세요.",
       status: 409
     };
   }

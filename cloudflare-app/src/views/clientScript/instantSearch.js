@@ -242,14 +242,14 @@ export function instantSearchScript() {
           var listHtml = incomingItems.map(function (item) { return resultRow(item, query); }).join('');
           var html = window.HanlimResults.resultTable(listHtml, workspaceSelectable);
           if (!currentItems.length) {
-            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/app" data-viewer-search-reset>검색 초기화</a>' + (viewerApp.dataset.canSearchDisposed === 'true' ? '<a class="button secondary sm" href="/documents/disposal?tab=documents">폐기 문서에서 확인</a>' : '') + '</div></div>';
+            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없어요.</p><div class="empty-actions"><a class="button secondary sm" href="/app" data-viewer-search-reset>검색 초기화</a>' + (viewerApp.dataset.canSearchDisposed === 'true' ? '<a class="button secondary sm" href="/documents/disposal?tab=documents">폐기 문서에서 확인</a>' : '') + '</div></div>';
           }
           // fallback 경로는 최근 수정순 후보 창 안에서만 점수를 매기므로 결과 수와 무관하게
           // 오래된 문서가 빠질 수 있다. 누락 가능성은 항상 알리고 문구만 상태에 맞게 나눈다.
           if (payload.fallback) {
-            html = '<div class="alert warning" role="status">검색 색인을 재구성하는 중입니다. '
-              + (currentItems.length ? '오래된 문서가 결과에서 빠질 수 있으니' : '결과가 제한될 수 있으니')
-              + ' 찾는 문서가 없으면 잠시 후 다시 검색하세요.</div>' + html;
+            html = '<div class="alert neutral" role="status">검색 색인을 다시 만들고 있어요. '
+              + (currentItems.length ? '오래된 문서가 결과에서 빠질 수 있으니' : '일부 결과만 나올 수 있으니')
+              + ' 찾는 문서가 없으면 잠시 후 다시 검색해 주세요.</div>' + html;
           }
           if (append && resultsBody) {
             var list = resultsBody.querySelector('.viewer-result-list');
@@ -273,12 +273,12 @@ export function instantSearchScript() {
           if (resultsCount) resultsCount.textContent = currentItems.length.toLocaleString('ko-KR') + '건 표시' + (payload.hasMore ? ' · 더 있음' : '');
           if (searchLive) {
             searchLive.textContent = !currentItems.length
-              ? '검색 결과가 없습니다.'
+              ? '검색 결과가 없어요.'
               : !hasKnownTotal && payload.hasMore
-                ? currentItems.length.toLocaleString('ko-KR') + '건을 표시했습니다. 더보기로 이어서 확인하세요.'
+                ? currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요. 더보기로 이어서 볼 수 있어요.'
                 : currentItems.length < totalFound
-                ? totalFound.toLocaleString('ko-KR') + '건 중 ' + currentItems.length.toLocaleString('ko-KR') + '건을 표시했습니다. 더보기로 이어서 확인하세요.'
-                : totalFound.toLocaleString('ko-KR') + '건을 모두 표시했습니다.';
+                ? totalFound.toLocaleString('ko-KR') + '건 중 ' + currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요. 더보기로 이어서 볼 수 있어요.'
+                : totalFound.toLocaleString('ko-KR') + '건을 모두 표시했어요.';
           }
           viewerApp.hidden = false;
           var revisionToggle = document.querySelector('[data-column-toggle="revision-date"]');
@@ -292,11 +292,11 @@ export function instantSearchScript() {
 
         var renderError = function (message) {
           var params = searchParams('');
-          var html = '<div class="alert danger" role="alert">' + escapeHtmlClient(message || '검색을 처리하지 못했습니다.') + '</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">검색 화면에서 계속</a></div>';
+          var html = '<div class="alert danger" role="alert">' + escapeHtmlClient(message || '검색하지 못했어요. 잠시 후 다시 시도해 주세요.') + '</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">검색 화면에서 계속</a></div>';
           replaceResults(html, false);
-          if (resultsTitle) resultsTitle.textContent = '검색을 계속할 수 없습니다';
+          if (resultsTitle) resultsTitle.textContent = '검색 결과를 불러오지 못했어요';
           if (resultsCount) resultsCount.textContent = '-';
-          if (searchLive) searchLive.textContent = '검색 요청을 처리하지 못했습니다.';
+          if (searchLive) searchLive.textContent = '검색 결과를 불러오지 못했어요. 다시 시도해 주세요.';
           viewerApp.hidden = false;
         };
 
@@ -309,7 +309,7 @@ export function instantSearchScript() {
           activeRequest = typeof AbortController === 'function' ? new AbortController() : null;
           retryCursor = append ? cursor : '';
           viewerApp.setAttribute('aria-busy', 'true');
-          if (searchLive) searchLive.textContent = append ? '다음 결과를 불러오는 중…' : '검색 중…';
+          if (searchLive) searchLive.textContent = append ? '다음 결과를 불러오고 있어요…' : '검색하고 있어요…';
           try {
             var response = await fetch('/api/viewer/search?' + searchRequestParams(cursor).toString(), {
               headers: { Accept: 'application/json' },
@@ -318,7 +318,7 @@ export function instantSearchScript() {
             var payload = await response.json().catch(function () { return {}; });
             if (sequence !== searchSequence) return;
             if (response.status === 409 && payload.code === 'SEARCH_CURSOR_STALE' && !staleRetry) return requestSearch('', false, true);
-            if (!response.ok || payload.ok === false || !Array.isArray(payload.items)) throw new Error(payload.message || '검색 요청에 실패했습니다.');
+            if (!response.ok || payload.ok === false || !Array.isArray(payload.items)) throw new Error(payload.message || '검색하지 못했어요. 잠시 후 다시 시도해 주세요.');
             window.__hanlimSearchIndexReady = true;
             var datalist = viewerInput.parentElement?.querySelector?.('[data-suggest-list]');
             if (datalist && Array.isArray(payload.suggestions)) datalist.innerHTML = payload.suggestions.map(function (item) {
@@ -333,7 +333,7 @@ export function instantSearchScript() {
               requestAnimationFrame(function () {
                 if (sequence !== searchSequence) return;
                 if (anchor) { anchor.scrollIntoView({ block: 'center' }); anchor.querySelector('a')?.focus({ preventScroll: true }); }
-                else { window.scrollTo(0, Number(previousState.scroll) || 0); if (searchLive) searchLive.textContent += ' 이전 문서는 현재 열람 범위에 없습니다.'; }
+                else { window.scrollTo(0, Number(previousState.scroll) || 0); if (searchLive) searchLive.textContent += ' 이전에 보던 문서는 현재 열람 범위에 없어요.'; }
               });
             }
           } catch (error) {
@@ -341,7 +341,7 @@ export function instantSearchScript() {
             if (append && resultsBody) {
               resultsBody.querySelector('[data-search-more]')?.closest('nav')?.remove();
               resultsBody.querySelector('[data-search-retry]')?.closest('nav')?.remove();
-              resultsBody.insertAdjacentHTML('beforeend', '<nav class="pagination"><span role="alert">다음 결과를 불러오지 못했습니다.</span><button type="button" class="button secondary sm" data-search-retry>다시 시도</button></nav>');
+              resultsBody.insertAdjacentHTML('beforeend', '<nav class="pagination"><span role="alert">다음 결과를 불러오지 못했어요.</span><button type="button" class="button secondary sm" data-search-retry>다시 시도</button></nav>');
             } else renderError(error?.message);
           } finally {
             if (sequence === searchSequence) viewerApp.setAttribute('aria-busy', 'false');

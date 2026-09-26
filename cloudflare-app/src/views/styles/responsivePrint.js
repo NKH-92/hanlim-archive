@@ -65,7 +65,7 @@ export function responsivePrintStyles() {
       .set-print-page { position: fixed; right: 0; bottom: 0; color: var(--gray-500); font-size: 11px; }
       .set-print-page span::after { content: counter(page); }
       body[data-access-mode="demo_readonly"] > * { display: none !important; }
-      body[data-access-mode="demo_readonly"]::after { content: "시연 및 조회용 계정에서는 인쇄할 수 없습니다."; display: block; padding: 24px; color: var(--ink); font-size: 16px; font-weight: 700; }
+      body[data-access-mode="demo_readonly"]::after { content: "시연 및 조회용 계정에서는 인쇄할 수 없어요."; display: block; padding: 24px; color: var(--ink); font-size: 16px; font-weight: 700; }
     }
     @media (max-width: 760px) {
       .app-shell { width: calc(100% - var(--sp-6)); padding-top: var(--sp-3); }

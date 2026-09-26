@@ -70,9 +70,9 @@ export function documentFormPage({
             <select id="field-rackFace" name="rackFace" required data-rack-face ${errorAttrs("rackFace", normalizedValidation)}>${option("A", "1면", formValue(values, "rackFace", "rack_face") || "A")}${option("B", "2면", formValue(values, "rackFace", "rack_face"))}</select>
           </label>
           ${fieldError("rackFace", normalizedValidation)}
-          <p class="muted" data-face-hint>양면 랙은 13-1(1면)/13-2(2면)처럼 면 단위로 표기합니다. 모든 면은 바라본 기준으로 왼쪽부터 1열, 아래부터 1선반입니다.</p>
+          <p class="muted" data-face-hint>양면 랙은 13-1(1면), 13-2(2면)처럼 면 단위로 적어요. 모든 면은 바라본 기준으로 왼쪽부터 1열, 아래부터 1선반이에요.</p>
           <div class="location-selection-preview" data-location-selection aria-live="polite">
-            <div><span>선택 위치</span><strong data-location-selection-label>위치를 선택하세요.</strong></div>
+            <div><span>선택 위치</span><strong data-location-selection-label>위치를 선택해 주세요.</strong></div>
             <div><span>활성 문서</span><strong data-location-selection-count>-</strong></div>
             <a class="button secondary sm" data-location-selection-link href="/app" hidden>같은 위치 문서 보기</a>
           </div>
@@ -95,10 +95,10 @@ export function documentFormPage({
           ${fieldError("note", normalizedValidation)}
         </section>
 
-        ${mode === "create" ? `<div class="continuation-options"><strong>연속 등록</strong><label class="check-item"><input type="checkbox" name="retainCategory" value="1" ${values.retainCategory ? "checked" : ""}>분류 유지</label><label class="check-item"><input type="checkbox" name="retainLocation" value="1" ${values.retainLocation ? "checked" : ""}>위치 유지</label><p class="muted">선택한 항목만 다음 등록에 이어집니다. 문서명·번호·개정은 새로 입력합니다.</p>${values.continuing ? '<p class="alert info" role="status">이전 문서 등록이 완료되었습니다. 유지된 분류·위치를 확인하고 다음 문서를 입력하세요.</p>' : ""}</div>` : ""}
+        ${mode === "create" ? `<div class="continuation-options"><strong>연속 등록</strong><label class="check-item"><input type="checkbox" name="retainCategory" value="1" ${values.retainCategory ? "checked" : ""}>분류 유지</label><label class="check-item"><input type="checkbox" name="retainLocation" value="1" ${values.retainLocation ? "checked" : ""}>위치 유지</label><p class="muted">선택한 항목만 다음 등록에 이어져요. 문서명·번호·개정은 새로 입력해요.</p>${values.continuing ? '<p class="alert success" role="status">이전 문서를 등록했어요. 유지한 분류·위치를 확인하고 다음 문서를 입력해 주세요.</p>' : ""}</div>` : ""}
         <div class="form-actions sticky-save-bar" data-save-bar>
           <div class="form-completion"><strong data-form-completion>필수 입력 0/0</strong><progress data-form-completion-bar max="100" value="0" aria-label="필수 입력 완료도"></progress></div>
-          <div class="button-group"><a class="button secondary" href="${escapeHtml(cancelUrl)}">취소</a><button type="submit" class="primary" name="submitAction" value="save">${submitLabel}</button>${mode === "create" ? `<button type="submit" class="button secondary" name="submitAction" value="saveAndNext">저장 후 다음 등록</button>` : ""}</div>
+          <div class="button-group"><a class="button secondary" href="${escapeHtml(cancelUrl)}">취소</a>${mode === "create" ? `<button type="submit" class="button secondary" name="submitAction" value="saveAndNext">저장 후 다음 등록</button>` : ""}<button type="submit" class="primary" name="submitAction" value="save">${submitLabel}</button></div>
         </div>
       </form>
 
@@ -111,7 +111,7 @@ export function documentFormPage({
           <div><dt>대분류</dt><dd data-summary="categoryId">-</dd></div>
           <div><dt>제·개정일</dt><dd data-summary="revisionDate">${isInformationEdit ? escapeHtml(formValue(values, "revisionDate", "revision_date") || "미입력") : "-"}</dd></div>
           <div><dt>폐기 예정</dt><dd data-summary="disposalDueYear">-</dd></div>
-          ${showLocation ? `<div><dt>보관 위치</dt><dd class="mono" data-summary="location">-</dd></div>` : ""}
+          ${showLocation ? `<div><dt>보관 위치</dt><dd class="location-value" data-summary="location">-</dd></div>` : ""}
         </dl>
       </details>
     </section>
@@ -132,7 +132,7 @@ function textField(name, label, value, validation, { required = false, mono = fa
 }
 
 function lockedField(label, value) {
-  return `<div class="field-group locked-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "-")}</strong><small>문서 개정에서만 변경할 수 있습니다.</small></div>`;
+  return `<div class="field-group locked-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "-")}</strong><small>문서 개정에서만 바꿀 수 있어요.</small></div>`;
 }
 
 function errorAttrs(name, validation) {
@@ -149,12 +149,12 @@ function formErrorSummary(validation, title) {
   const formErrors = validation.formErrors || [];
   const total = entries.length + formErrors.length;
   if (!total) return "";
-  return `<div class="form-error-summary" role="alert" tabindex="-1" data-error-summary><strong>${title === "정보 수정" ? "문서 정보를 수정하지 못했습니다." : "문서를 등록하지 못했습니다."}</strong><p>아래 ${total}개 항목을 확인하세요.</p><ul>${entries.map(([name, message]) => `<li><a href="#field-${escapeHtml(name)}">${escapeHtml(message)}</a></li>`).join("")}${formErrors.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul></div>`;
+  return `<div class="form-error-summary" role="alert" tabindex="-1" data-error-summary><strong>${title === "정보 수정" ? "문서 정보를 수정하지 못했어요" : "문서를 등록하지 못했어요"}</strong><p>아래 ${total}개 항목을 확인해 주세요.</p><ul>${entries.map(([name, message]) => `<li><a href="#field-${escapeHtml(name)}">${escapeHtml(message)}</a></li>`).join("")}${formErrors.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul></div>`;
 }
 
 function duplicateNotice(duplicate) {
   const document = duplicate?.document;
-  return `<div class="duplicate-notice" data-duplicate-notice role="status" ${document ? "" : "hidden"}><strong>이미 등록된 문서입니다.</strong><p><span class="mono" data-duplicate-code>${document ? `${escapeHtml(document.documentNumber)} / ${escapeHtml(document.revisionNumber)}` : ""}</span><br><span data-duplicate-name>${document ? escapeHtml(document.documentName) : ""}</span> · <span data-duplicate-status>${document ? (document.status === "active" ? "보관중" : "폐기") : ""}</span></p><a class="button secondary sm" data-duplicate-link href="${document ? `/documents/${Number(document.id)}` : "#"}">기존 문서 보기</a></div>`;
+  return `<div class="duplicate-notice" data-duplicate-notice role="status" ${document ? "" : "hidden"}><strong>이미 등록된 문서예요.</strong><p><span class="mono" data-duplicate-code>${document ? `${escapeHtml(document.documentNumber)} / ${escapeHtml(document.revisionNumber)}` : ""}</span><br><span data-duplicate-name>${document ? escapeHtml(document.documentName) : ""}</span> · <span data-duplicate-status>${document ? (document.status === "active" ? "보관중" : "폐기") : ""}</span></p><a class="button secondary sm" data-duplicate-link href="${document ? `/documents/${Number(document.id)}` : "#"}">기존 문서 보기</a></div>`;
 }
 
 function formCancelUrl(action, values) {
@@ -234,7 +234,7 @@ function documentFormScript(showLocation) {
       var count = form.querySelector('[data-location-selection-count]');
       var link = form.querySelector('[data-location-selection-link]');
       if (!selected || !selected.value) {
-        if (label) label.textContent = '위치를 선택하세요.';
+        if (label) label.textContent = '위치를 선택해 주세요.';
         if (count) count.textContent = '-';
         if (link) link.hidden = true;
         return;
@@ -278,7 +278,7 @@ function documentFormScript(showLocation) {
       var revision = revisionInput ? revisionInput.value.trim() : (form.dataset.currentRevision || '');
       if (!number || !revision || !notice) { if (notice) notice.hidden = true; if (duplicateStatus) duplicateStatus.textContent = ''; return; }
       timer = setTimeout(function () {
-        if (duplicateStatus) duplicateStatus.textContent = '중복 문서를 확인하는 중입니다.';
+        if (duplicateStatus) duplicateStatus.textContent = '같은 문서가 있는지 확인하고 있어요.';
         var params = new URLSearchParams({ documentNumber: number, revisionNumber: revision });
         var editMatch = form.getAttribute('action').match(/^\\/documents\\/(\\d+)\\/edit$/);
         if (editMatch) params.set('excludeId', editMatch[1]);
@@ -286,7 +286,7 @@ function documentFormScript(showLocation) {
           .then(function (response) { if (!response.ok) throw new Error('duplicate-check'); return response.json(); })
           .then(function (result) {
             if (current !== requestId) return;
-            if (duplicateStatus) duplicateStatus.textContent = result.exists ? '동일 문서가 확인되었습니다.' : '등록 가능한 문서번호와 개정번호입니다.';
+            if (duplicateStatus) duplicateStatus.textContent = result.exists ? '같은 문서가 이미 있어요.' : '등록할 수 있는 문서번호와 개정번호예요.';
             if (!result.exists || !result.document) { notice.hidden = true; return; }
             notice.hidden = false;
             notice.querySelector('[data-duplicate-code]').textContent = result.document.documentNumber + ' / ' + result.document.revisionNumber;
@@ -296,7 +296,7 @@ function documentFormScript(showLocation) {
           }).catch(function () {
             if (current !== requestId) return;
             notice.hidden = true;
-            if (duplicateStatus) duplicateStatus.textContent = '중복 확인을 완료하지 못했습니다. 제출 시 서버에서 다시 확인합니다.';
+            if (duplicateStatus) duplicateStatus.textContent = '중복 여부를 확인하지 못했어요. 저장할 때 서버에서 다시 확인해요.';
           });
       }, 300);
     };

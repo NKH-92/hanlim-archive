@@ -19,7 +19,7 @@ import {
 import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 
-const STALE_DOCUMENT_MESSAGE = "다른 사용자가 문서를 먼저 수정했거나 상태가 변경되었습니다. 새로고침 후 다시 시도하세요.";
+const STALE_DOCUMENT_MESSAGE = "다른 사용자가 문서를 먼저 수정했거나 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.";
 
 async function runDocumentMutationBatch(env, plan) {
   try {
@@ -297,7 +297,7 @@ export async function createDocument(env, values, actor, actorRole = "User") {
 
   if (!createdId) {
     /** @type {Error & { code?: string }} */
-    const error = new Error("같은 문서번호와 개정번호가 이미 등록되어 있습니다.");
+    const error = new Error("같은 문서번호와 개정번호가 이미 등록되어 있어요.");
     error.code = "DUPLICATE_DOCUMENT";
     throw error;
   }
@@ -308,16 +308,16 @@ export async function createDocument(env, values, actor, actorRole = "User") {
 export async function updateDocument(env, id, values, actor, actorRole = "Admin") {
   const doc = await getDocument(env, id);
   if (!doc) {
-    return { ok: false, message: "문서를 찾을 수 없습니다." };
+    return { ok: false, message: "문서를 찾지 못했어요. 검색에서 다시 찾아 주세요." };
   }
 
   if (doc.status === "disposed") {
-    return { ok: false, message: "폐기 상태 문서는 폐기를 해제하기 전까지 수정할 수 없습니다." };
+    return { ok: false, message: "폐기 상태 문서는 폐기를 해제해야 수정할 수 있어요." };
   }
 
   const expectedRowVersion = Number(values.expectedRowVersion);
   if (!clean(values.expectedUpdatedAt) || !Number.isInteger(expectedRowVersion) || expectedRowVersion <= 0) {
-    return { ok: false, message: "문서 수정 잠금 정보가 없습니다. 새로고침 후 다시 시도하세요." };
+    return { ok: false, message: "문서 수정 잠금 정보가 없어요. 새로고침한 뒤 다시 시도해 주세요." };
   }
 
   // 정보 수정은 개정 및 위치 변경 경로가 아니다. 호출자가 값을 조작해 보내더라도
@@ -397,7 +397,7 @@ export async function updateDocument(env, id, values, actor, actorRole = "Admin"
 async function transitionDocumentStatus(env, id, spec, actor, actorRole) {
   const doc = await getDocument(env, id);
   if (!doc) {
-    return { ok: false, message: "문서를 찾을 수 없습니다." };
+    return { ok: false, message: "문서를 찾지 못했어요. 검색에서 다시 찾아 주세요." };
   }
 
   if (doc.status !== spec.fromStatus) {
@@ -439,9 +439,9 @@ async function transitionDocumentStatus(env, id, spec, actor, actorRole) {
 
   const plan = createDocumentStatusPlan(spec.auditAction, statements, guardClause);
   const ran = await runDocumentMutationBatch(env, plan);
-  if (!ran.ok) return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  if (!ran.ok) return { ok: false, message: "문서 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
   if (!hasChanged(ran.results[ran.results.length - 2] || ran.results.at(-1))) {
-    return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    return { ok: false, message: "문서 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
   }
 
   return { ok: true };
@@ -471,7 +471,7 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
       ok: false,
       disposed: 0,
       skipped: 0,
-      failures: [`소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.directBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`]
+      failures: [`소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.directBulkDisposeMaxItems}건까지 처리할 수 있어요.`]
     };
   }
 
@@ -529,7 +529,7 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
   for (const id of uniqueIds) {
     const doc = docsById.get(id);
     if (!doc) {
-      failures.push(`${id}번: 문서를 찾을 수 없습니다.`);
+      failures.push(`${id}번: 문서를 찾지 못했어요.`);
       continue;
     }
     if (doc.status !== "active") {
@@ -588,7 +588,7 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
       ok: false,
       disposed: 0,
       skipped,
-      failures: ["한 번에 처리할 수 있는 무료티어 내부 예산을 초과했습니다."]
+      failures: ["한 번에 처리할 수 있는 무료티어 내부 예산을 넘었어요. 문서 수를 줄여 다시 시도해 주세요."]
     };
   }
 
@@ -600,7 +600,7 @@ export async function disposeDocumentsBulk(env, ids, actor, reason, actorRole = 
     if (hasChanged(updateResult)) {
       disposed += 1;
     } else {
-      failures.push(`${activeIds[index]}번: 문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요.`);
+      failures.push(`${activeIds[index]}번: 문서 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.`);
     }
   }
 
@@ -625,7 +625,7 @@ export async function restoreDocument(env, id, actor, reason, actorRole = "Admin
   if (revisionReplacement) {
     return {
       ok: false,
-      message: "개정으로 대체된 이전본은 일반 폐기 취소를 할 수 없습니다. 개정 이력에서 현재본을 확인하세요."
+      message: "개정으로 대체된 이전본은 일반 폐기 취소를 할 수 없어요. 개정 이력에서 현재본을 확인해 주세요."
     };
   }
   return transitionDocumentStatus(env, id, {
@@ -647,7 +647,7 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
   }
 
   if (doc.status !== "disposed") {
-    return { ok: false, message: "보관중 문서는 완전삭제할 수 없습니다. 먼저 폐기 처리해야 합니다." };
+    return { ok: false, message: "보관중 문서는 먼저 폐기 처리해야 완전삭제할 수 있어요." };
   }
 
   const revisionLink = await env.DB.prepare(`
@@ -657,7 +657,7 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
     LIMIT 1
   `).bind(id, id).first();
   if (revisionLink) {
-    return { ok: false, message: "개정 이력에 연결된 문서는 완전삭제할 수 없습니다." };
+    return { ok: false, message: "개정 이력에 연결된 문서는 완전삭제할 수 없어요." };
   }
 
   // 하드삭제는 ON DELETE CASCADE로 폐기 이력을 함께 파괴한다. GMP 기록 보존을 위해
@@ -691,9 +691,9 @@ export async function permanentlyDeleteDocument(env, id, actor = "알 수 없음
 
   const plan = createDocumentPermanentDeletePlan(statements, guardClause);
   const ran = await runDocumentMutationBatch(env, plan);
-  if (!ran.ok) return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  if (!ran.ok) return { ok: false, message: "문서 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
   if (!hasChanged(ran.results[ran.results.length - 2] || ran.results.at(-1))) {
-    return { ok: false, message: "문서 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    return { ok: false, message: "문서 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
   }
 
   return { ok: true };

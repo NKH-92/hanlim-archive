@@ -25,10 +25,10 @@ export function page(title, body, session, status = 200, options = {}) {
   <link rel="stylesheet" href="/assets/app.css">
   <script nonce="${nonce}" src="/assets/app.js" defer></script>
 </head>
-<body data-navigation-scope="${escapeHtml(String(session?.username || session?.userId || "") + ":" + String(session?.sessionEpoch || ""))}"${session && capabilitiesFromSession(session).isDemoReadOnly ? ' data-access-mode="demo_readonly"' : ""}>
+<body${session ? ' class="app-body"' : ""} data-navigation-scope="${escapeHtml(String(session?.username || session?.userId || "") + ":" + String(session?.sessionEpoch || ""))}"${session && capabilitiesFromSession(session).isDemoReadOnly ? ' data-access-mode="demo_readonly"' : ""}>
   <a href="#${escapeHtml(options.skipTarget || "main-content")}" class="skip-nav">본문 바로가기</a>
   ${session ? header(session) : ""}
-  ${session && capabilitiesFromSession(session).isDemoReadOnly ? '<div class="demo-readonly-banner" role="status"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><strong>시연 및 조회용</strong><span>모든 화면은 조회만 가능하며 저장·수정·삭제·다운로드는 차단됩니다.</span></div>' : ""}
+  ${session && capabilitiesFromSession(session).isDemoReadOnly ? '<div class="demo-readonly-banner" role="status"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><strong>시연 및 조회용</strong><span>조회만 할 수 있는 계정이에요. 저장·수정·삭제·다운로드는 할 수 없어요.</span></div>' : ""}
   <main id="main-content" class="${escapeHtml(mainClass)}">${body}</main>
 </body>
 </html>`;
@@ -123,7 +123,7 @@ function header(session) {
         ${navGroup("업무", workLinks)}
         ${navGroup("운영", operationLinks, operationExtras)}
         <div class="nav-user">
-          <span class="session-pill">${escapeHtml(session.displayName)} · ${escapeHtml(roleLabel)}</span>
+          <span class="session-pill"><strong>${escapeHtml(session.displayName)}</strong><small>${escapeHtml(roleLabel)}</small></span>
           <a href="/qa" class="nav-sub-link"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>도움말·문의</a>
           <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key"></i>비밀번호</a>
           <form method="post" action="/logout" class="logout-form">
@@ -135,7 +135,7 @@ function header(session) {
       <dialog class="command-palette" data-command-palette aria-labelledby="command-title">
         <div class="command-palette-head"><strong id="command-title">메뉴 찾기</strong><button type="button" class="icon-button" data-command-close aria-label="닫기">×</button></div>
         <label class="sr-only" for="command-filter">메뉴 검색</label>
-        <input id="command-filter" type="search" placeholder="이동할 메뉴를 입력하세요" autocomplete="off" data-command-input>
+        <input id="command-filter" type="search" placeholder="이동할 메뉴 이름을 입력해 주세요" autocomplete="off" data-command-input>
         <div class="command-palette-list" data-command-list>${commandLinks}</div>
         <p class="muted">Ctrl+K로 열기 · 방향키로 이동 · Enter로 실행</p>
       </dialog>
@@ -150,6 +150,15 @@ export function alertDanger(message) {
 
 export function alertWarning(message) {
   return `<div class="alert warning" role="alert">${escapeHtml(message)}</div>`;
+}
+
+// 위험이나 오류가 아닌 안내는 경고색 대신 중립 알림을 쓴다(앱인토스 그래픽 가이드: 상황에 맞는 표현).
+export function alertNote(message) {
+  return `<div class="alert neutral" role="note">${escapeHtml(message)}</div>`;
+}
+
+export function alertInfo(message) {
+  return `<div class="alert info" role="status">${escapeHtml(message)}</div>`;
 }
 
 export function statusBadge(status) {

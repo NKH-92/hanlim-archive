@@ -144,7 +144,7 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
     try {
       rows = JSON.parse(String(form.get("rows") || "[]"));
     } catch {
-      return jsonResponse({ ok: false, code: SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, message: "전송된 엑셀 행을 읽을 수 없습니다." }, { status: 400 });
+      return jsonResponse({ ok: false, code: SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, message: "전송된 엑셀 행을 읽지 못했어요. 화면을 새로고침한 뒤 다시 시도해 주세요." }, { status: 400 });
     }
     try {
       const result = await stageDocumentSnapshotRows(env, id, rows);
@@ -154,7 +154,7 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
         return jsonResponse({
           ok: false,
           code: SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_DUPLICATE,
-          message: "같은 숨김 관리 ID가 여러 행에 들어 있습니다."
+          message: "같은 숨김 관리 ID가 여러 행에 들어 있어요."
         }, { status: 409 });
       }
       throw error;
@@ -166,7 +166,7 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
     try {
       rows = JSON.parse(String(form.get("rows") || "[]"));
     } catch {
-      return jsonResponse({ ok: false, code: SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, message: "전송된 membership을 읽을 수 없습니다." }, { status: 400 });
+      return jsonResponse({ ok: false, code: SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, message: "전송된 membership을 읽지 못했어요. 화면을 새로고침한 뒤 다시 시도해 주세요." }, { status: 400 });
     }
     const result = await stageDocumentSnapshotMembership(env, id, rows);
     return jsonResponse(result, { status: result.ok ? 200 : statusForSnapshotError(result) });
@@ -241,7 +241,7 @@ export async function handleDocumentSnapshotRoute(request, env, session, routeIn
       return redirect(`/document-snapshots/${id}?applied=1`);
     } catch (error) {
       logError("document-snapshot.apply", error, { snapshotId: id });
-      return errorPage("엑셀 문서대장을 반영하지 못했습니다. 기존 대장은 변경되지 않았습니다.", session, 409);
+      return errorPage("엑셀 문서대장을 반영하지 못했어요. 기존 대장은 바뀌지 않았어요.", session, 409);
     }
   }
   if (request.method === "POST" && action === "cancel") {

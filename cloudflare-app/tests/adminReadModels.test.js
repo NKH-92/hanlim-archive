@@ -92,7 +92,7 @@ test("감사조회 권한은 readiness 상세 상태를 관리자 read model과 
   assert.equal(coreSql.some((statement) => /FROM documents\b/.test(statement)), false, "검색 상태 패널이 문서 전체 scan을 추가하면 안 된다");
 
   const html = await adminDashboardPage({ session, ...result }).text();
-  assert.match(html, /검색 결과가 제한될 수 있습니다/);
+  assert.match(html, /검색 결과에서 일부 문서가 빠질 수 있어요/);
   assert.match(html, /데이터베이스 업데이트 필요/);
   assert.match(html, /색인 최신 상태/);
   assert.match(html, /색인 완료 2건/);

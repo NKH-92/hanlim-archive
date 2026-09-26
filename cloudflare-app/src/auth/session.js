@@ -16,11 +16,11 @@ export function getMissingSetup(env) {
   const missing = required.filter((key) => !env[key]);
 
   if (missing.length) {
-    return `Cloudflare secret/variable 설정이 필요합니다: ${missing.join(", ")}`;
+    return `Cloudflare secret/variable 설정이 필요해요: ${missing.join(", ")}`;
   }
 
   if (env.SESSION_SECRET.length < 32) {
-    return "SESSION_SECRET는 최소 32자 이상의 랜덤 문자열이어야 합니다.";
+    return "SESSION_SECRET는 최소 32자 이상의 랜덤 문자열이어야 해요.";
   }
 
   return "";

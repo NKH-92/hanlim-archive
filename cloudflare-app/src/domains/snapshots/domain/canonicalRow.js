@@ -118,35 +118,35 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots, pr
     const revisionDateMissing = !revisionDateRaw || revisionDateRaw.toUpperCase() === NOT_APPLICABLE;
     const revisionDate = revisionDateMissing ? "" : normalizeImportedRevisionDate(revisionDateRaw);
     if (!revisionDateMissing && !isValidImportedRevisionDate(revisionDate)) {
-      errors.push(fieldError(rowNumber, "revisionDate", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "제·개정일은 YYYY, YYYY-MM-DD 또는 YYYY.MM.DD 형식의 유효한 값이어야 합니다."));
+      errors.push(fieldError(rowNumber, "revisionDate", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "제·개정일은 YYYY, YYYY-MM-DD, YYYY.MM.DD 중 하나의 형식으로 입력해 주세요."));
     }
     if (!disposalParsed.ok) {
-      errors.push(fieldError(rowNumber, "disposalDueYear", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "폐기 예정 년도는 정수 또는 N/A여야 합니다."));
+      errors.push(fieldError(rowNumber, "disposalDueYear", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "폐기 예정 년도는 연도 숫자나 N/A로 입력해 주세요."));
     }
     if (!clean(row.documentName)) {
-      errors.push(fieldError(rowNumber, "documentName", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "문서명은 필수입니다."));
+      errors.push(fieldError(rowNumber, "documentName", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "문서명을 입력해 주세요."));
     }
     // 등록되지 않은 문서종류는 검토 단계에서 임시 categoryId=0으로 유지한다.
     // 실제 기준정보 생성과 ID 해석은 사용자가 최종 반영할 때 같은 DB batch 안에서 수행한다.
     if (!zoneParsed.ok || zoneParsed.value < 1 || zoneParsed.value > 3) {
-      errors.push(fieldError(rowNumber, "zoneNumber", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "랙 위치 (구역)은 1, 2, 3 중 하나여야 합니다."));
+      errors.push(fieldError(rowNumber, "zoneNumber", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "랙 위치 (구역)에는 1, 2, 3 중 하나를 입력해 주세요."));
     }
     if (!rackParsed.ok || !columnParsed.ok || !shelfParsed.ok || !slot) {
-      errors.push(fieldError(rowNumber, "location", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `존재하지 않거나 공란인 위치(${zoneParsed.ok ? `${zoneParsed.value}구역` : "-"} / ${rackParsed.ok ? `${rackParsed.value}번 랙` : "-"} / ${clean(row.rackColumn) || "-"}열 / ${clean(row.shelfNumber) || "-"}선반)입니다.`));
+      errors.push(fieldError(rowNumber, "location", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `없는 위치이거나 비어 있는 위치(${zoneParsed.ok ? `${zoneParsed.value}구역` : "-"} / ${rackParsed.ok ? `${rackParsed.value}번 랙` : "-"} / ${clean(row.rackColumn) || "-"}열 / ${clean(row.shelfNumber) || "-"}선반)예요. 문서고에 있는 위치로 입력해 주세요.`));
     }
     if (!faceParsed.ok) {
-      errors.push(fieldError(rowNumber, "rackFace", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "랙 면은 단면/1면/2면(또는 A/B)만 허용하며 공란은 오류입니다."));
+      errors.push(fieldError(rowNumber, "rackFace", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "랙 면에는 단면, 1면, 2면(또는 A, B) 중 하나를 입력해 주세요. 비워 둘 수 없어요."));
     } else if (slot && Number(slot.is_single_sided) === 1 && faceParsed.value === "B") {
-      errors.push(fieldError(rowNumber, "rackFace", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "단면 랙에는 2면(B)을 입력할 수 없습니다."));
+      errors.push(fieldError(rowNumber, "rackFace", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "단면 랙에는 2면(B)을 입력할 수 없어요. 단면이나 1면으로 입력해 주세요."));
     }
     if (!statusParsed.ok) {
-      errors.push(fieldError(rowNumber, "status", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "상태는 보관중 또는 폐기만 입력할 수 있습니다."));
+      errors.push(fieldError(rowNumber, "status", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "상태에는 보관중이나 폐기만 입력할 수 있어요."));
     }
 
     for (const tagName of tagNames) {
       const tag = tagByName.get(tagName.toLowerCase());
       if (!tag) {
-        errors.push(fieldError(rowNumber, "tags", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `존재하지 않는 태그(${tagName})입니다.`));
+        errors.push(fieldError(rowNumber, "tags", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `등록되지 않은 태그(${tagName})예요. 태그 관리에서 먼저 추가해 주세요.`));
       } else {
         tagIds.push(Number(tag.id));
         tagLabels.push(tag.name);
@@ -154,7 +154,7 @@ export function prepareCanonicalSnapshotRows(rows, { categories, tags, slots, pr
     }
 
     if (sourceRowKey && !isStableRowKey(sourceRowKey)) {
-      errors.push(fieldError(rowNumber, "sourceRowKey", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "숨김 관리 ID 형식이 올바르지 않습니다."));
+      errors.push(fieldError(rowNumber, "sourceRowKey", SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "숨김 관리 ID 형식이 올바르지 않아요. 최신 추출 파일의 값을 그대로 써 주세요."));
     }
 
     const values = {

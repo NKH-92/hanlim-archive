@@ -463,12 +463,12 @@ function createRackSlotInsertStatementByCode(env, code, columnCount, shelfCount)
 export async function configureRackCounts(env, counts, actor = {}, expectedVersion = 0) {
   for (const zone of RACK_ZONES) {
     if (!Number.isInteger(counts[zone]) || counts[zone] < 0 || counts[zone] > MAX_RACKS_PER_ZONE) {
-      return { ok: false, message: `구역별 랙 수는 0~${MAX_RACKS_PER_ZONE} 사이여야 합니다.` };
+      return { ok: false, message: `구역별 랙 수는 0~${MAX_RACKS_PER_ZONE} 사이로 입력해 주세요.` };
     }
   }
   const expectedConfigurationVersion = positiveVersion(expectedVersion);
   if (!expectedConfigurationVersion) {
-    return { ok: false, message: "랙 구성이 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    return { ok: false, message: "랙 구성이 다른 요청에서 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
   }
 
   const usedRows = await env.DB.prepare(`
@@ -482,7 +482,7 @@ export async function configureRackCounts(env, counts, actor = {}, expectedVersi
     if (counts[row.zone_number] < row.max_used_rack) {
       return {
         ok: false,
-        message: `${row.zone_number}구역 ${row.max_used_rack}번 랙에 문서가 있어 ${counts[row.zone_number]}개로 줄일 수 없습니다.`
+        message: `${row.zone_number}구역 ${row.max_used_rack}번 랙에 문서가 있어서 ${counts[row.zone_number]}개로 줄일 수 없어요. ${row.max_used_rack}개 이상으로 입력해 주세요.`
       };
     }
   }
@@ -612,7 +612,7 @@ export async function configureRackCounts(env, counts, actor = {}, expectedVersi
     await executeMutationBatch(env, configurationPlan);
   } catch (error) {
     if (isExpectedChangeAbort(error)) {
-      return { ok: false, message: "랙 구성이 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요." };
+      return { ok: false, message: "랙 구성이 다른 요청에서 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
     }
     throw error;
   }
@@ -640,14 +640,14 @@ function positiveVersion(value) {
 
 function staleRackError() {
   return Object.assign(
-    new Error("랙이 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요."),
+    new Error("랙이 다른 요청에서 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요."),
     { code: "STALE_VERSION" }
   );
 }
 
 function duplicateRackLocationError() {
   return Object.assign(
-    new Error("같은 구역에 동일한 랙 번호가 이미 있습니다."),
+    new Error("같은 구역에 동일한 랙 번호가 이미 있어요. 다른 번호를 입력해 주세요."),
     { code: "RACK_LOCATION_EXISTS" }
   );
 }

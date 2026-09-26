@@ -114,7 +114,7 @@ test("prepareDocumentImportRows accepts numeric faces and blocks face 2 on singl
     { ...base, documentNumber: "DOC-4", rackCode: "1-01", rackFace: "3" }
   ], context);
   assert.equal(invalid.errors.length, 1);
-  assert.match(invalid.errors[0], /1 또는 2/);
+  assert.match(invalid.errors[0], /1이나 2로 입력해 주세요/);
 });
 
 test("prepareDocumentImportRows enforces the same document text limits as the form", () => {

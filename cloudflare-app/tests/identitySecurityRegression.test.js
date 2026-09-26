@@ -329,11 +329,11 @@ test("최초 비밀번호 변경 대상은 returnUrl을 무시하고 변경 완�
     assert.equal(blocked.headers.get("Location"), "/account/password?required=1");
     const changePage = await worker.fetch(authenticatedRequest("/account/password", cookie), env);
     assert.equal(changePage.status, 200);
-    assert.match(await changePage.text(), /최초 로그인입니다/);
+    assert.match(await changePage.text(), /처음 로그인했어요/);
 
     const invalidChange = await worker.fetch(passwordChangeRequest(cookie, "wrong-password", "new-password-2026"), env);
     assert.equal(invalidChange.status, 200);
-    assert.match(await invalidChange.text(), /최초 로그인입니다/);
+    assert.match(await invalidChange.text(), /처음 로그인했어요/);
     assert.equal(database.prepare("SELECT must_change_password FROM app_users WHERE username = ?").get(INITIAL_EMAIL).must_change_password, 1);
 
     const samePassword = await worker.fetch(passwordChangeRequest(cookie, "123456", "123456"), env);

@@ -24,7 +24,7 @@ test("session은 감사용 Actor 계약으로 한 번만 정규화된다", () =>
 
 test("비밀번호 policy와 사용자 상태 machine은 기존 규칙을 단일 catalog로 제공한다", () => {
   assert.equal(PASSWORD_POLICY.minLength, 6);
-  assert.deepEqual(validateNewPassword("short"), { ok: false, message: "새 비밀번호는 6자 이상이어야 합니다." });
+  assert.deepEqual(validateNewPassword("short"), { ok: false, message: "새 비밀번호는 6자 이상으로 입력해 주세요." });
   assert.deepEqual(validateNewPassword("a1b2c3"), { ok: true });
   assert.equal(canTransitionUser({ role: "User", status: "pending" }, "approve"), true);
   assert.equal(canTransitionUser({ role: "User", status: "approved" }, "reject"), false);

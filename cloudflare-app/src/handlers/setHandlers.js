@@ -230,7 +230,7 @@ async function handleAddSetDocuments(request, env, session, setId) {
       addQuery,
       selectedCandidateIds: selectedIds,
       preserveAddSelection: Boolean(addQuery || selectedIds.length),
-      error: "세트가 잠겨 문서를 추가하지 못했습니다. 검색 조건과 선택 문서는 그대로 유지했습니다."
+      error: "세트가 잠겨 있어서 문서를 추가하지 못했어요. 검색 조건과 선택 문서는 그대로 유지했어요."
     });
   }
 
@@ -243,7 +243,7 @@ async function handleAddSetDocuments(request, env, session, setId) {
       return renderSetDetails(env, session, setId, {
         addQuery,
         selectedCandidateIds: selectedIds.slice(0, 200),
-        error: "일괄 추가는 한 번에 200건 이하만 선택하세요."
+        error: "일괄 추가는 한 번에 200건까지 선택할 수 있어요."
       });
     }
     const result = await addDocumentsToSet(env, setId, selectedIds, session, expectedRowVersion);
@@ -272,11 +272,11 @@ async function handleAddSetDocuments(request, env, session, setId) {
   const numbers = parseDocumentNumberList(form.get("numbers"));
 
   if (!numbers.length) {
-    return renderSetDetails(env, session, setId, { error: "추가할 문서번호를 입력하세요." });
+    return renderSetDetails(env, session, setId, { error: "추가할 문서번호를 입력해 주세요." });
   }
 
   if (numbers.length > 200) {
-    return renderSetDetails(env, session, setId, { error: "일괄 추가는 한 번에 200건 이하로 입력하세요." });
+    return renderSetDetails(env, session, setId, { error: "일괄 추가는 한 번에 200건까지 입력할 수 있어요." });
   }
 
   const { documents, missing } = await findDocumentsByNumbers(env, numbers);

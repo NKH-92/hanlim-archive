@@ -51,13 +51,13 @@ export async function handleApprovedUserCreate(request, env, session) {
   const confirmPassword = String(form.get("confirmPassword") ?? "");
 
   if (!temporaryPassword || !confirmPassword) {
-    return renderApprovedUserCreate(session, { values, error: "임시 비밀번호와 확인값을 모두 입력하세요." });
+    return renderApprovedUserCreate(session, { values, error: "임시 비밀번호와 확인값을 모두 입력해 주세요." });
   }
   if (temporaryPassword !== confirmPassword) {
-    return renderApprovedUserCreate(session, { values, error: "임시 비밀번호가 일치하지 않습니다." });
+    return renderApprovedUserCreate(session, { values, error: "임시 비밀번호가 일치하지 않아요. 확인값을 다시 입력해 주세요." });
   }
   if (form.get("confirmCreate") !== "1") {
-    return renderApprovedUserCreate(session, { values, error: "계정의 기본 권한과 최초 비밀번호 변경 정책을 확인하세요." });
+    return renderApprovedUserCreate(session, { values, error: "계정의 기본 권한과 최초 비밀번호 변경 정책을 확인해 주세요." });
   }
 
   const result = await createApprovedUser(env, { ...values, temporaryPassword }, session);
@@ -78,7 +78,7 @@ export async function handleAdminUserAction(env, session, routeInfo) {
   }
 
   if (!result.ok) {
-    return errorPage("처리할 수 있는 가입 신청을 찾지 못했습니다.", session, 400);
+    return errorPage("처리할 수 있는 가입 신청을 찾지 못했어요.", session, 400);
   }
 
   const toast = routeInfo.action === "approve" ? "approved" : "rejected";
@@ -96,19 +96,19 @@ export async function handleChangePassword(request, env, session) {
   const confirmPassword = String(form.get("confirmPassword") ?? "");
 
   if (!currentPassword || !newPassword) {
-    return renderPasswordResult(session, { error: "모든 필드를 입력하세요." });
+    return renderPasswordResult(session, { error: "모든 항목을 입력해 주세요." });
   }
 
   // forced-change 우회 방지: 길이와 무관하게 현재와 동일한 새 비밀번호를 거부한다.
   if (currentPassword === newPassword) {
-    return renderPasswordResult(session, { error: "새 비밀번호는 현재 비밀번호와 달라야 합니다." });
+    return renderPasswordResult(session, { error: "새 비밀번호는 현재 비밀번호와 달라야 해요." });
   }
 
   const passwordValidation = validateNewPassword(newPassword);
   if (!passwordValidation.ok) return renderPasswordResult(session, { error: passwordValidation.message });
 
   if (newPassword !== confirmPassword) {
-    return renderPasswordResult(session, { error: "새 비밀번호가 일치하지 않습니다." });
+    return renderPasswordResult(session, { error: "새 비밀번호가 일치하지 않아요. 확인값을 다시 입력해 주세요." });
   }
 
   const result = await changeUserPassword(env, session.username, currentPassword, newPassword);

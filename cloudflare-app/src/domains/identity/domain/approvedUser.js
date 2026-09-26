@@ -26,23 +26,23 @@ export function validateApprovedUser(values = {}) {
     || normalized.username.length > APPROVED_USER_LIMITS.username
     || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.username)
   ) {
-    return { ok: false, values: normalized, message: "이메일 형식의 사용자 아이디를 입력하세요." };
+    return { ok: false, values: normalized, message: "이메일 형식의 사용자 아이디를 입력해 주세요." };
   }
   if (PROTECTED_APPROVED_USERNAMES.has(normalized.username)) {
-    return { ok: false, values: normalized, message: "보호된 운영 계정은 이 화면에서 추가할 수 없습니다." };
+    return { ok: false, values: normalized, message: "보호된 운영 계정은 이 화면에서 추가할 수 없어요." };
   }
   if (!normalized.displayName || normalized.displayName.length > APPROVED_USER_LIMITS.displayName) {
     return {
       ok: false,
       values: normalized,
-      message: `이름은 1~${APPROVED_USER_LIMITS.displayName}자로 입력하세요.`
+      message: `이름은 1~${APPROVED_USER_LIMITS.displayName}자로 입력해 주세요.`
     };
   }
   if (normalized.team.length > APPROVED_USER_LIMITS.team) {
     return {
       ok: false,
       values: normalized,
-      message: `부서는 ${APPROVED_USER_LIMITS.team}자 이하로 입력하세요.`
+      message: `부서는 ${APPROVED_USER_LIMITS.team}자 이하로 입력해 주세요.`
     };
   }
   return { ok: true, values: normalized };

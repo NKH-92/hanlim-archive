@@ -19,7 +19,7 @@ export function parseCsv(text) {
     else if (char === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
     else if (char !== "\r") field += char;
   }
-  if (inQuotes) throw new Error("CSV 따옴표가 닫히지 않았습니다.");
+  if (inQuotes) throw new Error("CSV 따옴표가 닫히지 않았어요. 따옴표 짝을 확인해 주세요.");
   row.push(field);
   rows.push(row);
   const nonEmptyRows = rows.filter((items) => items.some((item) => clean(item)));

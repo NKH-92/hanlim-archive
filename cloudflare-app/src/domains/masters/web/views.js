@@ -9,7 +9,7 @@ export function categoriesPage({ session, categories, values = {}, error = "" })
     <section class="page-head master-page-head">
       <div>
         <h1>대분류 관리</h1>
-        <p>문서 등록·검색·폐기 조건에 사용하는 분류 이름을 관리합니다. 기존 문서의 분류는 사용중지해도 유지됩니다.</p>
+        <p>문서 등록·검색·폐기 조건에 쓰는 분류 이름을 관리해요. 사용중지해도 기존 문서의 분류는 그대로 유지돼요.</p>
       </div>
       <div class="master-head-guide" aria-label="이 화면의 필요한 기능">
         <strong>필요한 기능</strong>
@@ -21,7 +21,7 @@ export function categoriesPage({ session, categories, values = {}, error = "" })
       <div class="section-title master-section-title">
         <div>
           <h2 id="category-create-title">새 대분류 추가</h2>
-          <p>업무에서 실제로 구분해 찾아야 하는 이름만 등록하세요.</p>
+          <p>업무에서 실제로 구분해 찾아야 하는 이름만 등록해 주세요.</p>
         </div>
       </div>
       <form method="post" action="/categories" class="master-create-form">
@@ -34,7 +34,7 @@ export function categoriesPage({ session, categories, values = {}, error = "" })
       <div class="master-list-heading">
         <div>
           <h2 id="category-list-title">대분류 목록</h2>
-          <p>이름순으로 표시합니다. 항목을 열면 이름과 설명을 수정할 수 있습니다.</p>
+          <p>이름순으로 보여드려요. 항목을 열면 이름과 설명을 수정할 수 있어요.</p>
         </div>
         <div class="master-list-tools">
           <label class="master-search-field">
@@ -47,7 +47,7 @@ export function categoriesPage({ session, categories, values = {}, error = "" })
       ${categoryList(rows)}
       <div class="empty-state master-filter-empty" data-master-filter-empty hidden aria-live="polite">
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-        <span>조건에 맞는 대분류가 없습니다.</span>
+        <span>조건에 맞는 대분류가 없어요.</span>
         <small>검색어를 지우거나 사용중지 항목 포함을 선택해 보세요.</small>
       </div>
     </section>
@@ -74,12 +74,12 @@ function masterPage({ session, title, action, rows, values, error }) {
 }
 
 function masterList(rows) {
-  if (!rows.length) return emptyState("등록된 항목이 없습니다.");
+  if (!rows.length) return emptyState("등록된 항목이 없어요.");
   return `<div class="master-list">${rows.map(masterRow).join("")}</div>`;
 }
 
 function categoryList(rows) {
-  if (!rows.length) return emptyState("등록된 대분류가 없습니다.");
+  if (!rows.length) return emptyState("등록된 대분류가 없어요.");
   return `<div class="category-master-list" data-master-list>${rows.map(categoryRow).join("")}</div>`;
 }
 
@@ -119,15 +119,15 @@ function categoryRow(row) {
 function categoryStateAction({ active, base, name, description, sortOrder, version }) {
   if (active) {
     return `<div class="category-master-state-action">
-      <p>사용중지하면 새 문서 등록 화면에서만 숨겨지며 기존 문서에는 그대로 남습니다.</p>
-      <form method="post" action="${base}/delete" data-confirm="사용을 중지하시겠습니까? 신규 등록 화면에는 더 이상 표시되지 않습니다.">
+      <p>사용중지하면 새 문서 등록 화면에서만 보이지 않고, 기존 문서에는 그대로 남아요.</p>
+      <form method="post" action="${base}/delete" data-confirm="사용을 중지할까요? 신규 등록 화면에는 더 이상 표시되지 않아요.">
         <input type="hidden" name="expectedRowVersion" value="${version}">
         <button type="submit" class="danger-button">사용 중지</button>
       </form>
     </div>`;
   }
   return `<div class="category-master-state-action">
-    <p>다시 사용하면 새 문서 등록과 대분류 선택 목록에 표시됩니다.</p>
+    <p>다시 사용하면 새 문서 등록과 대분류 선택 목록에 표시돼요.</p>
     <form method="post" action="${base}/edit">
       <input type="hidden" name="expectedRowVersion" value="${version}">
       <input type="hidden" name="name" value="${name}">
@@ -158,7 +158,7 @@ function masterRow(row) {
         <label class="check-inline"><input type="checkbox" name="isActive" value="1" ${active ? "checked" : ""}> ${active ? "사용" : "다시 사용"}</label>
         <button type="submit">수정</button>
       </form>
-      <form method="post" action="${base}/delete" data-confirm="사용을 중지하시겠습니까? 신규 등록 화면에는 더 이상 표시되지 않습니다.">
+      <form method="post" action="${base}/delete" data-confirm="사용을 중지할까요? 신규 등록 화면에는 더 이상 표시되지 않아요.">
         <input type="hidden" name="expectedRowVersion" value="${escapeHtml(row.row_version ?? 0)}">
         <button type="submit" class="danger-button">사용중지</button>
       </form>

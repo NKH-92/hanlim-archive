@@ -7,7 +7,7 @@ import { createSnapshotPlan, optionalPositiveInteger } from "./support.js";
 
 export async function stageDocumentSnapshotRows(env, snapshotId, rows) {
   if (!Array.isArray(rows) || !rows.length || rows.length > FREE_TIER_BUDGET.excelSnapshotStageChunkSize) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, `한 번에 ${FREE_TIER_BUDGET.excelSnapshotStageChunkSize}행씩 전송해야 합니다.`);
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, `한 번에 ${FREE_TIER_BUDGET.excelSnapshotStageChunkSize}행씩 전송해야 해요.`);
   }
   const normalized = [];
   const seenRows = new Set();
@@ -16,16 +16,16 @@ export async function stageDocumentSnapshotRows(env, snapshotId, rows) {
     const rowNumber = Number(entry?.rowNumber);
     const sourceRowKey = clean(entry?.sourceRowKey ?? entry?.rowKey);
     if (!Number.isInteger(rowNumber) || rowNumber < 2 || rowNumber > FREE_TIER_BUDGET.excelSnapshotMaxItems + 1) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "엑셀 행 번호가 올바르지 않습니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "엑셀 행 번호가 올바르지 않아요.");
     }
     if (sourceRowKey && !isStableRowKey(sourceRowKey)) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `${rowNumber}행의 숨김 관리 ID가 올바르지 않습니다.`);
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `${rowNumber}행의 숨김 관리 ID가 올바르지 않아요.`);
     }
     if (seenRows.has(rowNumber)) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_DUPLICATE, "같은 행 번호가 중복되었습니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_DUPLICATE, "같은 행 번호가 중복됐어요.");
     }
     if (sourceRowKey && seenKeys.has(sourceRowKey)) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_DUPLICATE, "같은 관리 ID가 중복되었습니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_DUPLICATE, "같은 관리 ID가 중복됐어요.");
     }
     seenRows.add(rowNumber);
     if (sourceRowKey) seenKeys.add(sourceRowKey);
@@ -76,7 +76,7 @@ export async function stageDocumentSnapshotRows(env, snapshotId, rows) {
   ];
   const results = await executeMutationBatch(env, createSnapshotPlan("stage", statements));
   const progress = results[1]?.results?.[0];
-  if (!progress) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "행을 추가할 수 없는 동기화 작업입니다.");
+  if (!progress) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "행을 추가할 수 없는 동기화 작업이에요.");
   return { ok: true, stagedCount: Number(progress.staged_count || 0), totalCount: Number(progress.total_count || 0) };
 }
 
@@ -84,7 +84,7 @@ export async function stageDocumentSnapshotMembership(env, snapshotId, rows) {
   if (!Array.isArray(rows) || !rows.length || rows.length > FREE_TIER_BUDGET.excelSnapshotMembershipChunkSize) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH,
-      `membership은 한 번에 ${FREE_TIER_BUDGET.excelSnapshotMembershipChunkSize}행까지 전송할 수 있습니다.`
+      `membership은 한 번에 ${FREE_TIER_BUDGET.excelSnapshotMembershipChunkSize}행까지 전송할 수 있어요.`
     );
   }
   const normalized = [];
@@ -96,16 +96,16 @@ export async function stageDocumentSnapshotMembership(env, snapshotId, rows) {
     const baseRowVersion = optionalPositiveInteger(entry?.baseRowVersion);
     const baseHash = clean(entry?.baseHash).toLowerCase();
     if (!Number.isInteger(rowNumber) || rowNumber < 2 || rowNumber > FREE_TIER_BUDGET.excelSnapshotMaxItems + 1) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "membership 행 번호가 올바르지 않습니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "membership 행 번호가 올바르지 않아요.");
     }
     if (!rowKey || !isStableRowKey(rowKey)) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `${rowNumber}행의 숨김 관리 ID가 올바르지 않습니다.`);
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `${rowNumber}행의 숨김 관리 ID가 올바르지 않아요.`);
     }
     if (baseHash && !/^[a-f0-9]{64}$/.test(baseHash)) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `${rowNumber}행의 기준 행 해시가 올바르지 않습니다.`);
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, `${rowNumber}행의 기준 행 해시가 올바르지 않아요.`);
     }
     if (seenRows.has(rowNumber) || seenKeys.has(rowKey)) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_DUPLICATE, "membership 행 번호 또는 관리 ID가 중복되었습니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_KEY_DUPLICATE, "membership 행 번호 또는 관리 ID가 중복됐어요.");
     }
     seenRows.add(rowNumber);
     seenKeys.add(rowKey);
@@ -143,7 +143,7 @@ export async function stageDocumentSnapshotMembership(env, snapshotId, rows) {
     `).bind(snapshotId, snapshotId)
   ]));
   const count = Number(results[1]?.results?.[0]?.membership_count || 0);
-  if (!count) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "membership을 추가할 수 없는 동기화 작업입니다.");
+  if (!count) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "membership을 추가할 수 없는 동기화 작업이에요.");
   return { ok: true, membershipCount: count };
 }
 

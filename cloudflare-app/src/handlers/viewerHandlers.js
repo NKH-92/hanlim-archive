@@ -140,7 +140,7 @@ export function handleSearchIndex() {
   return jsonResponse({
     ok: false,
     code: "SEARCH_INDEX_RETIRED",
-    message: "브라우저 전체 검색 인덱스는 종료되었습니다. /api/viewer/search를 사용하세요."
+    message: "브라우저 전체 검색 인덱스는 종료됐어요. /api/viewer/search를 사용해 주세요."
   }, { status: 410, cacheControl: "private, no-store" });
 }
 

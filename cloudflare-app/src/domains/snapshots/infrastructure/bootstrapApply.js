@@ -56,7 +56,7 @@ export async function scheduleBootstrapApplication(env, {
   if (!scheduled) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_CONCURRENT_APPLY,
-      "최초 대량등록 예약 중 작업 상태가 변경되었습니다. 화면을 새로고침해 주세요.",
+      "최초 대량등록을 예약하는 중에 작업 상태가 바뀌었어요. 화면을 새로고침해 주세요.",
       { stale: true }
     );
   }
@@ -117,8 +117,8 @@ export async function runScheduledBootstrapApplication(env, { force = false } = 
   const chunkSize = finalizeOnly ? 0 : Math.min(FREE_TIER_BUDGET.bootstrapApplyChunkSize, total - progress);
   const isFirst = progress === 0;
   if (!total || progress > total || (!finalizeOnly && chunkSize <= 0) || Number(claimed.create_count || 0) !== total) {
-    await releaseFailedClaim(env, claimed.id, token, "최초 대량등록 계획의 건수가 올바르지 않습니다.");
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "최초 대량등록 계획의 건수가 올바르지 않습니다.");
+    await releaseFailedClaim(env, claimed.id, token, "최초 대량등록 계획의 건수가 올바르지 않아요.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "최초 대량등록 계획의 건수가 올바르지 않아요.");
   }
 
   const actor = parseJsonObject(claimed.bootstrap_apply_actor_json);
@@ -149,7 +149,7 @@ export async function runScheduledBootstrapApplication(env, { force = false } = 
       totalCount: total
     };
   } catch (error) {
-    await releaseFailedClaim(env, claimed.id, token, clean(error?.message).slice(0, 1000) || "분할 반영에 실패했습니다.");
+    await releaseFailedClaim(env, claimed.id, token, clean(error?.message).slice(0, 1000) || "분할 반영을 끝내지 못했어요.");
     throw error;
   }
 }

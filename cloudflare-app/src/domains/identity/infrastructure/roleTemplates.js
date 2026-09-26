@@ -40,20 +40,20 @@ export async function getRoleTemplate(env, key) {
 
 export async function updateRoleTemplate(env, key, values, actor) {
   if (actor?.role !== "Admin") {
-    return { ok: false, message: "역할 템플릿은 시스템 관리자만 수정할 수 있습니다." };
+    return { ok: false, message: "역할 템플릿은 시스템 관리자만 수정할 수 있어요." };
   }
   const normalizedKey = normalizeKey(key);
   if (normalizedKey === SYSTEM_TEMPLATE_KEY) {
-    return { ok: false, message: "시스템관리 역할 템플릿은 수정할 수 없습니다." };
+    return { ok: false, message: "시스템관리 역할 템플릿은 수정할 수 없어요." };
   }
   const label = clean(values?.label);
   const expectedRowVersion = readRowVersion(values?.expectedRowVersion);
   if (!label || label.length > 50 || !expectedRowVersion) {
-    return { ok: false, message: "역할 이름과 현재 버전을 확인하세요." };
+    return { ok: false, message: "역할 이름과 현재 버전을 확인해 주세요." };
   }
 
   const current = await getRoleTemplate(env, normalizedKey);
-  if (!current) return { ok: false, message: "역할 템플릿을 찾을 수 없습니다." };
+  if (!current) return { ok: false, message: "역할 템플릿을 찾지 못했어요." };
   if (Number(current.row_version) !== expectedRowVersion) return staleResult();
 
   const beforePermissions = permissionFlags(current);
@@ -111,21 +111,21 @@ export async function updateRoleTemplate(env, key, values, actor) {
 
 export async function applyRoleTemplateToUsers(env, key, targets, actor, expectedTemplateRowVersionValue) {
   if (actor?.role !== "Admin") {
-    return { ok: false, message: "역할 일괄 반영은 시스템 관리자만 실행할 수 있습니다." };
+    return { ok: false, message: "역할 일괄 반영은 시스템 관리자만 실행할 수 있어요." };
   }
   const normalizedTargets = normalizeTargets(targets);
   if (!normalizedTargets.length) {
-    return { ok: false, message: "역할을 반영할 사용자를 한 명 이상 선택하세요." };
+    return { ok: false, message: "역할을 반영할 사용자를 한 명 이상 선택해 주세요." };
   }
   if (normalizedTargets.length > MAX_BULK_USERS) {
-    return { ok: false, message: `한 번에 최대 ${MAX_BULK_USERS}명까지 반영할 수 있습니다.` };
+    return { ok: false, message: `한 번에 최대 ${MAX_BULK_USERS}명까지 반영할 수 있어요.` };
   }
 
   const expectedTemplateRowVersion = readRowVersion(expectedTemplateRowVersionValue);
   const template = await getRoleTemplate(env, key);
-  if (!template) return { ok: false, message: "역할 템플릿을 찾을 수 없습니다." };
+  if (!template) return { ok: false, message: "역할 템플릿을 찾지 못했어요." };
   if (!expectedTemplateRowVersion || template.row_version !== expectedTemplateRowVersion) {
-    return staleResult("역할 템플릿이 변경되었습니다. 화면을 새로고침한 뒤 다시 시도하세요.");
+    return staleResult("역할 템플릿이 바뀌었어요. 화면을 새로고침한 뒤 다시 시도해 주세요.");
   }
   const placeholders = normalizedTargets.map(() => "?").join(", ");
   const usersResult = await env.DB.prepare(`
@@ -146,7 +146,7 @@ export async function applyRoleTemplateToUsers(env, key, targets, actor, expecte
       || Number(user.row_version) !== expectedById.get(Number(user.id))
     ))
   ) {
-    return staleResult("선택한 사용자 정보가 변경되었습니다. 목록을 새로고침한 뒤 다시 시도하세요.");
+    return staleResult("선택한 사용자 정보가 바뀌었어요. 목록을 새로고침한 뒤 다시 시도해 주세요.");
   }
 
   const permissions = permissionFlags(template);
@@ -230,7 +230,7 @@ export async function applyRoleTemplateToUsers(env, key, targets, actor, expecte
     return { ok: true, appliedCount: normalizedTargets.length };
   } catch (error) {
     if (isExpectedChangeAbort(error)) {
-      return staleResult("일부 사용자 정보가 변경되어 전체 반영을 취소했습니다. 목록을 새로고침한 뒤 다시 시도하세요.");
+      return staleResult("일부 사용자 정보가 바뀌어서 전체 반영을 취소했어요. 목록을 새로고침한 뒤 다시 시도해 주세요.");
     }
     throw error;
   }
@@ -274,6 +274,6 @@ function permissionValues(source) {
   return PERMISSION_KEYS.map((permission) => source[permission] ? 1 : 0);
 }
 
-function staleResult(message = "역할 정보가 변경되었습니다. 새로고침 후 다시 시도하세요.") {
+function staleResult(message = "역할 정보가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.") {
   return { ok: false, stale: true, message };
 }

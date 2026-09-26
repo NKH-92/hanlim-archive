@@ -29,7 +29,7 @@ export function validateDisposalBatchDraft(values = {}) {
   if (!title) return { ok: false, message: "캠페인 제목을 입력해 주세요." };
   if (!disposalReason) return { ok: false, message: "폐기 사유를 입력해 주세요." };
   if (!hasAnyCriteria(criteria)) {
-    return { ok: false, message: "폐기 예정 연도, 대분류, 구역, 랙 중 하나 이상의 조건이 필요합니다." };
+    return { ok: false, message: "폐기 예정 연도, 대분류, 구역, 랙 중 하나 이상의 조건을 선택해 주세요." };
   }
   return {
     ok: true,
@@ -175,7 +175,7 @@ export async function createSelectedDisposalBatch(env, rawValues, actor) {
   const approvalReference = clean(rawValues?.approvalReference);
   const maxItems = FREE_TIER_BUDGET.disposalProcessChunkSize;
   if (!ids.length) return { ok: false, message: "폐기할 문서를 하나 이상 선택해 주세요." };
-  if (ids.length > maxItems) return { ok: false, message: `한 번에 최대 ${maxItems}건까지 폐기할 수 있습니다.` };
+  if (ids.length > maxItems) return { ok: false, message: `한 번에 최대 ${maxItems}건까지 폐기할 수 있어요.` };
   if (!disposalReason) return { ok: false, message: "폐기 사유를 입력해 주세요." };
   const confirmedTargetCount = Number(rawValues?.confirmedTargetCount);
   if (!readBoolean(rawValues?.confirmDisposal) || !Number.isInteger(confirmedTargetCount) || confirmedTargetCount !== ids.length) {
@@ -189,7 +189,7 @@ export async function createSelectedDisposalBatch(env, rawValues, actor) {
     WHERE id IN (${placeholders}) AND status = 'active' AND sync_state = 'current'
   `).bind(...ids).all();
   if ((selected.results ?? []).length !== ids.length) {
-    return { ok: false, message: "선택한 문서 중 상태가 변경된 항목이 있습니다. 목록을 새로고침한 뒤 다시 선택해 주세요." };
+    return { ok: false, message: "선택한 문서 중 상태가 바뀐 항목이 있어요. 목록을 새로고침한 뒤 다시 선택해 주세요." };
   }
 
   const temporaryCode = `DSP-TEMP-${crypto.randomUUID()}`;
@@ -345,32 +345,32 @@ export async function updateDisposalBatch(env, id, rawValues, actor, expectedUpd
   const results = await executeMutationBatch(env, createDisposalPlan("update", statements, "draft+updated-at"));
   return hasChanged(results[1])
     ? { ok: true }
-    : { ok: false, message: "초안 상태가 아니거나 다른 사용자가 먼저 수정했습니다." };
+    : { ok: false, message: "초안 상태가 아니거나 다른 사용자가 먼저 수정했어요. 새로고침한 뒤 다시 시도해 주세요." };
 }
 
 export async function freezeDisposalBatch(env, id, actor, expectedUpdatedAt = null, confirmation = {}) {
   const batch = await getDisposalBatch(env, id);
-  if (!batch) return { ok: false, message: "폐기 캠페인을 찾을 수 없습니다." };
+  if (!batch) return { ok: false, message: "폐기 캠페인을 찾지 못했어요. 캠페인 이력에서 다시 확인해 주세요." };
   if (batch.status === "frozen") return { ok: true, count: batch.target_count };
-  if (batch.status !== "draft") return { ok: false, message: "초안 상태의 캠페인만 동결할 수 있습니다." };
-  if (!hasAnyCriteria(batch.criteria)) return { ok: false, message: "하나 이상의 폐기 조건이 필요합니다." };
+  if (batch.status !== "draft") return { ok: false, message: "초안 상태의 캠페인만 동결할 수 있어요." };
+  if (!hasAnyCriteria(batch.criteria)) return { ok: false, message: "폐기 조건을 하나 이상 선택해 주세요." };
 
   const expectedAt = clean(expectedUpdatedAt);
   if (!expectedAt) {
-    return { ok: false, message: "동결 전 초안 버전 확인 값이 필요합니다. 화면을 새로고침한 뒤 다시 시도하세요." };
+    return { ok: false, message: "동결 전 초안 버전 확인 값이 필요해요. 화면을 새로고침한 뒤 다시 시도해 주세요." };
   }
   if (expectedAt !== clean(batch.updated_at)) {
-    return { ok: false, message: "초안이 변경되었습니다. 미리보기를 다시 확인한 뒤 동결하세요." };
+    return { ok: false, message: "초안이 바뀌었어요. 미리보기를 다시 확인한 뒤 동결해 주세요." };
   }
 
   const count = await countDisposalCandidates(env, batch.criteria);
-  if (count === 0) return { ok: false, message: "조건에 맞는 보관중 문서가 없어 동결할 수 없습니다." };
+  if (count === 0) return { ok: false, message: "조건에 맞는 보관중 문서가 없어서 동결할 수 없어요. 폐기 조건을 다시 확인해 주세요." };
   if (count > FREE_TIER_BUDGET.disposalBatchMaxItems) {
-    return { ok: false, message: `대상이 ${FREE_TIER_BUDGET.disposalBatchMaxItems}건을 초과합니다. 조건을 더 좁혀 주세요.` };
+    return { ok: false, message: `대상이 ${FREE_TIER_BUDGET.disposalBatchMaxItems}건을 넘어요. 조건을 더 좁혀 주세요.` };
   }
   const confirmedCount = Number(confirmation.confirmedTargetCount);
   if (!readBoolean(confirmation.confirmPreview) || !Number.isInteger(confirmedCount) || confirmedCount !== count) {
-    return { ok: false, message: `최신 미리보기 ${count}건과 폐기 조건을 확인하세요.` };
+    return { ok: false, message: `최신 미리보기 ${count}건과 폐기 조건을 확인해 주세요.` };
   }
 
   const where = buildCandidateWhere(batch.criteria);
@@ -422,7 +422,7 @@ export async function freezeDisposalBatch(env, id, actor, expectedUpdatedAt = nu
   ];
   const results = await executeMutationBatch(env, createDisposalPlan("freeze", statements, "draft+frozen-snapshot"));
   if (!hasChanged(results[2])) {
-    return { ok: false, message: "동결 중 대상이 변경되었습니다. 미리보기를 다시 확인해 주세요." };
+    return { ok: false, message: "동결 중 대상이 바뀌었어요. 미리보기를 다시 확인해 주세요." };
   }
   const frozen = await getDisposalBatch(env, id);
   return { ok: true, count: Number(frozen?.target_count || 0) };
@@ -430,8 +430,8 @@ export async function freezeDisposalBatch(env, id, actor, expectedUpdatedAt = nu
 
 export async function setDisposalBatchItemExcluded(env, batchId, itemId, excluded, reason, actor) {
   const batch = await getDisposalBatch(env, batchId);
-  if (!batch) return { ok: false, message: "폐기 캠페인을 찾을 수 없습니다." };
-  if (batch.status !== "frozen") return { ok: false, message: "동결 후 처리 시작 전 항목만 변경할 수 있습니다." };
+  if (!batch) return { ok: false, message: "폐기 캠페인을 찾지 못했어요. 캠페인 이력에서 다시 확인해 주세요." };
+  if (batch.status !== "frozen") return { ok: false, message: "동결 후 처리 시작 전 항목만 변경할 수 있어요." };
   const cleanReason = clean(reason);
   if (excluded && !cleanReason) return { ok: false, message: "제외 사유를 입력해 주세요." };
   const fromStatus = excluded ? "pending" : "excluded";
@@ -463,19 +463,19 @@ export async function setDisposalBatchItemExcluded(env, batchId, itemId, exclude
     const current = await getDisposalBatchItem(env, batchId, itemId);
     return current?.status === toStatus
       ? { ok: true }
-      : { ok: false, message: "항목 상태가 변경되어 처리할 수 없습니다." };
+      : { ok: false, message: "항목 상태가 바뀌어서 처리할 수 없어요. 새로고침한 뒤 다시 확인해 주세요." };
   }
   return { ok: true };
 }
 
 export async function startDisposalBatch(env, id, actor, confirmation = {}) {
   const batch = await getDisposalBatch(env, id);
-  if (!batch) return { ok: false, message: "폐기 캠페인을 찾을 수 없습니다." };
+  if (!batch) return { ok: false, message: "폐기 캠페인을 찾지 못했어요. 캠페인 이력에서 다시 확인해 주세요." };
   if (batch.status === "processing") return { ok: true };
-  if (batch.status !== "frozen") return { ok: false, message: "동결된 캠페인만 처리를 시작할 수 있습니다." };
+  if (batch.status !== "frozen") return { ok: false, message: "동결된 캠페인만 처리를 시작할 수 있어요." };
   const confirmedCount = Number(confirmation.confirmedTargetCount);
   if (!readBoolean(confirmation.confirmStart) || !Number.isInteger(confirmedCount) || confirmedCount !== Number(batch.target_count || 0)) {
-    return { ok: false, message: `동결 대상 ${Number(batch.target_count || 0)}건을 확인한 뒤 폐기 처리를 시작하세요.` };
+    return { ok: false, message: `동결 대상 ${Number(batch.target_count || 0)}건을 확인한 뒤 폐기 처리를 시작해 주세요.` };
   }
   const guardSql = "FROM disposal_batches WHERE id = ? AND status = 'frozen'";
   const statements = [
@@ -490,12 +490,12 @@ export async function startDisposalBatch(env, id, actor, confirmation = {}) {
     `).bind(id)
   ];
   const results = await executeMutationBatch(env, createDisposalPlan("start", statements, "frozen"));
-  return hasChanged(results[1]) ? { ok: true } : { ok: false, message: "캠페인 상태가 변경되었습니다." };
+  return hasChanged(results[1]) ? { ok: true } : { ok: false, message: "캠페인 상태가 바뀌었어요. 새로고침한 뒤 다시 확인해 주세요." };
 }
 
 export async function processDisposalBatch(env, id, actor) {
   const batch = await getDisposalBatch(env, id);
-  if (!batch) return { ok: false, message: "폐기 캠페인을 찾을 수 없습니다." };
+  if (!batch) return { ok: false, message: "폐기 캠페인을 찾지 못했어요. 캠페인 이력에서 다시 확인해 주세요." };
   if (batch.status === "completed") return { ok: true, done: true, batch };
   if (batch.status !== "processing") return { ok: false, message: "먼저 동결된 캠페인의 처리를 시작해 주세요." };
 
@@ -615,15 +615,15 @@ export async function processDisposalBatch(env, id, actor) {
           ELSE 'failed'
         END,
         result_message = CASE
-          WHEN NOT EXISTS (SELECT 1 FROM documents d WHERE d.id = i.document_id) THEN '문서를 찾을 수 없습니다.'
-          WHEN EXISTS (SELECT 1 FROM documents d WHERE d.id = i.document_id AND d.status <> 'active') THEN '문서 상태가 변경되었습니다.'
-          WHEN EXISTS (SELECT 1 FROM documents d WHERE d.id = i.document_id AND d.sync_state <> 'current') THEN '문서가 현재 대장 상태가 아닙니다.'
+          WHEN NOT EXISTS (SELECT 1 FROM documents d WHERE d.id = i.document_id) THEN '문서를 찾지 못했어요.'
+          WHEN EXISTS (SELECT 1 FROM documents d WHERE d.id = i.document_id AND d.status <> 'active') THEN '문서 상태가 바뀌었어요.'
+          WHEN EXISTS (SELECT 1 FROM documents d WHERE d.id = i.document_id AND d.sync_state <> 'current') THEN '문서가 현재 대장에 없어요.'
           WHEN EXISTS (
             SELECT 1 FROM documents d
             WHERE d.id = i.document_id
               AND (d.updated_at <> i.expected_updated_at OR d.row_version <> i.expected_document_version)
-          ) THEN '동결 후 문서 정보가 변경되었습니다.'
-          ELSE '폐기 처리 결과를 확인할 수 없습니다.'
+          ) THEN '대상을 확정한 뒤 문서 정보가 바뀌었어요.'
+          ELSE '폐기 처리 결과를 확인하지 못했어요.'
         END,
         processed_at = CURRENT_TIMESTAMP,
         processing_token = NULL
@@ -650,10 +650,10 @@ export async function processDisposalBatch(env, id, actor) {
 
 export async function cancelDisposalBatch(env, id, actor) {
   const batch = await getDisposalBatch(env, id);
-  if (!batch) return { ok: false, message: "폐기 캠페인을 찾을 수 없습니다." };
+  if (!batch) return { ok: false, message: "폐기 캠페인을 찾지 못했어요. 캠페인 이력에서 다시 확인해 주세요." };
   if (batch.status === "cancelled") return { ok: true };
   if (!new Set(["draft", "frozen"]).has(batch.status)) {
-    return { ok: false, message: "처리가 시작된 캠페인은 취소할 수 없습니다." };
+    return { ok: false, message: "처리가 시작된 캠페인은 취소할 수 없어요." };
   }
   const guardSql = "FROM disposal_batches WHERE id = ? AND status IN ('draft', 'frozen')";
   const statements = [
@@ -668,7 +668,7 @@ export async function cancelDisposalBatch(env, id, actor) {
     `).bind(id)
   ];
   const results = await executeMutationBatch(env, createDisposalPlan("cancel", statements, "draft-or-frozen-or-processing"));
-  return hasChanged(results[1]) ? { ok: true } : { ok: false, message: "캠페인 상태가 변경되었습니다." };
+  return hasChanged(results[1]) ? { ok: true } : { ok: false, message: "캠페인 상태가 바뀌었어요. 새로고침한 뒤 다시 확인해 주세요." };
 }
 
 export async function getDisposalBatchExportRows(env, id) {

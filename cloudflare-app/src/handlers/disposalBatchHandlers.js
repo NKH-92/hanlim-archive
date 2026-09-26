@@ -151,7 +151,7 @@ async function renderDisposalBatchDetails(request, env, session, id) {
 async function renderDisposalBatchEdit(env, session, id, override = null, error = "") {
   const batch = await getDisposalBatch(env, id);
   if (!batch) return notFoundPage(session);
-  if (batch.status !== "draft") return errorPage("초안 상태의 캠페인만 수정할 수 있습니다.", session, 409);
+  if (batch.status !== "draft") return errorPage("초안 상태의 캠페인만 수정할 수 있어요.", session, 409);
   const values = override || {
     title: batch.title,
     disposalReason: batch.disposal_reason,
@@ -172,7 +172,7 @@ async function renderDisposalBatchEdit(env, session, id, override = null, error 
 
 async function exportDisposalBatchCsv(env, id) {
   const rows = await getDisposalBatchExportRows(env, id);
-  if (!rows.length) return new Response("내보낼 동결 항목이 없습니다.", { status: 404 });
+  if (!rows.length) return new Response("내보낼 동결 항목이 없어요.", { status: 404 });
   const header = ["캠페인번호", "제목", "문서번호", "개정번호", "문서명", "대분류", "동결위치", "폐기예정연도", "처리결과", "사유", "처리시각"];
   const lines = rows.map((row) => [
     row.batch_code, row.title, row.document_number_snapshot, row.revision_number_snapshot,

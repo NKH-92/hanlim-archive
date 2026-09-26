@@ -44,9 +44,9 @@ export function bulkActionBar(action = "/documents/disposal/process", filters = 
     <dialog id="disposal-review-modal" class="modal disposal-review-modal" aria-labelledby="disposal-review-title">
       <form method="post" action="${escapeHtml(action)}" class="modal-body" data-bulk-form>
         <h2 id="disposal-review-title">실제 폐기 수량 확인</h2>
-        <p class="muted">문서 한 건을 실제 원본 한 부로 계산합니다. 한 번에 최대 ${Number(limit)}건까지 처리하며, 아래 문서와 실제 폐기할 원본이 같은지 확인해 주세요.</p>
+        <p class="muted">문서 한 건을 실제 원본 한 부로 계산해요. 한 번에 최대 ${Number(limit)}건까지 처리할 수 있어요. 아래 문서와 실제로 폐기할 원본이 같은지 확인해 주세요.</p>
         <p class="disposal-count-confirmation" aria-live="polite">
-          실제 폐기할 원본이 <strong data-bulk-confirm-count>0부</strong>가 맞습니까?
+          실제로 폐기할 원본이 <strong data-bulk-confirm-count>0부</strong>가 맞나요?
         </p>
         <ol class="disposal-review-list" data-bulk-summary></ol>
         <input type="hidden" name="ids" data-bulk-ids>
@@ -57,10 +57,10 @@ export function bulkActionBar(action = "/documents/disposal/process", filters = 
         <input type="hidden" name="disposalDueYear" value="${escapeHtml(filters.disposalDueYear || "")}">
         <label>폐기 사유 <em>*</em><textarea name="reason" rows="3" required></textarea></label>
         <label>승인 문서 참조<input name="approvalReference" placeholder="결재 번호 또는 관련 문서번호"></label>
-        <p class="danger-text">예를 누르면 선택한 원본은 즉시 폐기 상태로 변경되고 감사 이력에 기록됩니다.</p>
+        <p class="danger-text">폐기하면 선택한 원본은 바로 폐기 상태로 바뀌고 감사 이력에 기록돼요.</p>
         <div class="modal-actions">
-          <button type="button" class="button secondary" data-close-modal>취소</button>
-          <button type="submit" class="danger-button" name="confirmDisposal" value="1" data-bulk-confirm-button disabled>예, 폐기합니다</button>
+          <button type="button" class="button secondary" data-close-modal>닫기</button>
+          <button type="submit" class="danger-button" name="confirmDisposal" value="1" data-bulk-confirm-button disabled>네, 폐기할게요</button>
         </div>
       </form>
     </dialog>

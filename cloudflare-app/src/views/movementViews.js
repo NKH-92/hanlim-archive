@@ -33,7 +33,7 @@ export function movementFormPage({ session, document, slots, movements = [], err
         <label>보관 면 <em>*</em><select name="rackFace" required data-rack-face>${option("A", "1면", selectedFace)}${option("B", "2면", selectedFace)}</select></label>
         <label>이동 사유 <em>*</em><textarea name="reason" rows="3" maxlength="500" required placeholder="예: 1구역 재배치에 따른 위치 변경">${escapeHtml(values.reason || "")}</textarea></label>
         <div class="movement-preview" aria-live="polite">
-          <span>${escapeHtml(currentLocation)}</span><strong aria-hidden="true">→</strong><span data-movement-target>새 위치를 선택하세요.</span>
+          <span>${escapeHtml(currentLocation)}</span><strong aria-hidden="true">→</strong><span data-movement-target>새 위치를 선택해 주세요.</span>
         </div>
         <button type="submit" class="primary">위치 이동</button>
       </form>
@@ -54,7 +54,7 @@ function movementPreviewScript() {
       var face = form.querySelector('select[name="rackFace"]');
       var update = function () {
         var selected = slot && slot.options[slot.selectedIndex];
-        var label = selected && selected.value ? selected.textContent.trim() : '새 위치를 선택하세요.';
+        var label = selected && selected.value ? selected.textContent.trim() : '새 위치를 선택해 주세요.';
         if (selected && selected.value && face) label += ' / ' + (face.value === 'B' ? '2면' : '1면');
         if (target) target.textContent = label;
       };
@@ -77,7 +77,7 @@ export function movementHistory(rows, title = "위치 이동 이력") {
         <td>${escapeHtml(row.reason)}</td>
         <td>${escapeHtml(row.performed_by_name)} <small class="muted">${escapeHtml(row.performed_by_username)}</small></td>
       </tr>`).join("")}</tbody>
-    </table></div>` : emptyState("위치 이동 이력이 없습니다.")}
+    </table></div>` : emptyState("위치 이동 이력이 없어요.")}
   </section>`;
 }
 
@@ -85,7 +85,7 @@ export function movementsPage({ session, result, query = "" }) {
   const previousUrl = `/admin/movements?q=${encodeURIComponent(query)}&page=${Math.max(1, result.page - 1)}`;
   const nextUrl = `/admin/movements?q=${encodeURIComponent(query)}&page=${Math.min(result.totalPages, result.page + 1)}`;
   return page("위치 이동 이력", `
-    <section class="page-head"><div><h1>위치 이동 이력</h1><p class="page-sub">문서 위치 변경 전후와 사유를 조회합니다.</p></div></section>
+    <section class="page-head"><div><h1>위치 이동 이력</h1><p class="page-sub">문서를 어디에서 어디로 옮겼는지와 그 사유를 확인할 수 있어요.</p></div></section>
     <section class="panel">
       <form method="get" action="/admin/movements" class="filter-row movement-filter">
         <label>문서번호 또는 수행자<input name="q" value="${escapeHtml(query)}" placeholder="검색어"></label>

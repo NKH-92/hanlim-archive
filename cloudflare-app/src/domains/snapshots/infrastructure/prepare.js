@@ -22,10 +22,10 @@ import { createSnapshotPlan, systemSnapshotAuditStatement } from "./support.js";
 
 export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyPrepareRows, actor) {
   const snapshot = await getDocumentSnapshot(env, snapshotId);
-  if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾을 수 없습니다.");
+  if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾지 못했어요.");
   if (snapshot.status === "ready" || snapshot.status === "completed") return { ok: true, snapshot };
   if (snapshot.status !== "staging") {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "검증할 수 없는 동기화 작업 상태입니다.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "검증할 수 없는 동기화 작업 상태예요.");
   }
 
   const [rowResult, membershipResult, documentResult, revisionLinkResult, state] = await Promise.all([
@@ -79,7 +79,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     return failSnapshotValidation(
       env,
       snapshotId,
-      `전체 ${snapshot.total_count}행 중 ${receivedCount}행의 membership만 전송되었습니다.`,
+      `전체 ${snapshot.total_count}행 중 ${receivedCount}행만 전송됐어요. 파일을 다시 올려 주세요.`,
       actor,
       false,
       SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH
@@ -93,7 +93,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     return failSnapshotValidation(
       env,
       snapshotId,
-      `일상 변경 영향은 최대 ${FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems}건입니다. 최신 대장을 기준으로 작업을 나누세요.`,
+      `일상 변경 영향은 최대 ${FREE_TIER_BUDGET.excelSnapshotDeltaMaxItems}건이에요. 최신 대장을 기준으로 작업을 나눠 주세요.`,
       actor,
       false,
       SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH
@@ -103,7 +103,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     return failSnapshotValidation(
       env,
       snapshotId,
-      "검증 중 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요.",
+      "검증하는 동안 문서고가 바뀌었어요. 최신 엑셀로 다시 시작해 주세요.",
       actor,
       true,
       SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE
@@ -149,20 +149,20 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
         if (stagedNumbers.has(rowNumber)) continue;
         const document = documentsByKey.get(clean(membership.row_key));
         if (!document || document.sync_state !== "current") {
-          throw new Error(`${rowNumber}행의 기준 문서를 찾을 수 없습니다.`);
+          throw new Error(`${rowNumber}행의 기준 문서를 찾지 못했어요.`);
         }
         if (
           Number(membership.base_row_version || 0) > 0 &&
           Number(membership.base_row_version) !== Number(document.row_version)
         ) {
-          throw new Error(`${rowNumber}행의 기준 버전이 현재 문서와 다릅니다.`);
+          throw new Error(`${rowNumber}행의 기준 버전이 현재 문서와 달라요.`);
         }
         sourceRows.push(sourceRowFromCurrentDocument(document, membership, lookup));
       }
       sourceRows.sort((left, right) => Number(left.rowNumber) - Number(right.rowNumber));
     }
   } catch {
-    return failSnapshotValidation(env, snapshotId, "저장된 엑셀 행 또는 기준 membership을 읽을 수 없습니다.", actor);
+    return failSnapshotValidation(env, snapshotId, "저장된 엑셀 행이나 기준 목록을 읽지 못했어요. 파일을 다시 올려 주세요.", actor);
   }
 
   const prepared = prepareCanonicalSnapshotRows(sourceRows, {
@@ -262,7 +262,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     return failSnapshotValidation(
       env,
       snapshotId,
-      "검증 결과가 한 요청의 안전한 D1 payload 범위를 초과했습니다. 비고·태그 길이를 줄인 뒤 다시 시도하세요.",
+      "검증 결과가 한 번에 저장할 수 있는 크기를 넘었어요. 비고·태그 길이를 줄인 뒤 다시 시도해 주세요.",
       actor,
       false,
       SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD
@@ -334,7 +334,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
     return failSnapshotValidation(
       env,
       snapshotId,
-      "검증 중 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요.",
+      "검증하는 동안 문서고가 바뀌었어요. 최신 엑셀로 다시 시작해 주세요.",
       actor,
       true,
       SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE,
@@ -353,7 +353,7 @@ export async function prepareDocumentSnapshot(env, snapshotId, options, _legacyP
   };
 }
 async function failSnapshotValidation(env, snapshotId, message, actor, stale = false, code = SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, extras = {}) {
-  const summary = clean(message).slice(0, 2000) || "엑셀 검증에 실패했습니다.";
+  const summary = clean(message).slice(0, 2000) || "엑셀 검증을 통과하지 못했어요.";
   const actorSnapshot = auditActorSnapshot(actor);
   const statements = [
     env.DB.prepare(`

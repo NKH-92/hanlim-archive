@@ -82,7 +82,7 @@ export async function handleSelectedDisposal(request, env, session) {
     if (returnTo) return redirect(withToast(returnTo, "error"));
     return renderDisposalWorkspace(env, session, filters, {
       type: "error",
-      message: `선택 폐기는 한 번에 ${FREE_TIER_BUDGET.directBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`
+      message: `선택 폐기는 한 번에 ${FREE_TIER_BUDGET.directBulkDisposeMaxItems}건까지 처리할 수 있어요.`
     });
   }
   let created;
@@ -99,7 +99,7 @@ export async function handleSelectedDisposal(request, env, session) {
     if (returnTo) return redirect(withToast(returnTo, "error"));
     return renderDisposalWorkspace(env, session, filters, {
       type: "error",
-      message: "선택 문서 상태가 변경되었습니다. 목록을 새로고침한 뒤 다시 시도해 주세요."
+      message: "선택 문서 상태가 바뀌었어요. 목록을 새로고침한 뒤 다시 시도해 주세요."
     });
   }
   if (!created.ok) {
@@ -151,7 +151,7 @@ export async function handleBulkDispose(request, env, session) {
   if (ids.length > FREE_TIER_BUDGET.directBulkDisposeMaxItems) {
     return renderDisposalWorkspace(env, session, disposalFiltersFromReturn(returnTo), {
       type: "error",
-      message: `소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.directBulkDisposeMaxItems}건 이하만 처리할 수 있습니다.`
+      message: `소량 긴급 폐기는 한 번에 ${FREE_TIER_BUDGET.directBulkDisposeMaxItems}건까지 처리할 수 있어요.`
     });
   }
 
@@ -161,7 +161,7 @@ export async function handleBulkDispose(request, env, session) {
     || !Number.isInteger(confirmedTargetCount)
     || confirmedTargetCount !== ids.length
   ) {
-    return errorPage(`현재 선택한 폐기 대상은 ${ids.length}건입니다. 정확한 건수를 다시 확인해 주세요.`, session, 409);
+    return errorPage(`현재 선택한 폐기 대상은 ${ids.length}건이에요. 정확한 건수를 다시 확인해 주세요.`, session, 409);
   }
 
   const result = await disposeInChunks(env, ids, session, reason);
@@ -189,7 +189,7 @@ export async function handleFilteredDispose(request, env, session) {
   const reason = clean(form.get("reason"));
   const approvalReference = clean(form.get("approvalReference"));
   if (!reason || (!filters.categoryId && !filters.rackId && !filters.disposalDueYear)) {
-    return errorPage("폐기 사유와 하나 이상의 필터가 필요합니다.", session, 400);
+    return errorPage("폐기 사유를 입력하고 필터를 하나 이상 선택해 주세요.", session, 400);
   }
   const criteria = { ...filters, yearMode: "exact" };
   const targetCount = await countDisposalCandidates(env, criteria);
@@ -199,14 +199,14 @@ export async function handleFilteredDispose(request, env, session) {
     || !Number.isInteger(confirmedTargetCount)
     || confirmedTargetCount !== targetCount
   ) {
-    return errorPage(`현재 필터 전체 대상은 ${targetCount}건입니다. 총 폐기 문서 수를 다시 확인해 주세요.`, session, 409);
+    return errorPage(`현재 필터 전체 대상은 ${targetCount}건이에요. 총 폐기 문서 수를 다시 확인해 주세요.`, session, 409);
   }
   if (!targetCount) {
-    return errorPage("현재 조건에 맞는 보관중 문서가 없습니다.", session, 409);
+    return errorPage("현재 조건에 맞는 보관중 문서가 없어요. 필터를 다시 확인해 주세요.", session, 409);
   }
   if (targetCount > FREE_TIER_BUDGET.disposalBatchMaxItems) {
     return errorPage(
-      `정기폐기 한 캠페인의 안전 상한은 ${FREE_TIER_BUDGET.disposalBatchMaxItems}건입니다. 연도 또는 대분류 조건을 더 좁혀 주세요.`,
+      `정기폐기 한 캠페인의 안전 상한은 ${FREE_TIER_BUDGET.disposalBatchMaxItems}건이에요. 연도 또는 대분류 조건을 더 좁혀 주세요.`,
       session,
       409
     );
@@ -228,7 +228,7 @@ export async function handleFilteredDispose(request, env, session) {
   });
   if (!frozen.ok) {
     return errorPage(
-      `${frozen.message} 생성된 캠페인 초안은 캠페인 이력에서 다시 검토할 수 있습니다.`,
+      `${frozen.message} 생성된 캠페인 초안은 캠페인 이력에서 다시 검토할 수 있어요.`,
       session,
       409
     );
@@ -290,7 +290,7 @@ function feedbackFromParams(params) {
   return {
     type: skipped ? "warning" : "success",
     message: skipped
-      ? `폐기 ${disposed}건 완료, 상태 변경으로 ${skipped}건을 건너뛰었습니다.`
-      : `문서 ${disposed}건을 폐기했습니다.`
+      ? `폐기 ${disposed}건 완료, 상태가 바뀐 ${skipped}건은 건너뛰었어요.`
+      : `문서 ${disposed}건을 폐기했어요.`
   };
 }

@@ -5,7 +5,7 @@ import { isExpectedChangeAbort } from "../../../platform/d1/expectedChange.js";
 import { executeMutationBatch } from "../../../platform/d1/requestGateway.js";
 import { createDocumentRevisionPlan } from "./mutationPlans.js";
 
-const STALE_MESSAGE = "다른 사용자가 문서를 먼저 변경했습니다. 새로고침 후 다시 시도하세요.";
+const STALE_MESSAGE = "다른 사용자가 문서를 먼저 변경했어요. 새로고침한 뒤 다시 시도해 주세요.";
 
 export function validateDocumentRevisionInput(values, source = null) {
   const revisionNumber = clean(values?.revisionNumber);
@@ -13,17 +13,17 @@ export function validateDocumentRevisionInput(values, source = null) {
   const fieldErrors = {};
   const formErrors = [];
 
-  if (!revisionNumber) fieldErrors.revisionNumber = "새 개정번호를 입력하세요.";
-  else if (revisionNumber.length > 50) fieldErrors.revisionNumber = "개정번호는 50자 이내로 입력하세요.";
+  if (!revisionNumber) fieldErrors.revisionNumber = "새 개정번호를 입력해 주세요.";
+  else if (revisionNumber.length > 50) fieldErrors.revisionNumber = "개정번호는 50자 이내로 입력해 주세요.";
   else if (source && revisionNumber.toUpperCase() === String(source.revision_number).toUpperCase()) {
-    fieldErrors.revisionNumber = "현재 개정번호와 다른 번호를 입력하세요.";
+    fieldErrors.revisionNumber = "현재 개정번호와 다른 번호를 입력해 주세요.";
   }
 
-  if (!revisionDate) fieldErrors.revisionDate = "새 제·개정일을 입력하세요.";
-  else if (!isValidIsoDate(revisionDate)) fieldErrors.revisionDate = "올바른 제·개정일을 입력하세요.";
+  if (!revisionDate) fieldErrors.revisionDate = "새 제·개정일을 입력해 주세요.";
+  else if (!isValidIsoDate(revisionDate)) fieldErrors.revisionDate = "올바른 제·개정일을 입력해 주세요.";
 
   if (values?.confirmReplacement !== "1") {
-    formErrors.push("동일 바인더의 이전 개정본이 자동 폐기되는 것에 동의해야 합니다.");
+    formErrors.push("동일 바인더의 이전 개정본이 자동 폐기되는 것에 동의해 주세요.");
   }
 
   return {
@@ -40,9 +40,9 @@ export async function reviseDocument(env, sourceId, values, actor) {
     FROM documents
     WHERE id = ?
   `).bind(sourceId).first();
-  if (!source) return { ok: false, message: "문서를 찾을 수 없습니다." };
+  if (!source) return { ok: false, message: "문서를 찾지 못했어요. 검색에서 다시 찾아 주세요." };
   if (source.status !== "active" || source.sync_state !== "current") {
-    return { ok: false, message: "현재 보관 중인 문서만 개정할 수 있습니다." };
+    return { ok: false, message: "현재 보관 중인 문서만 개정할 수 있어요." };
   }
 
   const validation = validateDocumentRevisionInput(values, source);
@@ -51,7 +51,7 @@ export async function reviseDocument(env, sourceId, values, actor) {
   const expectedUpdatedAt = clean(values.expectedUpdatedAt);
   const expectedRowVersion = Number(values.expectedRowVersion);
   if (!expectedUpdatedAt || !Number.isInteger(expectedRowVersion) || expectedRowVersion <= 0) {
-    return { ok: false, message: "문서 개정 잠금 정보가 없습니다. 새로고침 후 다시 시도하세요." };
+    return { ok: false, message: "문서 개정 잠금 정보가 없어요. 새로고침한 뒤 다시 시도해 주세요." };
   }
 
   const existingLink = await env.DB.prepare(`
@@ -60,7 +60,7 @@ export async function reviseDocument(env, sourceId, values, actor) {
     WHERE previous_document_id = ?
   `).bind(sourceId).first();
   if (existingLink) {
-    return { ok: false, message: "이미 새 개정본으로 교체된 문서입니다.", replacementId: Number(existingLink.new_document_id) };
+    return { ok: false, message: "이미 새 개정본으로 교체된 문서예요.", replacementId: Number(existingLink.new_document_id) };
   }
 
   const duplicate = await env.DB.prepare(`
@@ -74,7 +74,7 @@ export async function reviseDocument(env, sourceId, values, actor) {
   if (duplicate) {
     return { ok: false, validation: {
       ok: false,
-      fieldErrors: { revisionNumber: "같은 문서번호와 개정번호가 이미 등록되어 있습니다." },
+      fieldErrors: { revisionNumber: "같은 문서번호와 개정번호가 이미 등록되어 있어요." },
       formErrors: []
     } };
   }
@@ -221,7 +221,7 @@ export async function reviseDocument(env, sourceId, values, actor) {
       : { ok: false, message: STALE_MESSAGE };
   } catch (error) {
     if (/DOCUMENT_CAPACITY_EXCEEDED/.test(String(error?.message || ""))) {
-      return { ok: false, message: "문서 대장이 30,000건 기술 상한에 도달해 새 개정본을 등록할 수 없습니다." };
+      return { ok: false, message: "문서 대장이 30,000건 기술 상한에 도달해서 새 개정본을 등록할 수 없어요. 운영 책임자에게 문의해 주세요." };
     }
     if (isExpectedChangeAbort(error) || /UNIQUE/i.test(String(error?.message || ""))) {
       return { ok: false, message: STALE_MESSAGE };

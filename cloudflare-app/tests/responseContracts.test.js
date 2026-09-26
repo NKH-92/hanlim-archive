@@ -51,7 +51,7 @@ test("unexpected rack save errors are logged without exposing raw details", asyn
   try {
     const response = await handleSaveRack(request, env, session);
     const html = await response.text();
-    assert.match(html, /랙을 저장하는 중 오류가 발생했습니다\./);
+    assert.match(html, /랙을 저장하는 중 오류가 발생했어요\./);
     assert.doesNotMatch(html, /SENSITIVE_D1_INTERNAL_DETAIL/);
   } finally {
     console.error = originalError;

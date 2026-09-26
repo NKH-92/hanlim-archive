@@ -63,7 +63,7 @@ test("User는 DB 권한 플래그에 해당하는 기능만 사용할 수 있다
   assert.equal(requirePermission(user, PERMISSIONS.MANAGE_DOCUMENTS), null);
   const denied = requirePermission(user, PERMISSIONS.MANAGE_USERS);
   assert.equal(denied.status, 403);
-  assert.match(await denied.text(), /접근 권한/);
+  assert.match(await denied.text(), /권한이 필요해요/);
 });
 
 test("코드에는 역할 정의 상수를 두지 않고 플래그 비교만 제공한다", async () => {
@@ -102,7 +102,7 @@ test("사용자 권한 화면은 DB 역할 템플릿 3종과 개별 예외 권�
   assert.match(html, /현재 구성: 사용자 지정/);
   assert.match(html, /name="expectedRowVersion" value="3"/);
   assert.match(html, /name="templateVersions" value="[^"]*&quot;document_manager&quot;:1[^"]*"/);
-  assert.match(html, /역할을 선택해 저장하면 서버가 그 역할의 표준 권한을 그대로 적용합니다/);
+  assert.match(html, /역할을 선택해 저장하면 서버가 그 역할의 표준 권한을 그대로 적용해요/);
   for (const permission of PERMISSION_KEYS) {
     assert.match(html, new RegExp(`name="${permission}"`));
   }
@@ -190,7 +190,7 @@ test("사용자 지정 저장만 체크박스를 사용하고, 편집된 템플�
       id
     );
     assert.equal(stale.status, 200);
-    assert.match(await stale.text(), /역할 템플릿이 변경되었습니다/);
+    assert.match(await stale.text(), /역할 템플릿이 바뀌었어요/);
     assert.equal(database.prepare("SELECT row_version FROM app_users WHERE id = ?").get(id).row_version, 2);
   } finally {
     database.close();

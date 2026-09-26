@@ -10,7 +10,7 @@ export function rackViewOrientation(rack, face = rack?.rack_face || "A") {
   return Object.freeze({
     origin: "left",
     originLabel: "왼쪽",
-    description: `${faceLabel}을 바라본 기준으로 왼쪽이 1열입니다.`
+    description: `${faceLabel}을 바라본 기준으로 왼쪽이 1열이에요.`
   });
 }
 

@@ -8,7 +8,7 @@ import { highlight } from "./searchFragments.js";
 
 export function documentResults(documents, opts = {}) {
   if (!documents.length) {
-    return emptyResult(opts.emptyMessage || "조건에 맞는 문서가 없습니다.", opts.emptyQuery);
+    return emptyResult(opts.emptyMessage || "조건에 맞는 문서가 없어요.", opts.emptyQuery);
   }
   return `
     <div class="table-wrap doc-table-wrap" data-paginate-root>

@@ -24,7 +24,7 @@ export function bulkCommandScript() {
           : '원본 ' + checked.length + '부 선택';
         if (bulkLimitNotice) {
           bulkLimitNotice.textContent = overLimit
-            ? '한 번에 ' + disposalLimit + '건까지 폐기할 수 있습니다. ' + (checked.length - disposalLimit) + '건을 해제하세요.'
+            ? '한 번에 ' + disposalLimit + '건까지 폐기할 수 있어요. ' + (checked.length - disposalLimit) + '건을 해제해 주세요.'
             : '';
           bulkLimitNotice.hidden = !overLimit;
         }
@@ -33,8 +33,8 @@ export function bulkCommandScript() {
         if (bulkConfirmButton) {
           bulkConfirmButton.disabled = checked.length === 0 || overLimit;
           bulkConfirmButton.textContent = checked.length
-            ? '예, 원본 ' + checked.length + '부를 폐기합니다'
-            : '예, 폐기합니다';
+            ? '네, 원본 ' + checked.length + '부를 폐기할게요'
+            : '네, 폐기할게요';
         }
         if (bulkSummary) {
           bulkSummary.innerHTML = '';
@@ -58,7 +58,7 @@ export function bulkCommandScript() {
         if (bulkDisposalButton) {
           bulkDisposalButton.disabled = overLimit;
           bulkDisposalButton.title = overLimit
-            ? '폐기는 한 번에 ' + disposalLimit + '건 이하만 선택하세요.'
+            ? '폐기는 한 번에 ' + disposalLimit + '건까지 선택해 주세요.'
             : '';
         }
       }
