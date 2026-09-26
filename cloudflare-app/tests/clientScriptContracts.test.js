@@ -7,6 +7,7 @@ import { escapeHtml } from "../src/ui/html/escape.js";
 import { EXCEL_SNAPSHOT_HEADERS } from "../src/domains/snapshots/domain/workbookSchema.js";
 import * as clientScriptModule from "../src/views/clientScript.js";
 import { excelSnapshotScript } from "../src/views/clientScript/excelSnapshots.js";
+import { landingShowreelScript } from "../src/views/clientScript/landingShowreel.js";
 import { navigationFeedbackScript, TOAST_MESSAGES } from "../src/views/clientScript/navigationFeedback.js";
 
 function sourceModules(directory = new URL("../src/", import.meta.url)) {
@@ -148,6 +149,99 @@ test("쿼리 기반 내비게이션은 추가 검색 조건이 있어도 가장 
 
   assert.equal(baseItem.attributes["aria-current"], undefined);
   assert.equal(disposedItem.attributes["aria-current"], "page");
+});
+
+test("랜딩 쇼릴은 누를 때만 재생하고 챕터 표시와 종료 후 행동을 영상 시간에 맞춘다", () => {
+  const document = { activeElement: null, fullscreenElement: null };
+  const fakeElement = (attributes = {}) => {
+    const classes = new Set();
+    return {
+      hidden: true,
+      attributes: { ...attributes },
+      listeners: {},
+      classList: {
+        toggle(name, force) { if (force) classes.add(name); else classes.delete(name); },
+        contains(name) { return classes.has(name); }
+      },
+      addEventListener(type, handler) { this.listeners[type] = handler; },
+      getAttribute(name) { return name in this.attributes ? this.attributes[name] : null; },
+      setAttribute(name, value) { this.attributes[name] = String(value); },
+      removeAttribute(name) { delete this.attributes[name]; },
+      focus() { document.activeElement = this; },
+      fire(type) { this.listeners[type]?.(); }
+    };
+  };
+  const video = Object.assign(fakeElement(), {
+    controls: true,
+    currentTime: 0,
+    ended: false,
+    playCount: 0,
+    play() { this.playCount += 1; return Promise.resolve(); }
+  });
+  const play = fakeElement();
+  const end = fakeElement();
+  const replay = fakeElement();
+  const endLink = fakeElement();
+  const heroLink = fakeElement();
+  end.querySelector = () => endLink;
+  const chapters = [[2.5, 5], [5, 12.1], [12.1, 15.2], [15.2, 17.5]]
+    .map(([from, to]) => fakeElement({ "data-reel-from": String(from), "data-reel-to": String(to) }));
+  const inside = new Set([video, play, end, replay, endLink]);
+  const reel = {
+    querySelector(selector) {
+      return { video, "[data-reel-play]": play, "[data-reel-end]": end, "[data-reel-replay]": replay }[selector] || null;
+    },
+    contains(element) { return inside.has(element); }
+  };
+  Object.assign(document, {
+    querySelector(selector) { return selector === "[data-landing-reel]" ? reel : null; },
+    querySelectorAll(selector) {
+      if (selector === "[data-reel-from]") return chapters;
+      return selector === "[data-reel-start]" ? [heroLink] : [];
+    }
+  });
+  const current = () => chapters.map((chapter) => chapter.getAttribute("aria-current"));
+  const played = () => chapters.map((chapter) => chapter.classList.contains("is-played"));
+
+  vm.runInNewContext(landingShowreelScript(), { Array, Number, document, mediaQuery: () => ({ matches: false }) });
+
+  // 스크립트가 붙으면 기본 컨트롤을 숨기고 포스터 위 재생 버튼을 보인다. 누르기 전에는 재생하지 않는다.
+  assert.equal(video.controls, false);
+  assert.equal(play.hidden, false);
+  assert.equal(video.playCount, 0);
+
+  play.fire("click");
+  video.fire("play");
+  assert.equal(video.playCount, 1);
+  assert.equal(video.controls, true);
+  assert.equal(play.hidden, true);
+  assert.equal(document.activeElement, video);
+
+  video.currentTime = 6;
+  video.fire("timeupdate");
+  assert.deepEqual(current(), [null, "true", null, null]);
+  assert.deepEqual(played(), [true, false, false, false]);
+
+  chapters[2].fire("click");
+  assert.equal(video.currentTime, 12.1);
+  assert.equal(video.playCount, 2);
+
+  video.currentTime = 20;
+  video.ended = true;
+  video.fire("ended");
+  assert.equal(video.controls, false);
+  assert.equal(end.hidden, false);
+  assert.equal(document.activeElement, endLink);
+  assert.deepEqual(current(), [null, null, null, null]);
+  assert.deepEqual(played(), [true, true, true, true]);
+
+  replay.fire("click");
+  assert.equal(video.currentTime, 0);
+  assert.equal(end.hidden, true);
+  assert.equal(video.playCount, 3);
+
+  heroLink.fire("click");
+  assert.equal(video.playCount, 4);
 });
 
 test("대분류 관리 목록은 이름·설명과 사용 상태로 즉시 좁혀 본다", () => {

@@ -21,7 +21,9 @@ const ICONS = Object.freeze({
   history: `<path d="M12 3a9 9 0 1 0 8.5 12h-2.2A6.8 6.8 0 1 1 12 5.2c1.8 0 3.4.7 4.6 1.9L14 9.7h6V3.7l-2 2A9 9 0 0 0 12 3Zm-1 4h2v5.4l3.7 2.2-1 1.7L11 13.6V7Z"/>`,
   close: `<path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5Z"/>`,
   bullets: `<path d="M4 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm4 .5h12v2H8V6ZM4 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm4 .5h12v2H8v-2ZM4 15.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm4 .5h12v2H8v-2Z"/>`,
-  external: `<path d="M14 3h7v7h-2V6.4l-8.3 8.3-1.4-1.4L17.6 5H14V3ZM5 5h5v2H6v11h11v-4h2v6H4V5h1Z"/>`
+  external: `<path d="M14 3h7v7h-2V6.4l-8.3 8.3-1.4-1.4L17.6 5H14V3ZM5 5h5v2H6v11h11v-4h2v6H4V5h1Z"/>`,
+  play: `<path d="M8 5v14l11-7L8 5Z"/>`,
+  replay: `<path d="M6.1 16A8 8 0 1 0 7.3 6.3L4 10M4 4v6h6" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
 });
 
 function dataUrl(body) {
@@ -50,7 +52,9 @@ export function iconStyles() {
     history: ["clock-rotate-left"],
     close: ["xmark"],
     bullets: ["list"],
-    external: ["arrow-up-right-from-square"]
+    external: ["arrow-up-right-from-square"],
+    play: ["play"],
+    replay: ["rotate-left"]
   };
   const rules = Object.entries(groups).map(([icon, names]) =>
     names.map((name) => `.fa-${name}`).join(",") + `{--icon-mask:${dataUrl(ICONS[icon])}}`

@@ -1,4 +1,5 @@
 // 인증 전 랜딩과 로그인 화면. 실제 업무 UI와 구분된 공개 소개 면을 구성한다.
+// 기능 설명은 쇼릴 영상과 챕터 문장이 맡고, 같은 내용을 반복하는 예시 섹션은 두지 않는다.
 
 import { escapeHtml } from "../ui/html/escape.js";
 import { alertDanger, alertWarning, page } from "./layout.js";
@@ -9,17 +10,14 @@ export function loginPage({ returnUrl, error, setupWarning, support = { departme
     ? `<a href="mailto:${escapeHtml(support.email)}">${escapeHtml(support.email)}</a>`
     : "소속 부서의 문서고 운영 관리자";
   const loginAlert = error ? alertDanger(error === "locked"
-    ? "로그인 실패가 반복되어 이 접속의 로그인이 잠시 제한되었습니다. 10분 후 다시 시도하세요."
-    : "아이디 또는 비밀번호가 올바르지 않습니다.") : "";
+    ? "로그인을 여러 번 실패해서 잠시 멈췄어요. 10분 뒤에 다시 시도해 주세요."
+    : "이메일이나 비밀번호를 다시 확인해 주세요.") : "";
   const setupAlert = setupWarning ? alertWarning(setupWarning) : "";
   const supportContext = supportName ? ` (${escapeHtml(supportName)})` : "";
 
   const body = [
     landingHeaderAndHero(),
-    landingSearchSection(),
-    landingLocationSection(),
-    landingWorkflowSection(),
-    landingControlSection(),
+    landingShowreelSection(),
     landingLoginSection({ returnUrl: escapeHtml(returnUrl), setupAlert, loginAlert, supportAction, supportContext }),
     landingFooter()
   ].join("");
@@ -34,12 +32,6 @@ function landingHeaderAndHero() {
           <img class="landing-brand-logo" src="/images/hanlim-pharm-logo.svg" alt="">
           <span><strong>한림문서고</strong><small>한림제약 QA</small></span>
         </a>
-        <nav class="landing-nav" aria-label="시스템 소개">
-          <a href="#search">문서 검색</a>
-          <a href="#location">보관 위치</a>
-          <a href="#workflow">업무 흐름</a>
-          <a href="#control">운영 원칙</a>
-        </nav>
         <a class="button landing-header-login" href="#login">로그인</a>
       </div>
     </header>
@@ -55,138 +47,67 @@ function landingHeaderAndHero() {
           <img class="landing-hero-rack" src="/images/landing/archive-hero-desktop-v2.webp" width="1672" height="941" fetchpriority="high" alt="금속 이동식 랙에 노랑과 청록색 문서 바인더가 정리된 모습">
         </picture>
         <div class="landing-hero-details">
-          <p class="landing-lead">문서번호와 이름으로 찾고,<br>어느 랙, 몇 번째 선반인지 바로 확인하세요.</p>
+          <p class="landing-lead">문서번호나 이름으로 찾으면<br>어느 랙, 몇 번째 선반인지 바로 알려줘요.</p>
           <div class="landing-hero-actions">
             <a class="button landing-primary-cta" href="#login">문서고 로그인 <span aria-hidden="true">→</span></a>
-            <a class="button secondary landing-secondary-cta" href="#search">기능 살펴보기</a>
-          </div>
-          <p class="landing-account-note">승인된 사내 계정으로 이용할 수 있습니다.</p>
-        </div>
-      </div>
-    </section>`;
-}
-
-function landingSearchSection() {
-  return `
-    <section class="landing-section" id="search">
-      <div class="landing-container landing-split landing-search-layout">
-        <div class="landing-copy-block">
-          <h2>기억나는 이름으로,<br>필요한 문서를.</h2>
-          <p>문서명이나 번호로 검색하고,<br>분류·태그·구역으로 원하는 문서를 좁혀보세요.</p>
-
-        </div>
-        <div class="landing-search-demo">
-        <div class="landing-feature-visual landing-search-visual" role="img" aria-label="정적인 검색 예시. 제품표준서를 검색해 선택한 QA-SP-001 개정 04의 위치가 1구역 13-2면, 4열 3선반으로 표시됩니다.">
-          <div class="landing-visual-label"><span>문서 검색</span><small>화면 예시</small></div>
-          <div class="landing-search-query"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><strong>제품표준서</strong></div>
-          <div class="landing-filter-line"><b>보관중</b><b>1구역</b></div>
-          <div class="landing-result-list">
-            <div class="landing-result-item is-selected"><span><small class="landing-selection-label">선택한 문서</small><strong><mark>제품표준서</mark></strong><small class="mono">QA-SP-001 · Rev.04</small></span><span class="landing-result-location"><b>1구역 · 13-2면</b><small class="landing-slot-label">4열 · 3선반</small></span></div>
-            <div class="landing-result-item"><span><strong><mark>제품표준서</mark> 작성 지침</strong><small class="mono">QA-SOP-012 · Rev.02</small></span><span class="landing-result-location"><b>1구역 · 04-1면</b><small>6열 · 2선반</small></span></div>
-          </div>
-        </div>
-        <a class="landing-example-link" href="#location">이 문서의 보관 위치 보기 <span aria-hidden="true">→</span></a>
-        </div>
-      </div>
-    </section>`;
-}
-
-function landingLocationSection() {
-  return `
-    <section class="landing-section landing-section-soft" id="location" tabindex="-1" aria-labelledby="landing-location-title">
-      <div class="landing-container landing-split landing-split-reverse">
-        <div class="landing-feature-visual landing-location-visual" role="img" aria-label="1구역 13-2면의 4열 3선반을 강조한 보관 위치 예시">
-          <div class="landing-visual-label"><span>보관 위치</span><small>화면 예시</small></div>
-          <div class="landing-location-head"><span><small>제품표준서 · QA-SP-001 · Rev.04</small><strong>1구역 · 13-2면</strong></span><b>4열 · 3선반</b></div>
-          ${landingRackExample()}
-          <div class="landing-rack-axis"><span>면을 바라본 모습</span><span>왼쪽 1열 · 아래 1선반</span></div>
-        </div>
-        <div class="landing-copy-block">
-          <h2 id="landing-location-title">찾았다면,<br>이제 꺼낼 위치까지.</h2>
-          <p>구역과 랙, 면과 열, 선반까지.<br>문서 상세의 위치 표시를 따라 실제 문서가 있는 곳으로 이동하세요.</p>
-          <div class="landing-inline-note"><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span><strong>현장에서도 같은 기준으로</strong>모든 랙은 왼쪽부터 1열, 아래부터 1선반입니다.</span></div>
-        </div>
-      </div>
-    </section>`;
-}
-
-function landingRackExample() {
-  // 선반 번호는 바닥에서 올라간다. 화면의 네 번째 행이 3선반이다.
-  const columns = Array.from({ length: 7 }, (_, index) => `<span>${index + 1}열</span>`).join("");
-  const rows = Array.from({ length: 6 }, (_, index) => {
-    const shelf = 6 - index;
-    const cells = Array.from({ length: 7 }, (_, column) => shelf === 3 && column === 3
-      ? `<span class="is-hit">문서</span>`
-      : `<span></span>`).join("");
-    return `<div class="landing-rack-row"><small>${shelf}선반</small>${cells}</div>`;
-  }).join("");
-  return `<div class="landing-rack-diagram" aria-hidden="true"><div class="landing-rack-columns"><span></span>${columns}</div>${rows}</div>`;
-}
-
-function landingWorkflowSection() {
-  return `
-    <section class="landing-section landing-workflow-section" id="workflow">
-      <div class="landing-container landing-workflow-layout">
-        <div class="landing-section-heading">
-          <h2>문서가 바뀌어도,<br>이력은 이어집니다.</h2>
-          <p>등록부터 개정, 이동, 폐기까지.<br>현재 상태와 함께 문서가 지나온 이력을 확인합니다.</p>
-        </div>
-        <div class="landing-history">
-          <div class="landing-history-current">
-            <div class="landing-visual-label"><span>현재 보관 정보</span><small>화면 예시</small></div>
-            <h3>제품표준서</h3><p class="mono">QA-SP-001</p>
-            <dl class="landing-current-facts">
-              <div><dt>현재 개정</dt><dd class="mono">Rev.04</dd></div>
-              <div><dt>보관 위치</dt><dd>1구역 · 13-2면<br><span>4열 · 3선반</span></dd></div>
-              <div><dt>상태</dt><dd>보관중</dd></div>
-            </dl>
-          </div>
-          <div class="landing-history-records">
-            <div class="landing-visual-label"><span>변경 기록</span><small>최근 변경부터 · 예시</small></div>
-            <ol class="landing-record-list" aria-label="제품표준서 변경 기록 예시">
-              <li><span class="landing-record-kind">이동</span><div><p class="landing-record-change"><span><small>이전 위치</small>13-1면</span><span class="landing-record-arrow" aria-label="에서">→</span><span><small>현재 위치</small><strong>13-2면</strong></span></p><p class="landing-record-note">1구역 · 4열 · 3선반 / 사유: 보관 위치 재배치</p></div></li>
-              <li><span class="landing-record-kind">개정</span><div><p class="landing-record-change"><span><small>이전본</small><span class="mono">Rev.03</span></span><span class="landing-record-arrow" aria-label="에서">→</span><span><small>현재본</small><strong class="mono">Rev.04</strong></span></p><p class="landing-record-note">사유: 문서 내용 개정</p></div></li>
-              <li><span class="landing-record-kind">등록</span><div><p class="landing-record-change"><strong class="mono">Rev.01</strong><span>최초 등록</span></p><p class="landing-record-note">문서번호와 최초 보관 위치 기록</p></div></li>
-            </ol>
-            <p class="landing-history-retention">폐기 이후에도 처리 기록은 이어집니다.</p>
+            <a class="button secondary landing-secondary-cta" href="#showreel" data-reel-start><i class="fa-solid fa-play" aria-hidden="true"></i>20초 영상 보기</a>
           </div>
         </div>
       </div>
     </section>`;
 }
 
-function landingControlSection() {
+// 쇼릴 챕터는 영상 편집 타임라인(초)과 맞춘다. 0–2.5초는 도입, 17.5초부터는 엔드 카드다.
+// 챕터 문장은 영상을 재생하지 않는 사람에게 서비스를 설명하는 글이자 영상의 대체 텍스트다.
+const SHOWREEL_CHAPTERS = Object.freeze([
+  { number: "01", name: "문서 검색", line: "기억나는 이름으로 찾아요", from: 2.5, to: 5 },
+  { number: "02", name: "보관 위치", line: "선반 위치까지 바로 보여요", from: 5, to: 12.1 },
+  { number: "03", name: "변경 이력", line: "옮기고 고쳐도 기록이 이어져요", from: 12.1, to: 15.2 },
+  { number: "04", name: "운영 원칙", line: "권한만큼 쓰고, 바뀐 건 남겨요", from: 15.2, to: 17.5 }
+]);
+
+function landingShowreelSection() {
+  const chapters = SHOWREEL_CHAPTERS.map(({ number, name, line, from, to }) => `
+            <li><button type="button" class="landing-reel-chapter" data-reel-from="${from}" data-reel-to="${to}"><span class="landing-reel-bar" aria-hidden="true"></span><small class="landing-reel-chapter-meta"><b>${number}</b> ${name} · <span class="mono">0:${String(Math.floor(from)).padStart(2, "0")}</span><span class="sr-only">부터 재생</span></small><strong class="landing-reel-chapter-line">${line}</strong></button></li>`).join("");
+  // 자동 재생하지 않는다. 포스터만 먼저 보이고 영상은 사용자가 재생할 때 받는다.
   return `
-    <section class="landing-section landing-control-section" id="control">
-      <div class="landing-container">
-        <div class="landing-section-heading">
-          <h2>믿고 사용하는 업무의 기준</h2>
-          <p>필요한 권한으로 일하고, 변경은 기록으로 남깁니다.</p>
+    <section class="landing-reel" id="showreel" tabindex="-1" aria-labelledby="landing-reel-title">
+      <div class="landing-reel-inner">
+        <div class="landing-reel-head">
+          <h2 id="landing-reel-title">20초로 먼저 보기</h2>
+          <p>화면 예시 영상 · 소리 있음</p>
         </div>
-        <div class="landing-control-grid">
-          <article><h3>역할에 맞는 권한</h3><p>조회·등록·이동·폐기를 맡은 업무와 권한에 따라 이용합니다.</p></article>
-          <article><h3>변경 과정의 기록</h3><p>문서와 위치의 변경, 주요 관리 작업의 이력을 확인합니다.</p></article>
-          <article><h3>계정 접근 보호</h3><p>반복 로그인 실패를 제한하고 사용중지된 계정의 접근을 막습니다.</p></article>
+        <div class="landing-reel-stage" data-landing-reel>
+          <div class="landing-reel-frame">
+            <video class="landing-reel-video" controls preload="none" poster="/images/landing/archive-showreel-poster-v1.webp" width="1920" height="1080" aria-label="한림문서고 20초 소개 영상" aria-describedby="landing-reel-summary">
+              <source src="/media/landing/archive-showreel-v1.mp4" type="video/mp4">
+            </video>
+            <button type="button" class="landing-reel-play" data-reel-play hidden><span class="landing-reel-play-icon"><i class="fa-solid fa-play" aria-hidden="true"></i></span><span>영상 재생</span><small class="mono">0:20</small></button>
+          </div>
+          <div class="landing-reel-end" data-reel-end hidden>
+            <a class="button landing-primary-cta" href="#login">문서고 로그인 <span aria-hidden="true">→</span></a>
+            <button type="button" class="button secondary landing-reel-replay" data-reel-replay><i class="fa-solid fa-rotate-left" aria-hidden="true"></i>다시 보기</button>
+          </div>
         </div>
-        <div class="landing-source-principle">
-          <strong>공식 원본은 승인·서명된 문서대장입니다.</strong>
-          <p>한림문서고는 승인된 대장을 기준으로 검색·위치 확인·이력 추적을 돕는 운영 시스템입니다.</p>
-        </div>
+        <p class="sr-only" id="landing-reel-summary">제품표준서를 이름으로 찾고, 1구역 13-2면 4열 3선반의 보관 위치와 개정·이동 이력, 운영 원칙까지 차례로 보여주는 20초 영상이에요. 내레이션 없이 화면 글자와 음악으로 보여주고, 장면마다 요점은 아래 챕터 문장에 있어요.</p>
+        <ol class="landing-reel-chapters" aria-label="영상 챕터">${chapters}
+        </ol>
       </div>
     </section>`;
 }
 
 function landingLoginSection({ returnUrl, setupAlert, loginAlert, supportAction, supportContext }) {
+  // 공식 원본 안내는 GMP 기준이라 영상에 없더라도 로그인 옆에 항상 글로 남긴다.
   return `
     <section class="landing-login-section" aria-label="문서고 접속">
       <div class="landing-container landing-login-grid">
         <div class="landing-login-copy">
           <h2>문서고에서<br>업무를 이어가세요.</h2>
-          <p>승인된 사내 계정으로 이용할 수 있습니다.</p>
+          <p class="landing-source-note"><strong>공식 원본은 승인·서명된 문서대장이에요.</strong>한림문서고는 이 대장을 기준으로 문서를 찾고, 위치와 이력을 확인하도록 도와요.</p>
           <div class="landing-login-signature"><span>한림제약</span><span>QA 문서고 관리 시스템</span></div>
         </div>
         <div class="login-panel landing-login-card" id="login" tabindex="-1" aria-labelledby="landing-login-title">
-          <div class="landing-login-title"><div class="landing-login-brand"><img class="login-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약"><h2 id="landing-login-title">문서고 로그인</h2></div><p>사내 이메일과 비밀번호를 입력하세요.</p></div>
+          <div class="landing-login-title"><div class="landing-login-brand"><img class="login-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약"><h2 id="landing-login-title">문서고 로그인</h2></div><p>승인된 사내 계정으로 로그인해 주세요.</p></div>
           ${setupAlert}
           ${loginAlert}
           <form method="post" action="/login" class="stack landing-login-form">
@@ -197,8 +118,8 @@ function landingLoginSection({ returnUrl, setupAlert, loginAlert, supportAction,
           </form>
           <details class="login-help">
             <summary>계정이 없거나 로그인이 안 되나요?</summary>
-            <p>비밀번호 분실·계정 잠금·사용중지 상태는 ${supportAction}${supportContext}에게 계정 이메일과 발생 시각을 알려주세요.</p>
-            <p class="muted">등록된 사내 이메일 계정만 로그인할 수 있습니다. 신규 계정은 운영 관리자가 생성·승인합니다.</p>
+            <p>비밀번호를 잊었거나, 계정이 잠겼거나 사용중지됐다면 ${supportAction}${supportContext}에게 계정 이메일과 문제가 생긴 시각을 알려 주세요.</p>
+            <p class="muted">등록된 사내 이메일로 로그인할 수 있어요. 새 계정은 운영 관리자가 만들어 드려요.</p>
           </details>
         </div>
       </div>

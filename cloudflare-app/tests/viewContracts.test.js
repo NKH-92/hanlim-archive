@@ -23,7 +23,7 @@ test("로그인과 최초 비밀번호 변경 화면은 등록 이메일·보안
     setupWarning: `<img src=x onerror=alert(1)>`,
   }), "로그인");
 
-  assert.match(login, /등록된 사내 이메일 계정만 로그인할 수 있습니다/);
+  assert.match(login, /등록된 사내 이메일로 로그인할 수 있어요/);
   assert.match(login, /<input name="username" type="email" autocomplete="username" required>/);
   assertPostForm(login, "/login", ["returnUrl", "username", "password"], { csrf: false });
   assert.doesNotMatch(login, /href="\/signup"/);
