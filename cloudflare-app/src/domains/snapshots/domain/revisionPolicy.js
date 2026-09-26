@@ -35,7 +35,7 @@ export function validateRevisionHistorySnapshotChanges(items = [], revisionLinks
       errors.push(policyError(
         item,
         "documentNumber/revisionNumber",
-        "개정 이력에 연결된 문서의 문서번호·개정번호는 엑셀에서 변경할 수 없습니다. 동일 바인더 교체는 문서 개정, 다른 바인더 추가는 문서 추가 기능을 사용하세요."
+        "개정 이력에 연결된 문서의 문서번호·개정번호는 엑셀에서 바꿀 수 없어요. 같은 바인더를 교체할 때는 문서 개정을, 다른 바인더를 추가할 때는 문서 등록을 사용해 주세요."
       ));
     }
 
@@ -47,7 +47,7 @@ export function validateRevisionHistorySnapshotChanges(items = [], revisionLinks
       errors.push(policyError(
         item,
         "status",
-        "개정으로 자동 폐기된 이전본은 엑셀에서 폐기 해제할 수 없습니다. 현재 개정본을 확인하세요."
+        "개정으로 자동 폐기된 이전본은 엑셀에서 폐기를 해제할 수 없어요. 현재 개정본을 확인해 주세요."
       ));
     }
   }

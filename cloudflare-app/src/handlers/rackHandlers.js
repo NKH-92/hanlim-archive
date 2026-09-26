@@ -140,7 +140,7 @@ export async function handleSaveRack(request, env, session, id = 0) {
       values,
       action: id ? `/racks/${id}/edit` : "/racks",
       title: id ? "랙 수정" : "랙 추가",
-      error: `구역은 ${RACK_ZONES.join(", ")}, 랙 번호는 1~${MAX_RACKS_PER_ZONE} 사이여야 합니다.`
+      error: `구역은 ${RACK_ZONES.join(", ")} 중 하나, 랙 번호는 1~${MAX_RACKS_PER_ZONE} 사이로 입력해 주세요.`
     });
   }
 
@@ -152,7 +152,7 @@ export async function handleSaveRack(request, env, session, id = 0) {
         values,
         action: `/racks/${id}/edit`,
         title: "랙 수정",
-        error: "문서가 보관된 랙은 비활성화할 수 없습니다."
+        error: "문서가 보관된 랙은 비활성화할 수 없어요. 문서를 먼저 다른 위치로 옮겨 주세요."
       });
     }
   }
@@ -165,7 +165,7 @@ export async function handleSaveRack(request, env, session, id = 0) {
         values,
         action: `/racks/${id}/edit`,
         title: "랙 수정",
-        error: "2면에 문서가 있는 랙은 단면 랙으로 변경할 수 없습니다."
+        error: "2면에 문서가 있는 랙은 단면 랙으로 바꿀 수 없어요. 2면 문서를 먼저 옮겨 주세요."
       });
     }
   }
@@ -180,7 +180,7 @@ export async function handleSaveRack(request, env, session, id = 0) {
         values,
         action: id ? `/racks/${id}/edit` : "/racks",
         title: id ? "랙 수정" : "랙 추가",
-        error: error.message
+        error: "다른 사용자가 이 랙을 먼저 바꿨어요. 새로고침한 뒤 다시 시도해 주세요."
       });
     }
     const duplicate = error instanceof Error
@@ -193,7 +193,7 @@ export async function handleSaveRack(request, env, session, id = 0) {
       values,
       action: id ? `/racks/${id}/edit` : "/racks",
       title: id ? "랙 수정" : "랙 추가",
-      error: duplicate ? "같은 구역에 동일한 랙 번호가 이미 있습니다." : "랙을 저장하는 중 오류가 발생했습니다."
+      error: duplicate ? "같은 구역에 동일한 랙 번호가 이미 있어요. 다른 번호를 입력해 주세요." : "랙을 저장하는 중 오류가 발생했어요. 잠시 뒤 다시 시도해 주세요."
     });
   }
 }

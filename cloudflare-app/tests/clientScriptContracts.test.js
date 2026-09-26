@@ -69,8 +69,8 @@ test("정적 client 조립은 직렬화 소스·초기화 순서·검색 계약�
   }
 
   assert.ok(script.includes("'/api/search-suggestions?q=' + encodeURIComponent(q)"));
-  assert.ok(script.includes("검색 중…"));
-  assert.ok(script.includes("검색 결과가 없습니다."));
+  assert.ok(script.includes("검색하고 있어요…"));
+  assert.ok(script.includes("검색 결과가 없어요."));
   assert.ok(script.includes("window.HanlimResults.resultRow"));
   assert.ok(script.includes("window.HanlimResults.resultTable"));
   assert.ok(script.includes("data-search-more"));
@@ -363,7 +363,7 @@ test("인쇄용 관리대장은 담당자·확인자 서명란을 반복 인쇄�
   const script = excelSnapshotScript();
 
   assert.deepEqual(EXCEL_SNAPSHOT_HEADERS.slice(5, 8), ["문서종류", "랙 위치 (구역)", "랙 위치 (번호)"]);
-  assert.match(script, /한글 14개 열[\s\S]*현재 대장을 다시 추출하세요/);
+  assert.match(script, /한글 14개 열[\s\S]*현재 대장을 다시 추출해 주세요/);
   assert.ok(script.includes("print.mergeCells('A2:J3')"));
   assert.ok(script.includes("['K2:L2', 'K3:L3', '담당자"));
   assert.ok(script.includes("['M2:N2', 'M3:N3', '확인자"));

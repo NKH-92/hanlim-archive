@@ -50,10 +50,10 @@ export async function getDocumentImportItems(env, jobId, { status = "", limit = 
 
 export async function createDocumentImportJob(env, { sourceName = "", items = [] } = {}, actor) {
   if (!Array.isArray(items) || items.length === 0) {
-    return { ok: false, message: "가져올 문서가 없습니다." };
+    return { ok: false, message: "가져올 문서가 없어요. CSV 내용을 확인해 주세요." };
   }
   if (items.length > FREE_TIER_BUDGET.csvImportMaxItems) {
-    return { ok: false, message: `CSV 가져오기는 한 번에 ${FREE_TIER_BUDGET.csvImportMaxItems}건까지 처리합니다.` };
+    return { ok: false, message: `CSV 가져오기는 한 번에 ${FREE_TIER_BUDGET.csvImportMaxItems}건까지 처리해요. 파일을 나누어 가져와 주세요.` };
   }
   const normalizedItems = items.map((item, index) => ({
     rowNumber: Number(item.rowNumber) || index + 2,
@@ -63,7 +63,7 @@ export async function createDocumentImportJob(env, { sourceName = "", items = []
   if (disposedCount > 0 && !hasPermission(actor, PERMISSIONS.MANAGE_DISPOSALS)) {
     return {
       ok: false,
-      message: `폐기 상태 문서 ${disposedCount}건이 포함되어 폐기 관리 권한이 필요합니다.`
+      message: `폐기 상태 문서 ${disposedCount}건이 포함되어 있어서 폐기 관리 권한이 필요해요.`
     };
   }
   const temporaryCode = `IMP-TEMP-${crypto.randomUUID()}`;
@@ -135,9 +135,9 @@ function chunkItems(items, size) {
 
 export async function processDocumentImportJob(env, jobId, actor) {
   const work = await getNextImportWork(env, jobId);
-  if (!work) return { ok: false, message: "CSV 가져오기 작업을 찾을 수 없습니다." };
+  if (!work) return { ok: false, message: "CSV 가져오기 작업을 찾지 못했어요." };
   if (work.job_status === "completed") return { ok: true, done: true, job: importJobFromWork(work) };
-  if (work.job_status === "cancelled") return { ok: false, message: "취소된 가져오기 작업입니다." };
+  if (work.job_status === "cancelled") return { ok: false, message: "취소된 가져오기 작업이에요." };
   if (!work.item_id) {
     const aggregate = [
       createImportLifecycleAuditStatement(env, jobId, actor, "complete", "CSV 가져오기 작업 완료"),
@@ -159,7 +159,7 @@ export async function processDocumentImportJob(env, jobId, actor) {
   if (Number(disposedStaged?.count || 0) > 0 && !hasPermission(actor, PERMISSIONS.MANAGE_DISPOSALS)) {
     return {
       ok: false,
-      message: `저장된 가져오기 작업에 폐기 상태 행 ${Number(disposedStaged.count)}건이 있어 폐기 관리 권한이 필요합니다.`
+      message: `저장된 가져오기 작업에 폐기 상태 행 ${Number(disposedStaged.count)}건이 있어서 폐기 관리 권한이 필요해요.`
     };
   }
 
@@ -167,7 +167,7 @@ export async function processDocumentImportJob(env, jobId, actor) {
   try {
     payload = normalizeStagedPayload(JSON.parse(work.payload_json));
   } catch {
-    return failDocumentImportItem(env, jobId, work.item_id, "저장된 행 데이터를 읽을 수 없습니다.", actor);
+    return failDocumentImportItem(env, jobId, work.item_id, "저장된 행 데이터를 읽지 못했어요.", actor);
   }
   const validationError = validateWorkPayload(work, payload);
   if (validationError) {
@@ -176,7 +176,7 @@ export async function processDocumentImportJob(env, jobId, actor) {
   if (payload.status === "disposed" && !hasPermission(actor, PERMISSIONS.MANAGE_DISPOSALS)) {
     return {
       ok: false,
-      message: "저장된 가져오기 행에 폐기 상태가 있어 폐기 관리 권한이 필요합니다."
+      message: "저장된 가져오기 행에 폐기 상태가 있어서 폐기 관리 권한이 필요해요."
     };
   }
 
@@ -301,7 +301,7 @@ export async function processDocumentImportJob(env, jobId, actor) {
     `).bind(temporaryCode, work.item_id, jobId),
     env.DB.prepare(`
       UPDATE document_import_items
-      SET status = 'failed', error_message = '처리 시점에 대분류, 태그 또는 위치가 변경되었습니다.',
+      SET status = 'failed', error_message = '처리하는 동안 대분류, 태그나 위치가 바뀌었어요.',
           processed_at = CURRENT_TIMESTAMP, processing_token = NULL
       WHERE id = ? AND job_id = ? AND status = 'pending' AND processing_token = ?
     `).bind(work.item_id, jobId, token),
@@ -340,7 +340,7 @@ export async function processDocumentImportJob(env, jobId, actor) {
 }
 
 export async function failDocumentImportItem(env, jobId, itemId, message, actor) {
-  const cleanMessage = clean(message) || "문서를 등록할 수 없습니다.";
+  const cleanMessage = clean(message) || "문서를 등록하지 못했어요.";
   const statements = [
     env.DB.prepare(`
       UPDATE document_import_items
@@ -360,10 +360,10 @@ export async function failDocumentImportItem(env, jobId, itemId, message, actor)
 
 export async function cancelDocumentImportJob(env, id, actor) {
   const job = await getDocumentImportJob(env, id);
-  if (!job) return { ok: false, message: "CSV 가져오기 작업을 찾을 수 없습니다." };
+  if (!job) return { ok: false, message: "CSV 가져오기 작업을 찾지 못했어요." };
   if (job.status === "cancelled") return { ok: true };
   if (!new Set(["ready", "processing"]).has(job.status)) {
-    return { ok: false, message: "완료된 가져오기 작업은 취소할 수 없습니다." };
+    return { ok: false, message: "완료된 가져오기 작업은 취소할 수 없어요." };
   }
   const guardSql = "FROM document_import_jobs WHERE id = ? AND status IN ('ready', 'processing')";
   const statements = [
@@ -378,7 +378,7 @@ export async function cancelDocumentImportJob(env, id, actor) {
     `).bind(id)
   ];
   const results = await executeMutationBatch(env, createImportPlan("cancel", statements, "ready-or-processing"));
-  return hasChanged(results[1]) ? { ok: true } : { ok: false, message: "작업 상태가 변경되었습니다." };
+  return hasChanged(results[1]) ? { ok: true } : { ok: false, message: "작업 상태가 바뀌었어요. 새로고침한 뒤 다시 확인해 주세요." };
 }
 
 export async function getDocumentImportFailureRows(env, id) {
@@ -533,16 +533,16 @@ function createDocumentImportAuditStatement(env, temporaryCode, actor) {
 
 function validateWorkPayload(work, payload) {
   const values = payload.values;
-  if (!values.documentNumber || !values.revisionNumber || !values.documentName) return "필수 문서 정보가 없습니다.";
+  if (!values.documentNumber || !values.revisionNumber || !values.documentName) return "문서번호·개정번호·문서명을 입력해 주세요.";
   if (!Number.isInteger(values.categoryId) || values.categoryId <= 0 || !Number(work.category_active)) {
-    return "사용 가능한 대분류가 아닙니다.";
+    return "사용할 수 있는 대분류가 아니에요.";
   }
   if (!Number.isInteger(values.rackSlotId) || values.rackSlotId <= 0 || !Number(work.slot_active) || !Number(work.rack_active)) {
-    return "사용 가능한 보관 위치가 아닙니다.";
+    return "사용할 수 있는 보관 위치가 아니에요.";
   }
-  if (!new Set(["A", "B"]).has(values.rackFace)) return "보관 면 값이 올바르지 않습니다.";
-  if (Number(work.is_single_sided) && values.rackFace === "B") return "단면 랙은 2면을 선택할 수 없습니다.";
-  if (Number(work.requested_tag_count || 0) !== Number(work.active_tag_count || 0)) return "사용할 수 없는 태그가 포함되어 있습니다.";
+  if (!new Set(["A", "B"]).has(values.rackFace)) return "보관 면은 1면이나 2면으로 입력해 주세요.";
+  if (Number(work.is_single_sided) && values.rackFace === "B") return "단면 랙은 2면을 선택할 수 없어요.";
+  if (Number(work.requested_tag_count || 0) !== Number(work.active_tag_count || 0)) return "사용할 수 없는 태그가 들어 있어요.";
   return "";
 }
 
@@ -583,8 +583,8 @@ function importJobFromWork(work) {
 
 function friendlyImportFailure(error) {
   const message = clean(error?.message);
-  if (/UNIQUE/i.test(message)) return "중복된 값 때문에 문서를 등록할 수 없습니다.";
-  if (/FOREIGN KEY|CHECK constraint/i.test(message)) return "대분류 또는 보관 위치가 변경되어 등록할 수 없습니다.";
+  if (/UNIQUE/i.test(message)) return "같은 문서가 이미 있어서 등록하지 못했어요.";
+  if (/FOREIGN KEY|CHECK constraint/i.test(message)) return "대분류나 보관 위치가 바뀌어서 등록하지 못했어요.";
   return null;
 }
 

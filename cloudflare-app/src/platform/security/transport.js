@@ -14,7 +14,7 @@ export function enforceTransportSecurity(request) {
 
   const tlsVersion = String(request.cf?.tlsVersion || "");
   if (url.protocol === "https:" && LEGACY_TLS_VERSIONS.has(tlsVersion)) {
-    return new Response("TLS 1.2 이상을 사용하세요.", {
+    return new Response("TLS 1.2 이상으로 접속해 주세요.", {
       status: 403,
       headers: {
         "Content-Type": "text/plain; charset=utf-8",

@@ -43,7 +43,7 @@ export async function handleCreateDocumentImportJob(request, env, session) {
   const options = await loadDocumentFormOptions(env, { activeOnly: true });
   const prepared = prepareDocumentImportRows(imported.rows, options);
   if (prepared.errors.length) {
-    return documentImportJobCreatePage({ session, error: `가져오기 전 검증 오류가 있습니다: ${prepared.errors.slice(0, 12).join(" / ")}${prepared.errors.length > 12 ? " ..." : ""}` });
+    return documentImportJobCreatePage({ session, error: `가져오기 전 검증 오류가 있어요: ${prepared.errors.slice(0, 12).join(" / ")}${prepared.errors.length > 12 ? " ..." : ""}` });
   }
   const file = form.get("csvFile");
   const sourceName = clean(form.get("sourceName")) || (typeof file?.name === "string" && file.name ? file.name : "붙여넣기");
@@ -62,7 +62,7 @@ export async function handleCreateDocumentImportJob(request, env, session) {
       preview,
       csvText: imported.text,
       sourceName,
-      error: "생성 예정 문서의 정규화 결과를 확인하세요."
+      error: "생성 예정 문서의 정규화 결과를 확인해 주세요."
     });
   }
   const result = await createDocumentImportJob(env, { sourceName, items: prepared.items }, session);
@@ -110,7 +110,7 @@ export async function handleDocumentImportJobRoute(request, env, session, routeI
       result = await processDocumentImportJob(env, id, session);
     } catch (error) {
       logError("import-job.process", error, { jobId: id });
-      result = { ok: false, message: "문서 가져오기 처리 중 오류가 발생했습니다." };
+      result = { ok: false, message: "문서 가져오기 처리 중 오류가 발생했어요. 잠시 뒤 다시 시도해 주세요." };
     }
     if (result.ok && result.createdDocumentId && typeof effects.syncSearchDocument === "function") {
       try {

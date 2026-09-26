@@ -26,7 +26,6 @@ export function tokenStyles() {
       --action-strong: #f3c623;
       --action-soft: #fff7cf;
       --action-ink: #18212f;
-      --hero-bg: linear-gradient(135deg, var(--primary-deep), var(--primary));
       --success: #0c7a43;
       --success-soft: #e5f4eb;
       --warning: #9a5b00;
@@ -58,5 +57,24 @@ export function tokenStyles() {
       --text-identity: 14px;
       --rack-axis-width: 24px;
       --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+      --r-xl: 20px;
+      --text-caption: 12px;
+      --text-lead: 16px;
+      --control-height-lg: 48px;
+    }
+    .app-body {
+      --r-lg: 16px;
+      --r-md: 10px;
+      --r-sm: 8px;
+      --text-title: 24px;
+      --text-section: 18px;
+      --text-body: 15px;
+      --text-meta: 13px;
+    }
+    @media (max-width: 760px) {
+      .app-body {
+        --text-title: 22px;
+        --text-section: 17px;
+      }
     }`;
 }

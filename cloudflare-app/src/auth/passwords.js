@@ -93,16 +93,16 @@ export async function changeUserPassword(env, username, currentPassword, newPass
   `).bind(username).first();
 
   if (!user) {
-    return { ok: false, message: "사용자를 찾을 수 없습니다." };
+    return { ok: false, message: "사용자를 찾지 못했어요." };
   }
 
   const valid = await verifyPassword(currentPassword, user.password_salt, user.password_hash);
   if (!valid) {
-    return { ok: false, message: "현재 비밀번호가 올바르지 않습니다." };
+    return { ok: false, message: "현재 비밀번호가 올바르지 않아요. 다시 확인해 주세요." };
   }
 
   if (!isPasswordInputBounded(newPassword)) {
-    return { ok: false, message: "새 비밀번호가 허용된 최대 길이를 초과했습니다." };
+    return { ok: false, message: "새 비밀번호가 허용된 최대 길이를 넘었어요. 더 짧게 입력해 주세요." };
   }
   const passwordValidation = validateNewPassword(newPassword);
   if (!passwordValidation.ok) return passwordValidation;
@@ -110,7 +110,7 @@ export async function changeUserPassword(env, username, currentPassword, newPass
   // 현재 비밀번호가 이미 검증된 뒤이므로 원문 비교로 동일성을 판정한다.
   // 비밀번호 변경 요청의 PBKDF2를 3회에서 2회로 줄여 Workers Free CPU 여유를 확보한다.
   if (String(newPassword) === String(currentPassword)) {
-    return { ok: false, message: "새 비밀번호는 현재 비밀번호와 달라야 합니다." };
+    return { ok: false, message: "새 비밀번호는 현재 비밀번호와 달라야 해요." };
   }
 
   const record = await createPasswordRecord(newPassword);
@@ -127,7 +127,7 @@ export async function changeUserPassword(env, username, currentPassword, newPass
   `).bind(record.salt, record.hash, nextSessionEpoch, username, currentSessionEpoch).run();
 
   if (Number(updated?.meta?.changes || 0) !== 1) {
-    return { ok: false, message: "사용자 인증 상태가 변경되었습니다. 다시 로그인한 뒤 시도하세요." };
+    return { ok: false, message: "사용자 인증 상태가 바뀌었어요. 다시 로그인한 뒤 시도해 주세요." };
   }
 
   return { ok: true, sessionEpoch: nextSessionEpoch };

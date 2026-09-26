@@ -182,33 +182,33 @@ export function computeRiskWarnings({
   const warnings = [];
   const total = Math.max(Number(currentDocumentCount) || 0, 1);
   if (summary.excludeCount > 0) {
-    warnings.push({ code: "EXCLUSION", level: "danger", message: `업로드 파일에 없는 문서 ${summary.excludeCount}건이 대장에서 제외됩니다.` });
+    warnings.push({ code: "EXCLUSION", level: "danger", message: `업로드 파일에 없는 문서 ${summary.excludeCount}건이 대장에서 제외돼요.` });
   }
   if (summary.restoreCount > 0) {
-    warnings.push({ code: "RESTORE", level: "danger", message: `폐기 해제 ${summary.restoreCount}건이 포함되어 Admin 권한이 필요합니다.` });
+    warnings.push({ code: "RESTORE", level: "danger", message: `폐기 해제 ${summary.restoreCount}건이 있어서 Admin 권한이 필요해요.` });
   }
   if ((summary.updateCount + summary.createCount) / total >= RISK_THRESHOLDS.changeRatio) {
-    warnings.push({ code: "LARGE_CHANGE", level: "warning", message: "현재 대장의 10% 이상이 변경됩니다." });
+    warnings.push({ code: "LARGE_CHANGE", level: "warning", message: "현재 대장의 10% 이상이 바뀌어요." });
   }
   if (summary.excludeCount / total >= RISK_THRESHOLDS.excludeRatio) {
-    warnings.push({ code: "LARGE_EXCLUSION", level: "warning", message: "현재 대장의 5% 이상이 제외됩니다." });
+    warnings.push({ code: "LARGE_EXCLUSION", level: "warning", message: "현재 대장의 5% 이상이 제외돼요." });
   }
   if (identityChangeCount > 0) {
-    warnings.push({ code: "IDENTITY_CHANGE", level: "warning", message: `문서번호·개정번호 변경 ${identityChangeCount}건이 포함되어 있습니다.` });
+    warnings.push({ code: "IDENTITY_CHANGE", level: "warning", message: `문서번호·개정번호가 바뀌는 문서가 ${identityChangeCount}건 있어요.` });
   }
   if (blankKeyCreateCount > 0) {
-    warnings.push({ code: "BLANK_KEY_CREATE", level: "info", message: `관리 ID 없는 신규 행 ${blankKeyCreateCount}건은 서버가 관리 ID를 생성합니다.` });
+    warnings.push({ code: "BLANK_KEY_CREATE", level: "info", message: `관리 ID가 없는 새 행 ${blankKeyCreateCount}건은 서버가 관리 ID를 만들어요.` });
   }
   if (autoCategoryNames.length > 0) {
     warnings.push({
       code: "AUTO_CATEGORY_CREATE",
       level: "info",
-      message: `미등록 문서종류 ${autoCategoryNames.length}건(${autoCategoryNames.join(", ")})은 최종 반영 시 자동 등록됩니다.`,
+      message: `등록되지 않은 문서종류 ${autoCategoryNames.length}건(${autoCategoryNames.join(", ")})은 최종 반영할 때 자동으로 등록돼요.`,
       categoryNames: autoCategoryNames
     });
   }
   if (baseVersionAge > 0) {
-    warnings.push({ code: "STALE_BASE", level: "warning", message: "기준 버전이 현재보다 오래되었습니다. 최신 추출 파일을 사용하세요." });
+    warnings.push({ code: "STALE_BASE", level: "warning", message: "기준 버전이 현재보다 오래됐어요. 최신 추출 파일을 사용해 주세요." });
   }
   if (missingPermissions.length) {
     warnings.push({ code: "MISSING_PERMISSION", level: "danger", message: `부족한 권한: ${missingPermissions.join(", ")}` });

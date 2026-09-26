@@ -36,13 +36,13 @@ export function auditPage({ session, items = [], filters = {}, pagination = { pa
   const totalItems = Number(pagination.totalItems || 0);
   return page("전역 감사로그", `
     <section class="page-head">
-      <div><h1>전역 감사로그</h1><p class="muted">중요한 관리 작업의 행위자와 변경 전후 값을 확인합니다.</p></div>
+      <div><h1>전역 감사로그</h1><p class="muted">중요한 관리 작업을 누가 했고 값이 어떻게 바뀌었는지 확인할 수 있어요.</p></div>
       <a class="button secondary" href="/admin">관리 설정</a>
     </section>
     ${auditFilterForm(filters)}
     <section class="panel">
       <div class="section-title"><h2>감사 이력</h2><span class="count-badge">${totalItems}건</span></div>
-      ${items.length ? auditTable(items) : `<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 감사 이력이 없습니다.</p></div>`}
+      ${items.length ? auditTable(items) : `<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 감사 이력이 없어요.</p></div>`}
       ${paginationNav(currentPage, totalPages, {
         previousUrl: auditUrl(filters, Math.max(1, currentPage - 1)),
         nextUrl: auditUrl(filters, Math.min(totalPages, currentPage + 1))

@@ -14,7 +14,7 @@ export function documentRevisionPage({ session, document, values = {}, validatio
     <section class="page-head">
       <nav class="breadcrumb" aria-label="경로"><a href="${escapeHtml(documentLink(document.id, "", values.returnTo))}">문서 상세</a><span>/</span><span>문서 개정</span></nav>
       <h1>문서 개정</h1>
-      <p>동일한 바인더에서 현재 개정본을 신규 개정본으로 교체합니다.</p>
+      <p>같은 바인더에서 현재 개정본을 신규 개정본으로 교체해요.</p>
     </section>
 
     <section class="document-form-layout revision-form-layout">
@@ -26,8 +26,8 @@ export function documentRevisionPage({ session, document, values = {}, validatio
 
         <div class="alert warning revision-policy" role="note">
           <strong>동일 바인더 교체 전용</strong>
-          <p>저장하면 현재 개정본은 자동으로 폐기되고, 같은 위치에 신규 개정본이 생성됩니다.</p>
-          <p>다른 바인더에 보관할 문서라면 <a href="/documents/new?documentNumber=${encodeURIComponent(document.document_number)}">문서 등록</a>으로 등록하세요.</p>
+          <p>저장하면 현재 개정본을 자동으로 폐기하고, 같은 위치에 신규 개정본을 만들어요.</p>
+          <p>다른 바인더에 보관할 문서라면 <a href="/documents/new?documentNumber=${encodeURIComponent(document.document_number)}">문서 등록</a>에서 등록해 주세요.</p>
         </div>
 
         <fieldset class="form-section">
@@ -35,8 +35,8 @@ export function documentRevisionPage({ session, document, values = {}, validatio
           <dl class="revision-source-summary">
             <div><dt>문서번호</dt><dd class="mono">${escapeHtml(document.document_number)}</dd></div>
             <div><dt>문서명</dt><dd>${escapeHtml(document.document_name)}</dd></div>
-            <div><dt>현재 개정</dt><dd>${escapeHtml(formatRevisionLabel(document.revision_number))} · ${escapeHtml(document.revision_date || "N/A")}</dd></div>
-            <div><dt>보관 위치</dt><dd class="mono">${escapeHtml(locationLabel(document))}</dd></div>
+            <div><dt>현재 개정</dt><dd>${escapeHtml(formatRevisionLabel(document.revision_number))} · ${escapeHtml(document.revision_date || "제·개정일 없음")}</dd></div>
+            <div><dt>보관 위치</dt><dd class="location-value">${escapeHtml(locationLabel(document))}</dd></div>
           </dl>
         </fieldset>
 
@@ -50,7 +50,7 @@ export function documentRevisionPage({ session, document, values = {}, validatio
 
         <label class="check-item revision-confirm">
           <input type="checkbox" name="confirmReplacement" value="1" ${values.confirmReplacement === "1" ? "checked" : ""} required>
-          <span>동일 바인더의 이전 개정본이 자동 폐기되는 것을 확인했습니다.</span>
+          <span>동일 바인더의 이전 개정본이 자동 폐기되는 것을 확인했어요.</span>
         </label>
 
         <div class="form-actions">
@@ -71,5 +71,5 @@ function field(name, label, value, errors, type) {
 function errorSummary(fieldErrors, formErrors) {
   const fields = Object.entries(fieldErrors);
   if (!fields.length && !formErrors.length) return "";
-  return `<div class="form-error-summary" role="alert" tabindex="-1" data-error-summary><strong>문서를 개정하지 못했습니다.</strong><p>아래 ${fields.length + formErrors.length}개 항목을 확인하세요.</p><ul>${fields.map(([name, message]) => `<li><a href="#field-${escapeHtml(name)}">${escapeHtml(message)}</a></li>`).join("")}${formErrors.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul></div>`;
+  return `<div class="form-error-summary" role="alert" tabindex="-1" data-error-summary><strong>문서를 개정하지 못했어요.</strong><p>아래 ${fields.length + formErrors.length}개 항목을 확인해 주세요.</p><ul>${fields.map(([name, message]) => `<li><a href="#field-${escapeHtml(name)}">${escapeHtml(message)}</a></li>`).join("")}${formErrors.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul></div>`;
 }

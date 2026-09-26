@@ -3,6 +3,8 @@
 import { workspaceStyles } from "./styles/workspace.js";
 import { iconStyles } from "./icons.js";
 import { adminStyles } from "./styles/admin.js";
+import { appStyles } from "./styles/app.js";
+import { appBaseStyles } from "./styles/appBase.js";
 import { baseStyles } from "./styles/base.js";
 import { floorPlanStyles } from "./styles/floorPlan.js";
 import { landingStyles } from "./styles/landing.js";
@@ -13,10 +15,12 @@ import { searchHomeStyles } from "./styles/searchHome.js";
 import { tokenStyles } from "./styles/tokens.js";
 import { workflowStyles } from "./styles/workflow.js";
 
+// appBase는 요소 기본값 바로 뒤, app은 업무 화면 조각의 마지막에 둔다. 둘 다 .app-body 범위라 랜딩에는 적용되지 않는다.
 const styleFragments = Object.freeze([
   tokenStyles,
   baseStyles,
   searchStyles,
+  appBaseStyles,
   floorPlanStyles,
   adminStyles,
   workflowStyles,
@@ -24,6 +28,7 @@ const styleFragments = Object.freeze([
   experienceStyles,
   responsivePrintStyles,
   workspaceStyles,
+  appStyles,
   landingStyles
 ]);
 

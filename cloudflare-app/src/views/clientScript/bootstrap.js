@@ -54,7 +54,7 @@ export function bootstrapScript(escapeHtmlSource) {
         var confirmDialog = document.createElement('dialog');
         confirmDialog.className = 'app-confirm-dialog';
         confirmDialog.setAttribute('aria-labelledby', 'app-confirm-title');
-        confirmDialog.innerHTML = '<form method="dialog" class="modal-body"><h2 id="app-confirm-title">작업 확인</h2><p data-confirm-message></p><div class="button-group"><button value="cancel" class="button secondary">취소</button><button value="confirm" class="danger-button" data-confirm-accept>계속</button></div></form>';
+        confirmDialog.innerHTML = '<form method="dialog" class="modal-body"><h2 id="app-confirm-title">작업 확인</h2><p data-confirm-message></p><div class="button-group"><button value="cancel" class="button secondary">닫기</button><button value="confirm" class="danger-button" data-confirm-accept>계속</button></div></form>';
         document.body.appendChild(confirmDialog);
         var pendingForm = null;
         var pendingSubmitter = null;
@@ -167,7 +167,7 @@ export function bootstrapScript(escapeHtmlSource) {
         if (!text) return;
         var originalHtml = button.innerHTML;
         function done() {
-          button.textContent = '복사됨';
+          button.textContent = '복사했어요';
           setTimeout(function () { button.innerHTML = originalHtml; }, 1400);
         }
         if (navigator.clipboard && navigator.clipboard.writeText) {

@@ -25,7 +25,7 @@ export function formFeedbackScript() {
           if (!feedback) {
             feedback = document.createElement('div'); feedback.dataset.saveFeedback = ''; feedback.className = 'alert info'; feedback.tabIndex = -1; form.prepend(feedback);
           }
-          feedback.setAttribute('role', 'status'); feedback.textContent = '저장 중입니다…';
+          feedback.setAttribute('role', 'status'); feedback.textContent = '저장하고 있어요…';
           saving = true; form.setAttribute('aria-busy', 'true');
           controls.forEach(function (entry) { entry[0].disabled = true; });
           var restoreControls = function () { controls.forEach(function (entry) { entry[0].disabled = entry[1]; }); saving = false; form.setAttribute('aria-busy', 'false'); };
@@ -55,7 +55,7 @@ export function formFeedbackScript() {
               if (current.closest('.enhanced-control-hidden')) current = form.querySelector(field.id === 'field-rackFace' ? '#field-locationFace' : '#field-locationZone') || current;
               current.setAttribute('aria-invalid', 'true');
               var descriptions = (field.getAttribute('aria-describedby') || '').split(' ').map(function (id) { return parsed.getElementById(id); }).filter(function (element) { return element?.classList.contains('field-error'); });
-              var errorText = descriptions.map(function (element) { return element.textContent.trim(); }).join(' ') || '입력값을 확인하세요.';
+              var errorText = descriptions.map(function (element) { return element.textContent.trim(); }).join(' ') || '입력값을 확인해 주세요.';
               var inlineError = document.createElement('p'); inlineError.className = 'field-error'; inlineError.id = 'response-error-' + current.id; inlineError.textContent = errorText;
               (current.closest('label') || current).insertAdjacentElement('afterend', inlineError);
               current.setAttribute('aria-describedby', ((current.getAttribute('aria-describedby') || '') + ' ' + inlineError.id).trim());
@@ -64,13 +64,13 @@ export function formFeedbackScript() {
               link.textContent = (label?.textContent || field.name) + ': ' + errorText; feedback.appendChild(link);
             });
             var latest = document.createElement('a');
-            latest.href = form.action.replace(/\\/(edit|revise|move)$/, ''); latest.target = '_blank'; latest.rel = 'noopener'; latest.textContent = '최신 내용 별도 확인'; feedback.appendChild(latest);
+            latest.href = form.action.replace(/\\/(edit|revise|move)$/, ''); latest.target = '_blank'; latest.rel = 'noopener'; latest.textContent = '새 탭에서 최신 내용 보기'; feedback.appendChild(latest);
             feedback.focus();
           } catch {
             feedback.className = 'form-error-summary'; feedback.setAttribute('role', 'alert');
-            feedback.textContent = '저장 결과를 확인하지 못했습니다. 입력은 유지했습니다. 다른 탭에서 저장 여부를 먼저 확인하세요. 자동으로 다시 저장하지 않습니다.';
-            var check = document.createElement('a'); check.href = '/app'; check.target = '_blank'; check.rel = 'noopener'; check.textContent = '문서 검색으로 저장 여부 확인'; feedback.appendChild(check);
-            var resume = document.createElement('button'); resume.type = 'button'; resume.className = 'button secondary'; resume.textContent = '저장되지 않은 것을 확인했습니다';
+            feedback.textContent = '저장 결과를 확인하지 못했어요. 입력한 내용은 그대로 남겨 뒀어요. 다른 탭에서 저장됐는지 먼저 확인해 주세요. 자동으로 다시 저장하지 않아요.';
+            var check = document.createElement('a'); check.href = '/app'; check.target = '_blank'; check.rel = 'noopener'; check.textContent = '문서 검색에서 확인하기'; feedback.appendChild(check);
+            var resume = document.createElement('button'); resume.type = 'button'; resume.className = 'button secondary'; resume.textContent = '저장되지 않은 것을 확인했어요';
             resume.addEventListener('click', function () { restoreControls(); resume.remove(); }); feedback.appendChild(resume);
             feedback.focus();
           } finally { clearTimeout(timeout); }

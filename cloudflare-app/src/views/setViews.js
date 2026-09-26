@@ -15,7 +15,7 @@ export function setsPage({ session, sets, filters = {} }) {
         ${canManage ? `<a class="button" href="/sets/new">세트 만들기</a>` : ""}
       </div>
     </section>
-    <p class="muted">감사 준비문서 목록처럼 자주 찾는 문서 묶음을 저장해 두고 한눈에 관리합니다.</p>
+    <p class="muted">감사 준비문서 목록처럼 자주 찾는 문서 묶음을 저장해 두고 한눈에 관리할 수 있어요.</p>
     <section class="panel">
       <form method="get" action="/sets" class="filter-row set-list-filters">
         <label class="search-input"><span>세트 검색</span><input type="search" name="q" value="${escapeHtml(filters.q || "")}" placeholder="세트 이름 또는 설명"></label>
@@ -43,7 +43,7 @@ export function setsPage({ session, sets, filters = {} }) {
           <span>${escapeHtml(set.description || "설명 없음")}</span>
         </a>
       `).join("")}
-    </section>` : emptyState(canManage ? "아직 세트가 없습니다. 세트를 만들고 준비문서를 등록하세요." : "아직 등록된 세트가 없습니다.")}
+    </section>` : emptyState(canManage ? "아직 세트가 없어요. 세트를 만들고 준비문서를 등록해 주세요." : "아직 등록된 세트가 없어요.")}
   `, session);
 }
 
@@ -56,7 +56,7 @@ export function setFormPage({ session, values = {}, action, title, error = "" })
       <form method="post" action="${escapeHtml(action)}" class="stack">
         ${expectedRowVersion > 0 ? `<input type="hidden" name="expectedRowVersion" value="${expectedRowVersion}">` : ""}
         <label>세트 이름 <em>*</em><input name="name" value="${escapeHtml(values.name || "")}" maxlength="100" required placeholder="예: 2026년 정기감사 준비문서"></label>
-        <label>설명<textarea name="description" rows="3" placeholder="세트 용도나 기준을 기록해 두세요.">${escapeHtml(values.description || "")}</textarea></label>
+        <label>설명<textarea name="description" rows="3" placeholder="세트 용도나 기준을 적어 주세요.">${escapeHtml(values.description || "")}</textarea></label>
         <button type="submit" class="primary">저장</button>
       </form>
     </section>
@@ -66,7 +66,7 @@ export function setFormPage({ session, values = {}, action, title, error = "" })
 export function setClonePage({ session, set, documentCount = 0, values = {}, error = "" }) {
   const suggestedName = values.name || `${set.name} 복사본`;
   return page("준비 문서 세트 복제", `
-    <section class="page-head"><div><h1>준비 문서 세트 복제</h1><p class="muted">원본 구성원 ${Number(documentCount).toLocaleString("ko-KR")}건을 그대로 복사하고, 새 세트는 편집 가능한 상태로 만듭니다.</p></div></section>
+    <section class="page-head"><div><h1>준비 문서 세트 복제</h1><p class="muted">원본 구성원 ${Number(documentCount).toLocaleString("ko-KR")}건을 그대로 복사하고, 새 세트는 편집할 수 있는 상태로 만들어요.</p></div></section>
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <dl class="detail-list">
@@ -104,20 +104,20 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
       </div>
     </section>
     ${error ? alertDanger(error) : ""}
-    ${isLocked ? alertWarning(`이 세트는 편집 잠금 상태입니다.${set.lock_reason ? ` 사유: ${set.lock_reason}` : ""}`) : ""}
-    ${excludedCount ? alertWarning(`대장 제외 문서 ${excludedCount}건이 세트에 포함되어 있습니다. 연결은 감사 근거로 보존되며 랙 지도에는 현재 대장 문서만 표시합니다.`) : ""}
+    ${isLocked ? alertWarning(`이 세트는 편집이 잠겨 있어요.${set.lock_reason ? ` 사유: ${set.lock_reason}` : ""}`) : ""}
+    ${excludedCount ? alertWarning(`대장에서 제외된 문서 ${excludedCount}건이 세트에 들어 있어요. 연결은 감사 근거로 보존하고, 랙 지도에는 현재 대장에 있는 문서만 표시해요.`) : ""}
     ${addResult ? setAddResultView(addResult, set) : ""}
     ${setPrintHeader({ set, session, documents, printedAt })}
     <section class="metric-strip" aria-label="세트 요약">
       ${metric("문서", documents.length, "세트에 등록된 문서")}
-      ${metric("현재 대장", currentDocuments.length, "sync_state=current")}
+      ${metric("현재 대장", currentDocuments.length, "현재 대장에 있는 문서")}
       ${metric("대장 제외", excludedCount, excludedCount ? "목록 확인 필요" : "없음")}
       ${metric("보관 랙", rackCount, `${zoneCount}개 구역`)}
       ${metric("폐기 포함", disposedCount, disposedCount ? "목록 확인 필요" : "없음")}
     </section>
     <section class="panel">
       ${sectionHeader("보관 위치 목록", `${documents.length}건`)}
-      ${documents.length ? `<p class="muted">구역 → 랙 → 열 → 선반 순으로 정렬되어 있어 문서고에서 한 번에 돌며 꺼낼 수 있습니다.</p>` : ""}
+      ${documents.length ? `<p class="muted">구역 → 랙 → 열 → 선반 순으로 정렬해 두어서 문서고를 한 번만 돌면서 꺼낼 수 있어요.</p>` : ""}
       ${setDocumentTable(set, documents, canManage && !isLocked)}
     </section>
     ${documents.length ? `<section class="panel">
@@ -128,7 +128,7 @@ export function setDetailsPage({ session, set, documents, racks, logs = [], addQ
     ${canManage && (!isLocked || preserveAddSelection) ? setAdminTools(set, addQuery, addCandidates, selectedCandidateIds, { readOnly: isLocked }) : ""}
     ${logs.length ? `<section class="panel">
       ${sectionHeader("세트 변경 이력", `${logs.length}건`)}
-      ${timeline(logs, renderSetLog, "변경 이력이 없습니다.")}
+      ${timeline(logs, renderSetLog, "변경 이력이 없어요.")}
     </section>` : ""}
     ${setPrintFooter()}
   `, session);
@@ -141,7 +141,7 @@ function renderSetLog(log) {
 
 function setDocumentTable(set, documents, canEdit) {
   if (!documents.length) {
-    return emptyState(canEdit ? "아직 세트에 담긴 문서가 없습니다. 아래에서 문서를 추가하세요." : "아직 세트에 담긴 문서가 없습니다.");
+    return emptyState(canEdit ? "아직 세트에 담긴 문서가 없어요. 아래에서 문서를 추가해 주세요." : "아직 세트에 담긴 문서가 없어요.");
   }
 
   return `
@@ -167,7 +167,7 @@ function setDocumentTable(set, documents, canEdit) {
 }
 
 function setAddResultView(result, set) {
-  const added = `<div class="alert success" role="status">${result.added}건을 세트에 추가했습니다.</div>`;
+  const added = `<div class="alert success" role="status">${result.added}건을 세트에 추가했어요.</div>`;
   const missing = result.missing.length
     ? `<div class="alert warning"><strong>찾지 못한 번호 ${result.missing.length}건</strong><div class="missing-document-links">${result.missing.map((number) => `<a href="/documents/new?documentNumber=${encodeURIComponent(number)}&returnTo=${encodeURIComponent(`/sets/${set.id}`)}">${escapeHtml(number)} 등록</a>`).join("")}</div></div>`
     : "";
@@ -184,7 +184,7 @@ function setLockControls(set, isLocked) {
       <label>${isLocked ? "잠금 해제 사유" : "잠금 사유"}<input name="reason" maxlength="500" required></label>
       <button type="submit" class="button secondary">${title}</button>
     </form>
-    ${isLocked ? `<p class="muted">${escapeHtml(set.locked_by_name || "알 수 없음")} · ${escapeHtml(set.locked_at || "-")}</p>` : `<p class="muted">잠금 후에는 문서 추가·제외와 세트 정보 수정을 할 수 없습니다.</p>`}
+    ${isLocked ? `<p class="muted">${escapeHtml(set.locked_by_name || "알 수 없음")} · ${escapeHtml(set.locked_at || "-")}</p>` : `<p class="muted">잠그면 문서를 추가·제외하거나 세트 정보를 수정할 수 없어요.</p>`}
   </section>`;
 }
 
@@ -209,7 +209,7 @@ function setAdminTools(set, addQuery, addCandidates, selectedCandidateIds = [], 
     return `
       <section class="panel set-admin-tools" data-preserved-set-selection>
         ${sectionHeader("문서 추가 요청", "잠금 경합")}
-        ${alertWarning("세트가 잠겨 추가 작업은 중단됐지만 검색 조건과 선택 문서는 보존했습니다.")}
+        ${alertWarning("세트가 잠겨 있어서 문서를 추가하지 못했어요. 검색 조건과 선택한 문서는 그대로 남겨 두었어요.")}
         <label>보존된 검색 조건<input value="${escapeHtml(addQuery)}" readonly></label>
         ${addCandidates ? setCandidateList(set, addQuery, addCandidates, selectedCandidateIds, { readOnly: true }) : ""}
       </section>
@@ -222,7 +222,7 @@ function setAdminTools(set, addQuery, addCandidates, selectedCandidateIds = [], 
         <form method="post" action="/sets/${set.id}/add" class="stack">
           <input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}">
           <label>문서번호 일괄 추가
-            <textarea name="numbers" rows="4" placeholder="문서번호를 줄바꿈이나 쉼표로 구분해 붙여넣으세요.&#10;예) MR-2026-001, PV-2026-014"></textarea>
+            <textarea name="numbers" rows="4" placeholder="문서번호를 줄바꿈이나 쉼표로 구분해 붙여넣어 주세요.&#10;예) MR-2026-001, PV-2026-014"></textarea>
           </label>
           <button type="submit" class="primary">일괄 추가</button>
         </form>
@@ -237,7 +237,7 @@ function setAdminTools(set, addQuery, addCandidates, selectedCandidateIds = [], 
         </div>
       </div>
       <div class="set-danger-row">
-        <form method="post" action="/sets/${set.id}/delete" data-confirm="세트를 삭제할까요? 세트에 담긴 문서 자체는 삭제되지 않습니다.">
+        <form method="post" action="/sets/${set.id}/delete" data-confirm="세트를 삭제할까요? 세트에 담긴 문서는 그대로 남아요.">
           <input type="hidden" name="expectedRowVersion" value="${escapeHtml(set.row_version ?? 0)}">
           <button type="submit" class="danger-button">세트 삭제</button>
         </form>
@@ -248,7 +248,7 @@ function setAdminTools(set, addQuery, addCandidates, selectedCandidateIds = [], 
 
 function setCandidateList(set, addQuery, candidates, selectedCandidateIds = [], { readOnly = false } = {}) {
   if (!candidates.length) {
-    return `<p class="muted">검색 결과가 없습니다.</p>`;
+    return `<p class="muted">검색 결과가 없어요.</p>`;
   }
 
   const selected = new Set(selectedCandidateIds.map(Number));

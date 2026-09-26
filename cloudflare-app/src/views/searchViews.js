@@ -6,7 +6,7 @@ import { FREE_TIER_BUDGET } from "../config.js";
 import { safeEmbeddedJson } from "../platform/web/renderContext.js";
 import { capabilitiesFromSession } from "../domains/identity/index.js";
 import { searchCoreScript } from "./clientScript.js";
-import { alertWarning, emptyState, filterSelectRow, listUrl, page, paginationNav, sectionHeader } from "./layout.js";
+import { alertNote, emptyState, filterSelectRow, listUrl, page, paginationNav, sectionHeader } from "./layout.js";
 import {
   didYouMeanView,
   highlight,
@@ -60,20 +60,20 @@ export function dashboardPage({
   const shownItems = documents.length;
   const resultStatusText = totalItems === null
     ? !shownItems
-      ? "조건에 맞는 문서가 없습니다."
-      : `${shownItems.toLocaleString("ko-KR")}건을 표시했습니다.${viewerSearch.pagination?.hasMore ? " 다음 결과가 더 있습니다." : ""}`
+      ? "조건에 맞는 문서가 없어요."
+      : `${shownItems.toLocaleString("ko-KR")}건을 표시했어요.${viewerSearch.pagination?.hasMore ? " 다음 결과가 더 있어요." : ""}`
     : !totalItems
-      ? "검색 결과가 없습니다."
+      ? "검색 결과가 없어요."
       : shownItems < totalItems
-        ? `${totalItems.toLocaleString("ko-KR")}건 중 ${shownItems.toLocaleString("ko-KR")}건을 표시했습니다.`
-        : `${totalItems.toLocaleString("ko-KR")}건을 찾았습니다.`;
+        ? `${totalItems.toLocaleString("ko-KR")}건 중 ${shownItems.toLocaleString("ko-KR")}건을 표시했어요.`
+        : `${totalItems.toLocaleString("ko-KR")}건을 찾았어요.`;
 
   // 검색 모드: 고정 열의 행 목록만 보여 주어 비교와 스캔을 우선한다.
   return page("문서", `
     <section class="search-band page-head search-workspace-head" aria-labelledby="viewer-title">
       <div>
         <h1 id="viewer-title">문서 검색</h1>
-        <p class="page-sub">문서번호·개정과 보관 위치를 함께 확인하세요.</p>
+        <p class="page-sub">문서명이나 문서번호로 찾으면 보관 위치까지 바로 보여드려요.</p>
       </div>
       ${viewerSearchForm({ query, suggestions, categories, tags, filters: uiFilters, showFilters: false, formId: "viewer-search-form" })}
     </section>
@@ -181,7 +181,7 @@ function viewerLocationFilterInputs(filters = {}) {
 }
 
 function viewerDocumentResults(documents, query, capabilities = {}, selectedDocumentIds = [], showReset = false, returnTo = "/app") {
-  if (!documents.length) return `<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions">${showReset ? '<a class="button secondary sm" href="/app" data-viewer-search-reset>검색 초기화</a>' : ""}${capabilities.canManageDisposals ? '<a class="button secondary sm" href="/documents/disposal?tab=documents">폐기 문서에서 확인</a>' : ""}</div></div>`;
+  if (!documents.length) return `<div class="empty-state"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><p>조건에 맞는 문서가 없어요.</p><p class="muted">검색어를 줄이거나 필터를 해제해 보세요.</p><div class="empty-actions">${showReset ? '<a class="button secondary sm" href="/app" data-viewer-search-reset>검색 초기화</a>' : ""}${capabilities.canManageDisposals ? '<a class="button secondary sm" href="/documents/disposal?tab=documents">폐기 문서에서 찾기</a>' : ""}</div></div>`;
   const selectable = capabilities.canManageSets || capabilities.canManageDisposals;
   const selected = new Set(selectedDocumentIds.map(Number));
   return resultTable(documents.map((item) => resultRow(item, { selectable, selected: selected.has(Number(item.id)), query, returnTo }, escapeHtml, highlight)).join(""), selectable);
@@ -218,15 +218,15 @@ function workspaceBulkActions({ capabilities, editableSets = [], returnTo }) {
   const disposalDialog = capabilities.canManageDisposals ? `<dialog id="workspace-disposal-modal" class="modal disposal-review-modal" aria-labelledby="workspace-disposal-title">
     <form method="post" action="/documents/disposal/process" class="modal-body" data-bulk-form>
       <h2 id="workspace-disposal-title">선택 문서 폐기</h2>
-      <p>한 번에 최대 ${DIRECT_BULK_DISPOSE_LIMIT}건을 처리합니다. 실제 원본과 선택 수량이 같은지 확인하세요.</p>
-      <p>실제 폐기할 원본이 <strong data-bulk-confirm-count>0부</strong>가 맞습니까?</p>
+      <p>한 번에 최대 ${DIRECT_BULK_DISPOSE_LIMIT}건까지 폐기할 수 있어요. 실제 원본과 선택한 수량이 같은지 확인해 주세요.</p>
+      <p>실제로 폐기할 원본이 <strong data-bulk-confirm-count>0부</strong> 맞나요?</p>
       <ol class="disposal-review-list" data-bulk-summary></ol>
       <input type="hidden" name="ids" data-bulk-ids>
       <input type="hidden" name="confirmedTargetCount" value="0" data-bulk-confirm-count-input>
       <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" data-workspace-return-to>
       <label>폐기 사유 <em>*</em><textarea name="reason" rows="3" required></textarea></label>
       <label>승인 문서 참조<input name="approvalReference"></label>
-      <div class="modal-actions"><button type="button" class="button secondary" data-close-modal>취소</button><button type="submit" class="danger-button" name="confirmDisposal" value="1" data-bulk-confirm-button disabled>예, 폐기합니다</button></div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close-modal>닫기</button><button type="submit" class="danger-button" name="confirmDisposal" value="1" data-bulk-confirm-button disabled>네, 폐기할게요</button></div>
     </form>
   </dialog>` : "";
   return `<div class="bulk-bar workspace-bulk-bar" data-bulk-bar data-document-selection hidden><span data-bulk-count>0건 선택</span><span class="bulk-limit-notice" data-bulk-limit-notice role="status" hidden></span>${setForm}${disposalButton}</div>${disposalDialog}`;
@@ -304,43 +304,43 @@ export function qaPage({ session, support = {} }) {
   const contactEmail = support.email || "";
   const capabilities = capabilitiesFromSession(session);
   const tasks = [
-    ["/app", "fa-magnifying-glass", "문서 찾기", "문서번호·문서명·보관 위치로 검색합니다."],
-    ["/floor-plan", "fa-location-dot", "보관 위치 확인", "구역과 랙 배치를 도면에서 확인합니다."]
+    ["/app", "fa-magnifying-glass", "문서 찾기", "문서번호·문서명·보관 위치로 검색해요."],
+    ["/floor-plan", "fa-location-dot", "보관 위치 확인", "구역과 랙 배치를 도면에서 확인해요."]
   ];
   if (capabilities.canPreviewDocuments) {
-    tasks.push(["/documents/new", "fa-file-circle-plus", "문서 등록", "문서 정보와 보관 위치를 입력합니다."]);
-    tasks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화", "최신 대장을 검증한 뒤 변경 사항을 반영합니다."]);
+    tasks.push(["/documents/new", "fa-file-circle-plus", "문서 등록", "문서 정보와 보관 위치를 입력해요."]);
+    tasks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화", "최신 대장을 검증한 뒤 변경 사항을 반영해요."]);
   }
   if (capabilities.canPreviewDisposals) {
-    tasks.push(["/documents/disposal", "fa-box-archive", "문서 폐기", "폐기 대상을 필터링하고 선택해 처리합니다."]);
+    tasks.push(["/documents/disposal", "fa-box-archive", "문서 폐기", "폐기 대상을 골라 처리해요."]);
   }
   if (capabilities.canOpenManagement) {
-    tasks.push(["/admin", "fa-list-check", "확인할 일", "운영 중 확인이 필요한 항목을 점검합니다."]);
+    tasks.push(["/admin", "fa-list-check", "확인할 일", "운영 중 확인이 필요한 항목을 점검해요."]);
   }
   return page("도움말·문의", `
     <section class="page-head">
-      <div><h1>도움말·문의</h1><p class="muted">하려는 작업을 선택하거나 검색 방법을 확인하세요.</p></div>
+      <div><h1>도움말·문의</h1><p class="muted">하려는 작업을 고르거나 검색 방법을 확인해 보세요.</p></div>
       ${contactEmail ? `<a class="button secondary" href="mailto:${escapeHtml(contactEmail)}">담당자 문의</a>` : ""}
     </section>
     <section class="panel help-task-panel" aria-labelledby="help-task-title">
-      <div class="section-title"><h2 id="help-task-title">무엇을 하시나요?</h2><span class="count-badge">${tasks.length}개 작업</span></div>
+      <div class="section-title"><h2 id="help-task-title">어떤 작업을 할까요?</h2><span class="count-badge">${tasks.length}개 작업</span></div>
       <nav class="help-task-grid" aria-label="주요 작업 바로가기">
-        ${tasks.map(([href, icon, label, description]) => `<a class="help-task-card" href="${href}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span><strong>${label}</strong><small>${description}</small></span><span class="help-task-arrow" aria-hidden="true">›</span></a>`).join("")}
+        ${tasks.map(([href, icon, label, description]) => `<a class="help-task-card" href="${href}"><span class="icon-frame" aria-hidden="true"><i class="fa-solid ${icon}"></i></span><span><strong>${label}</strong><small>${description}</small></span><span class="help-task-arrow" aria-hidden="true">›</span></a>`).join("")}
       </nav>
     </section>
     <section class="content-grid">
       <article class="panel">
         <h2>검색 방법</h2>
         <ul class="manual-list">
-          <li><strong>문서번호 일부</strong><span>예: PV-2026 대신 2026 또는 PV만 입력해도 검색합니다.</span></li>
-          <li><strong>문서명 키워드</strong><span>띄어쓰기와 일부 오타를 허용해 유사한 문서를 우선 보여줍니다.</span></li>
-          <li><strong>위치 검색</strong><span>1구역, 2번 랙, 1-01처럼 보관 위치 단서로도 찾을 수 있습니다.</span></li>
+          <li><strong>문서번호 일부</strong><span>예: PV-2026 대신 2026이나 PV만 입력해도 찾을 수 있어요.</span></li>
+          <li><strong>문서명 키워드</strong><span>띄어쓰기가 다르거나 오타가 조금 있어도 비슷한 문서를 먼저 보여드려요.</span></li>
+          <li><strong>위치 검색</strong><span>1구역, 2번 랙, 1-01처럼 보관 위치로도 찾을 수 있어요.</span></li>
         </ul>
       </article>
       <article class="panel">
         <h2>담당자</h2>
         <dl class="contact-list">
-          <div><dt>부서 / 이름</dt><dd>${escapeHtml(contactName || "운영 관리자에게 문의하세요.")}</dd></div>
+          <div><dt>부서 / 이름</dt><dd>${escapeHtml(contactName || "운영 관리자에게 문의해 주세요.")}</dd></div>
           ${contactEmail ? `<div><dt>이메일</dt><dd><a href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a></dd></div>` : ""}
         </dl>
       </article>
@@ -354,9 +354,9 @@ export function searchReportPage({ session, report }) {
   return page("검색 리포트", `
     <section class="page-head">
       <h1>검색 리포트</h1>
-      <a class="button secondary" href="/admin">관리자 홈</a>
+      <a class="button secondary" href="/admin">운영 관리</a>
     </section>
-    ${report?.unavailable ? alertWarning("검색 로그 테이블이 아직 없습니다. 0014_search_analytics 마이그레이션을 적용하면 집계가 시작됩니다.") : ""}
+    ${report?.unavailable ? alertNote("검색 기록을 아직 모으지 않았어요. 0014_search_analytics 마이그레이션을 적용하면 집계를 시작해요.") : ""}
     <section class="content-grid">
       <article class="panel">
         ${sectionHeader("자주 찾는 검색어", `${topQueries.length}건`)}
@@ -371,11 +371,11 @@ export function searchReportPage({ session, report }) {
               <td>${escapeHtml(row.last_searched_at || "-")}</td>
             </tr>
           `).join("")}</tbody>
-        </table></div>` : emptyState("아직 집계된 검색어가 없습니다.")}
+        </table></div>` : emptyState("아직 집계된 검색어가 없어요.")}
       </article>
       <article class="panel">
         ${sectionHeader("결과 없는 검색어", `${failedQueries.length}건`)}
-        <p class="muted">자주 실패하는 표현은 해당 문서의 태그나 문서명에 추가하면 다음 검색부터 찾을 수 있습니다.</p>
+        <p class="muted">자주 실패하는 표현을 해당 문서의 태그나 문서명에 추가하면 다음 검색부터 찾을 수 있어요.</p>
         ${failedQueries.length ? `
         <div class="table-wrap"><table>
           <thead><tr><th>검색어</th><th>시도</th><th>마지막 검색</th><th></th></tr></thead>
@@ -387,7 +387,7 @@ export function searchReportPage({ session, report }) {
               <td><a class="button secondary sm" href="/tags?name=${encodeURIComponent(row.query_text)}">태그 보강</a></td>
             </tr>
           `).join("")}</tbody>
-        </table></div>` : emptyState("실패한 검색이 없습니다.")}
+        </table></div>` : emptyState("실패한 검색이 없어요.")}
       </article>
     </section>
     <section class="panel">
@@ -400,7 +400,7 @@ export function searchReportPage({ session, report }) {
             <strong>${Number(row.click_count || 0)}회</strong>
           </a>
         `).join("")}
-      </div>` : emptyState("아직 클릭 집계가 없습니다.")}
+      </div>` : emptyState("아직 집계된 클릭이 없어요.")}
     </section>
   `, session);
 }

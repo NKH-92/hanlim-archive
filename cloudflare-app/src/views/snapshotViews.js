@@ -49,7 +49,7 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
     <script defer src="/assets/exceljs.min.js"></script>
     <script defer src="/assets/excel-app.js"></script>
     <section class="page-head">
-      <div><h1>엑셀 대장 동기화</h1><p class="muted">엑셀 파일을 기준으로 전체 문서 대장을 검증하고 안전하게 동기화합니다.</p></div>
+      <div><h1>엑셀 대장 동기화</h1><p class="muted">엑셀 파일을 기준으로 전체 문서 대장을 검증하고 안전하게 동기화해요.</p></div>
       <button type="button" class="button secondary" data-excel-export><i class="fa-solid fa-file-excel"></i> 현재 대장 엑셀 추출</button>
     </section>
     ${error ? alertDanger(error) : ""}
@@ -57,32 +57,32 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
       <div><span>현재 대장 버전</span><strong>V${number(state.currentVersion)}</strong><small>${escapeHtml(state.updatedAt || "초기 상태")} 기준</small></div>
       <div><span>선택 파일 기준 버전</span><strong data-excel-base-version>선택 전</strong><small data-excel-latest>최신 여부 확인 전</small></div>
       <div><span>내보낸 시각</span><strong data-excel-exported-at>선택 전</strong><small>선택 파일을 추출한 시각</small></div>
-      <div><span>내 권한</span><strong>검증 가능 · ${canApply ? "적용 가능" : "적용 권한 없음"}</strong><small>${canApply ? "변경사항 검토 후 직접 반영할 수 있습니다." : "검증 후 반영 권한이 있는 담당자에게 요청하세요."}</small></div>
+      <div><span>내 권한</span><strong>검증 가능 · ${canApply ? "적용 가능" : "적용 권한 없음"}</strong><small>${canApply ? "변경사항을 검토한 뒤 직접 반영할 수 있어요." : "검증한 뒤 반영 권한이 있는 담당자에게 요청해 주세요."}</small></div>
     </section>
-    <div class="alert warning" role="note"><strong>일부 변경 목록이 아닌 전체 현재 대장을 올려주세요.</strong><p>파일에서 빠진 문서는 현재 대장에서 제외될 수 있습니다. 파일 선택과 검증만으로는 대장이 바뀌지 않으며, 변경 내역을 확인한 뒤 명시적으로 반영합니다.</p></div>
+    <div class="alert warning" role="note"><strong>바뀐 부분만이 아니라 현재 대장 전체를 올려 주세요.</strong><p>파일에서 빠진 문서는 현재 대장에서 제외될 수 있어요. 파일을 선택하고 검증해도 대장은 그대로예요. 변경 내역을 확인한 뒤 직접 반영해야 바뀌어요.</p></div>
     ${workflowStepper(1)}
     <section id="excel-full-sync" class="panel snapshot-intro snapshot-upload-panel" data-excel-snapshot data-current-version="${Number(state.currentVersion)}" data-current-snapshot-id="${Number(state.currentSnapshotId || 0)}" data-apply-mode="${escapeHtml(applyMode)}">
       <div>
         <h2>엑셀 전체 동기화</h2>
-        <p>최신 대장을 추출해 수정한 파일을 올리세요. 파일 전체를 검증하고 추가·변경·제외 내역을 먼저 보여준 뒤 확인할 때만 반영합니다.</p>
+        <p>최신 대장을 추출해 수정한 파일을 올려 주세요. 파일 전체를 검증해 추가·변경·제외 내역을 먼저 보여드리고, 확인한 뒤에만 반영해요.</p>
         <form class="stack" data-excel-snapshot-upload data-dirty-form>
           <label>동기화 사유 (10~500자)
             <textarea name="syncReason" required minlength="10" maxlength="500" rows="3" placeholder="예: 2026년 정기 문서고 대장 현행화"></textarea>
           </label>
-          <p class="muted">전체 문서 리스트를 변경하는 목적과 근거를 입력하세요. 작업 생성 시 감사 이력에 저장됩니다.</p>
+          <p class="muted">전체 문서 목록을 바꾸는 목적과 근거를 입력해 주세요. 작업을 만들 때 감사 이력에 함께 저장돼요.</p>
           <label>문서고 관리대장 엑셀
             <input type="file" name="excelFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
           </label>
           <div class="snapshot-file-summary" data-excel-file-summary hidden></div>
-          <div class="alert warning" data-excel-stale-warning hidden>현재 버전보다 오래된 관리 파일입니다. 최신 대장을 다시 내보내 작업하세요. 수정 전 최신 파일을 추출해 주세요.</div>
+          <div class="alert warning" data-excel-stale-warning hidden>현재 버전보다 오래된 관리 파일이에요. 최신 대장을 다시 추출해서 그 파일로 작업해 주세요.</div>
           <progress class="snapshot-progress" data-excel-progress data-excel-progress-bar aria-label="엑셀 전송 진행률" max="100" value="0" hidden></progress>
-          <p class="muted" data-excel-message aria-live="polite">시스템에서 추출한 관리 파일(_시스템정보 포함)을 권장합니다. 일상 변경은 최대 1,000건, 최초 연결은 최대 30,000건이며 시스템이 자동 분할합니다.</p>
+          <p class="muted" data-excel-message aria-live="polite">시스템에서 추출한 관리 파일(_시스템정보 포함)을 권장해요. 일상 변경은 최대 1,000건, 최초 연결은 최대 30,000건까지 올릴 수 있고, 시스템이 자동으로 나눠 처리해요.</p>
           <div class="alert info" data-excel-recovery role="status" hidden></div>
           <fieldset class="snapshot-bootstrap-confirm" data-excel-bootstrap hidden>
             <legend>최초 연결 파일 확인</legend>
-            <p class="alert warning">시스템 정보가 없는 파일입니다. 운영 backup과 복구 가능 여부를 확인한 경우에만 최초 연결을 진행하세요.</p>
+            <p class="alert warning">시스템 정보가 없는 파일이에요. 운영 backup을 만들고 복구할 수 있는지 확인한 경우에만 최초 연결을 진행해 주세요.</p>
             <label>확인 문구<input name="bootstrapConfirmation" autocomplete="off" placeholder="BOOTSTRAP" pattern="BOOTSTRAP"></label>
-            <label class="checkbox"><input type="checkbox" name="backupConfirmed" value="1"> 운영 backup 생성과 복구 가능 여부를 확인했습니다.</label>
+            <label class="checkbox"><input type="checkbox" name="backupConfirmed" value="1"> 운영 backup을 만들었고 복구할 수 있는지 확인했어요.</label>
           </fieldset>
           <section class="snapshot-validation-errors" data-excel-errors hidden>
             <div class="section-title"><h3>검증 오류</h3><span class="count-badge" data-excel-error-count>0건</span></div>
@@ -92,27 +92,27 @@ export function documentSnapshotPage({ session, state, snapshots = [], error = "
               <thead><tr><th>행</th><th>필드</th><th>코드</th><th>오류</th></tr></thead><tbody></tbody>
             </table></div>
           </section>
-          <button type="submit" class="action-button" data-excel-upload-button>파일 검증 및 변경사항 확인</button>
+          <button type="submit" class="action-button" data-excel-upload-button>변경사항 확인하기</button>
         </form>
       </div>
     </section>
     <details class="panel snapshot-help"><summary>입력 방법과 운영 도움말</summary>
       <ul class="snapshot-rules">
-        <li>오류가 한 건이라도 있으면 현재 문서대장은 변경하지 않습니다.</li>
-        <li>랙 위치는 랙과 면에 관계없이 해당 면을 바라본 기준으로 왼쪽부터 1열, 아래부터 1선반을 입력합니다.</li>
-        <li>엑셀에서 사라진 문서는 삭제 대신 대장에서 제외해 감사·세트·이동 이력을 보존합니다.</li>
-        <li>시스템에서 개별 처리한 추가·정보 수정·개정·위치 이동·폐기는 다음 엑셀 추출과 인쇄용 관리대장에 포함됩니다.</li>
-        <li>개정번호는 숫자만 입력하며 화면에서는 Rev.가 붙습니다. 개정번호가 없으면 공란 또는 N/A로 입력하세요. 검색과 다음 추출에는 N/A로 표시됩니다.</li>
-        <li>개정 이력의 문서번호·개정번호 변경과 자동 폐기된 이전본의 복원은 엑셀로 처리할 수 없습니다.</li>
-        <li>최종 반영은 전용 권한과 위치·폐기 권한이 필요할 수 있습니다.</li>
-        <li>추출 후 시스템에서 건별 작업이 발생하면 기존 엑셀은 오래된 파일이 되므로 최신 대장을 다시 추출해야 합니다.</li>
+        <li>오류가 한 건이라도 있으면 현재 문서대장은 바꾸지 않아요.</li>
+        <li>랙 위치는 랙과 면에 관계없이 해당 면을 바라본 기준으로 왼쪽부터 1열, 아래부터 1선반으로 입력해 주세요.</li>
+        <li>엑셀에서 빠진 문서는 삭제하지 않고 대장에서 제외해서 감사·세트·이동 이력을 보존해요.</li>
+        <li>시스템에서 개별로 처리한 추가·정보 수정·개정·위치 이동·폐기는 다음 엑셀 추출과 인쇄용 관리대장에 포함돼요.</li>
+        <li>개정번호는 숫자만 입력해 주세요. 화면에서는 앞에 Rev.가 붙어요. 개정번호가 없으면 비워 두거나 N/A로 입력해 주세요. 검색과 다음 추출에는 N/A로 표시돼요.</li>
+        <li>개정 이력의 문서번호·개정번호 변경과 자동 폐기된 이전본의 복원은 엑셀로 처리할 수 없어요.</li>
+        <li>최종 반영에는 전용 권한과 위치·폐기 권한이 필요할 수 있어요.</li>
+        <li>추출한 뒤 시스템에서 건별 작업을 하면 기존 엑셀은 오래된 파일이 돼요. 이때는 최신 대장을 다시 추출해 주세요.</li>
       </ul>
     </details>
     <section class="panel results-panel">
       <div class="section-title"><h2>최근 동기화</h2><span class="count-badge">${snapshots.length}건</span></div>
       <div class="table-wrap"><table class="doc-table">
         <thead><tr><th>작업 번호</th><th>파일</th><th>상태</th><th>문서 수</th><th>추가 / 변경 / 제외</th><th>작업자</th><th>생성일</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="7" class="empty">아직 엑셀 동기화 작업이 없습니다.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="7" class="empty">아직 엑셀 동기화 작업이 없어요.</td></tr>`}</tbody>
       </table></div>
     </section>
   `, session);
@@ -181,13 +181,13 @@ export function documentSnapshotDetailPage({
       </tr>`;
   }).join("");
   const notice = applied || snapshot.status === "completed"
-    ? `<div class="alert success" role="status">이 엑셀 파일이 현재 문서대장으로 반영되었습니다.</div>`
+    ? `<div class="alert success" role="status">이 엑셀 파일을 현재 문서대장으로 반영했어요.</div>`
     : "";
   const bootstrapProgress = Number(snapshot.bootstrap_progress_count || 0);
   const bootstrapTotal = Number(snapshot.total_count || 0);
   const awaitingBootstrapFinalization = bootstrapTotal > 0 && bootstrapProgress === bootstrapTotal;
   const scheduledNotice = snapshot.status === "applying" && snapshot.mode === "bootstrap" && snapshot.bootstrap_apply_actor_json
-    ? `<div class="alert info" role="status"><strong>${scheduled ? "최초 대량등록이 예약되었습니다." : awaitingBootstrapFinalization ? "문서 생성이 끝나 공개 확정을 기다리고 있습니다." : "최초 대량등록을 자동 분할 반영 중입니다."}</strong> 1일 최대 5,000건씩 처리하며 현재 ${number(bootstrapProgress)} / ${number(bootstrapTotal)}건입니다.${snapshot.bootstrap_next_run_at ? ` 다음 실행 기준(UTC): ${escapeHtml(snapshot.bootstrap_next_run_at)}` : ""}</div>`
+    ? `<div class="alert info" role="status"><strong>${scheduled ? "최초 대량등록을 예약했어요." : awaitingBootstrapFinalization ? "문서를 모두 만들었고, 공개 확정을 기다리고 있어요." : "최초 대량등록을 자동으로 나눠 반영하고 있어요."}</strong> 하루 최대 5,000건씩 처리해요. 지금까지 ${number(bootstrapProgress)} / ${number(bootstrapTotal)}건을 처리했어요.${snapshot.bootstrap_next_run_at ? ` 다음 실행 기준(UTC): ${escapeHtml(snapshot.bootstrap_next_run_at)}` : ""}</div>`
     : "";
   const permissionText = (requiredPermissions || [])
     .map((permission) => PERMISSION_LABELS[permission] || permission)
@@ -214,7 +214,7 @@ export function documentSnapshotDetailPage({
     </section>
     ${notice}
     ${scheduledNotice}
-    ${error || snapshot.error_summary ? alertDanger(error || snapshot.error_summary) : ""}
+    ${error ? alertDanger(error) : snapshot.error_summary ? alertDanger(validationErrors.length ? `검증 오류 ${number(validationErrors.length)}건이 있어요. 아래 목록에서 행과 오류를 확인하고 파일을 고친 뒤 다시 올려 주세요.` : snapshot.error_summary) : ""}
     ${applyBlockReason && snapshot.status === "ready" ? alertDanger(applyBlockReason) : ""}
     ${warningBlock}
     ${validationErrorPanel(validationErrors)}
@@ -268,18 +268,18 @@ export function documentSnapshotDetailPage({
           <th>엑셀 행</th><th>처리</th><th>문서번호</th><th>개정</th><th>문서명</th>
           <th>변경 필드</th><th>변경 전</th><th>변경 후</th><th>현재 위치</th><th>변경 위치</th><th>상태 변화</th>
         </tr></thead>
-        <tbody>${bodyRows || `<tr><td colspan="11" class="empty">표시할 행이 없습니다.</td></tr>`}</tbody>
+        <tbody>${bodyRows || `<tr><td colspan="11" class="empty">표시할 행이 없어요.</td></tr>`}</tbody>
       </table></div>
     </section>
     <section class="panel results-panel">
       <div class="section-title"><h2>대장 제외 예정</h2><span class="count-badge">${exclusions.length}건</span></div>
-      <p class="muted">업로드 파일에 없어 현재 대장에서 제외될 문서입니다. 세트 연결과 감사 이력은 보존됩니다.</p>
+      <p class="muted">업로드한 파일에 없어서 현재 대장에서 제외될 문서예요. 세트 연결과 감사 이력은 그대로 보존돼요.</p>
       <div class="table-wrap"><table class="doc-table">
         <thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>현재 상태</th><th>현재 위치</th><th>세트</th><th>최근 이동</th><th>제외 사유</th><th>위험 정보</th></tr></thead>
-        <tbody>${exclusionRows || `<tr><td colspan="9" class="empty">제외 예정 문서가 없습니다.</td></tr>`}</tbody>
+        <tbody>${exclusionRows || `<tr><td colspan="9" class="empty">제외 예정 문서가 없어요.</td></tr>`}</tbody>
       </table></div>
     </section>
-    ${canApply ? `<section class="panel snapshot-final-apply" aria-labelledby="snapshot-final-apply-title"><div class="section-title"><h2 id="snapshot-final-apply-title">최종 반영</h2><span class="count-badge">변경 영향 ${number(reviewCount)}건</span></div><p class="muted">위 행별 변경 내역과 대장 제외 예정 목록을 모두 확인한 뒤 반영하세요.</p>${applyForm(snapshot, excludeCount, reviewCount)}</section>` : ""}
+    ${canApply ? `<section class="panel snapshot-final-apply" aria-labelledby="snapshot-final-apply-title"><div class="section-title"><h2 id="snapshot-final-apply-title">최종 반영</h2><span class="count-badge">변경 영향 ${number(reviewCount)}건</span></div><p class="muted">위의 행별 변경 내역과 대장 제외 예정 목록을 모두 확인한 뒤 반영해 주세요.</p>${applyForm(snapshot, excludeCount, reviewCount)}</section>` : ""}
     <script>
       (function () {
         var buttons = document.querySelectorAll('[data-snapshot-filter]');
@@ -314,7 +314,7 @@ function validationErrorPanel(errors = []) {
   return `
     <section class="panel snapshot-validation-errors" data-excel-errors>
       <div class="section-title"><h2>검증 오류</h2><span class="count-badge">${number(errors.length)}건</span></div>
-      <p class="muted">앞의 20건을 표시합니다.${remaining ? ` 외 ${number(remaining)}건은 CSV에서 확인하세요.` : ""}</p>
+      <p class="muted">${remaining ? `앞의 20건을 표시해요. 외 ${number(remaining)}건은 CSV에서 확인해 주세요.` : "검증 오류를 수정한 뒤 다시 업로드해 주세요."}</p>
       <button type="button" class="button secondary" data-snapshot-errors-csv>오류 CSV 내려받기</button>
       <div class="table-wrap"><table class="doc-table" data-snapshot-error-table>
         <thead><tr><th>행</th><th>필드</th><th>코드</th><th>오류</th></tr></thead><tbody>${rows}</tbody>
@@ -331,18 +331,18 @@ function applyForm(snapshot, excludeCount, reviewCount) {
       <label>승인 참조 (조건부 필수)
         <input type="text" name="approvalReference" maxlength="200" placeholder="예: CC-2026-0142">
       </label>
-      <p class="muted">적용 건수가 많거나 조직의 변경관리 절차상 사전 승인이 필요한 경우 결재 번호 또는 관련 문서번호를 입력하세요.</p>
+      <p class="muted">적용 건수가 많거나 조직의 변경관리 절차에 따라 사전 승인이 필요하면 결재 번호나 관련 문서번호를 입력해 주세요.</p>
       <label>변경 영향 건수 재확인
         <input type="number" name="confirmedReviewCount" required min="${reviewCount}" max="${reviewCount}" value="" inputmode="numeric">
       </label>
-      <label class="checkbox"><input type="checkbox" name="confirmReview" value="1" required> 행별 변경과 제외 예정 목록 전체를 검토했습니다.</label>
+      <label class="checkbox"><input type="checkbox" name="confirmReview" value="1" required> 행별 변경과 제외 예정 목록을 모두 검토했어요.</label>
       ${excludeCount > 0 ? `
         <label>제외 예정 건수 재확인
           <input type="number" name="confirmedExcludeCount" required min="${excludeCount}" max="${excludeCount}" value="">
         </label>
-        <label class="checkbox"><input type="checkbox" name="confirmExclude" value="1" required> 제외 ${number(excludeCount)}건을 검토했고 반영에 동의합니다.</label>
+        <label class="checkbox"><input type="checkbox" name="confirmExclude" value="1" required> 제외 ${number(excludeCount)}건을 검토했고, 반영에 동의해요.</label>
       ` : `<input type="hidden" name="confirmedExcludeCount" value="0">`}
-      <p class="snapshot-apply-impact" role="note">변경 영향 ${number(reviewCount)}건 · 대장 제외 ${number(excludeCount)}건을 반영합니다. 대장 제외는 문서 폐기와 다릅니다.</p>
+      <p class="snapshot-apply-impact" role="note">변경 영향 ${number(reviewCount)}건 · 대장 제외 ${number(excludeCount)}건을 반영해요. 대장 제외는 문서 폐기와 달라요.</p>
       <button type="submit" class="button">현재 대장으로 반영</button>
     </form>
   `;

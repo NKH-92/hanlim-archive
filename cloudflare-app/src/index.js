@@ -78,7 +78,7 @@ export default {
       logError("worker.fetch", error, { reqId, routeId, method: request.method, path });
       const session = await readSession(request, requestEnv).catch(() => null);
       response = errorPage(
-        `처리 중 오류가 발생했습니다. 계속되면 관리자에게 오류코드 ${reqId} 를 알려주세요.`,
+        `처리 중 오류가 발생했어요. 계속되면 관리자에게 오류코드 ${reqId} 를 알려 주세요.`,
         session,
         500
       );
@@ -157,7 +157,7 @@ async function route(request, env, effects = {}) {
   }
 
   if (request.method === "POST" && !isTrustedPostOrigin(request)) {
-    return errorPage("잘못된 요청 출처입니다.", null, 403);
+    return errorPage("잘못된 요청 출처예요. 한림문서고 화면에서 다시 시도해 주세요.", null, 403);
   }
 
   if (publicRoute?.descriptor.id === "session.login.form") {
@@ -181,7 +181,7 @@ async function route(request, env, effects = {}) {
   }
 
   if (request.method === "POST" && !await isValidCsrfToken(request, session)) {
-    return errorPage("요청 보안 토큰이 유효하지 않습니다. 화면을 새로고침한 뒤 다시 시도하세요.", session, 403);
+    return errorPage("요청 보안 토큰이 유효하지 않아요. 화면을 새로고침한 뒤 다시 시도해 주세요.", session, 403);
   }
 
   // 로그아웃은 POST+CSRF만 허용한다. GET은 세션을 건드리지 않고 홈으로 돌린다.
@@ -205,7 +205,7 @@ async function route(request, env, effects = {}) {
     && request.method === "POST"
     && !(path === "/account/password" && session.mustChangePassword)
   ) {
-    return errorPage("시연 및 조회용 계정에서는 내용을 수정할 수 없습니다.", session, 403);
+    return errorPage("시연 및 조회용 계정에서는 내용을 수정할 수 없어요.", session, 403);
   }
 
   return routeAuthenticatedRequest(request, env, session, url, path, effects);

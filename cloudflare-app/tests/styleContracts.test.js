@@ -5,6 +5,8 @@ import test from "node:test";
 import { styles } from "../src/views/styles.js";
 import { iconStyles } from "../src/views/icons.js";
 import { tokenStyles } from "../src/views/styles/tokens.js";
+import { appBaseStyles } from "../src/views/styles/appBase.js";
+import { appStyles } from "../src/views/styles/app.js";
 
 const expectedTokens = {
   "--gray-50": "#f7f9fb",
@@ -30,7 +32,6 @@ const expectedTokens = {
   "--action-strong": "#f3c623",
   "--action-soft": "#fff7cf",
   "--action-ink": "#18212f",
-  "--hero-bg": "linear-gradient(135deg, var(--primary-deep), var(--primary))",
   "--success": "#0c7a43",
   "--success-soft": "#e5f4eb",
   "--warning": "#9a5b00",
@@ -61,7 +62,22 @@ const expectedTokens = {
   "--preview-inline-min": "1040px",
   "--text-identity": "14px",
   "--rack-axis-width": "24px",
-  "--font-mono": "ui-monospace, \"Cascadia Code\", \"SF Mono\", Consolas, monospace"
+  "--font-mono": "ui-monospace, \"Cascadia Code\", \"SF Mono\", Consolas, monospace",
+  "--r-xl": "20px",
+  "--text-caption": "12px",
+  "--text-lead": "16px",
+  "--control-height-lg": "48px"
+};
+
+// 로그인 후 업무 화면(.app-body)에서만 반경·글자 단계를 키운다. 공개 랜딩은 :root 값을 그대로 쓴다.
+const expectedAppTokens = {
+  "--r-lg": "16px",
+  "--r-md": "10px",
+  "--r-sm": "8px",
+  "--text-title": "24px",
+  "--text-section": "18px",
+  "--text-body": "15px",
+  "--text-meta": "13px"
 };
 
 const approvedRgbaValues = [
@@ -72,8 +88,6 @@ const approvedRgbaValues = [
   "rgba(30, 85, 196, .22)",
   "rgba(30, 85, 196, .45)",
   "rgba(255, 255, 255, .12)",
-  "rgba(255, 255, 255, .14)",
-  "rgba(255, 255, 255, .05)",
   "rgba(255, 255, 255, .18)",
   "rgba(255, 255, 255, .4)",
   "rgba(255, 255, 255, .55)",
@@ -116,7 +130,7 @@ test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한�
   assert.match(css, /@media \(min-width: 1100px\)[\s\S]*\.bulk-bar \{ left: calc\(240px \+ var\(--sp-6\)\)/);
   assert.match(css, /\.bulk-check-target \{ display: grid; width: 44px; min-height: 44px;/);
   assert.match(css, /\.archive-map/);
-  assert.match(css, /\.search-home-hero \{ position: relative;[\s\S]*min-height: 160px/);
+  assert.doesNotMatch(css, /\.search-home-hero|\.document-detail-head::after|background: var\(--hero-bg\)/);
   assert.match(css, /\.search-home \.search-results-controls \{ margin-top: 0; \}/);
   assert.doesNotMatch(css, /\.viewer-search-form\.is-home \.filter-details \{ display: none; \}/);
   assert.match(css, /\.metric-strip \{ display: grid; grid-template-columns: repeat\(auto-fit/);
@@ -142,13 +156,36 @@ test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한�
   assert.match(css, /\.category-master-summary \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto auto;[^}]*min-height: 56px/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.master-create-form, \.category-master-edit-form \{ grid-template-columns: 1fr; \}/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.category-master-toggle \{ width: 44px; min-height: 44px;/);
-  assert.match(css, /\.document-detail-head \{ grid-template-columns: minmax\(0, 1fr\); max-inline-size: none; margin: calc\(-1 \* var\(--sp-3\)\) calc\(-1 \* var\(--sp-3\)\) var\(--sp-3\); padding: var\(--sp-5\) calc\(var\(--sp-4\) \+ var\(--sp-3\)\)/);
+  assert.match(css, /\.document-detail-head \{ grid-template-columns: minmax\(0, 1fr\); max-inline-size: none; \}/);
   assert.match(css, /\.icon-button \{ min-height: 36px; width: 36px;[\s\S]*color: var\(--gray-600\)/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.icon-button \{ width: 44px; \}/);
   assert.match(css, /input::placeholder, textarea::placeholder \{ color: var\(--gray-500\); \}/);
   assert.match(css, /\.status\.document-active,[\s\S]*\.status\.account-review/);
   assert.doesNotMatch(css, /\.status\.(?:active|disposed|pending|neutral)\b/);
   assert.doesNotMatch(css, /\.answer-card\b|\.doc-row\b|\.operation-hero\b|\.hero-kicker\b|\.ledger-method|\.disposal-targets-layout\b/);
+});
+
+test("업무 화면 보강 조각은 .app-body 범위에만 적용되어 공개 랜딩을 바꾸지 않는다", () => {
+  const css = styles();
+  const appBase = css.indexOf(":where(.app-body) { line-height: 1.55; }");
+  const app = css.indexOf("/* 셸: 밝은 사이드바와 상단 바 */");
+  const landing = css.indexOf(".landing-page");
+  assert.ok(appBase > css.indexOf("input, select, textarea {"), "appBase는 요소 기본값 뒤에 온다");
+  assert.ok(appBase < css.indexOf(".management-grid {"), "appBase는 컴포넌트 조각보다 앞에 온다");
+  assert.ok(app > css.indexOf(".viewer-workspace.has-preview") && app < landing, "app 조각은 업무 조각 뒤, 랜딩 앞에 온다");
+  for (const fragment of [appBaseStyles(), appStyles()]) {
+    const selectors = [...fragment.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/(^|[{}])\s*([^{}@]+)\{/g)].map((match) => match[2].trim()).filter(Boolean);
+    for (const selector of selectors) {
+      for (const part of selector.split(/,(?![^(]*\))/)) {
+        assert.match(part.trim(), /^:where\(\.app-body\)/, `${part.trim()} 선택자는 :where(.app-body)로 시작해야 한다`);
+      }
+    }
+  }
+  assert.match(css, /:where\(\.app-body\) \.topbar \{ background: var\(--surface\); color: var\(--gray-900\); \}/);
+  assert.match(css, /:where\(\.app-body\) :is\(\.action-button, button\.action-button, \.button\.action-button\) \{ background: var\(--primary\);/);
+  assert.match(css, /:where\(\.app-body\) \.minimap-card \.mini-slot\.active \{[^}]*background: var\(--action\);/);
+  assert.match(css, /:where\(\.app-body\) \.modal-actions > \* \{ min-height: var\(--control-height-lg\);/);
+  assert.match(css, /:where\(\.app-body\) \.alert\.neutral \{ background: var\(--gray-50\);/);
 });
 
 test("CSS 변수 참조는 토큰 또는 명시적인 런타임 기하 변수로 해석된다", () => {
@@ -207,12 +244,19 @@ test("view 소스는 CSP가 차단하는 style 속성과 동적 CSSOM mutation�
 });
 
 test("DESIGN 토큰 값은 전용 조각에 그대로 고정된다", () => {
-  const actualTokens = Object.fromEntries(
-    [...tokenStyles().matchAll(/^\s+(--[\w-]+):\s*([^;]+);$/gm)]
-      .map((match) => [match[1], match[2]])
+  const source = tokenStyles();
+  const block = (opening) => {
+    const start = source.indexOf(opening);
+    assert.ok(start >= 0, `${opening.trim()} 블록이 없습니다.`);
+    return source.slice(start, source.indexOf("}", start));
+  };
+  const read = (text) => Object.fromEntries(
+    [...text.matchAll(/^\s+(--[\w-]+):\s*([^;]+);$/gm)].map((match) => [match[1], match[2]])
   );
 
-  assert.deepEqual(actualTokens, expectedTokens);
+  assert.deepEqual(read(block(":root {")), expectedTokens);
+  assert.deepEqual(read(block("\n    .app-body {")), expectedAppTokens);
+  assert.match(source, /@media \(max-width: 760px\) \{\s+\.app-body \{\s+--text-title: 22px;\s+--text-section: 17px;\s+\}\s+\}/);
 });
 
 test("원시 hex는 토큰 조각에만 있고 rgba는 승인된 예외만 사용한다", () => {

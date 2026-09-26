@@ -29,14 +29,14 @@ const MATCHED_ROLE_TEMPLATE_LABEL = `(
 
 export async function createApprovedUser(env, values, actor) {
   if (actor?.role !== "Admin") {
-    return { ok: false, message: "승인 사용자 추가는 시스템 관리자만 수행할 수 있습니다." };
+    return { ok: false, message: "승인 사용자 추가는 시스템 관리자만 할 수 있어요." };
   }
 
   const validation = validateApprovedUser(values);
   if (!validation.ok) return validation;
   const temporaryPassword = String(values?.temporaryPassword ?? "");
   if (!isPasswordInputBounded(temporaryPassword)) {
-    return { ok: false, values: validation.values, message: "임시 비밀번호가 허용된 최대 길이를 초과했습니다." };
+    return { ok: false, values: validation.values, message: "임시 비밀번호가 허용된 최대 길이를 넘었어요. 더 짧게 입력해 주세요." };
   }
   const passwordValidation = validateNewPassword(temporaryPassword, { label: "임시 비밀번호" });
   if (!passwordValidation.ok) return { ...passwordValidation, values: validation.values };
@@ -44,7 +44,7 @@ export async function createApprovedUser(env, values, actor) {
   const user = validation.values;
   const existing = await env.DB.prepare("SELECT id FROM app_users WHERE username = ?").bind(user.username).first();
   if (existing) {
-    return { ok: false, values: user, duplicate: true, message: "이미 등록된 사용자 아이디입니다." };
+    return { ok: false, values: user, duplicate: true, message: "이미 등록된 사용자 아이디예요." };
   }
 
   const passwordRecord = await createPasswordRecord(temporaryPassword);
@@ -112,7 +112,7 @@ export async function createApprovedUser(env, values, actor) {
     return { ok: true, username: user.username, displayName: user.displayName };
   } catch (error) {
     if (error?.code === "STALE_VERSION" || /UNIQUE constraint failed/i.test(String(error?.message || ""))) {
-      return { ok: false, values: user, duplicate: true, message: "이미 등록된 사용자 아이디입니다." };
+      return { ok: false, values: user, duplicate: true, message: "이미 등록된 사용자 아이디예요." };
     }
     throw error;
   }
@@ -240,10 +240,10 @@ export async function updateUserPermissions(env, id, values, actor) {
     || !Number.isSafeInteger(expectedRowVersion)
     || expectedRowVersion < 1
   ) {
-    return { ok: false, message: "권한을 변경할 사용자를 찾을 수 없습니다." };
+    return { ok: false, message: "권한을 변경할 사용자를 찾지 못했어요." };
   }
   if (Number(user.row_version) !== expectedRowVersion) {
-    return { ok: false, stale: true, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    return { ok: false, stale: true, message: "사용자 정보가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
   }
 
   const beforePermissions = permissionFlags(user);
@@ -297,7 +297,7 @@ export async function updateUserPermissions(env, id, values, actor) {
     return { ok: true };
   } catch (error) {
     if (error?.code === "STALE_VERSION") {
-      return { ok: false, stale: true, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+      return { ok: false, stale: true, message: "사용자 정보가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
     }
     throw error;
   }
@@ -305,7 +305,7 @@ export async function updateUserPermissions(env, id, values, actor) {
 
 export async function resetUserPassword(env, id, temporaryPassword, actor) {
   if (actor?.role !== "Admin") {
-    return { ok: false, message: "비밀번호 초기화는 시스템 관리자만 수행할 수 있습니다." };
+    return { ok: false, message: "비밀번호 초기화는 시스템 관리자만 할 수 있어요." };
   }
 
   const user = await getAppUser(env, id);
@@ -314,10 +314,10 @@ export async function resetUserPassword(env, id, temporaryPassword, actor) {
     || !["approved", "disabled"].includes(user.status)
     || Number(user.security_review_required || 0) === 1
   ) {
-    return { ok: false, message: "비밀번호를 초기화할 사용자를 찾을 수 없습니다." };
+    return { ok: false, message: "비밀번호를 초기화할 사용자를 찾지 못했어요." };
   }
   if (Number(user.id) === Number(actor.userId) || user.username === actor.username) {
-    return { ok: false, message: "현재 로그인한 계정은 비밀번호 변경 화면을 이용하세요." };
+    return { ok: false, message: "현재 로그인한 계정은 비밀번호 변경 화면을 이용해 주세요." };
   }
 
   const passwordValidation = validateNewPassword(temporaryPassword, { label: "임시 비밀번호" });
@@ -392,7 +392,7 @@ export async function resetUserPassword(env, id, temporaryPassword, actor) {
 
   return changed(results[2])
     ? { ok: true }
-    : { ok: false, message: "사용자 인증 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    : { ok: false, message: "사용자 인증 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
 }
 
 // 테스트·검증 단계에서 만들어진 계정을 대장에서 지운다. 계정 행은 사라지지만 감사 이력의
@@ -409,7 +409,7 @@ export async function deleteUser(env, id, actor, confirmation = {}) {
   const refusal = userDeletionRefusal(user, actor, { remainingAdminCount });
   if (refusal) return { ok: false, message: refusal };
   if (clean(confirmation.confirmedUsername) !== user.username) {
-    return { ok: false, message: "삭제를 확정하려면 계정 아이디를 정확히 입력하세요." };
+    return { ok: false, message: "삭제를 확정하려면 계정 아이디를 정확히 입력해 주세요." };
   }
 
   const guardSql = "FROM app_users WHERE id = ? AND username = ? AND row_version = ?";
@@ -434,10 +434,10 @@ export async function deleteUser(env, id, actor, confirmation = {}) {
     const results = await executeMutationBatch(env, plan);
     return changed(results[2])
       ? { ok: true, username: user.username, displayName: user.display_name }
-      : { ok: false, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+      : { ok: false, message: "사용자 정보가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
   } catch (error) {
     if (error?.code === "STALE_VERSION") {
-      return { ok: false, message: "사용자 정보가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+      return { ok: false, message: "사용자 정보가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
     }
     throw error;
   }
@@ -459,7 +459,7 @@ async function transitionUserStatus(env, id, actor, spec) {
   const transition = transitionFor(spec.action);
   const user = await getAppUser(env, id);
   if (!canTransitionUser(user, spec.action)) {
-    return { ok: false, message: "처리할 수 있는 사용자를 찾지 못했습니다." };
+    return { ok: false, message: "처리할 수 있는 사용자를 찾지 못했어요." };
   }
 
   const placeholders = transition.from.map(() => "?").join(", ");
@@ -487,7 +487,7 @@ async function transitionUserStatus(env, id, actor, spec) {
 
   return changed(results[1])
     ? { ok: true }
-    : { ok: false, message: "사용자 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    : { ok: false, message: "사용자 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
 }
 
 function userAuditSnapshot(user) {

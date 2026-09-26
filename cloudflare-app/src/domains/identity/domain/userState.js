@@ -31,13 +31,13 @@ export function transitionFor(action) {
  */
 export function userDeletionRefusal(user, actor, options = {}) {
   const remainingAdminCount = Number(options.remainingAdminCount || 0);
-  if (!user) return "삭제할 사용자를 찾을 수 없습니다.";
-  if (actor?.role !== "Admin") return "계정 완전삭제는 시스템 관리자만 수행할 수 있습니다.";
+  if (!user) return "삭제할 사용자를 찾지 못했어요.";
+  if (actor?.role !== "Admin") return "계정 완전삭제는 시스템 관리자만 할 수 있어요.";
   if (Number(user.id) === Number(actor?.userId) || user.username === actor?.username) {
-    return "현재 로그인한 계정은 삭제할 수 없습니다.";
+    return "현재 로그인한 계정은 삭제할 수 없어요.";
   }
   if (user.role === "Admin" && remainingAdminCount < 1) {
-    return "마지막 시스템 관리자 계정은 삭제할 수 없습니다.";
+    return "마지막 시스템 관리자 계정은 삭제할 수 없어요.";
   }
   return "";
 }

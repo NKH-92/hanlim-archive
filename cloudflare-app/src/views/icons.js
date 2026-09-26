@@ -8,7 +8,6 @@ const ICONS = Object.freeze({
   info: `<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 5h2v2h-2V7Zm0 4h2v6h-2v-6Z"/>`,
   copy: `<path d="M8 3h11a2 2 0 0 1 2 2v11h-2V5H8V3ZM3 8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Zm2 0v11h10V8H5Z"/>`,
   location: `<path d="M12 2a8 8 0 0 0-8 8c0 5.5 8 12 8 12s8-6.5 8-12a8 8 0 0 0-8-8Zm0 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/>`,
-  list: `<path d="M4 5h3v3H4V5Zm5 0h11v3H9V5ZM4 11h3v3H4v-3Zm5 0h11v3H9v-3ZM4 17h3v3H4v-3Zm5 0h11v3H9v-3Z"/>`,
   download: `<path d="M11 3h2v10l3.5-3.5 1.4 1.4L12 16.8 6.1 10.9l1.4-1.4L11 13V3ZM4 19h16v2H4v-2Z"/>`,
   spreadsheet: `<path d="M5 3h14v18H5V3Zm2 2v4h10V5H7Zm0 6v3h4v-3H7Zm6 0v3h4v-3h-4Zm-6 5v3h4v-3H7Zm6 0v3h4v-3h-4Z"/>`,
   add: `<path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/>`,
@@ -23,7 +22,30 @@ const ICONS = Object.freeze({
   bullets: `<path d="M4 5.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm4 .5h12v2H8V6ZM4 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm4 .5h12v2H8v-2ZM4 15.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm4 .5h12v2H8v-2Z"/>`,
   external: `<path d="M14 3h7v7h-2V6.4l-8.3 8.3-1.4-1.4L17.6 5H14V3ZM5 5h5v2H6v11h11v-4h2v6H4V5h1Z"/>`,
   play: `<path d="M8 5v14l11-7L8 5Z"/>`,
-  replay: `<path d="M6.1 16A8 8 0 1 0 7.3 6.3L4 10M4 4v6h6" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+  replay: `<path d="M6.1 16A8 8 0 1 0 7.3 6.3L4 10M4 4v6h6" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  alert: `<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 5h2v7h-2V7Zm0 9h2v2h-2v-2Z"/>`,
+  check: `<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 13.6-4.2-4.2L8 10l2.8 2.8L16 7.6 17.4 9l-6.6 6.6Z"/>`,
+  chevronRight: `<path d="m9.3 5.3-1.4 1.4 5.3 5.3-5.3 5.3 1.4 1.4 6.7-6.7-6.7-6.7Z"/>`,
+  chevronDown: `<path d="m5.3 9.3 1.4-1.4 5.3 5.3 5.3-5.3 1.4 1.4-6.7 6.7-6.7-6.7Z"/>`,
+  arrowLeft: `<path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2Z"/>`,
+  key: `<path d="M8 7a5 5 0 1 0 4.6 7H15v3h2.5v-3H19v2h2.5v-2H23v-4H12.6A5 5 0 0 0 8 7Zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/>`,
+  tag: `<path d="M3 3h8.6l9.4 9.4-8.6 8.6L3 11.6V3Zm4.5 2.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/>`,
+  layers: `<path d="M12 3 2 8l10 5 10-5-10-5Zm-7.8 8.6L2 12.7l10 5 10-5-2.2-1.1L12 15.4l-7.8-3.8Zm0 4L2 16.7l10 5 10-5-2.2-1.1L12 19.4l-7.8-3.8Z"/>`,
+  grid: `<path d="M3 3h8v8H3V3Zm10 0h8v8h-8V3ZM3 13h8v8H3v-8Zm10 0h8v8h-8v-8Z"/>`,
+  checklist: `<path d="M3.5 5.5 5 7l3-3 1.4 1.4L5 9.8 2.1 6.9l1.4-1.4ZM11 6h10v2H11V6Zm-7.5 7.5L5 15l3-3 1.4 1.4L5 17.8l-2.9-2.9 1.4-1.4ZM11 14h10v2H11v-2Z"/>`,
+  chart: `<path d="M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z"/>`,
+  users: `<path d="M9 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm-8 16a8 8 0 0 1 16 0H1Zm16-16a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm2.5 16a9.9 9.9 0 0 0-2.6-6.3A6 6 0 0 1 23 20h-3.5Z"/>`,
+  signOut: `<path d="M4 3h9v2H6v14h7v2H4V3Zm12.3 4.3L21 12l-4.7 4.7-1.4-1.4 2.3-2.3H9v-2h8.2l-2.3-2.3 1.4-1.4Z"/>`
+});
+
+// ::before·::after 장식 아이콘이 클래스 없이 같은 마스크를 쓰도록 변수로도 노출한다.
+const ICON_VARIABLES = Object.freeze({
+  "--icon-info": "info",
+  "--icon-alert": "alert",
+  "--icon-check": "check",
+  "--icon-chevron-right": "chevronRight",
+  "--icon-chevron-down": "chevronDown",
+  "--icon-arrow-left": "arrowLeft"
 });
 
 function dataUrl(body) {
@@ -40,11 +62,18 @@ export function iconStyles() {
     add: ["plus", "file-circle-plus"],
     user: ["user"],
     lock: ["lock"],
-    settings: ["gear", "key", "right-from-bracket", "users-gear"],
-    info: ["circle-info", "chart-simple"],
+    settings: ["gear"],
+    users: ["users-gear"],
+    key: ["key"],
+    signOut: ["right-from-bracket"],
+    info: ["circle-info"],
+    chart: ["chart-simple"],
+    tag: ["tags"],
+    layers: ["layer-group"],
+    grid: ["table-cells-large"],
+    checklist: ["list-check"],
     copy: ["copy", "print"],
     location: ["location-dot", "location-crosshairs"],
-    list: ["list-check", "table-cells-large", "layer-group", "tags"],
     database: ["database"],
     tree: ["folder-tree"],
     columns: ["table-columns"],
@@ -54,10 +83,16 @@ export function iconStyles() {
     bullets: ["list"],
     external: ["arrow-up-right-from-square"],
     play: ["play"],
-    replay: ["rotate-left"]
+    replay: ["rotate-left"],
+    alert: ["circle-exclamation"],
+    check: ["circle-check"],
+    chevronRight: ["chevron-right"],
+    chevronDown: ["chevron-down"],
+    arrowLeft: ["arrow-left"]
   };
   const rules = Object.entries(groups).map(([icon, names]) =>
     names.map((name) => `.fa-${name}`).join(",") + `{--icon-mask:${dataUrl(ICONS[icon])}}`
   ).join("");
-  return `.fa-solid,.fa-regular{display:inline-block;width:1em;height:1em;flex:0 0 auto;background:currentColor;-webkit-mask:var(--icon-mask) center/contain no-repeat;mask:var(--icon-mask) center/contain no-repeat;vertical-align:-.125em}${rules}`;
+  const variables = Object.entries(ICON_VARIABLES).map(([name, icon]) => `${name}:${dataUrl(ICONS[icon])}`).join(";");
+  return `:root{${variables}}.fa-solid,.fa-regular{display:inline-block;width:1em;height:1em;flex:0 0 auto;background:currentColor;-webkit-mask:var(--icon-mask) center/contain no-repeat;mask:var(--icon-mask) center/contain no-repeat;vertical-align:-.125em}${rules}`;
 }

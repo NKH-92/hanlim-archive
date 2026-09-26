@@ -91,10 +91,10 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(html, /name="approvalReference"/);
   assert.match(html, /data-bulk-count>원본 0부 선택/);
   assert.match(html, />선택 수량 확인</);
-  assert.match(html, /실제 폐기할 원본이 <strong data-bulk-confirm-count>0부/);
+  assert.match(html, /실제로 폐기할 원본이 <strong data-bulk-confirm-count>0부/);
   assert.match(html, /name="confirmedTargetCount" value="0"/);
   assert.match(html, /name="confirmDisposal" value="1"/);
-  assert.match(html, />예, 폐기합니다</);
+  assert.match(html, />네, 폐기할게요</);
   assert.match(html, /name="csrf_token" value="csrf-token-123"/);
   assert.doesNotMatch(html, /action="\/documents\/dispose-filtered"/);
   assert.equal((html.match(/name="reason"/g) || []).length, 1);
@@ -160,7 +160,7 @@ test("copy controls use delegated events for dynamically rendered search results
 
   assert.match(APP_SCRIPT, /document\.addEventListener\('click'/);
   assert.match(APP_SCRIPT, /closest\('\[data-copy-text\]'\)/);
-  assert.match(APP_SCRIPT, /button\.textContent = '복사됨'/);
+  assert.match(APP_SCRIPT, /button\.textContent = '복사했어요'/);
 });
 
 test("도움말은 권한별 작업 바로가기와 선택적 문의 정보를 제공한다", async () => {
@@ -184,7 +184,7 @@ test("도움말은 권한별 작업 바로가기와 선택적 문의 정보를 �
   assert.match(configured, /SQA팀 \/ 남광현/);
   assert.match(configured, /mailto:archive@example\.com/);
   assert.doesNotMatch(unconfigured, /mailto:/);
-  assert.match(unconfigured, /운영 관리자에게 문의하세요/);
+  assert.match(unconfigured, /운영 관리자에게 문의해 주세요/);
 });
 
 test("document form groups metadata, previews values, and progressively enhances storage location", async () => {
@@ -298,7 +298,7 @@ test("document form groups metadata, previews values, and progressively enhances
     }
   }).text();
   assert.match(errorHtml, /data-error-summary/);
-  assert.match(errorHtml, /아래 2개 항목을 확인하세요/);
+  assert.match(errorHtml, /아래 2개 항목을 확인해 주세요/);
   assert.match(errorHtml, /href="#field-documentNumber"/);
   assert.match(errorHtml, /href="#field-disposalDueYear"/);
   assert.match(errorHtml, /aria-invalid="true"/);
@@ -580,7 +580,7 @@ test("unknown filter totals keep visible rows and announce that more results exi
     filters: { categoryId: 2, status: "active", sort: "updated" }
   }).text();
 
-  assert.match(html, /1건을 표시했습니다\. 다음 결과가 더 있습니다\./);
+  assert.match(html, /1건을 표시했어요\. 다음 결과가 더 있어요\./);
   assert.doesNotMatch(html, /검색 결과가 없습니다/);
   assert.match(html, /data-results-count>1건 표시 · 더 있음</);
 });
@@ -606,7 +606,7 @@ test("home mode keeps visible rows when the fast total is unknown", async () => 
     filters: { status: "active", sort: "updated" }
   }).text();
 
-  assert.match(html, /1건을 표시했습니다\. 다음 결과가 더 있습니다\./);
+  assert.match(html, /1건을 표시했어요\. 다음 결과가 더 있어요\./);
   assert.match(html, /data-results-count>1건 표시 · 더 있음</);
   assert.doesNotMatch(html, /보관 중인 문서가 없습니다/);
 });

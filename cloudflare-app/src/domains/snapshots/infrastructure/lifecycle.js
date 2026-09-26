@@ -28,26 +28,26 @@ export async function createDocumentSnapshot(env, input, actor) {
   const requestedSnapshotId = optionalPositiveInteger(input?.currentSnapshotId);
 
   if (!/^[a-f0-9]{64}$/.test(sourceHash)) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "브라우저가 보고한 원본 파일 해시를 확인할 수 없습니다.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "브라우저가 보고한 원본 파일 해시를 확인하지 못했어요. 파일을 다시 선택해 주세요.");
   }
   if (!Number.isInteger(sourceSize) || sourceSize < 1) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "원본 엑셀 파일 크기를 확인할 수 없습니다.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "원본 엑셀 파일 크기를 확인하지 못했어요. 파일을 다시 선택해 주세요.");
   }
   if (sourceSize > FREE_TIER_BUDGET.excelSnapshotMaxFileBytes) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_FILE_TOO_LARGE,
-      `엑셀 파일은 ${Math.floor(FREE_TIER_BUDGET.excelSnapshotMaxFileBytes / 1024 / 1024)}MB 이하여야 합니다.`
+      `엑셀 파일은 ${Math.floor(FREE_TIER_BUDGET.excelSnapshotMaxFileBytes / 1024 / 1024)}MB 이하로 올려 주세요.`
     );
   }
   if (!Number.isInteger(totalCount) || totalCount < 1 || totalCount > FREE_TIER_BUDGET.excelSnapshotMaxItems) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, `엑셀 문서는 1~${FREE_TIER_BUDGET.excelSnapshotMaxItems}건까지 동기화할 수 있습니다.`);
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, `엑셀 문서는 1~${FREE_TIER_BUDGET.excelSnapshotMaxItems}건까지 동기화할 수 있어요.`);
   }
   if (!SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS.has(schemaVersion)) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED,
       schemaVersion < EXCEL_SNAPSHOT_SCHEMA_VERSION
-        ? "구역 열이 포함된 최신 대장을 다시 추출하세요."
-        : "지원하지 않는 엑셀 스키마 버전입니다."
+        ? "구역 열이 포함된 최신 대장을 다시 추출해 주세요."
+        : "지원하지 않는 엑셀 스키마 버전이에요. 최신 대장을 다시 추출해 주세요."
     );
   }
   const reason = normalizeSyncReason(input?.syncReason ?? input?.applyReason);
@@ -63,35 +63,35 @@ export async function createDocumentSnapshot(env, input, actor) {
   if (applyingBootstrap) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE,
-      "최초 대량등록을 자동 분할 반영 중입니다. 완료된 뒤 새 엑셀 작업을 시작해 주세요."
+      "최초 대량등록을 자동 분할 반영 중이에요. 완료된 뒤 새 엑셀 작업을 시작해 주세요."
     );
   }
 
   if (mode === "bootstrap") {
     if (actor?.role !== "Admin" || !hasPermission(actor, PERMISSIONS.APPLY_DOCUMENT_SNAPSHOTS)) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_BOOTSTRAP_FORBIDDEN, "bootstrap은 Admin만 사용할 수 있습니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_BOOTSTRAP_FORBIDDEN, "bootstrap은 Admin만 사용할 수 있어요.");
     }
     if (state.currentSnapshotId) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_BOOTSTRAP_FORBIDDEN, "이미 관리 스냅샷이 있어 bootstrap을 다시 실행할 수 없습니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_BOOTSTRAP_FORBIDDEN, "이미 관리 스냅샷이 있어서 bootstrap을 다시 실행할 수 없어요.");
     }
     if (clean(input?.bootstrapConfirmation) !== BOOTSTRAP_CONFIRMATION || !readBoolean(input?.backupConfirmed)) {
       return snapshotError(
         SNAPSHOT_ERROR_CODES.SNAPSHOT_BOOTSTRAP_CONFIRMATION_REQUIRED,
-        `bootstrap은 운영 backup 확인 후 ${BOOTSTRAP_CONFIRMATION} 확인문구를 정확히 입력해야 합니다.`
+        `bootstrap을 진행하려면 운영 backup을 확인한 뒤 ${BOOTSTRAP_CONFIRMATION} 확인문구를 정확히 입력해 주세요.`
       );
     }
   } else {
     if (!requestedBaseVersion) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_METADATA_REQUIRED, "관리 파일에는 baseVersion 메타데이터가 필요합니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_METADATA_REQUIRED, "관리 파일에는 baseVersion 메타데이터가 필요해요. 시스템에서 추출한 관리 파일을 올려 주세요.");
     }
     if (!requestedSnapshotId && !exportManifestId) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_METADATA_REQUIRED, "관리 파일에는 currentSnapshotId 또는 exportManifestId가 필요합니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_METADATA_REQUIRED, "관리 파일에는 currentSnapshotId 또는 exportManifestId가 필요해요. 시스템에서 추출한 관리 파일을 올려 주세요.");
     }
     if (requestedBaseVersion !== state.currentVersion) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "이 엑셀을 추출한 뒤 문서고가 변경되었습니다. 최신 엑셀을 다시 추출해 작업하세요.", { stale: true });
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "이 엑셀을 추출한 뒤 문서고가 바뀌었어요. 최신 엑셀을 다시 추출해 작업해 주세요.", { stale: true });
     }
     if (requestedSnapshotId && requestedSnapshotId !== state.currentSnapshotId) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_EXPORT_PROVENANCE_INVALID, "관리 파일의 기준 snapshot이 현재 문서고 상태와 일치하지 않습니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_EXPORT_PROVENANCE_INVALID, "관리 파일의 기준 snapshot이 현재 문서고 상태와 일치하지 않아요. 최신 엑셀을 다시 추출해 주세요.");
     }
     if (exportManifestId) {
       const manifest = await env.DB.prepare(`
@@ -112,7 +112,7 @@ export async function createDocumentSnapshot(env, input, actor) {
         canonicalExportHash !== clean(manifest.canonical_export_hash).toLowerCase() ||
         (!sameActor && actor?.role !== "Admin")
       ) {
-        return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_EXPORT_PROVENANCE_INVALID, "서버가 발급한 엑셀 export 출처를 확인할 수 없습니다.");
+        return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_EXPORT_PROVENANCE_INVALID, "서버가 발급한 엑셀 export 출처를 확인하지 못했어요. 최신 엑셀을 다시 추출해 주세요.");
       }
     }
   }
@@ -208,17 +208,17 @@ export async function createDocumentSnapshot(env, input, actor) {
   const results = await executeMutationBatch(env, createSnapshotPlan("create", statements));
   const id = Number(results[0]?.results?.[0]?.id || 0);
   if (!id) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "동기화 작업 생성 중 문서고가 변경되었습니다. 최신 엑셀을 다시 추출하세요.", { stale: true });
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "동기화 작업을 만드는 중에 문서고가 바뀌었어요. 최신 엑셀을 다시 추출해 주세요.", { stale: true });
   }
   return { ok: true, id, baseVersion: state.currentVersion, mode };
 }
 
 export async function cancelDocumentSnapshot(env, snapshotId, actor) {
   const snapshot = await getDocumentSnapshot(env, snapshotId);
-  if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾을 수 없습니다.");
+  if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾지 못했어요.");
   if (snapshot.status === "cancelled") return { ok: true, snapshot, alreadyCancelled: true };
   if (!new Set(["staging", "ready"]).has(snapshot.status)) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "업로드 중이거나 반영 대기인 작업만 취소할 수 있습니다.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "업로드 중이거나 반영 대기인 작업만 취소할 수 있어요.");
   }
   const actorSnapshot = auditActorSnapshot(actor);
   const results = await executeMutationBatch(env, createSnapshotPlan("cancel", [
@@ -241,12 +241,12 @@ export async function cancelDocumentSnapshot(env, snapshotId, actor) {
     ),
     env.DB.prepare(`
       UPDATE document_snapshots
-      SET status = 'cancelled', error_summary = '사용자가 반영 전 작업을 취소했습니다.', updated_at = CURRENT_TIMESTAMP
+      SET status = 'cancelled', error_summary = '사용자가 반영 전에 작업을 취소했어요.', updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND status IN ('staging', 'ready')
       RETURNING *
     `).bind(snapshotId)
   ]));
   const cancelled = results[1]?.results?.[0];
-  if (!cancelled) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "동시에 상태가 변경되어 작업을 취소하지 못했습니다.");
+  if (!cancelled) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "동시에 상태가 바뀌어서 작업을 취소하지 못했어요. 새로고침한 뒤 다시 확인해 주세요.");
   return { ok: true, snapshot: cancelled };
 }

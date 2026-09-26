@@ -54,18 +54,18 @@ export function excelOpenXmlCompatibilityScript() {
       }
 
       async function excelAssertZipSafety(buffer, maxUncompressedBytes, maxEntries) {
-        if (!window.JSZip) throw new Error('엑셀 ZIP 안전성 검사 모듈을 불러오지 못했습니다. 화면을 새로고침하세요.');
+        if (!window.JSZip) throw new Error('엑셀 ZIP 안전성 검사 모듈을 불러오지 못했어요. 화면을 새로고침해 주세요.');
         var zip = await window.JSZip.loadAsync(buffer);
         var entries = Object.keys(zip.files);
-        if (entries.length > maxEntries) throw new Error('엑셀 ZIP 항목 수가 안전 한도를 초과했습니다.');
+        if (entries.length > maxEntries) throw new Error('엑셀 ZIP 항목 수가 안전 한도를 넘었어요. 불필요한 시트나 이미지를 지운 뒤 다시 선택해 주세요.');
         var total = 0;
         for (var index = 0; index < entries.length; index += 1) {
           var entry = zip.files[entries[index]];
           if (!entry || entry.dir) continue;
           var size = Number(entry._data && entry._data.uncompressedSize);
-          if (!Number.isFinite(size) || size < 0) throw new Error('엑셀 ZIP 항목 크기를 검증할 수 없습니다.');
+          if (!Number.isFinite(size) || size < 0) throw new Error('엑셀 ZIP 항목 크기를 확인하지 못했어요. Excel에서 다시 저장한 뒤 시도해 주세요.');
           total += size;
-          if (total > maxUncompressedBytes) throw new Error('엑셀 압축 해제 크기가 50MB 안전 한도를 초과했습니다.');
+          if (total > maxUncompressedBytes) throw new Error('엑셀 압축 해제 크기가 ' + Math.round(maxUncompressedBytes / 1048576) + 'MB 안전 한도를 넘었어요. 불필요한 시트나 이미지를 지운 뒤 다시 선택해 주세요.');
         }
       }
 
@@ -87,7 +87,7 @@ export function excelOpenXmlCompatibilityScript() {
             await workbook.xlsx.load(normalized.buffer);
             return workbook;
           } catch (normalizedError) {
-            throw new Error('엑셀 파일 구조를 읽을 수 없습니다. Excel에서 다시 저장한 뒤 시도하세요. (' + normalizedError.message + ')');
+            throw new Error('엑셀 파일 구조를 읽지 못했어요. Excel에서 다시 저장한 뒤 시도해 주세요. (' + normalizedError.message + ')');
           }
         }
       }

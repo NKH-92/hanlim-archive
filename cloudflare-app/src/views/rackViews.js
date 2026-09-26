@@ -50,7 +50,7 @@ export function rackDetailsPage({ session, rack, documents, grid = [], selectedF
       <a class="button secondary" href="/app?rack=${rack.id}&face=${face}&status=active&sort=location">이 면의 문서 보기</a>
     </section>
     ${rackGridView({ rack, grid, face, selectedColumn, selectedShelf })}
-    <section class="panel">${documentResults(faceDocuments, { emptyMessage: "이 면에 등록된 문서가 없습니다." })}</section>
+    <section class="panel">${documentResults(faceDocuments, { emptyMessage: "이 면에 등록된 문서가 없어요." })}</section>
   `, session);
 }
 
@@ -90,10 +90,10 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
     <div class="section-title"><h2>${single ? `${rack.rack_number}번 단면` : `${rack.rack_number}-${face === "B" ? "2" : "1"}면`} 위치 격자</h2><span class="count-badge">7열 × 6선반</span></div>
     ${faceTabs}
     <div class="rack-column-guide" data-column-origin="${origin}"><span>1열</span><strong>면을 바라본 모습</strong><span>7열</span></div>
-    <div class="rack-grid-scroll" tabindex="0" aria-label="랙 위치 격자. 가로로 스크롤할 수 있습니다.">
+    <div class="rack-grid-scroll" tabindex="0" aria-label="랙 위치 격자. 가로로 스크롤할 수 있어요.">
       <div class="rack-digital-grid" role="grid" aria-rowcount="6" aria-colcount="7">${cells.join("")}</div>
     </div>
-    <p class="muted">면을 바라본 기준으로 왼쪽부터 1열, 아래부터 1선반입니다. 화면에는 위쪽 6선반부터 아래쪽 1선반까지 표시됩니다.</p>
+    <p class="muted">면을 바라본 기준으로 왼쪽부터 1열, 아래부터 1선반이에요. 화면에는 위쪽 6선반부터 아래쪽 1선반까지 표시해요.</p>
   </section>`;
 }
 
@@ -107,12 +107,12 @@ export function rackFormPage({ session, values = {}, action, title, error = "" }
         ${expectedRowVersion > 0 ? `<input type="hidden" name="expectedRowVersion" value="${expectedRowVersion}">` : ""}
         <label>구역<input type="number" name="zoneNumber" min="1" max="3" value="${escapeHtml(values.zone_number ?? values.zoneNumber ?? 1)}" required></label>
         <label>랙 번호<input type="number" name="rackNumber" min="1" max="15" value="${escapeHtml(values.rack_number ?? values.rackNumber ?? 1)}" required></label>
-        <p class="muted">랙 번호는 구역마다 1번부터 별도로 사용합니다. 예: 1구역 1번 랙과 2구역 1번 랙을 함께 등록할 수 있습니다.</p>
-        <p class="muted">랙 구조는 면당 7열 × 6선반(42칸)으로 고정되어 있습니다.</p>
+        <p class="muted">랙 번호는 구역마다 1번부터 따로 매겨요. 예를 들어 1구역 1번 랙과 2구역 1번 랙을 함께 등록할 수 있어요.</p>
+        <p class="muted">랙 구조는 면당 7열 × 6선반(42칸)으로 고정돼 있어요.</p>
         <label>이름<input name="name" value="${escapeHtml(values.name || "")}"></label>
         <label>설명<textarea name="description" rows="3">${escapeHtml(values.description || "")}</textarea></label>
         <label class="check-inline"><input type="checkbox" name="isSingleSided" value="1" ${readBoolean(values.is_single_sided ?? values.isSingleSided) ? "checked" : ""}> 단면 랙</label>
-        <p class="muted">양면 랙은 13-1/13-2처럼 면 단위로, 단면 랙은 13처럼 번호만으로 표기됩니다.</p>
+        <p class="muted">양면 랙은 13-1/13-2처럼 면 단위로, 단면 랙은 13처럼 번호만으로 표기해요.</p>
         <label class="check-inline"><input type="checkbox" name="isActive" value="1" ${readBoolean(values.is_active ?? values.isActive ?? 1) ? "checked" : ""}> 사용</label>
         <button type="submit" class="primary">저장</button>
       </form>

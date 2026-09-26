@@ -85,6 +85,6 @@ test("브라우저 ZIP 검사는 항목 수와 비압축 합계 예산을 초과
   const { excelAssertZipSafety } = compatibilityApi();
 
   await excelAssertZipSafety(buffer, 200, 10);
-  await assert.rejects(() => excelAssertZipSafety(buffer, 100, 10), /50MB 안전 한도/);
+  await assert.rejects(() => excelAssertZipSafety(buffer, 100, 10), /MB 안전 한도를 넘었어요/);
   await assert.rejects(() => excelAssertZipSafety(buffer, 200, 1), /항목 수/);
 });

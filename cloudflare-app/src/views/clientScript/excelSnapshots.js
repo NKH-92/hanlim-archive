@@ -107,15 +107,15 @@ export function excelSnapshotScript() {
       ${excelOpenXmlCompatibilityScript()}
 
       async function readExcelSnapshot(file) {
-        if (!window.ExcelJS) throw new Error('엑셀 처리 모듈을 불러오지 못했습니다. 화면을 새로고침하세요.');
-        if (!file || !/\\.xlsx$/i.test(file.name || '')) throw new Error('xlsx 형식의 엑셀 파일을 선택하세요.');
-        if (!Number.isInteger(file.size) || file.size < 1) throw new Error('원본 엑셀 파일 크기를 확인할 수 없습니다.');
-        if (file.size > excelSnapshotMaxFileBytes) throw new Error('엑셀 파일은 10MB 이하여야 합니다.');
+        if (!window.ExcelJS) throw new Error('엑셀 처리 모듈을 불러오지 못했어요. 화면을 새로고침해 주세요.');
+        if (!file || !/\\.xlsx$/i.test(file.name || '')) throw new Error('xlsx 형식의 엑셀 파일을 선택해 주세요.');
+        if (!Number.isInteger(file.size) || file.size < 1) throw new Error('원본 엑셀 파일 크기를 확인하지 못했어요. 파일을 다시 선택해 주세요.');
+        if (file.size > excelSnapshotMaxFileBytes) throw new Error('엑셀 파일은 ' + Math.round(excelSnapshotMaxFileBytes / 1048576) + 'MB 이하로 올려 주세요.');
         var buffer = await file.arrayBuffer();
         await excelAssertZipSafety(buffer, excelSnapshotMaxZipUncompressedBytes, excelSnapshotMaxZipEntries);
         var workbook = await excelLoadWorkbook(buffer);
         var sheet = excelDataSheet(workbook);
-        if (!sheet) throw new Error('schema v4 한글 14개 열이 순서대로 있는 최신 문서데이터 시트를 찾을 수 없습니다. 현재 대장을 다시 추출하세요.');
+        if (!sheet) throw new Error('schema v4 한글 14개 열이 순서대로 있는 최신 문서데이터 시트를 찾지 못했어요. 현재 대장을 다시 추출해 주세요.');
         var meta = excelMeta(workbook);
         var rows = [];
         var originalKeyCount = 0;
@@ -140,13 +140,13 @@ export function excelSnapshotScript() {
             source: source
           });
         }
-        if (!rows.length) throw new Error('엑셀에 동기화할 문서가 없습니다.');
-        if (rows.length > excelSnapshotMaxItems) throw new Error('엑셀 문서는 최대 ' + excelSnapshotMaxItems.toLocaleString('ko-KR') + '건까지 동기화할 수 있습니다.');
+        if (!rows.length) throw new Error('엑셀에 동기화할 문서가 없어요. 문서데이터 시트에 문서를 입력한 뒤 다시 선택해 주세요.');
+        if (rows.length > excelSnapshotMaxItems) throw new Error('엑셀 문서는 최대 ' + excelSnapshotMaxItems.toLocaleString('ko-KR') + '건까지 동기화할 수 있어요.');
         if (meta.hasSystemInfo) {
-          if (!meta.schemaVersion) throw new Error('관리 파일의 schemaVersion이 없습니다.');
-          if (!meta.baseVersion) throw new Error('관리 파일의 baseVersion이 없습니다.');
-          if (!meta.currentSnapshotId && !meta.exportManifestId) throw new Error('관리 파일의 currentSnapshotId 또는 exportManifestId가 필요합니다.');
-          if (meta.exportManifestId && !/^[a-f0-9]{64}$/i.test(meta.canonicalExportHash)) throw new Error('관리 파일의 canonicalExportHash가 없거나 올바르지 않습니다.');
+          if (!meta.schemaVersion) throw new Error('관리 파일에 schemaVersion이 없어요. 시스템에서 추출한 관리 파일을 올려 주세요.');
+          if (!meta.baseVersion) throw new Error('관리 파일에 baseVersion이 없어요. 시스템에서 추출한 관리 파일을 올려 주세요.');
+          if (!meta.currentSnapshotId && !meta.exportManifestId) throw new Error('관리 파일에는 currentSnapshotId 또는 exportManifestId가 필요해요. 시스템에서 추출한 관리 파일을 올려 주세요.');
+          if (meta.exportManifestId && !/^[a-f0-9]{64}$/i.test(meta.canonicalExportHash)) throw new Error('관리 파일의 canonicalExportHash가 없거나 올바르지 않아요. 시스템에서 추출한 관리 파일을 올려 주세요.');
         }
         await Promise.all(rows.map(async function (row) {
           row.currentHash = await excelRowBaseHash(row.source);
@@ -218,7 +218,7 @@ export function excelSnapshotScript() {
         var count = panel.querySelector('[data-excel-error-count]');
         if (count) count.textContent = items.length.toLocaleString('ko-KR') + '건';
         var summary = panel.querySelector('[data-excel-error-summary]');
-        if (summary) summary.textContent = items.length > 20 ? '앞의 20건을 표시합니다. 외 ' + (items.length - 20).toLocaleString('ko-KR') + '건은 CSV에서 확인하세요.' : '검증 오류를 수정한 뒤 다시 업로드하세요.';
+        if (summary) summary.textContent = items.length > 20 ? '앞의 20건을 표시해요. 외 ' + (items.length - 20).toLocaleString('ko-KR') + '건은 CSV에서 확인해 주세요.' : '검증 오류를 수정한 뒤 다시 업로드해 주세요.';
       }
 
       function excelCsvCell(value) {
@@ -247,9 +247,9 @@ export function excelSnapshotScript() {
         var csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         var payload = new URLSearchParams(Object.assign({ csrf_token: csrf }, data || {}));
         var response = await fetch(path, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: payload });
-        var result = await response.json().catch(function () { return { ok: false, message: '서버 응답을 읽을 수 없습니다.' }; });
+        var result = await response.json().catch(function () { return { ok: false, message: '서버 응답을 읽지 못했어요. 잠시 후 다시 시도해 주세요.' }; });
         if (!response.ok || !result.ok) {
-          var requestError = new Error(result.message || '엑셀 동기화를 처리할 수 없습니다.');
+          var requestError = new Error(result.message || '엑셀 동기화를 처리하지 못했어요. 잠시 후 다시 시도해 주세요.');
           requestError.snapshotResult = result;
           throw requestError;
         }
@@ -269,7 +269,7 @@ export function excelSnapshotScript() {
               bootstrapPanel.querySelectorAll('input').forEach(function (input) { input.required = excelCachedParsed.mode === 'bootstrap'; });
             }
             var message = document.querySelector('[data-excel-message]');
-            if (message) message.textContent = '열 제목과 파일 구조를 확인했습니다. 버튼을 누르면 서버 검증을 시작합니다.';
+            if (message) message.textContent = '열 제목과 파일 구조를 확인했어요. 버튼을 누르면 서버 검증을 시작해요.';
           } catch (error) {
             excelCachedParsed = null;
             excelRenderErrors(error.snapshotResult && error.snapshotResult.errors);
@@ -285,7 +285,7 @@ export function excelSnapshotScript() {
           function showRecovery(snapshotId) {
             if (!recovery || !snapshotId) return;
             var text = document.createElement('span');
-            text.textContent = '동기화 작업 #' + snapshotId + '이 생성되었습니다. 전송이 중단돼도 이 작업 화면에서 상태를 확인하거나 취소할 수 있습니다. ';
+            text.textContent = '동기화 작업(#' + snapshotId + ')을 만들었어요. 전송이 중단돼도 이 작업 화면에서 상태를 확인하거나 취소할 수 있어요. ';
             var link = document.createElement('a');
             link.href = '/document-snapshots/' + snapshotId;
             link.textContent = '작업 화면 열기';
@@ -294,25 +294,25 @@ export function excelSnapshotScript() {
           }
           try {
             var file = fileInput.files && fileInput.files[0];
-            if (!file) throw new Error('업로드할 엑셀 파일을 선택하세요.');
+            if (!file) throw new Error('업로드할 엑셀 파일을 선택해 주세요.');
             if (!excelCachedParsed || excelCachedFile !== file) excelCachedParsed = await readExcelSnapshot(file);
             var syncReasonInput = excelUploadForm.elements.namedItem('syncReason');
             var syncReason = syncReasonInput ? syncReasonInput.value.trim() : '';
             if (syncReason.length < 10 || syncReason.length > 500) {
               syncReasonInput?.focus();
-              throw new Error('동기화 사유는 10자 이상 500자 이하로 입력하세요.');
+              throw new Error('동기화 사유는 10자 이상 500자 이하로 입력해 주세요.');
             }
             button.disabled = true;
-            excelProgress(1, excelCachedParsed.rows.length + 2, '동기화 작업을 준비하고 있습니다.');
+            excelProgress(1, excelCachedParsed.rows.length + 2, '동기화 작업을 준비하고 있어요.');
             var bootstrapConfirmation = '';
             var backupConfirmed = '';
             if (excelCachedParsed.mode === 'bootstrap') {
               var bootstrapInput = excelUploadForm.elements.namedItem('bootstrapConfirmation');
               var backupInput = excelUploadForm.elements.namedItem('backupConfirmed');
               bootstrapConfirmation = bootstrapInput ? bootstrapInput.value.trim() : '';
-              if (bootstrapConfirmation !== 'BOOTSTRAP') throw new Error('bootstrap 확인문구가 일치하지 않아 취소했습니다.');
+              if (bootstrapConfirmation !== 'BOOTSTRAP') throw new Error('bootstrap 확인 문구가 일치하지 않아 취소했어요. 확인 문구에 BOOTSTRAP을 정확히 입력해 주세요.');
               backupConfirmed = backupInput && backupInput.checked ? '1' : '';
-              if (!backupConfirmed) throw new Error('운영 backup 확인이 없어 bootstrap을 취소했습니다.');
+              if (!backupConfirmed) throw new Error('운영 backup 확인이 없어 bootstrap을 취소했어요. 운영 backup과 복구 가능 여부를 확인한 뒤 확인란을 선택해 주세요.');
             }
             created = await excelPost('/document-snapshots', {
               sourceName: file.name,
@@ -345,14 +345,14 @@ export function excelSnapshotScript() {
                   };
                 });
                 await excelPost('/document-snapshots/' + created.id + '/membership', { rows: JSON.stringify(membershipChunk) });
-                excelProgress(Math.min(membershipIndex + membershipChunk.length, excelCachedParsed.rows.length), excelCachedParsed.rows.length + 2, '전체 membership을 안전하게 나누어 전송하고 있습니다.');
+                excelProgress(Math.min(membershipIndex + membershipChunk.length, excelCachedParsed.rows.length), excelCachedParsed.rows.length + 2, '전체 membership을 안전하게 나눠서 보내고 있어요.');
               }
             }
             var deltaRows = excelCachedParsed.schemaVersion >= 2
               ? excelCachedParsed.rows.filter(function (entry) { return entry.isDelta; })
               : excelCachedParsed.rows;
             if (excelCachedParsed.mode !== 'bootstrap' && deltaRows.length > excelSnapshotDeltaMaxItems) {
-              throw new Error('일상 변경 영향은 최대 ' + excelSnapshotDeltaMaxItems.toLocaleString('ko-KR') + '건입니다. 최신 대장을 기준으로 작업을 나누세요.');
+              throw new Error('일상 변경 영향은 최대 ' + excelSnapshotDeltaMaxItems.toLocaleString('ko-KR') + '건이에요. 최신 대장을 기준으로 작업을 나눠 주세요.');
             }
             var chunkSize = 50;
             for (var index = 0; index < deltaRows.length; index += chunkSize) {
@@ -364,18 +364,18 @@ export function excelSnapshotScript() {
                 };
               });
               await excelPost('/document-snapshots/' + created.id + '/rows', { rows: JSON.stringify(chunk) });
-              excelProgress(Math.min(index + chunk.length, deltaRows.length), Math.max(deltaRows.length, 1) + 2, '변경된 엑셀 행을 안전하게 나누어 전송하고 있습니다.');
+              excelProgress(Math.min(index + chunk.length, deltaRows.length), Math.max(deltaRows.length, 1) + 2, '바뀐 엑셀 행을 안전하게 나눠서 보내고 있어요.');
             }
-            excelProgress(excelCachedParsed.rows.length + 1, excelCachedParsed.rows.length + 2, '대분류, 태그, 랙 위치와 변경 내역을 검증하고 있습니다.');
+            excelProgress(excelCachedParsed.rows.length + 1, excelCachedParsed.rows.length + 2, '대분류, 태그, 랙 위치와 변경 내역을 검증하고 있어요.');
             await excelPost('/document-snapshots/' + created.id + '/prepare', {});
-            excelProgress(excelCachedParsed.rows.length + 2, excelCachedParsed.rows.length + 2, '검증을 완료했습니다.');
+            excelProgress(excelCachedParsed.rows.length + 2, excelCachedParsed.rows.length + 2, '검증을 마쳤어요.');
             document.dispatchEvent(new Event('hanlim:form-saved'));
             location.href = '/document-snapshots/' + created.id;
           } catch (error) {
             button.disabled = false;
             excelRenderErrors(error.snapshotResult && error.snapshotResult.errors);
             var message = document.querySelector('[data-excel-message]');
-            if (message) message.textContent = error.message + (created?.id ? ' 생성된 작업에서 상태를 확인하고 안전하게 다시 시작하세요.' : '');
+            if (message) message.textContent = error.message + (created?.id ? ' 작업 화면에서 상태를 확인한 뒤 안전하게 다시 시작해 주세요.' : '');
           }
         });
       }
@@ -398,7 +398,7 @@ export function excelSnapshotScript() {
       }
 
       async function buildExcelSnapshot(payload) {
-        if (!window.ExcelJS) throw new Error('엑셀 처리 모듈을 불러오지 못했습니다.');
+        if (!window.ExcelJS) throw new Error('엑셀 처리 모듈을 불러오지 못했어요. 화면을 새로고침해 주세요.');
         var workbook = new window.ExcelJS.Workbook();
         workbook.creator = '한림문서고';
         workbook.lastModifiedBy = '한림문서고';
@@ -564,16 +564,16 @@ export function excelSnapshotScript() {
         button.addEventListener('click', async function () {
           var original = button.textContent;
           try {
-            button.disabled = true; button.textContent = '엑셀 생성 중...';
+            button.disabled = true; button.textContent = '엑셀을 만들고 있어요…';
             var payload = await excelPost('/document-snapshot-exports', {});
             var documents = [];
             var exportPage = 1;
             var hasMore = true;
             while (hasMore) {
-              button.textContent = '엑셀 자료 ' + exportPage + '쪽 받는 중...';
+              button.textContent = '엑셀 자료 ' + exportPage + '쪽을 받고 있어요…';
               var response = await fetch('/document-snapshot-exports/' + encodeURIComponent(payload.exportManifestId) + '/rows?page=' + exportPage, { headers: { Accept: 'application/json' } });
               var pagePayload = await response.json();
-              if (!response.ok || !pagePayload.ok) throw new Error(pagePayload.message || '현재 대장 page를 불러올 수 없습니다.');
+              if (!response.ok || !pagePayload.ok) throw new Error(pagePayload.message || '현재 대장 자료를 받지 못했어요. 잠시 후 다시 시도해 주세요.');
               documents = documents.concat(pagePayload.documents || []);
               hasMore = !!pagePayload.hasMore;
               exportPage += 1;

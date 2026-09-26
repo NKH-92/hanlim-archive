@@ -24,10 +24,10 @@ import {
 
 export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) {
   const snapshot = await getDocumentSnapshot(env, snapshotId);
-  if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾을 수 없습니다.");
+  if (!snapshot) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "엑셀 동기화 작업을 찾지 못했어요.");
   if (snapshot.status === "completed") return { ok: true, snapshot, alreadyApplied: true };
   if (snapshot.status !== "ready") {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "검증이 완료된 동기화 작업만 반영할 수 있습니다.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE, "검증이 완료된 동기화 작업만 반영할 수 있어요.");
   }
 
   const summary = {
@@ -55,7 +55,7 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
   if (String(snapshot.approval_policy_version || "") !== APPROVAL_POLICY_VERSION) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE,
-      "승인 정책이 변경되었습니다. 미리보기를 다시 준비하세요.",
+      "승인 정책이 바뀌었어요. 미리보기를 다시 준비해 주세요.",
       { stale: true }
     );
   }
@@ -76,10 +76,10 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
     expectedCurrentCount !== Number(currentDocuments?.count || 0) ||
     (snapshot.mode === "bootstrap" && bootstrapSeedCount !== 2)
   ) {
-    await markSnapshotStale(env, snapshotId, actor, "미리보기 이후 현재 대장 건수가 변경되었습니다.");
+    await markSnapshotStale(env, snapshotId, actor, "미리보기 뒤에 현재 대장 건수가 바뀌었어요. 최신 엑셀로 다시 시작해 주세요.");
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE,
-      "미리보기 이후 현재 대장 건수가 변경되었습니다. 최신 엑셀로 다시 시작하세요.",
+      "미리보기 이후 현재 대장 건수가 바뀌었어요. 최신 엑셀로 다시 시작해 주세요.",
       { stale: true }
     );
   }
@@ -90,7 +90,7 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
   if (needsApproval && !reason.approvalReference) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_APPROVAL_REFERENCE_REQUIRED,
-      "제외·위치 변경·폐기·폐기 해제 또는 대량 변경이 있으면 승인 참조가 필요합니다."
+      "제외·위치 변경·폐기·폐기 해제 또는 대량 변경이 있으면 승인 참조를 입력해 주세요."
     );
   }
   const reviewCount = summary.createCount + summary.updateCount + summary.excludeCount;
@@ -98,7 +98,7 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
   if (!readBoolean(input.confirmReview) || !Number.isInteger(confirmedReviewCount) || confirmedReviewCount !== reviewCount) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD,
-      `행별 변경과 제외 예정 목록을 검토하고 변경 영향 ${reviewCount}건을 정확히 확인하세요.`
+      `행별 변경과 제외 예정 목록을 검토하고 변경 영향 ${reviewCount}건을 정확히 확인해 주세요.`
     );
   }
   if (summary.excludeCount > 0) {
@@ -106,15 +106,15 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
     if (!readBoolean(input.confirmExclude) || !Number.isInteger(confirmed) || confirmed !== summary.excludeCount) {
       return snapshotError(
         SNAPSHOT_ERROR_CODES.SNAPSHOT_EXCLUSION_CONFIRMATION_MISMATCH,
-        `제외 ${summary.excludeCount}건을 검토하고 예상 건수를 정확히 확인하세요.`
+        `제외 ${summary.excludeCount}건을 검토하고 예상 건수를 정확히 확인해 주세요.`
       );
     }
   }
 
   const state = await getDocumentSyncState(env);
   if (state.currentVersion !== Number(snapshot.base_version)) {
-    await markSnapshotStale(env, snapshotId, actor, "미리보기 이후 문서고가 변경되었습니다.");
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "미리보기 이후 문서고가 변경되었습니다. 최신 엑셀로 다시 시작하세요.", { stale: true });
+    await markSnapshotStale(env, snapshotId, actor, "미리보기 뒤에 문서고가 바뀌었어요. 최신 엑셀로 다시 시작해 주세요.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "미리보기 이후 문서고가 바뀌었어요. 최신 엑셀로 다시 시작해 주세요.", { stale: true });
   }
 
   const actorSnapshot = auditActorSnapshot(actor);
@@ -155,10 +155,10 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
     results = await executeMutationBatch(env, createSnapshotPlan("apply", statements));
   } catch (error) {
     if (isExpectedChangeAbort(error)) {
-      await markSnapshotStale(env, snapshotId, actor, "동시 반영 또는 버전 충돌로 반영하지 못했습니다.");
+      await markSnapshotStale(env, snapshotId, actor, "다른 반영과 겹치거나 버전이 달라져서 반영하지 못했어요. 최신 엑셀로 다시 시작해 주세요.");
       return snapshotError(
         SNAPSHOT_ERROR_CODES.SNAPSHOT_CONCURRENT_APPLY,
-        "동시 반영 또는 버전 충돌로 반영하지 못했습니다.",
+        "동시 반영 또는 버전 충돌로 반영하지 못했어요. 최신 엑셀로 다시 시작해 주세요.",
         { stale: true }
       );
     }
@@ -167,8 +167,8 @@ export async function applyDocumentSnapshot(env, snapshotId, actor, input = {}) 
   if (!Number(results[0]?.meta?.changes || 0)) {
     const current = await getDocumentSnapshot(env, snapshotId);
     if (current?.status === "completed") return { ok: true, snapshot: current, alreadyApplied: true };
-    await markSnapshotStale(env, snapshotId, actor, "동시 반영 또는 버전 충돌로 반영하지 못했습니다.");
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_CONCURRENT_APPLY, "동시 반영 또는 버전 충돌로 반영하지 못했습니다.", { stale: true });
+    await markSnapshotStale(env, snapshotId, actor, "다른 반영과 겹치거나 버전이 달라져서 반영하지 못했어요. 최신 엑셀로 다시 시작해 주세요.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_CONCURRENT_APPLY, "동시 반영 또는 버전 충돌로 반영하지 못했어요. 최신 엑셀로 다시 시작해 주세요.", { stale: true });
   }
   const completed = results.at(-1)?.results?.[0];
   if (!completed) throw new Error("엑셀 문서대장 반영 결과를 확인할 수 없습니다.");

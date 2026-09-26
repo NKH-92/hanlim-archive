@@ -90,7 +90,7 @@ window.HanlimResults = { resultRow, resultTable };
         var confirmDialog = document.createElement('dialog');
         confirmDialog.className = 'app-confirm-dialog';
         confirmDialog.setAttribute('aria-labelledby', 'app-confirm-title');
-        confirmDialog.innerHTML = '<form method="dialog" class="modal-body"><h2 id="app-confirm-title">작업 확인</h2><p data-confirm-message></p><div class="button-group"><button value="cancel" class="button secondary">취소</button><button value="confirm" class="danger-button" data-confirm-accept>계속</button></div></form>';
+        confirmDialog.innerHTML = '<form method="dialog" class="modal-body"><h2 id="app-confirm-title">작업 확인</h2><p data-confirm-message></p><div class="button-group"><button value="cancel" class="button secondary">닫기</button><button value="confirm" class="danger-button" data-confirm-accept>계속</button></div></form>';
         document.body.appendChild(confirmDialog);
         var pendingForm = null;
         var pendingSubmitter = null;
@@ -203,7 +203,7 @@ window.HanlimResults = { resultRow, resultTable };
         if (!text) return;
         var originalHtml = button.innerHTML;
         function done() {
-          button.textContent = '복사됨';
+          button.textContent = '복사했어요';
           setTimeout(function () { button.innerHTML = originalHtml; }, 1400);
         }
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -268,7 +268,7 @@ window.HanlimResults = { resultRow, resultTable };
           : '원본 ' + checked.length + '부 선택';
         if (bulkLimitNotice) {
           bulkLimitNotice.textContent = overLimit
-            ? '한 번에 ' + disposalLimit + '건까지 폐기할 수 있습니다. ' + (checked.length - disposalLimit) + '건을 해제하세요.'
+            ? '한 번에 ' + disposalLimit + '건까지 폐기할 수 있어요. ' + (checked.length - disposalLimit) + '건을 해제해 주세요.'
             : '';
           bulkLimitNotice.hidden = !overLimit;
         }
@@ -277,8 +277,8 @@ window.HanlimResults = { resultRow, resultTable };
         if (bulkConfirmButton) {
           bulkConfirmButton.disabled = checked.length === 0 || overLimit;
           bulkConfirmButton.textContent = checked.length
-            ? '예, 원본 ' + checked.length + '부를 폐기합니다'
-            : '예, 폐기합니다';
+            ? '네, 원본 ' + checked.length + '부를 폐기할게요'
+            : '네, 폐기할게요';
         }
         if (bulkSummary) {
           bulkSummary.innerHTML = '';
@@ -302,7 +302,7 @@ window.HanlimResults = { resultRow, resultTable };
         if (bulkDisposalButton) {
           bulkDisposalButton.disabled = overLimit;
           bulkDisposalButton.title = overLimit
-            ? '폐기는 한 번에 ' + disposalLimit + '건 이하만 선택하세요.'
+            ? '폐기는 한 번에 ' + disposalLimit + '건까지 선택해 주세요.'
             : '';
         }
       }
@@ -527,12 +527,12 @@ window.HanlimResults = { resultRow, resultTable };
       var toastKey = new URLSearchParams(location.search).get('toast');
       if (toastKey) {
         var toastParams = new URLSearchParams(location.search);
-        var toastMessages = {"created":"문서가 등록되었습니다.","document-created":"문서가 등록되어 세트에 추가되었습니다.","updated":"문서 정보가 수정되었습니다.","revised":"새 개정 문서가 등록되었습니다.","moved":"문서 위치가 이동되었습니다.","disposed":"폐기 처리되었습니다.","restored":"폐기가 해제되었습니다.","deleted":"문서가 완전 삭제되었습니다.","saved":"저장되었습니다.","bulk-disposed":"선택한 문서를 폐기 처리했습니다.","approved":"가입 요청을 승인했습니다.","rejected":"가입 요청을 거절했습니다.","enabled":"사용자 계정을 활성화했습니다.","disabled":"사용자 계정을 비활성화했습니다.","permissions-saved":"사용자 권한을 저장했습니다.","template-saved":"역할 템플릿을 저장했습니다.","template-applied":"선택한 사용자에게 역할 템플릿을 반영했습니다.","password-reset":"임시 비밀번호를 설정했습니다. 다음 로그인에서 비밀번호 변경이 강제됩니다.","password-changed":"비밀번호가 변경되었습니다.","user-deleted":"계정을 완전삭제했습니다.","user-created":"승인 사용자를 추가했습니다. 임시 비밀번호를 안전하게 전달하세요.","set-locked":"준비 문서 세트를 잠갔습니다.","set-unlocked":"준비 문서 세트의 잠금을 해제했습니다.","error":"요청을 처리하지 못했습니다. 입력값을 확인하세요."};
+        var toastMessages = {"created":"문서를 등록했어요.","document-created":"문서를 등록하고 세트에 추가했어요.","updated":"문서 정보를 수정했어요.","revised":"새 개정 문서를 등록했어요.","moved":"문서를 새 위치로 옮겼어요.","disposed":"문서를 폐기했어요.","restored":"폐기를 해제했어요.","deleted":"문서를 완전히 삭제했어요.","saved":"저장했어요.","bulk-disposed":"선택한 문서를 폐기했어요.","approved":"가입 요청을 승인했어요.","rejected":"가입 요청을 거절했어요.","enabled":"사용자 계정을 활성화했어요.","disabled":"사용자 계정을 비활성화했어요.","permissions-saved":"사용자 권한을 저장했어요.","template-saved":"역할 템플릿을 저장했어요.","template-applied":"선택한 사용자에게 역할 템플릿을 적용했어요.","password-reset":"임시 비밀번호를 설정했어요. 이 사용자는 다음에 로그인할 때 비밀번호를 바꿔야 해요.","password-changed":"비밀번호를 바꿨어요.","user-deleted":"계정을 완전히 삭제했어요.","user-created":"승인 사용자를 추가했어요. 임시 비밀번호를 안전하게 전달해 주세요.","set-locked":"준비 문서 세트를 잠갔어요.","set-unlocked":"준비 문서 세트의 잠금을 풀었어요.","error":"요청을 처리하지 못했어요. 입력값을 확인해 주세요."};
         var toastMessage = toastMessages[toastKey];
         if (toastKey === 'bulk-disposed') {
           var disposedCount = Number(toastParams.get('disposed') || 0);
           var skippedCount = Number(toastParams.get('skipped') || 0);
-          toastMessage = '폐기 ' + disposedCount + '건 완료' + (skippedCount ? ' · 건너뜀 ' + skippedCount + '건' : '') + '.';
+          toastMessage = '문서 ' + disposedCount + '건을 폐기했어요' + (skippedCount ? '. ' + skippedCount + '건은 건너뛰었어요' : '') + '.';
         }
         if (toastMessage) {
           window.showAppMessage?.(toastMessage, toastKey === 'error');
@@ -833,14 +833,14 @@ window.HanlimResults = { resultRow, resultTable };
           var listHtml = incomingItems.map(function (item) { return resultRow(item, query); }).join('');
           var html = window.HanlimResults.resultTable(listHtml, workspaceSelectable);
           if (!currentItems.length) {
-            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없습니다.</p><div class="empty-actions"><a class="button secondary sm" href="/app" data-viewer-search-reset>검색 초기화</a>' + (viewerApp.dataset.canSearchDisposed === 'true' ? '<a class="button secondary sm" href="/documents/disposal?tab=documents">폐기 문서에서 확인</a>' : '') + '</div></div>';
+            html = '<div class="empty-state"><i class="fa-regular fa-folder-open"></i><p>조건에 맞는 문서가 없어요.</p><div class="empty-actions"><a class="button secondary sm" href="/app" data-viewer-search-reset>검색 초기화</a>' + (viewerApp.dataset.canSearchDisposed === 'true' ? '<a class="button secondary sm" href="/documents/disposal?tab=documents">폐기 문서에서 확인</a>' : '') + '</div></div>';
           }
           // fallback 경로는 최근 수정순 후보 창 안에서만 점수를 매기므로 결과 수와 무관하게
           // 오래된 문서가 빠질 수 있다. 누락 가능성은 항상 알리고 문구만 상태에 맞게 나눈다.
           if (payload.fallback) {
-            html = '<div class="alert warning" role="status">검색 색인을 재구성하는 중입니다. '
-              + (currentItems.length ? '오래된 문서가 결과에서 빠질 수 있으니' : '결과가 제한될 수 있으니')
-              + ' 찾는 문서가 없으면 잠시 후 다시 검색하세요.</div>' + html;
+            html = '<div class="alert neutral" role="status">검색 색인을 다시 만들고 있어요. '
+              + (currentItems.length ? '오래된 문서가 결과에서 빠질 수 있으니' : '일부 결과만 나올 수 있으니')
+              + ' 찾는 문서가 없으면 잠시 후 다시 검색해 주세요.</div>' + html;
           }
           if (append && resultsBody) {
             var list = resultsBody.querySelector('.viewer-result-list');
@@ -864,12 +864,12 @@ window.HanlimResults = { resultRow, resultTable };
           if (resultsCount) resultsCount.textContent = currentItems.length.toLocaleString('ko-KR') + '건 표시' + (payload.hasMore ? ' · 더 있음' : '');
           if (searchLive) {
             searchLive.textContent = !currentItems.length
-              ? '검색 결과가 없습니다.'
+              ? '검색 결과가 없어요.'
               : !hasKnownTotal && payload.hasMore
-                ? currentItems.length.toLocaleString('ko-KR') + '건을 표시했습니다. 더보기로 이어서 확인하세요.'
+                ? currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요. 더보기로 이어서 볼 수 있어요.'
                 : currentItems.length < totalFound
-                ? totalFound.toLocaleString('ko-KR') + '건 중 ' + currentItems.length.toLocaleString('ko-KR') + '건을 표시했습니다. 더보기로 이어서 확인하세요.'
-                : totalFound.toLocaleString('ko-KR') + '건을 모두 표시했습니다.';
+                ? totalFound.toLocaleString('ko-KR') + '건 중 ' + currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요. 더보기로 이어서 볼 수 있어요.'
+                : totalFound.toLocaleString('ko-KR') + '건을 모두 표시했어요.';
           }
           viewerApp.hidden = false;
           var revisionToggle = document.querySelector('[data-column-toggle="revision-date"]');
@@ -883,11 +883,11 @@ window.HanlimResults = { resultRow, resultTable };
 
         var renderError = function (message) {
           var params = searchParams('');
-          var html = '<div class="alert danger" role="alert">' + escapeHtmlClient(message || '검색을 처리하지 못했습니다.') + '</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">검색 화면에서 계속</a></div>';
+          var html = '<div class="alert danger" role="alert">' + escapeHtmlClient(message || '검색하지 못했어요. 잠시 후 다시 시도해 주세요.') + '</div><div class="empty-actions"><button type="button" class="button secondary sm" data-search-retry>다시 시도</button><a class="button secondary sm" href="/app?' + escapeHtmlClient(params.toString()) + '">검색 화면에서 계속</a></div>';
           replaceResults(html, false);
-          if (resultsTitle) resultsTitle.textContent = '검색을 계속할 수 없습니다';
+          if (resultsTitle) resultsTitle.textContent = '검색 결과를 불러오지 못했어요';
           if (resultsCount) resultsCount.textContent = '-';
-          if (searchLive) searchLive.textContent = '검색 요청을 처리하지 못했습니다.';
+          if (searchLive) searchLive.textContent = '검색 결과를 불러오지 못했어요. 다시 시도해 주세요.';
           viewerApp.hidden = false;
         };
 
@@ -900,7 +900,7 @@ window.HanlimResults = { resultRow, resultTable };
           activeRequest = typeof AbortController === 'function' ? new AbortController() : null;
           retryCursor = append ? cursor : '';
           viewerApp.setAttribute('aria-busy', 'true');
-          if (searchLive) searchLive.textContent = append ? '다음 결과를 불러오는 중…' : '검색 중…';
+          if (searchLive) searchLive.textContent = append ? '다음 결과를 불러오고 있어요…' : '검색하고 있어요…';
           try {
             var response = await fetch('/api/viewer/search?' + searchRequestParams(cursor).toString(), {
               headers: { Accept: 'application/json' },
@@ -909,7 +909,7 @@ window.HanlimResults = { resultRow, resultTable };
             var payload = await response.json().catch(function () { return {}; });
             if (sequence !== searchSequence) return;
             if (response.status === 409 && payload.code === 'SEARCH_CURSOR_STALE' && !staleRetry) return requestSearch('', false, true);
-            if (!response.ok || payload.ok === false || !Array.isArray(payload.items)) throw new Error(payload.message || '검색 요청에 실패했습니다.');
+            if (!response.ok || payload.ok === false || !Array.isArray(payload.items)) throw new Error(payload.message || '검색하지 못했어요. 잠시 후 다시 시도해 주세요.');
             window.__hanlimSearchIndexReady = true;
             var datalist = viewerInput.parentElement?.querySelector?.('[data-suggest-list]');
             if (datalist && Array.isArray(payload.suggestions)) datalist.innerHTML = payload.suggestions.map(function (item) {
@@ -924,7 +924,7 @@ window.HanlimResults = { resultRow, resultTable };
               requestAnimationFrame(function () {
                 if (sequence !== searchSequence) return;
                 if (anchor) { anchor.scrollIntoView({ block: 'center' }); anchor.querySelector('a')?.focus({ preventScroll: true }); }
-                else { window.scrollTo(0, Number(previousState.scroll) || 0); if (searchLive) searchLive.textContent += ' 이전 문서는 현재 열람 범위에 없습니다.'; }
+                else { window.scrollTo(0, Number(previousState.scroll) || 0); if (searchLive) searchLive.textContent += ' 이전에 보던 문서는 현재 열람 범위에 없어요.'; }
               });
             }
           } catch (error) {
@@ -932,7 +932,7 @@ window.HanlimResults = { resultRow, resultTable };
             if (append && resultsBody) {
               resultsBody.querySelector('[data-search-more]')?.closest('nav')?.remove();
               resultsBody.querySelector('[data-search-retry]')?.closest('nav')?.remove();
-              resultsBody.insertAdjacentHTML('beforeend', '<nav class="pagination"><span role="alert">다음 결과를 불러오지 못했습니다.</span><button type="button" class="button secondary sm" data-search-retry>다시 시도</button></nav>');
+              resultsBody.insertAdjacentHTML('beforeend', '<nav class="pagination"><span role="alert">다음 결과를 불러오지 못했어요.</span><button type="button" class="button secondary sm" data-search-retry>다시 시도</button></nav>');
             } else renderError(error?.message);
           } finally {
             if (sequence === searchSequence) viewerApp.setAttribute('aria-busy', 'false');
@@ -1199,7 +1199,7 @@ window.HanlimResults = { resultRow, resultTable };
           if (!feedback) {
             feedback = document.createElement('div'); feedback.dataset.saveFeedback = ''; feedback.className = 'alert info'; feedback.tabIndex = -1; form.prepend(feedback);
           }
-          feedback.setAttribute('role', 'status'); feedback.textContent = '저장 중입니다…';
+          feedback.setAttribute('role', 'status'); feedback.textContent = '저장하고 있어요…';
           saving = true; form.setAttribute('aria-busy', 'true');
           controls.forEach(function (entry) { entry[0].disabled = true; });
           var restoreControls = function () { controls.forEach(function (entry) { entry[0].disabled = entry[1]; }); saving = false; form.setAttribute('aria-busy', 'false'); };
@@ -1229,7 +1229,7 @@ window.HanlimResults = { resultRow, resultTable };
               if (current.closest('.enhanced-control-hidden')) current = form.querySelector(field.id === 'field-rackFace' ? '#field-locationFace' : '#field-locationZone') || current;
               current.setAttribute('aria-invalid', 'true');
               var descriptions = (field.getAttribute('aria-describedby') || '').split(' ').map(function (id) { return parsed.getElementById(id); }).filter(function (element) { return element?.classList.contains('field-error'); });
-              var errorText = descriptions.map(function (element) { return element.textContent.trim(); }).join(' ') || '입력값을 확인하세요.';
+              var errorText = descriptions.map(function (element) { return element.textContent.trim(); }).join(' ') || '입력값을 확인해 주세요.';
               var inlineError = document.createElement('p'); inlineError.className = 'field-error'; inlineError.id = 'response-error-' + current.id; inlineError.textContent = errorText;
               (current.closest('label') || current).insertAdjacentElement('afterend', inlineError);
               current.setAttribute('aria-describedby', ((current.getAttribute('aria-describedby') || '') + ' ' + inlineError.id).trim());
@@ -1238,13 +1238,13 @@ window.HanlimResults = { resultRow, resultTable };
               link.textContent = (label?.textContent || field.name) + ': ' + errorText; feedback.appendChild(link);
             });
             var latest = document.createElement('a');
-            latest.href = form.action.replace(/\/(edit|revise|move)$/, ''); latest.target = '_blank'; latest.rel = 'noopener'; latest.textContent = '최신 내용 별도 확인'; feedback.appendChild(latest);
+            latest.href = form.action.replace(/\/(edit|revise|move)$/, ''); latest.target = '_blank'; latest.rel = 'noopener'; latest.textContent = '새 탭에서 최신 내용 보기'; feedback.appendChild(latest);
             feedback.focus();
           } catch {
             feedback.className = 'form-error-summary'; feedback.setAttribute('role', 'alert');
-            feedback.textContent = '저장 결과를 확인하지 못했습니다. 입력은 유지했습니다. 다른 탭에서 저장 여부를 먼저 확인하세요. 자동으로 다시 저장하지 않습니다.';
-            var check = document.createElement('a'); check.href = '/app'; check.target = '_blank'; check.rel = 'noopener'; check.textContent = '문서 검색으로 저장 여부 확인'; feedback.appendChild(check);
-            var resume = document.createElement('button'); resume.type = 'button'; resume.className = 'button secondary'; resume.textContent = '저장되지 않은 것을 확인했습니다';
+            feedback.textContent = '저장 결과를 확인하지 못했어요. 입력한 내용은 그대로 남겨 뒀어요. 다른 탭에서 저장됐는지 먼저 확인해 주세요. 자동으로 다시 저장하지 않아요.';
+            var check = document.createElement('a'); check.href = '/app'; check.target = '_blank'; check.rel = 'noopener'; check.textContent = '문서 검색에서 확인하기'; feedback.appendChild(check);
+            var resume = document.createElement('button'); resume.type = 'button'; resume.className = 'button secondary'; resume.textContent = '저장되지 않은 것을 확인했어요';
             resume.addEventListener('click', function () { restoreControls(); resume.remove(); }); feedback.appendChild(resume);
             feedback.focus();
           } finally { clearTimeout(timeout); }

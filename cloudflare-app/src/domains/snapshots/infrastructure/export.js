@@ -165,16 +165,16 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
   const id = clean(manifestId);
   const page = Number(pageNumber);
   if (!/^EXP-[A-Za-z0-9-]{16,}$/.test(id) || !Number.isInteger(page) || page < 1) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "export page 요청이 올바르지 않습니다.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "export page 요청이 올바르지 않아요.");
   }
   const manifest = await env.DB.prepare(`
     SELECT manifest_id, schema_version, base_version, current_snapshot_id, document_count, page_size
     FROM document_snapshot_export_manifests
     WHERE manifest_id = ? AND status IN ('building', 'completed')
   `).bind(id).first();
-  if (!manifest) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "export manifest를 찾을 수 없습니다.");
+  if (!manifest) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "export manifest를 찾지 못했어요. 현재 대장을 다시 추출해 주세요.");
   if (Number(manifest.schema_version) !== EXCEL_SNAPSHOT_SCHEMA_VERSION) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED, "구역 열이 포함된 최신 대장을 다시 추출하세요.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED, "구역 열이 포함된 최신 대장을 다시 추출해 주세요.");
   }
   const state = await getDocumentSyncState(env);
   if (
@@ -182,12 +182,12 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
     Number(manifest.current_snapshot_id || 0) !== state.currentSnapshotId
   ) {
     await env.DB.prepare("UPDATE document_snapshot_export_manifests SET status = 'invalidated' WHERE manifest_id = ?").bind(id).run();
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "export 도중 문서고가 변경되었습니다. 다시 추출하세요.", { stale: true });
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "export 도중 문서고가 바뀌었어요. 다시 추출해 주세요.", { stale: true });
   }
   const pageSize = Math.min(Number(manifest.page_size || 250), FREE_TIER_BUDGET.excelSnapshotExportPageSize);
   const expectedPages = Math.max(1, Math.ceil(Number(manifest.document_count || 0) / pageSize));
   if (page > expectedPages) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "export page 범위를 벗어났습니다.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_FIELD, "export page 범위를 벗어났어요.");
   }
   const offset = (page - 1) * pageSize;
   const previousCursor = page === 1 ? null : await env.DB.prepare(`
@@ -200,7 +200,7 @@ export async function getDocumentSnapshotExportPage(env, manifestId, pageNumber)
   if (page > 1 && !previousCursor?.cursor_document_id) {
     return snapshotError(
       SNAPSHOT_ERROR_CODES.SNAPSHOT_INVALID_STATE,
-      "앞 페이지부터 순서대로 내려받아 주세요. 중단된 경우 현재 대장 추출을 다시 시작할 수 있습니다."
+      "앞 페이지부터 순서대로 내려받아 주세요. 중단된 경우 현재 대장 추출을 다시 시작할 수 있어요."
     );
   }
   const cursorWhere = previousCursor ? `AND (
@@ -299,15 +299,15 @@ export async function finalizeDocumentSnapshotExport(env, manifestId) {
     FROM document_snapshot_export_manifests
     WHERE manifest_id = ? AND status IN ('building', 'completed')
   `).bind(id).first();
-  if (!manifest) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "완료할 export manifest를 찾을 수 없습니다.");
+  if (!manifest) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND, "완료할 export manifest를 찾지 못했어요. 현재 대장을 다시 추출해 주세요.");
   if (Number(manifest.schema_version) !== EXCEL_SNAPSHOT_SCHEMA_VERSION) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED, "구역 열이 포함된 최신 대장을 다시 추출하세요.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_SCHEMA_UNSUPPORTED, "구역 열이 포함된 최신 대장을 다시 추출해 주세요.");
   }
   const state = await getDocumentSyncState(env);
   if (
     Number(manifest.base_version) !== state.currentVersion ||
     Number(manifest.current_snapshot_id || 0) !== state.currentSnapshotId
-  ) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "export 도중 문서고가 변경되었습니다.", { stale: true });
+  ) return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_STALE, "export 도중 문서고가 바뀌었어요. 다시 추출해 주세요.", { stale: true });
   const pages = await env.DB.prepare(`
     SELECT page_number, row_offset, row_count, page_hash
     FROM document_snapshot_export_pages
@@ -327,7 +327,7 @@ export async function finalizeDocumentSnapshotExport(env, manifestId) {
       /^[a-f0-9]{64}$/i.test(clean(pageRow.page_hash));
   });
   if (!validPageChain) {
-    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, "모든 export page를 받은 뒤 완료하세요.");
+    return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_ROW_COUNT_MISMATCH, "모든 export page를 받은 뒤 완료해 주세요.");
   }
   const canonicalExportHash = manifest.status === "completed"
     ? clean(manifest.canonical_export_hash)
@@ -342,7 +342,7 @@ export async function finalizeDocumentSnapshotExport(env, manifestId) {
       RETURNING manifest_id
     `).bind(canonicalExportHash, id).first();
     if (!completed?.manifest_id) {
-      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_CONCURRENT_APPLY, "export 완료 상태가 동시에 변경되었습니다.");
+      return snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_CONCURRENT_APPLY, "export 완료 상태가 동시에 바뀌었어요. 현재 대장을 다시 추출해 주세요.");
     }
   }
   return {

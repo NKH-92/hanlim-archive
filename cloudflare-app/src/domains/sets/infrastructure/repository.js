@@ -83,13 +83,13 @@ export async function cloneDocumentSet(env, sourceId, values = {}, actor = {}) {
   const id = Number(sourceId);
   const expectedVersion = positiveVersion(values.expectedRowVersion ?? values.rowVersion);
   const name = clean(values.name);
-  if (!Number.isInteger(id) || id <= 0) return { ok: false, message: "복제할 세트를 찾을 수 없습니다." };
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, message: "복제할 세트를 찾지 못했어요." };
   if (!expectedVersion) return staleSetResult();
-  if (!name) return { ok: false, message: "새 세트 이름은 필수입니다." };
-  if (name.length > 100) return { ok: false, message: "새 세트 이름은 100자 이하로 입력하세요." };
+  if (!name) return { ok: false, message: "새 세트 이름을 입력해 주세요." };
+  if (name.length > 100) return { ok: false, message: "새 세트 이름은 100자 이하로 입력해 주세요." };
 
   const source = await getDocumentSet(env, id);
-  if (!source) return { ok: false, message: "복제할 세트를 찾을 수 없습니다." };
+  if (!source) return { ok: false, message: "복제할 세트를 찾지 못했어요." };
   if (Number(source.row_version) !== expectedVersion) return staleSetResult();
   const performedBy = actorDisplayName(actor);
   const snapshot = auditActorSnapshot(actor);
@@ -188,10 +188,10 @@ export async function upsertDocumentSet(env, values, actor = {}) {
   const name = clean(values.name);
   const performedBy = actorDisplayName(actor);
   if (!name) {
-    return { ok: false, message: "세트 이름은 필수입니다." };
+    return { ok: false, message: "세트 이름을 입력해 주세요." };
   }
   if (name.length > 100) {
-    return { ok: false, message: "세트 이름은 100자 이하로 입력하세요." };
+    return { ok: false, message: "세트 이름은 100자 이하로 입력해 주세요." };
   }
 
   try {
@@ -219,11 +219,11 @@ export async function upsertDocumentSet(env, values, actor = {}) {
       const ran = await runSetMutationBatch(env, createSetMutationPlan("update", statements));
       if (!ran.ok) {
         const current = await getDocumentSet(env, values.id);
-        return current?.is_locked ? { ok: false, message: "잠긴 세트는 정보를 수정할 수 없습니다." } : staleSetResult();
+        return current?.is_locked ? { ok: false, message: "잠긴 세트는 잠금을 해제해야 정보를 수정할 수 있어요." } : staleSetResult();
       }
       if (Number(ran.results[1]?.meta?.changes || 0) === 0) {
         const current = await getDocumentSet(env, values.id);
-        return current?.is_locked ? { ok: false, message: "잠긴 세트는 정보를 수정할 수 없습니다." } : staleSetResult();
+        return current?.is_locked ? { ok: false, message: "잠긴 세트는 잠금을 해제해야 정보를 수정할 수 있어요." } : staleSetResult();
       }
 
       return { ok: true, id: values.id };
@@ -247,7 +247,7 @@ export async function upsertDocumentSet(env, values, actor = {}) {
     const results = await executeMutationBatch(env, createSetMutationPlan("create", statements, "unique:set-name"));
     const id = Number(results[0]?.results?.[0]?.id || results[0]?.meta?.last_row_id || 0);
     if (!id) {
-      throw new Error("생성한 세트를 확인할 수 없습니다.");
+      throw new Error("생성한 세트를 확인하지 못했어요. 세트 목록에서 다시 확인해 주세요.");
     }
     return { ok: true, id };
   } catch (error) {
@@ -261,10 +261,10 @@ export async function upsertDocumentSet(env, values, actor = {}) {
 export async function deleteDocumentSet(env, id, actor = {}, expectedRowVersion = 0) {
   const set = await getDocumentSet(env, id);
   if (!set) {
-    return { ok: false, message: "세트를 찾을 수 없습니다." };
+    return { ok: false, message: "세트를 찾지 못했어요." };
   }
   if (Number(set.is_locked) === 1) {
-    return { ok: false, message: "잠긴 세트는 삭제할 수 없습니다." };
+    return { ok: false, message: "잠긴 세트는 잠금을 해제해야 삭제할 수 있어요." };
   }
   const expectedVersion = positiveVersion(expectedRowVersion);
   if (!expectedVersion || Number(set.row_version) !== expectedVersion) return staleSetResult();
@@ -288,10 +288,10 @@ export async function deleteDocumentSet(env, id, actor = {}, expectedRowVersion 
   const ran = await runSetMutationBatch(env, createSetMutationPlan("delete", statements));
   if (!ran.ok) {
     const current = await getDocumentSet(env, id);
-    return current?.is_locked ? { ok: false, message: "잠긴 세트는 삭제할 수 없습니다." } : staleSetResult();
+    return current?.is_locked ? { ok: false, message: "잠긴 세트는 잠금을 해제해야 삭제할 수 있어요." } : staleSetResult();
   }
   if (Number(ran.results[2]?.meta?.changes || 0) === 0) {
-    return { ok: false, message: "세트를 찾을 수 없습니다." };
+    return { ok: false, message: "세트를 찾지 못했어요." };
   }
 
   return { ok: true };
@@ -307,8 +307,8 @@ export async function addDocumentsToSet(env, setId, documentIds, actor = {}, exp
 
   const requestedIds = JSON.stringify(ids);
   const addability = await getSetAddability(env, setId, requestedIds);
-  if (!addability) return { added: 0, ok: false, message: "세트를 찾을 수 없습니다." };
-  if (Number(addability.is_locked) === 1) return { added: 0, ok: false, message: "잠긴 세트에는 문서를 추가할 수 없습니다." };
+  if (!addability) return { added: 0, ok: false, message: "세트를 찾지 못했어요." };
+  if (Number(addability.is_locked) === 1) return { added: 0, ok: false, message: "잠긴 세트는 잠금을 해제해야 문서를 추가할 수 있어요." };
   if (Number(addability.row_version) !== expectedVersion) return { added: 0, ...staleSetResult() };
   if (Number(addability.addable_count || 0) === 0) return { added: 0 };
 
@@ -416,7 +416,7 @@ export async function removeDocumentFromSet(env, setId, documentId, actor = {}, 
     WHERE i.set_id = ? AND i.document_id = ?
   `).bind(setId, documentId).first();
   if (!target) {
-    return { ok: false, message: "세트에서 해당 문서를 찾을 수 없습니다." };
+    return { ok: false, message: "세트에서 해당 문서를 찾지 못했어요." };
   }
   if (Number(target.row_version) !== expectedVersion) return staleSetResult();
 
@@ -467,17 +467,17 @@ export async function setDocumentSetLock(env, setId, locked, reason, actor = {},
   const id = Number(setId);
   const cleanReason = clean(reason);
   if (!Number.isInteger(id) || id <= 0) {
-    return { ok: false, message: "세트를 찾을 수 없습니다." };
+    return { ok: false, message: "세트를 찾지 못했어요." };
   }
   if (!cleanReason) {
-    return { ok: false, message: locked ? "잠금 사유를 입력하세요." : "잠금 해제 사유를 입력하세요." };
+    return { ok: false, message: locked ? "잠금 사유를 입력해 주세요." : "잠금 해제 사유를 입력해 주세요." };
   }
   if (cleanReason.length > 500) {
-    return { ok: false, message: "잠금 사유는 500자 이하로 입력하세요." };
+    return { ok: false, message: "잠금 사유는 500자 이하로 입력해 주세요." };
   }
 
   const set = await getDocumentSet(env, id);
-  if (!set) return { ok: false, message: "세트를 찾을 수 없습니다." };
+  if (!set) return { ok: false, message: "세트를 찾지 못했어요." };
   const expectedVersion = positiveVersion(expectedRowVersion);
   if (!expectedVersion || Number(set.row_version) !== expectedVersion) return staleSetResult();
   const nextLocked = locked ? 1 : 0;
@@ -535,7 +535,7 @@ export async function setDocumentSetLock(env, setId, locked, reason, actor = {},
   ];
   const ran = await runSetMutationBatch(env, createSetMutationPlan(nextLocked ? "lock" : "unlock", statements, guardSql));
   if (!ran.ok || Number(ran.results[2]?.meta?.changes || 0) === 0) {
-    return { ok: false, message: "세트 잠금 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    return { ok: false, message: "세트 잠금 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
   }
   return { ok: true };
 }
@@ -546,5 +546,5 @@ function positiveVersion(value) {
 }
 
 function staleSetResult() {
-  return { ok: false, message: "세트가 다른 요청에서 변경되었습니다. 새로고침 후 다시 시도하세요." };
+  return { ok: false, message: "세트가 다른 요청에서 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
 }

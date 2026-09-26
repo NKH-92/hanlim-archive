@@ -12,7 +12,7 @@ test("masters form parser와 validation은 HTTP 입력을 정규화하고 기존
   assert.deepEqual(parseTagForm(form({ name: " 태그 " }), 0), { id: 0, name: "태그", description: "", isActive: true });
   assert.deepEqual(validateMasterValues("category", { name: "" }), {
     ok: false,
-    message: "카테고리 이름은 필수입니다.",
+    message: "카테고리 이름을 입력해 주세요.",
     values: { id: 0, name: "", description: "", isActive: true, sortOrder: 0 }
   });
   assert.equal(validateMasterValues("category", { id: 3, name: "품질", isActive: true }).ok, false);
@@ -54,8 +54,8 @@ test("대분류 관리는 정렬 숫자 대신 필요한 기능과 확장 가능
   assert.match(html, /data-master-row data-master-active="false"/);
   assert.match(html, /type="hidden" name="sortOrder" value="30"/);
   assert.doesNotMatch(html, /정렬 순서|type="number"/);
-  assert.match(html, /사용중지하면 새 문서 등록 화면에서만 숨겨지며 기존 문서에는 그대로 남습니다/);
-  assert.match(html, /다시 사용하면 새 문서 등록과 대분류 선택 목록에 표시됩니다/);
+  assert.match(html, /사용중지하면 새 문서 등록 화면에서만 보이지 않고, 기존 문서에는 그대로 남아요/);
+  assert.match(html, /다시 사용하면 새 문서 등록과 대분류 선택 목록에 표시돼요/);
 });
 
 test("태그 수정 입력란은 각 태그 이름을 포함한 접근 가능한 이름을 제공한다", async () => {

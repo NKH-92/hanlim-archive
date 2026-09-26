@@ -12,7 +12,7 @@ export function dataQualityPage({ session, result }) {
   const previousUrl = `/admin/data-quality?issue=${result.issue}&page=${Math.max(1, result.page - 1)}`;
   const nextUrl = `/admin/data-quality?issue=${result.issue}&page=${Math.min(result.totalPages, result.page + 1)}`;
   return page("데이터 품질", `
-    <section class="page-head"><div><h1>데이터 품질 작업목록</h1><p class="page-sub">문제 숫자에서 실제 문서로 이동해 원인을 확인하고 수정합니다.</p></div><a class="button secondary" href="/admin">관리 설정</a></section>
+    <section class="page-head"><div><h1>데이터 품질 작업목록</h1><p class="page-sub">문제 건수에서 실제 문서로 이동해 원인을 확인하고 수정할 수 있어요.</p></div><a class="button secondary" href="/admin">관리 설정</a></section>
     <nav class="quality-issue-nav" aria-label="데이터 품질 문제 유형">${issueLinks}</nav>
     <section class="panel">
       ${sectionHeader(result.label, `${result.totalItems}건`)}
@@ -27,7 +27,7 @@ export function dataQualityPage({ session, result }) {
           <td>${statusBadge(document.status)}</td>
           <td><a class="button secondary sm" href="/documents/${document.id}/edit">수정</a></td>
         </tr>`).join("")}</tbody>
-      </table></div>` : emptyState("이 유형의 데이터 문제가 없습니다.")}
+      </table></div>` : emptyState("이 유형의 데이터 문제가 없어요.")}
     </section>
     ${paginationNav(result.page, result.totalPages, { previousUrl, nextUrl })}
   `, session);

@@ -201,7 +201,7 @@ test("승인 사용자 핸들러는 비밀번호 불일치 시 비민감 입력�
   const response = await handleApprovedUserCreate(request, {}, actor);
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /임시 비밀번호가 일치하지 않습니다/);
+  assert.match(html, /임시 비밀번호가 일치하지 않아요/);
   assert.match(html, /value="user@hanlim\.com"/);
   assert.doesNotMatch(html, /first-password|other-password/);
 });

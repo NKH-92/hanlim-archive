@@ -43,7 +43,7 @@ test("POST /documents/:id/delete-permanent는 DB를 조회하지 않고 404를 �
 
   assert.equal(response.status, 404);
   assert.equal(response.headers.get("Content-Type"), "text/html; charset=utf-8");
-  assert.match(await response.text(), /페이지를 찾을 수 없습니다/);
+  assert.match(await response.text(), /페이지를 찾지 못했어요/);
 });
 
 test("기존 문서 폐기와 Admin 폐기 해제 경로는 유지한다", async (t) => {

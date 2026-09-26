@@ -17,7 +17,7 @@ test("폐기된 브라우저 전체 검색 인덱스 endpoint는 D1 조회 없�
   assert.deepEqual(payload, {
     ok: false,
     code: "SEARCH_INDEX_RETIRED",
-    message: "브라우저 전체 검색 인덱스는 종료되었습니다. /api/viewer/search를 사용하세요."
+    message: "브라우저 전체 검색 인덱스는 종료됐어요. /api/viewer/search를 사용해 주세요."
   });
 });
 

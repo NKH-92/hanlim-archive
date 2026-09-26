@@ -29,14 +29,14 @@ export function disposalBatchListPage({ session, batches = [] }) {
   `).join("");
   return page("정기폐기 캠페인 이력", `
     <section class="page-head">
-      <div><h1>정기폐기 캠페인 이력</h1><p class="muted">한 번의 정기폐기를 캠페인 단위로 조회하고, 대상·사유·처리 결과를 함께 추적합니다.</p></div>
+      <div><h1>정기폐기 캠페인 이력</h1><p class="muted">정기폐기 한 번을 캠페인 하나로 보고, 대상·사유·처리 결과를 함께 추적해요.</p></div>
       <div class="button-group"><a class="button secondary" href="/documents/disposal">소량 폐기</a><a class="button" href="/disposal-batches/new">새 정기폐기</a></div>
     </section>
     <section class="panel results-panel">
       <div class="section-title"><h2>캠페인 목록</h2><span class="count-badge">${batches.length}건</span></div>
       <div class="table-wrap"><table class="doc-table">
         <thead><tr><th>캠페인 번호</th><th>제목</th><th>상태</th><th>조건</th><th>폐기 사유</th><th>승인 참조</th><th>총 대상 / 완료</th><th>제외 / 변경 / 실패</th><th>담당 / 완료일</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="9" class="empty">등록된 정기폐기 캠페인이 없습니다.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="9" class="empty">등록된 정기폐기 캠페인이 없어요.</td></tr>`}</tbody>
       </table></div>
     </section>
   `, session);
@@ -74,7 +74,7 @@ export function periodicDisposalPage({
 
   return page("정기폐기 캠페인", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/documents/disposal">문서 폐기</a><span>/</span><span>정기폐기</span></nav><h1>정기폐기 캠페인</h1><p class="muted">폐기 예정 연도와 대분류로 찾은 전체 문서를 한 캠페인 대상으로 확정하고 일괄 처리합니다.</p></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/documents/disposal">문서 폐기</a><span>/</span><span>정기폐기</span></nav><h1>정기폐기 캠페인</h1><p class="muted">폐기 예정 연도와 대분류로 찾은 문서 전체를 한 캠페인의 대상으로 확정하고 한 번에 처리해요.</p></div>
       <div class="button-group"><a class="button secondary" href="/disposal-batches">캠페인 이력</a><a class="button secondary" href="/documents/disposal">돌아가기</a></div>
     </section>
     ${error ? alertDanger(error) : ""}
@@ -86,16 +86,16 @@ export function periodicDisposalPage({
         <button type="submit" class="button">대상 조회</button>
         <a class="button secondary" href="/disposal-batches/new">초기화</a>
       </form>
-      <p class="muted">두 조건 중 하나 이상을 선택하세요. 조회 결과 전체가 선택되며, 화면에는 검토용 일부 문서만 표시됩니다.</p>
+      <p class="muted">두 조건 중 하나 이상을 선택해 주세요. 조회한 문서가 모두 선택되고, 화면에는 검토할 수 있도록 일부만 보여드려요.</p>
     </section>
     ${hasCriteria ? `
       <section class="panel results-panel">
         <div class="section-title"><h2>전체 선택 결과</h2><span class="count-badge">전체 ${number(targetCount)}건 선택됨</span></div>
-        ${overLimit ? `<div class="alert warning">대상이 안전 상한 ${number(maxTargetCount)}건을 초과합니다. 연도 또는 대분류 조건을 더 좁혀 주세요.</div>` : ""}
-        ${targetCount > preview.length ? `<div class="alert">검토 편의를 위해 앞의 ${number(preview.length)}건만 표시합니다. 실제 캠페인에는 조건과 일치하는 전체 ${number(targetCount)}건이 대상으로 확정됩니다.</div>` : ""}
+        ${overLimit ? `<div class="alert warning">대상이 안전 상한인 ${number(maxTargetCount)}건보다 많아요. 연도나 대분류 조건을 더 좁혀 주세요.</div>` : ""}
+        ${targetCount > preview.length ? `<div class="alert">검토하기 쉽도록 앞의 ${number(preview.length)}건만 보여드려요. 실제 캠페인은 조건에 맞는 ${number(targetCount)}건 전체를 대상으로 확정해요.</div>` : ""}
         <div class="table-wrap"><table class="doc-table">
           <thead><tr><th class="check-col"><input type="checkbox" checked disabled aria-label="필터 결과 전체 선택됨"></th><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th></tr></thead>
-          <tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없습니다.</td></tr>`}</tbody>
+          <tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없어요.</td></tr>`}</tbody>
         </table></div>
       </section>
       ${targetCount ? `
@@ -112,12 +112,12 @@ export function periodicDisposalPage({
             <dialog id="periodic-disposal-confirm" class="modal disposal-review-modal" aria-labelledby="periodic-disposal-confirm-title">
               <div class="modal-body">
                 <h2 id="periodic-disposal-confirm-title">정기폐기 최종 확인</h2>
-                <p class="muted">${escapeHtml(criteriaLabel)} 조건의 현재 보관중 문서 전체를 폐기합니다.</p>
-                <p class="disposal-count-confirmation">총 폐기 문서 수가 <strong>${number(targetCount)}건</strong>이 맞습니까?</p>
-                <p class="danger-text">확인하면 캠페인 대상이 확정되고 전체 처리가 자동으로 시작됩니다. 문서별 감사이력과 캠페인 집계이력은 모두 보존됩니다.</p>
+                <p class="muted">${escapeHtml(criteriaLabel)} 조건에 맞는 현재 보관중 문서를 모두 폐기해요.</p>
+                <p class="disposal-count-confirmation">폐기할 문서가 총 <strong>${number(targetCount)}건</strong>이 맞나요?</p>
+                <p class="danger-text">확인하면 캠페인 대상을 확정하고 전체 처리를 자동으로 시작해요. 문서별 감사이력과 캠페인 집계이력은 모두 보존돼요.</p>
                 <div class="modal-actions">
-                  <button type="button" class="button secondary" data-close-modal>취소</button>
-                  <button type="submit" class="danger-button" name="confirmDisposal" value="1">예, ${number(targetCount)}건 전체 폐기합니다</button>
+                  <button type="button" class="button secondary" data-close-modal>닫기</button>
+                  <button type="submit" class="danger-button" name="confirmDisposal" value="1">네, ${number(targetCount)}건 모두 폐기할게요</button>
                 </div>
               </div>
             </dialog>
@@ -155,7 +155,7 @@ export function disposalBatchFormPage({
   `).join("");
   return page(title, `
     <section class="page-head">
-      <div><h1>${title}</h1><p class="muted">최소 한 조건을 지정하고 미리보기 후 대상을 확정합니다.</p></div>
+      <div><h1>${title}</h1><p class="muted">조건을 하나 이상 정하고, 미리보기로 확인한 뒤 대상을 확정해요.</p></div>
       <a class="button secondary" href="${batch ? `/disposal-batches/${batch.id}` : "/disposal-batches"}">돌아가기</a>
     </section>
     <section class="panel narrow">
@@ -179,10 +179,10 @@ export function disposalBatchFormPage({
     ${batch ? `
       <section class="panel results-panel">
         <div class="section-title"><h2>현재 조건 미리보기</h2><span class="count-badge">전체 ${number(previewCount)}건</span></div>
-        ${capped ? `<div class="alert">앞의 ${number(preview.length)}건만 표시합니다. 대상 확정 시 조건에 맞는 전체 ${number(previewCount)}건을 다시 확인합니다.</div>` : ""}
+        ${capped ? `<div class="alert">앞의 ${number(preview.length)}건만 보여드려요. 대상을 확정할 때 조건에 맞는 ${number(previewCount)}건 전체를 다시 확인해요.</div>` : ""}
         <div class="table-wrap"><table class="doc-table">
           <thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th><th>최근 수정</th></tr></thead>
-          <tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없습니다.</td></tr>`}</tbody>
+          <tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없어요.</td></tr>`}</tbody>
         </table></div>
       </section>
     ` : ""}
@@ -243,7 +243,7 @@ export function disposalBatchDetailPage({
       ${detail("대상 확정", batch.frozen_at ? `${batch.frozen_by_name} / ${batch.frozen_at}` : "-")}
       ${detail("완료", batch.completed_at ? `${batch.completed_by_name} / ${batch.completed_at}` : "-")}
     </section>
-    ${batch.status === "draft" ? `<section class="panel results-panel" aria-labelledby="disposal-preview-title"><div class="section-title"><h2 id="disposal-preview-title">최신 대상 미리보기</h2><span class="count-badge">전체 ${number(previewCount)}건</span></div>${previewCapped ? `<div class="alert">앞의 ${number(preview.length)}건만 표시합니다. 대상 확정 시 전체 ${number(previewCount)}건을 스냅샷으로 고정합니다.</div>` : ""}<div class="table-wrap"><table class="doc-table"><thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th><th>최근 수정</th></tr></thead><tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없습니다.</td></tr>`}</tbody></table></div></section>` : ""}
+    ${batch.status === "draft" ? `<section class="panel results-panel" aria-labelledby="disposal-preview-title"><div class="section-title"><h2 id="disposal-preview-title">최신 대상 미리보기</h2><span class="count-badge">전체 ${number(previewCount)}건</span></div>${previewCapped ? `<div class="alert">앞의 ${number(preview.length)}건만 보여드려요. 대상을 확정하면 ${number(previewCount)}건 전체를 스냅샷으로 고정해요.</div>` : ""}<div class="table-wrap"><table class="doc-table"><thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th><th>최근 수정</th></tr></thead><tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없어요.</td></tr>`}</tbody></table></div></section>` : ""}
     <section class="panel">
       <div class="metric-grid" data-disposal-progress>
         ${metric("대상", batch.target_count, "target_count")}
@@ -260,13 +260,13 @@ export function disposalBatchDetailPage({
       <div class="section-title">
         <h2>확정 문서</h2><span class="count-badge">${number(items.length)} / ${number(itemStatusCount(batch, itemStatus))}건 표시</span>
       </div>
-      ${items.length < itemStatusCount(batch, itemStatus) ? `<div class="alert">화면에는 앞의 ${number(items.length)}건만 표시합니다. 전체 결과는 상단 집계와 CSV에서 확인할 수 있습니다.</div>` : ""}
+      ${items.length < itemStatusCount(batch, itemStatus) ? `<div class="alert">화면에는 앞의 ${number(items.length)}건만 보여드려요. 전체 결과는 위쪽 집계와 CSV에서 확인할 수 있어요.</div>` : ""}
       <nav class="filter-row" aria-label="항목 상태 필터">
         ${["", "pending", "excluded", "completed", "changed", "failed"].map((status) => `<a class="button secondary sm" href="/disposal-batches/${batch.id}${status ? `?status=${status}` : ""}" ${status === itemStatus ? `aria-current="page"` : ""}>${status ? STATUS_LABELS[status] : "전체"}</a>`).join("")}
       </nav>
       <div class="table-wrap"><table class="doc-table">
         <thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>확정 위치</th><th>폐기연도</th><th>결과</th><th>사유</th><th>동작</th></tr></thead>
-        <tbody>${itemRows || `<tr><td colspan="9" class="empty">해당 상태의 문서가 없습니다.</td></tr>`}</tbody>
+        <tbody>${itemRows || `<tr><td colspan="9" class="empty">해당 상태의 문서가 없어요.</td></tr>`}</tbody>
       </table></div>
     </section>
     ${processingScript(batch, autoStart)}
@@ -280,16 +280,16 @@ function batchActions(batch, previewCount = 0) {
       <form method="post" action="/disposal-batches/${batch.id}/freeze" class="stack">
         <input type="hidden" name="expectedUpdatedAt" value="${escapeHtml(batch.updated_at)}">
         <label>미리보기 대상 건수 재확인<input type="number" name="confirmedTargetCount" required min="${previewCount}" max="${previewCount}" inputmode="numeric"></label>
-        <label class="checkbox"><input type="checkbox" name="confirmPreview" value="1" required> 최신 미리보기 ${number(previewCount)}건과 조건을 확인했습니다.</label>
+        <label class="checkbox"><input type="checkbox" name="confirmPreview" value="1" required> 최신 미리보기 ${number(previewCount)}건과 조건을 확인했어요.</label>
         <button type="submit" class="button" ${!previewCount ? "disabled" : ""}>전체 대상 확정</button>
       </form>
-      <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="아직 폐기된 문서는 없습니다. 이 캠페인 초안을 취소할까요?"><button type="submit" class="danger-button">취소</button></form>
+      <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="아직 폐기한 문서는 없어요. 이 캠페인 초안을 취소할까요?"><button type="submit" class="danger-button">캠페인 취소</button></form>
     </div>`;
   }
   if (batch.status === "frozen") {
     return `<div class="button-group">
-      <form method="post" action="/disposal-batches/${batch.id}/start" class="stack"><label>확정 대상 건수 재확인<input type="number" name="confirmedTargetCount" required min="${Number(batch.target_count || 0)}" max="${Number(batch.target_count || 0)}" inputmode="numeric"></label><label class="checkbox"><input type="checkbox" name="confirmStart" value="1" required> 확정 대상 ${number(batch.target_count)}건을 확인했으며 폐기 처리를 시작합니다.</label><button type="submit" class="danger-button">폐기 처리 시작</button></form>
-      <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="아직 처리되지 않은 항목만 취소되며 이미 완료된 폐기 결과는 유지됩니다. 캠페인을 취소할까요?"><button type="submit" class="danger-button">취소</button></form>
+      <form method="post" action="/disposal-batches/${batch.id}/start" class="stack"><label>확정 대상 건수 재확인<input type="number" name="confirmedTargetCount" required min="${Number(batch.target_count || 0)}" max="${Number(batch.target_count || 0)}" inputmode="numeric"></label><label class="checkbox"><input type="checkbox" name="confirmStart" value="1" required> 확정 대상 ${number(batch.target_count)}건을 확인했고, 폐기 처리를 시작할게요.</label><button type="submit" class="danger-button">폐기 처리 시작</button></form>
+      <form method="post" action="/disposal-batches/${batch.id}/cancel" data-confirm="아직 처리하지 않은 항목만 취소하고, 이미 완료한 폐기 결과는 그대로 남아요. 캠페인을 취소할까요?"><button type="submit" class="danger-button">캠페인 취소</button></form>
     </div>`;
   }
   if (batch.status === "processing") {
@@ -337,7 +337,7 @@ function processingScript(batch, autoStart = false) {
         var excluded = Number(batch.excluded_count || 0);
         var processed = completed + changed + failed + excluded;
         return '전체 ' + Number(batch.target_count || 0).toLocaleString('ko-KR') +
-          '건 중 ' + processed.toLocaleString('ko-KR') + '건 처리했습니다.';
+          '건 중 ' + processed.toLocaleString('ko-KR') + '건 처리했어요.';
       }
       async function processNext() {
         while (running) {
@@ -346,29 +346,29 @@ function processingScript(batch, autoStart = false) {
             method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: body
           });
           var result = await response.json();
-          if (!response.ok || !result.ok) throw new Error(result.message || '처리를 계속할 수 없습니다.');
+          if (!response.ok || !result.ok) throw new Error(result.message || '처리를 계속하지 못했어요.');
           update(result.batch || {});
           if (result.done) {
-            message.textContent = '정기폐기 캠페인 처리가 완료되었습니다.';
+            message.textContent = '정기폐기 캠페인을 모두 처리했어요.';
             window.location.replace('/disposal-batches/${Number(batch.id)}?completed=1');
             return;
           }
-          message.textContent = progressText(result.batch || {}) + ' 남은 문서를 자동으로 계속 처리합니다.';
+          message.textContent = progressText(result.batch || {}) + ' 남은 문서를 자동으로 이어서 처리해요.';
         }
       }
       function startProcessing() {
         if (running) return;
         running = true; runButton.disabled = true; stopButton.disabled = false;
-        message.textContent = '전체 ${number(batch.target_count)}건의 정기폐기를 시작합니다.';
+        message.textContent = '전체 ${number(batch.target_count)}건의 정기폐기를 시작해요.';
         processNext().catch(function (error) {
           running = false; runButton.disabled = false; stopButton.disabled = true;
-          message.textContent = error.message + ' 다시 시도할 수 있습니다.';
+          message.textContent = error.message + ' 다시 시도해 주세요.';
         });
       }
       runButton?.addEventListener('click', startProcessing);
       stopButton?.addEventListener('click', function () {
         running = false; runButton.disabled = false; stopButton.disabled = true;
-        message.textContent = '처리를 중단했습니다. 완료된 항목은 저장되었으며 나중에 재개할 수 있습니다.';
+        message.textContent = '처리를 중단했어요. 완료한 항목은 저장했고, 나중에 재개할 수 있어요.';
       });
       if (${autoStart ? "true" : "false"}) startProcessing();
     })();

@@ -1,30 +1,30 @@
 // 전역 클라이언트 스크립트의 활성 내비·토스트·검색 클릭 집계 조각. 실행 순서는 clientScript.js에서 고정한다.
 
 export const TOAST_MESSAGES = Object.freeze({
-  created: "문서가 등록되었습니다.",
-  "document-created": "문서가 등록되어 세트에 추가되었습니다.",
-  updated: "문서 정보가 수정되었습니다.",
-  revised: "새 개정 문서가 등록되었습니다.",
-  moved: "문서 위치가 이동되었습니다.",
-  disposed: "폐기 처리되었습니다.",
-  restored: "폐기가 해제되었습니다.",
-  deleted: "문서가 완전 삭제되었습니다.",
-  saved: "저장되었습니다.",
-  "bulk-disposed": "선택한 문서를 폐기 처리했습니다.",
-  approved: "가입 요청을 승인했습니다.",
-  rejected: "가입 요청을 거절했습니다.",
-  enabled: "사용자 계정을 활성화했습니다.",
-  disabled: "사용자 계정을 비활성화했습니다.",
-  "permissions-saved": "사용자 권한을 저장했습니다.",
-  "template-saved": "역할 템플릿을 저장했습니다.",
-  "template-applied": "선택한 사용자에게 역할 템플릿을 반영했습니다.",
-  "password-reset": "임시 비밀번호를 설정했습니다. 다음 로그인에서 비밀번호 변경이 강제됩니다.",
-  "password-changed": "비밀번호가 변경되었습니다.",
-  "user-deleted": "계정을 완전삭제했습니다.",
-  "user-created": "승인 사용자를 추가했습니다. 임시 비밀번호를 안전하게 전달하세요.",
-  "set-locked": "준비 문서 세트를 잠갔습니다.",
-  "set-unlocked": "준비 문서 세트의 잠금을 해제했습니다.",
-  error: "요청을 처리하지 못했습니다. 입력값을 확인하세요."
+  created: "문서를 등록했어요.",
+  "document-created": "문서를 등록하고 세트에 추가했어요.",
+  updated: "문서 정보를 수정했어요.",
+  revised: "새 개정 문서를 등록했어요.",
+  moved: "문서를 새 위치로 옮겼어요.",
+  disposed: "문서를 폐기했어요.",
+  restored: "폐기를 해제했어요.",
+  deleted: "문서를 완전히 삭제했어요.",
+  saved: "저장했어요.",
+  "bulk-disposed": "선택한 문서를 폐기했어요.",
+  approved: "가입 요청을 승인했어요.",
+  rejected: "가입 요청을 거절했어요.",
+  enabled: "사용자 계정을 활성화했어요.",
+  disabled: "사용자 계정을 비활성화했어요.",
+  "permissions-saved": "사용자 권한을 저장했어요.",
+  "template-saved": "역할 템플릿을 저장했어요.",
+  "template-applied": "선택한 사용자에게 역할 템플릿을 적용했어요.",
+  "password-reset": "임시 비밀번호를 설정했어요. 이 사용자는 다음에 로그인할 때 비밀번호를 바꿔야 해요.",
+  "password-changed": "비밀번호를 바꿨어요.",
+  "user-deleted": "계정을 완전히 삭제했어요.",
+  "user-created": "승인 사용자를 추가했어요. 임시 비밀번호를 안전하게 전달해 주세요.",
+  "set-locked": "준비 문서 세트를 잠갔어요.",
+  "set-unlocked": "준비 문서 세트의 잠금을 풀었어요.",
+  error: "요청을 처리하지 못했어요. 입력값을 확인해 주세요."
 });
 
 export function navigationFeedbackScript() {
@@ -77,7 +77,7 @@ export function navigationFeedbackScript() {
         if (toastKey === 'bulk-disposed') {
           var disposedCount = Number(toastParams.get('disposed') || 0);
           var skippedCount = Number(toastParams.get('skipped') || 0);
-          toastMessage = '폐기 ' + disposedCount + '건 완료' + (skippedCount ? ' · 건너뜀 ' + skippedCount + '건' : '') + '.';
+          toastMessage = '문서 ' + disposedCount + '건을 폐기했어요' + (skippedCount ? '. ' + skippedCount + '건은 건너뛰었어요' : '') + '.';
         }
         if (toastMessage) {
           window.showAppMessage?.(toastMessage, toastKey === 'error');

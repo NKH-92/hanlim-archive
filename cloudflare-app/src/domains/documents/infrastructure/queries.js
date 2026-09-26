@@ -300,9 +300,9 @@ export async function validateDocumentInput(env, values, options = {}) {
   if (textError) return textError;
   const recordError = validateDocumentRecordFields(values, { required: true });
   if (recordError) return recordError;
-  if (!Number.isInteger(values.categoryId) || values.categoryId <= 0) return "대분류를 선택하세요.";
-  if (!Number.isInteger(values.rackSlotId) || values.rackSlotId <= 0) return "보관 위치를 선택하세요.";
-  if (!["A", "B"].includes(values.rackFace)) return "보관 면은 1면 또는 2면만 선택할 수 있습니다.";
+  if (!Number.isInteger(values.categoryId) || values.categoryId <= 0) return "대분류를 선택해 주세요.";
+  if (!Number.isInteger(values.rackSlotId) || values.rackSlotId <= 0) return "보관 위치를 선택해 주세요.";
+  if (!["A", "B"].includes(values.rackFace)) return "보관 면은 1면 또는 2면 중에서 선택해 주세요.";
 
   const referenceErrors = await validateDocumentReferences(env, values, options);
   return referenceErrors.categoryId || referenceErrors.rackSlotId || referenceErrors.rackFace || referenceErrors.tagIds || "";
@@ -326,7 +326,7 @@ async function validateDocumentReferences(env, values, options = {}) {
     .map(Number)
     .filter((id) => Number.isInteger(id) && id > 0);
   const tagCountWithinLimit = uniqueTagIds.length <= MAX_DOCUMENT_TAGS;
-  if (!tagCountWithinLimit) errors.tagIds = `태그는 최대 ${MAX_DOCUMENT_TAGS}개까지 선택할 수 있습니다.`;
+  if (!tagCountWithinLimit) errors.tagIds = `태그는 최대 ${MAX_DOCUMENT_TAGS}개까지 선택할 수 있어요.`;
   const allowInactiveTagIds = new Set(
     (options.allowInactiveTagIds || [])
       .map(Number)
@@ -353,20 +353,20 @@ async function validateDocumentReferences(env, values, options = {}) {
       : Promise.resolve({ results: [] })
   ]);
 
-  if (!category || (!category.is_active && !allowInactiveCategory)) errors.categoryId = "사용 가능한 대분류가 아닙니다.";
-  if (!slot) errors.rackSlotId = "사용 가능한 보관 위치가 아닙니다.";
-  else if (slot.is_single_sided && values.rackFace === "B") errors.rackFace = "단면 랙은 면 구분 없이 사용합니다. 2면을 선택할 수 없습니다.";
+  if (!category || (!category.is_active && !allowInactiveCategory)) errors.categoryId = "사용 중인 대분류를 선택해 주세요.";
+  if (!slot) errors.rackSlotId = "사용 중인 보관 위치를 선택해 주세요.";
+  else if (slot.is_single_sided && values.rackFace === "B") errors.rackFace = "단면 랙은 면 구분 없이 사용해요. 1면을 선택해 주세요.";
 
   if (uniqueTagIds.length && tagCountWithinLimit) {
     const found = new Map((tagRows.results ?? []).map((tag) => [Number(tag.id), tag]));
     for (const tagId of uniqueTagIds) {
       const tag = found.get(tagId);
       if (!tag) {
-        errors.tagIds = "존재하지 않는 태그가 포함되어 있습니다.";
+        errors.tagIds = "존재하지 않는 태그가 포함되어 있어요. 태그를 다시 선택해 주세요.";
         break;
       }
       if (!tag.is_active && !allowInactiveTagIds.has(tagId)) {
-        errors.tagIds = "사용 가능한 태그가 아닙니다.";
+        errors.tagIds = "사용중지된 태그가 포함되어 있어요. 사용 중인 태그만 선택해 주세요.";
         break;
       }
     }

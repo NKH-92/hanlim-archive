@@ -54,22 +54,22 @@ export async function moveDocument(env, documentId, values, session = {}) {
   const expectedRowVersion = Number(values?.expectedRowVersion);
 
   if (!Number.isInteger(id) || id <= 0) {
-    return { ok: false, message: "문서를 찾을 수 없습니다." };
+    return { ok: false, message: "문서를 찾지 못했어요. 검색에서 다시 찾아 주세요." };
   }
   if (!Number.isInteger(targetSlotId) || targetSlotId <= 0 || !["A", "B"].includes(targetFace)) {
-    return { ok: false, message: "이동할 랙·열·선반과 면을 선택하세요." };
+    return { ok: false, message: "이동할 랙·열·선반과 면을 선택해 주세요." };
   }
   if (!reason) {
-    return { ok: false, message: "위치 이동 사유를 입력하세요." };
+    return { ok: false, message: "위치 이동 사유를 입력해 주세요." };
   }
   if (reason.length > 500) {
-    return { ok: false, message: "위치 이동 사유는 500자 이하로 입력하세요." };
+    return { ok: false, message: "위치 이동 사유는 500자 이하로 입력해 주세요." };
   }
   if (!expectedUpdatedAt) {
-    return { ok: false, message: "문서 변경 시각이 없습니다. 화면을 새로고침한 뒤 다시 시도하세요." };
+    return { ok: false, message: "문서 변경 시각이 없어요. 화면을 새로고침한 뒤 다시 시도해 주세요." };
   }
   if (!Number.isInteger(expectedRowVersion) || expectedRowVersion <= 0) {
-    return { ok: false, message: "문서 버전이 없습니다. 화면을 새로고침한 뒤 다시 시도하세요." };
+    return { ok: false, message: "문서 버전이 없어요. 화면을 새로고침한 뒤 다시 시도해 주세요." };
   }
 
   const [document, target] = await Promise.all([
@@ -77,19 +77,19 @@ export async function moveDocument(env, documentId, values, session = {}) {
     getActiveMovementSlot(env, targetSlotId)
   ]);
   if (!document) {
-    return { ok: false, message: "문서를 찾을 수 없습니다." };
+    return { ok: false, message: "문서를 찾지 못했어요. 검색에서 다시 찾아 주세요." };
   }
   if (document.status !== "active") {
-    return { ok: false, message: "폐기 상태 문서는 위치를 이동할 수 없습니다." };
+    return { ok: false, message: "폐기 상태 문서는 위치를 이동할 수 없어요." };
   }
   if (!target) {
-    return { ok: false, message: "사용 중인 랙 위치를 선택하세요." };
+    return { ok: false, message: "사용 중인 랙 위치를 선택해 주세요." };
   }
   if (Number(target.is_single_sided) === 1 && targetFace === "B") {
-    return { ok: false, message: "단면 랙은 2면을 선택할 수 없습니다." };
+    return { ok: false, message: "단면 랙은 1면만 선택할 수 있어요." };
   }
   if (Number(document.rack_slot_id) === targetSlotId && document.rack_face === targetFace) {
-    return { ok: false, message: "현재 위치와 다른 위치를 선택하세요." };
+    return { ok: false, message: "현재 위치와 다른 위치를 선택해 주세요." };
   }
 
   const actor = actorSnapshot(session);
@@ -238,14 +238,14 @@ export async function moveDocument(env, documentId, values, session = {}) {
     results = await executeMutationBatch(env, plan);
   } catch (error) {
     if (isExpectedChangeAbort(error)) {
-      return { ok: false, message: "다른 사용자가 문서를 먼저 수정했거나 위치 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+      return { ok: false, message: "다른 사용자가 문서를 먼저 수정했거나 위치 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
     }
     throw error;
   }
 
   // expectChanged assertion이 마지막에 삽입되므로 실제 UPDATE는 뒤에서 두 번째다.
   if (!hasChanged(results[results.length - 2] || results[3])) {
-    return { ok: false, message: "다른 사용자가 문서를 먼저 수정했거나 위치 상태가 변경되었습니다. 새로고침 후 다시 시도하세요." };
+    return { ok: false, message: "다른 사용자가 문서를 먼저 수정했거나 위치 상태가 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요." };
   }
   return { ok: true, fromLocation: beforeLocation, toLocation: afterLocation };
 }

@@ -3,7 +3,7 @@
 import { escapeHtml } from "../ui/html/escape.js";
 import { hasReadPermission, isDemoReadOnly, PERMISSIONS } from "../permissions.js";
 import { PASSWORD_POLICY } from "../domains/identity/index.js";
-import { alertDanger, alertWarning, emptyState, page, sectionHeader } from "./layout.js";
+import { alertDanger, alertInfo, alertNote, alertWarning, emptyState, page, sectionHeader } from "./layout.js";
 
 export { categoriesPage, tagsPage } from "../domains/masters/index.js";
 
@@ -15,12 +15,12 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
   const attentionCount = pending + qualityIssues + searchAttention + capacityAttention;
   const groups = [];
   if (hasReadPermission(session, PERMISSIONS.MANAGE_USERS)) {
-    groups.push(managementGroup("사용자 및 접근", "계정 승인과 사용 권한을 관리합니다.", [
+    groups.push(managementGroup("사용자 및 접근", "계정 승인과 사용 권한을 관리해요.", [
       ["/admin/settings", "fa-users-gear", "사용자 관리", `${pending}건 승인 대기`]
     ]));
   }
   if (hasReadPermission(session, PERMISSIONS.MANAGE_MASTERS)) {
-    groups.push(managementGroup("문서고 기준정보", "보관 위치와 검색 분류 기준을 관리합니다.", [
+    groups.push(managementGroup("문서고 기준정보", "보관 위치와 검색 분류 기준을 관리해요.", [
       ["/racks", "fa-box-archive", "랙 관리", "랙 목록과 위치 확인"],
       ["/racks/configure", "fa-table-cells-large", "랙 구성", "구역별 랙 수 조정"],
       ["/categories", "fa-layer-group", "대분류 관리", "문서 분류 기준"],
@@ -30,7 +30,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
   const dataLinks = [];
   if (hasReadPermission(session, PERMISSIONS.MANAGE_DOCUMENTS)) {
     dataLinks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화", "엑셀 전체 동기화·검증·인쇄용 추출"]);
-    dataLinks.push(["/documents/new", "fa-file-circle-plus", "문서 등록", "신규 문서를 현재 리스트에 즉시 등록"]);
+    dataLinks.push(["/documents/new", "fa-file-circle-plus", "문서 등록", "새 문서를 현재 대장에 바로 등록"]);
   }
   if (hasReadPermission(session, PERMISSIONS.VIEW_AUDIT)) {
     dataLinks.push(["/admin/audit", "fa-list-check", "감사 이력", "전역 변경 이력"]);
@@ -39,7 +39,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
     dataLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력", "문서 위치 변경 조회"]);
   }
   if (dataLinks.length) {
-    groups.push(managementGroup("데이터 및 감사", "데이터와 변경 증적을 확인합니다.", dataLinks));
+    groups.push(managementGroup("데이터 및 감사", "데이터와 변경 증적을 확인해요.", dataLinks));
   }
   const advancedLinks = [];
   if (hasReadPermission(session, PERMISSIONS.MANAGE_SETS)) {
@@ -53,7 +53,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
     advancedLinks.push(["/admin/search-report", "fa-chart-simple", "검색 리포트", "자주 찾는·실패 검색어"]);
   }
   if (advancedLinks.length) {
-    groups.push(managementGroup("관리자 고급 도구", "일상 업무에서 분리한 전문 관리 기능입니다.", advancedLinks, true));
+    groups.push(managementGroup("관리자 고급 도구", "일상 업무와 분리한 전문 관리 기능이에요.", advancedLinks, true));
   }
   const heroAction = pending && hasReadPermission(session, PERMISSIONS.MANAGE_USERS)
     ? `<a class="button action-button" href="/admin/settings">승인 요청 확인</a>`
@@ -62,10 +62,10 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
       : "";
   return page("운영 관리", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>운영 관리</span></nav><h1>운영 관리</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 확인합니다.</p></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>운영 관리</span></nav><h1>운영 관리</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 확인할 수 있어요.</p></div>
     </section>
     <section class="panel admin-status-panel ${attentionCount ? "is-attention" : "is-stable"}" aria-label="운영 상태 요약">
-      <div class="admin-status-copy"><h2>${attentionCount ? `오늘 확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있습니다.` : "문서고 운영 상태가 안정적입니다."}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 색인 ${searchIndex.level === "ok" ? "정상" : "확인 필요"}` : ""}</p>${heroAction}</div>
+      <div class="admin-status-copy"><h2>${attentionCount ? `확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있어요` : "문서고를 안정적으로 운영하고 있어요"}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 색인 ${searchIndex.level === "ok" ? "정상" : "확인 필요"}` : ""}</p>${heroAction}</div>
       <div class="admin-status-count"><strong>${attentionCount.toLocaleString("ko-KR")}</strong><span>확인 필요</span></div>
     </section>
     ${quality ? dataQualityPanel(quality) : ""}
@@ -80,10 +80,10 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
 function capacityPanel(capacity) {
   const level = capacity.level === "blocked" ? "review" : capacity.level;
   const message = capacity.level === "blocked"
-    ? "기술 상한에 도달했습니다. 신규 등록과 대장 반영이 차단됩니다."
+    ? "기술 상한에 도달했어요. 새 문서 등록과 대장 반영을 할 수 없어요."
     : capacity.level === "warning"
-      ? "운영 경고 구간입니다. 확장 또는 제외 계획을 확정하세요."
-      : "30,000건 기술 상한의 안정 운영 범위 안입니다.";
+      ? "운영 경고 구간이에요. 확장하거나 제외할 계획을 정해 주세요."
+      : "30,000건 기술 상한까지 여유가 있어요.";
   return `<section class="panel search-index-health ${escapeHtml(level)}">
     <div><strong>문서 대장 용량</strong><span>${Number(capacity.currentCount).toLocaleString("ko-KR")} / ${Number(capacity.hardCount).toLocaleString("ko-KR")}건 · 잔여 ${Number(capacity.remainingCount).toLocaleString("ko-KR")}건</span></div><p>${escapeHtml(message)}</p>
   </section>`;
@@ -106,7 +106,7 @@ function managementGroup(title, description, links, advanced = false) {
     <section class="panel management-section${advanced ? " is-advanced" : ""}">
       <div class="management-heading"><div><h2>${escapeHtml(title)}</h2><p class="muted">${escapeHtml(description)}</p></div>${advanced ? `<span class="count-badge">고급</span>` : ""}</div>
       <div class="admin-grid management-links">
-        ${links.map(([href, icon, label, caption]) => `<a class="panel admin-tile" href="${href}"><i class="fa-solid ${icon}" aria-hidden="true"></i><span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(caption)}</small></span></a>`).join("")}
+        ${links.map(([href, icon, label, caption]) => `<a class="panel admin-tile" href="${href}"><span class="icon-frame" aria-hidden="true"><i class="fa-solid ${icon}"></i></span><span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(caption)}</small></span></a>`).join("")}
       </div>
     </section>
   `;
@@ -159,9 +159,9 @@ function searchIndexMessage(readiness) {
   const remaining = Number(projection.pendingDirtyCount || 0);
   if (remaining > 0) parts.push(`반영 대기 ${count(remaining)}건`);
   if (!readiness.checks?.coreDatabase) parts.push("데이터베이스 업데이트 필요");
-  if (readiness.ok && !readiness.degraded) return `검색이 정상 동작합니다 · ${parts.join(" · ")}`;
-  parts.push("자동 재구성이 진행되며 완료 후 다시 확인하세요");
-  return `검색 결과가 제한될 수 있습니다 · ${parts.join(" · ")}`;
+  if (readiness.ok && !readiness.degraded) return `검색이 정상이에요 · ${parts.join(" · ")}`;
+  parts.push("자동으로 재구성하고 있으니 끝나면 다시 확인해 주세요");
+  return `검색 결과에서 일부 문서가 빠질 수 있어요 · ${parts.join(" · ")}`;
 }
 
 export function adminSettingsPage({ session, users }) {
@@ -170,18 +170,18 @@ export function adminSettingsPage({ session, users }) {
   const disabled = users.filter((u) => u.status === "disabled");
   const rejected = users.filter((u) => u.status === "rejected");
   const templateManagement = session?.role === "Admin" || isDemoReadOnly(session)
-    ? `<a class="button" href="/admin/role-templates">역할 템플릿</a>`
+    ? `<a class="button secondary" href="/admin/role-templates">역할 템플릿</a>`
     : "";
   const userCreation = session?.role === "Admin" || isDemoReadOnly(session)
     ? `<a class="button" href="/admin/users/new">승인 사용자 추가</a>`
     : "";
   return page("사용자 관리", `
-    <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리합니다.</p></div><div class="button-group">${userCreation}${templateManagement}<a class="button secondary" href="/admin">관리 설정</a></div></section>
-    <section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${pending.length ? userRequestTable(pending, session) : emptyState("대기 중인 가입 요청이 없습니다.")}</section>
+    <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리해요.</p></div><div class="button-group">${userCreation}${templateManagement}<a class="button secondary" href="/admin">운영 관리</a></div></section>
+    <section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${pending.length ? userRequestTable(pending, session) : emptyState("대기 중인 가입 요청이 없어요.")}</section>
     <div class="user-group-stack">
-      ${userGroupSection("승인된 사용자", `${approved.length}명`, approved, session, "승인된 사용자가 없습니다.")}
-      ${userGroupSection("사용중지 사용자", `${disabled.length}명`, disabled, session, "사용중지된 사용자가 없습니다.")}
-      ${userGroupSection("반려된 요청", `${rejected.length}건`, rejected, session, "반려된 요청이 없습니다.")}
+      ${userGroupSection("승인된 사용자", `${approved.length}명`, approved, session, "승인된 사용자가 없어요.")}
+      ${userGroupSection("사용중지 사용자", `${disabled.length}명`, disabled, session, "사용중지된 사용자가 없어요.")}
+      ${userGroupSection("반려된 요청", `${rejected.length}건`, rejected, session, "반려된 요청이 없어요.")}
     </div>
   `, session);
 }
@@ -192,11 +192,11 @@ export function approvedUserCreatePage({ session, values = {}, error = "", minLe
   const team = String(values.team ?? "").trim();
   return page("승인 사용자 추가", `
     <section class="page-head">
-      <div><h1>승인 사용자 추가</h1><p class="muted">가입 요청 없이 바로 사용할 일반 사용자 계정을 만듭니다.</p></div>
+      <div><h1>승인 사용자 추가</h1><p class="muted">가입 요청 없이 바로 쓸 수 있는 일반 사용자 계정을 만들어요.</p></div>
       <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
     </section>
     <section class="panel narrow">
-      ${alertWarning("신규 계정은 조회 전용으로 승인되며, 사용자는 임시 비밀번호로 로그인한 뒤 새 비밀번호로 변경해야 합니다. 추가 권한은 계정 생성 후 사용자 권한 화면에서 별도로 설정하세요.")}
+      ${alertNote("새 계정은 조회 전용으로 승인돼요. 사용자는 임시 비밀번호로 로그인한 뒤 새 비밀번호로 바꿔야 해요. 추가 권한은 계정을 만든 뒤 사용자 권한 화면에서 설정해 주세요.")}
       ${error ? alertDanger(error) : ""}
       <form method="post" action="/admin/users/new" class="stack">
         <label>사용자 아이디(이메일)<input name="username" type="email" autocomplete="off" maxlength="254" value="${escapeHtml(username)}" required></label>
@@ -204,8 +204,8 @@ export function approvedUserCreatePage({ session, values = {}, error = "", minLe
         <label>부서<input name="team" type="text" autocomplete="organization" maxlength="40" value="${escapeHtml(team)}"></label>
         <label>임시 비밀번호<input type="password" name="temporaryPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
         <label>임시 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
-        <label class="checkbox"><input type="checkbox" name="confirmCreate" value="1" required><span>일반 사용자·조회 전용으로 승인하고 다음 로그인에서 비밀번호 변경을 강제함을 확인했습니다.</span></label>
-        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 설정하고 사용자에게 별도 보안 채널로 전달하세요. 비밀번호 값과 해시는 감사로그에 기록하지 않습니다.</p>
+        <label class="checkbox"><input type="checkbox" name="confirmCreate" value="1" required><span>일반 사용자·조회 전용으로 승인하고, 다음 로그인 때 비밀번호를 바꾸게 한다는 것을 확인했어요.</span></label>
+        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 정하고, 사용자에게는 별도 보안 채널로 전달해 주세요. 비밀번호 값과 해시는 감사로그에 남기지 않아요.</p>
         <button type="submit" class="button">승인 사용자 추가</button>
       </form>
     </section>
@@ -254,10 +254,10 @@ function userActions(user, session) {
   }
   const permissions = `<a class="button secondary sm" href="/admin/users/${user.id}/permissions">권한</a>`;
   const target = `${user.display_name} (${user.username})`;
-  if (user.status === "approved") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/disable" data-confirm="${escapeHtml(target)} 계정의 로그인을 중지합니다. 계속할까요?"><button type="submit" class="danger-button sm">사용중지</button></form>${deletion}</div>`;
-  if (user.status === "disabled") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/enable" data-confirm="${escapeHtml(target)} 계정을 다시 사용할 수 있게 합니다. 계속할까요?"><button type="submit" class="primary sm">다시 사용</button></form>${deletion}</div>`;
-  if (user.status === "rejected") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 계정을 재승인합니다. 저장된 권한도 함께 확인하세요."><button type="submit" class="primary sm">재승인</button></form>${deletion}</div>`;
-  return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 가입 요청을 승인합니다. 승인 후 권한을 설정하세요."><button type="submit" class="primary sm">승인</button></form><form method="post" action="/admin/users/${user.id}/reject" data-confirm="${escapeHtml(target)} 가입 요청을 반려합니다. 계속할까요?"><button type="submit" class="danger-button sm">반려</button></form>${deletion}</div>`;
+  if (user.status === "approved") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/disable" data-confirm="${escapeHtml(target)} 계정의 로그인을 중지할까요?"><button type="submit" class="danger-button sm">사용중지</button></form>${deletion}</div>`;
+  if (user.status === "disabled") return `<div class="button-group">${permissions}${passwordReset}<form method="post" action="/admin/users/${user.id}/enable" data-confirm="${escapeHtml(target)} 계정을 다시 사용할 수 있게 할까요?"><button type="submit" class="primary sm">다시 사용</button></form>${deletion}</div>`;
+  if (user.status === "rejected") return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 계정을 재승인할까요? 저장된 권한도 함께 확인해 주세요."><button type="submit" class="primary sm">재승인</button></form>${deletion}</div>`;
+  return `<div class="button-group">${permissions}<form method="post" action="/admin/users/${user.id}/approve" data-confirm="${escapeHtml(target)} 가입 요청을 승인할까요? 승인한 뒤 권한을 설정해 주세요."><button type="submit" class="primary sm">승인</button></form><form method="post" action="/admin/users/${user.id}/reject" data-confirm="${escapeHtml(target)} 가입 요청을 반려할까요?"><button type="submit" class="danger-button sm">반려</button></form>${deletion}</div>`;
 }
 
 // 완전삭제는 되돌릴 수 없으므로 목록에서 바로 실행하지 않고 전용 확인 화면으로 보낸다.
@@ -274,7 +274,7 @@ export function userDeletePage({ session, user, error = "" }) {
       <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
     </section>
     <section class="panel narrow">
-      ${alertWarning("계정 정보와 로그인 수단이 대장에서 삭제되며 되돌릴 수 없습니다. 이 계정이 남긴 문서 작업과 감사 이력은 그대로 보존됩니다.")}
+      ${alertWarning("계정 정보와 로그인 수단을 삭제하며 되돌릴 수 없어요. 이 계정이 남긴 문서 작업과 감사 이력은 그대로 남아요.")}
       ${error ? alertDanger(error) : ""}
       <dl class="user-delete-summary">
         <div><dt>아이디</dt><dd class="mono">${escapeHtml(user.username)}</dd></div>
@@ -284,8 +284,8 @@ export function userDeletePage({ session, user, error = "" }) {
         <div><dt>요청일</dt><dd>${escapeHtml(user.requested_at || "-")}</dd></div>
       </dl>
       <form method="post" action="/admin/users/${user.id}/delete" class="stack">
-        <label>삭제를 확정하려면 계정 아이디를 그대로 입력하세요<input name="confirmedUsername" autocomplete="off" spellcheck="false" required></label>
-        <label class="checkbox"><input type="checkbox" name="confirmDelete" value="1" required><span>이 계정을 완전삭제하며 복구할 수 없음을 확인했습니다.</span></label>
+        <label>삭제하려면 계정 아이디를 그대로 입력해 주세요<input name="confirmedUsername" autocomplete="off" spellcheck="false" required></label>
+        <label class="checkbox"><input type="checkbox" name="confirmDelete" value="1" required><span>이 계정을 완전삭제하면 복구할 수 없다는 것을 확인했어요.</span></label>
         <button type="submit" class="danger-button">계정 완전삭제</button>
       </form>
     </section>
@@ -299,13 +299,13 @@ export function userPasswordResetPage({ session, user, error = "", minLength = P
       <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
     </section>
     <section class="panel narrow">
-      ${alertWarning("초기화 즉시 이 계정의 기존 로그인 세션이 모두 종료됩니다. 사용자는 임시 비밀번호로 로그인한 뒤 새 비밀번호로 변경해야만 시스템을 이용할 수 있습니다.")}
+      ${alertWarning("초기화하면 이 계정의 기존 로그인 세션이 모두 바로 끝나요. 사용자는 임시 비밀번호로 로그인한 뒤 새 비밀번호로 바꿔야 시스템을 쓸 수 있어요.")}
       ${error ? alertDanger(error) : ""}
       <form method="post" action="/admin/users/${user.id}/reset-password" class="stack">
         <label>임시 비밀번호<input type="password" name="temporaryPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
         <label>임시 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
-        <label class="checkbox"><input type="checkbox" name="confirmReset" value="1" required><span>기존 세션 종료와 다음 로그인 시 비밀번호 변경 강제를 확인했습니다.</span></label>
-        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 설정하고 사용자에게 별도 보안 채널로 전달하세요. 감사로그에는 비밀번호 값이나 해시를 기록하지 않습니다.</p>
+        <label class="checkbox"><input type="checkbox" name="confirmReset" value="1" required><span>기존 세션이 끝나고, 다음 로그인 때 비밀번호를 바꿔야 한다는 것을 확인했어요.</span></label>
+        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 정하고, 사용자에게는 별도 보안 채널로 전달해 주세요. 감사로그에는 비밀번호 값이나 해시를 남기지 않아요.</p>
         <button type="submit" class="danger-button">비밀번호 초기화</button>
       </form>
     </section>
@@ -325,8 +325,8 @@ export function passwordPage({ session, error = "", success = false, required = 
     <label>현재 비밀번호<input type="password" name="currentPassword" autocomplete="current-password" required></label>
     <label>새 비밀번호<input type="password" name="newPassword" autocomplete="new-password" required></label>
     <label>새 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" required></label>
-    <p class="muted">새 비밀번호는 ${PASSWORD_POLICY.minLength}자 이상이어야 합니다. 변경 후 현재 계정을 제외한 기존 로그인 세션은 종료됩니다.</p>
-    <button type="submit" class="primary">변경</button>
+    <p class="muted">새 비밀번호는 ${PASSWORD_POLICY.minLength}자 이상이어야 해요. 바꾸면 지금 쓰고 있는 화면을 뺀 다른 로그인 세션은 모두 끝나요.</p>
+    <button type="submit" class="primary">비밀번호 변경</button>
   `;
 
   if (required) {
@@ -335,7 +335,7 @@ export function passwordPage({ session, error = "", success = false, required = 
       <dialog id="required-password-change" class="modal" open data-auto-open-modal data-forced-modal aria-labelledby="required-password-change-title">
         <form method="post" action="/account/password" class="modal-body">
           <h2 id="required-password-change-title">첫 로그인 비밀번호 변경</h2>
-          ${alertWarning("최초 로그인입니다. 계속 사용하려면 기본 비밀번호를 새 비밀번호로 변경하세요.")}
+          ${alertInfo("처음 로그인했어요. 계속 사용하려면 기본 비밀번호를 새 비밀번호로 바꿔 주세요.")}
           ${error ? alertDanger(error) : ""}
           ${passwordFields}
         </form>
@@ -347,7 +347,7 @@ export function passwordPage({ session, error = "", success = false, required = 
     <section class="page-head"><h1>비밀번호 변경</h1></section>
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
-      ${success ? `<div class="alert success">비밀번호가 변경되었습니다.</div>` : ""}
+      ${success ? `<div class="alert success" role="status">비밀번호를 바꿨어요.</div>` : ""}
       <form method="post" action="/account/password" class="stack">
         ${passwordFields}
       </form>

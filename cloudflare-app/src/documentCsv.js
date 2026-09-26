@@ -78,7 +78,7 @@ export async function readDocumentImportRows(form, limits) {
   const uploaded = form.get("csvFile");
 
   if (uploaded && typeof uploaded.text === "function" && uploaded.size > limits.maxBytes) {
-    return { ok: false, error: `CSV 파일은 한 번에 ${limits.maxBytes / 1024}KB 이하만 가져올 수 있습니다.` };
+    return { ok: false, error: `CSV 파일은 한 번에 ${limits.maxBytes / 1024}KB까지 가져올 수 있어요.` };
   }
 
   const csvText = uploaded && typeof uploaded.text === "function" && uploaded.size > 0
@@ -87,7 +87,7 @@ export async function readDocumentImportRows(form, limits) {
   const csvBytes = new TextEncoder().encode(csvText).length;
 
   if (csvBytes > limits.maxBytes) {
-    return { ok: false, error: `CSV 내용은 한 번에 ${limits.maxBytes / 1024}KB 이하만 가져올 수 있습니다.` };
+    return { ok: false, error: `CSV 내용은 한 번에 ${limits.maxBytes / 1024}KB까지 가져올 수 있어요.` };
   }
 
   let rows = [];
@@ -98,11 +98,11 @@ export async function readDocumentImportRows(form, limits) {
   }
 
   if (!rows.length) {
-    return { ok: false, error: "가져올 CSV 데이터가 없습니다." };
+    return { ok: false, error: "가져올 CSV 데이터가 없어요." };
   }
 
   if (rows.length > limits.maxRows) {
-    return { ok: false, error: `CSV 가져오기는 한 번에 ${limits.maxRows}건까지 처리합니다. 파일을 나누어 가져오세요.` };
+    return { ok: false, error: `CSV 가져오기는 한 번에 ${limits.maxRows}건까지 할 수 있어요. 파일을 나눠서 가져와 주세요.` };
   }
 
   return { ok: true, rows, text: csvText };
@@ -174,11 +174,11 @@ export function prepareDocumentImportRows(rows, { categories, tags, slots }) {
     }
 
     if (!["A", "B"].includes(values.rackFace)) {
-      errors.push(`${rowNumber}행: 보관 면은 1 또는 2만 가능합니다(구표기 A/B 허용).`);
+      errors.push(`${rowNumber}행: 보관 면은 1이나 2로 입력해 주세요(예전 표기 A/B도 쓸 수 있어요).`);
     }
 
     if (slot?.is_single_sided && values.rackFace === "B") {
-      errors.push(`${rowNumber}행: 단면 랙은 면 구분이 없어 2면을 선택할 수 없습니다.`);
+      errors.push(`${rowNumber}행: 단면 랙은 면 구분이 없어서 2면을 선택할 수 없어요.`);
     }
 
     const status = clean(row.status).toLowerCase();

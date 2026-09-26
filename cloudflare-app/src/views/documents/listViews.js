@@ -24,7 +24,7 @@ export function documentsPage({
   const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.sort && filters.sort !== "updated"].filter(Boolean).length;
   return page("문서 관리", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 관리</span></nav><h1>문서 관리</h1><p class="muted">문서 정보와 보관 위치를 확인하고 수정합니다.</p></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 관리</span></nav><h1>문서 관리</h1><p class="muted">문서 정보와 보관 위치를 확인하고 수정할 수 있어요.</p></div>
       ${documentToolbar(session)}
     </section>
 
@@ -68,12 +68,12 @@ export function disposalWorkspacePage({
   const targetCount = Number(pagination.totalItems || documents.length || 0);
   return page("폐기 관리", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서</a><span>/</span><span>폐기 관리</span></nav><h1>폐기 관리</h1><p class="muted">소량 문서는 개별 선택하고, 정기폐기는 필터 결과 전체를 한 캠페인으로 처리합니다.</p></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서</a><span>/</span><span>폐기 관리</span></nav><h1>폐기 관리</h1><p class="muted">문서가 적으면 하나씩 골라 폐기하고, 정기폐기는 필터 결과 전체를 한 캠페인으로 처리해요.</p></div>
       <div class="button-group"><a class="button" href="/disposal-batches/new">정기폐기 시작</a></div>
     </section>
     ${tab === "active" ? `
       <section class="panel disposal-safety-panel" aria-label="폐기 작업 주의">
-        <div><strong>폐기는 원본 단위로 처리됩니다.</strong><p>현재 조건에서 ${targetCount.toLocaleString("ko-KR")}건을 확인할 수 있습니다. 실제 원본과 정확한 건수·사유를 마지막으로 대조하세요.</p></div>
+        <div><strong>폐기는 원본 한 부씩 처리해요.</strong><p>현재 조건에서 ${targetCount.toLocaleString("ko-KR")}건을 확인할 수 있어요. 마지막으로 실제 원본과 건수·사유가 맞는지 확인해 주세요.</p></div>
         <span class="status policy-required">복구 권한 필요</span>
       </section>
     ` : ""}
@@ -109,8 +109,8 @@ function disposalTargetsView({ documents, categories, racks, years, filters, cap
     ${disposalFilterChips({ filters, categories, racks })}
     <section class="panel results-panel">
       <div class="section-title"><h2>폐기 대상</h2><span class="count-badge">${documents.length}${capped ? "+" : ""}건</span></div>
-      ${capped ? `<div class="alert warning">선택 폐기는 한 번에 ${limit}건까지 처리하므로 앞의 ${limit}건만 표시됩니다. 조건에 맞는 문서 전체를 처리하려면 상단의 <a href="/disposal-batches/new">정기폐기</a>를 사용하세요.</div>` : ""}
-      ${documentResults(documents, { bulk: true, selectAll: true, emptyMessage: "조건에 맞는 보관중 문서가 없습니다." })}
+      ${capped ? `<div class="alert warning">선택 폐기는 한 번에 ${limit}건까지 처리할 수 있어서 앞의 ${limit}건만 보여드려요. 조건에 맞는 문서를 모두 처리하려면 위쪽의 <a href="/disposal-batches/new">정기폐기</a>를 이용해 주세요.</div>` : ""}
+      ${documentResults(documents, { bulk: true, selectAll: true, emptyMessage: "조건에 맞는 보관중 문서가 없어요." })}
       ${bulkActionBar("/documents/disposal/process", filters, limit)}
     </section>
     </div>`;
@@ -163,7 +163,7 @@ function disposalHistoryView(history, pagination, filters) {
       <div class="section-title"><h2>폐기 문서</h2><span class="count-badge">${pagination.totalItems || 0}건</span></div>
       <div class="table-wrap"><table class="doc-table disposal-history-table">
         <thead><tr><th>문서명</th><th>문서번호</th><th>개정</th><th>대분류</th><th>보관 위치</th><th>상태</th><th>캠페인</th><th>폐기 사유</th><th>승인 참조</th><th>처리</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="10" class="empty">현재 폐기 상태인 문서가 없습니다.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="10" class="empty">현재 폐기 상태인 문서가 없어요.</td></tr>`}</tbody>
       </table></div>
       ${historyPagination(pagination, filters.query)}
     </section>`;
@@ -205,7 +205,7 @@ function disposalCampaignHistoryView(campaigns) {
     <div class="section-title"><h2>캠페인 이력</h2><span class="count-badge">${campaigns.length}건</span></div>
     <div class="table-wrap"><table class="doc-table">
       <thead><tr><th>캠페인 번호</th><th>제목</th><th>상태</th><th>폐기 사유</th><th>승인 참조</th><th>대상 / 완료</th><th>담당 / 일시</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="7" class="empty">등록된 폐기 캠페인이 없습니다.</td></tr>`}</tbody>
+      <tbody>${rows || `<tr><td colspan="7" class="empty">등록된 폐기 캠페인이 없어요.</td></tr>`}</tbody>
     </table></div>
   </section>`;
 }

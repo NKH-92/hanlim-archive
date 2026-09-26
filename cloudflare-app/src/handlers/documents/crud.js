@@ -96,7 +96,7 @@ export async function handleCreateDocument(request, env, session, effects = {}) 
     return redirect(values.returnTo ? withToast(values.returnTo, "document-created") : `/documents/${id}?toast=created`);
   } catch (error) {
     if (isDocumentCapacityError(error)) {
-      return renderCreateDocument(env, session, values, "문서 대장이 30,000건 기술 상한에 도달했습니다. 기존 문서를 제외하거나 운영 책임자에게 문의하세요.");
+      return renderCreateDocument(env, session, values, "문서 대장이 30,000건 기술 상한에 도달했어요. 기존 문서를 제외하거나 운영 책임자에게 문의해 주세요.");
     }
     if (error?.code !== "DUPLICATE_DOCUMENT") throw error;
     const latestDuplicate = await findDuplicateDocument(env, values.documentNumber, values.revisionNumber);
@@ -174,7 +174,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo, effe
     }
 
     if (document.status === "disposed") {
-      return errorPage("폐기 상태 문서는 폐기를 해제하기 전까지 수정할 수 없습니다.", session, 400);
+      return errorPage("폐기 상태 문서는 폐기를 해제해야 수정할 수 있어요.", session, 400);
     }
 
     return renderEditDocumentForm(
@@ -191,7 +191,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo, effe
     if (denied) return denied;
     const document = await getDocument(env, id);
     if (!document) return notFoundPage(session);
-    if (document.status !== "active") return errorPage("폐기 문서는 새 개정을 등록할 수 없습니다.", session, 400);
+    if (document.status !== "active") return errorPage("폐기 문서는 새 개정을 등록할 수 없어요.", session, 400);
 
     return documentRevisionPage({
       session,
@@ -234,7 +234,7 @@ export async function handleDocumentRoute(request, env, session, routeInfo, effe
       }
       return redirect(documentLink(result.newDocumentId, "", values.returnTo, "revised"));
     }
-    if (result.replacementId) return documentRevisionPage({ session, document, values, validation: { fieldErrors: {}, formErrors: ["이 문서는 이미 개정되었습니다. 최신 내용을 별도 확인하세요."] } });
+    if (result.replacementId) return documentRevisionPage({ session, document, values, validation: { fieldErrors: {}, formErrors: ["이 문서는 이미 개정됐어요. 최신 개정본을 확인해 주세요."] } });
     if (result.validation) {
       return documentRevisionPage({ session, document, values, validation: result.validation });
     }
@@ -335,7 +335,7 @@ async function syncSearchDocumentBestEffort(effects, documentId, event) {
 function duplicateValidation(duplicate) {
   return {
     ok: false,
-    fieldErrors: { documentNumber: "문서번호와 개정번호가 이미 등록되어 있습니다." },
+    fieldErrors: { documentNumber: "문서번호와 개정번호가 이미 등록되어 있어요." },
     formErrors: [],
     duplicate: duplicate?.document ? duplicate : null
   };

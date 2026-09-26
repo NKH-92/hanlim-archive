@@ -187,7 +187,7 @@ test("단건 폐기는 guarded update가 0행이면 경합으로 보고한다", 
   });
   const result = await disposeDocument(env, 1, "관리자", "폐기 사유", "Admin");
   assert.equal(result.ok, false);
-  assert.match(result.message, /변경/);
+  assert.match(result.message, /바뀌었/);
   for (const statement of env.state.batches[0].filter((item) => !/STALE_VERSION/.test(item.sql || ""))) {
     assert.match(statement.sql, /updated_at = \?/);
     assert.match(statement.sql, /row_version = \?/);
@@ -241,7 +241,7 @@ test("직접 일괄 폐기는 10건 상한을 DB 접근 전에 적용한다", as
   const tooMany = Array.from({ length: FREE_TIER_BUDGET.directBulkDisposeMaxItems + 1 }, (_, index) => index + 1);
   const result = await disposeDocumentsBulk(env, tooMany, "관리자", "긴급 폐기", "Admin");
   assert.equal(result.ok, false);
-  assert.match(result.failures[0], /10건 이하/);
+  assert.match(result.failures[0], /10건까지/);
   assert.equal(env.state.calls.length, 0);
   assert.equal(env.state.batches.length, 0);
 });

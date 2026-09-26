@@ -31,7 +31,7 @@ test("로그인과 최초 비밀번호 변경 화면은 등록 이메일·보안
   assert.match(login, /&lt;img src=x onerror=alert\(1\)&gt;/);
 
   const password = await htmlPage(passwordPage({ session: admin, required: true }), "비밀번호 변경");
-  assert.match(password, /최초 로그인입니다/);
+  assert.match(password, /처음 로그인했어요/);
   assert.match(password, /<dialog[^>]+id="required-password-change"[^>]+open[^>]+data-auto-open-modal[^>]+data-forced-modal/);
   assert.match(password, /첫 로그인 비밀번호 변경/);
   assert.doesNotMatch(password, /data-close-modal/);
@@ -54,8 +54,8 @@ test("관리자 비밀번호 초기화 화면은 세션 종료와 다음 로그�
     "/admin/users/7/reset-password",
     ["temporaryPassword", "confirmPassword", "confirmReset"]
   );
-  assert.match(html, /기존 로그인 세션이 모두 종료됩니다/);
-  assert.match(html, /새 비밀번호로 변경해야만 시스템을 이용/);
+  assert.match(html, /기존 로그인 세션이 모두 바로 끝나요/);
+  assert.match(html, /새 비밀번호로 바꿔야 시스템을 쓸 수 있어요/);
   assert.match(html, /minlength="6"/);
   assert.match(html, /target&lt;script&gt;@hanlim\.com/);
   assert.doesNotMatch(html, /target<script>@hanlim\.com/);
@@ -127,7 +127,7 @@ test("랙 목록·설정·상세·폼은 위치 구조와 입력 계약을 공�
   }), "랙 추가");
   assertPostForm(form, "/racks", ["zoneNumber", "rackNumber", "name", "description", "isSingleSided", "isActive"]);
   assert.match(form, /value="&lt;b&gt;위험&lt;\/b&gt;"/);
-  assert.match(form, /랙 번호는 구역마다 1번부터 별도로 사용합니다/);
+  assert.match(form, /랙 번호는 구역마다 1번부터 따로 매겨요/);
   assert.doesNotMatch(form, /<script>x<\/script>/);
 
   const editForm = await htmlPage(rackFormPage({
@@ -315,7 +315,7 @@ test("엑셀 대장 동기화 화면은 단일 엑셀 전체 동기화 흐름만
   assert.match(managerMain, /id="excel-full-sync"/);
   assert.match(managerMain, /data-excel-snapshot-upload/);
   assert.match(managerMain, /name="syncReason" required minlength="10" maxlength="500"/);
-  assert.match(managerMain, /작업 생성 시 감사 이력에 저장됩니다/);
+  assert.match(managerMain, /작업을 만들 때 감사 이력에 함께 저장돼요/);
   assert.ok(manager.indexOf('/assets/jszip.min.js') < manager.indexOf('/assets/exceljs.min.js'));
   assert.ok(manager.indexOf('/assets/exceljs.min.js') < manager.indexOf('/assets/excel-app.js'));
   assert.match(managerMain, /accept="\.xlsx/);
@@ -434,8 +434,8 @@ test("폐기 캠페인 목록과 초안 폼은 조건 필드·민감 값 escape 
     "confirmDisposal"
   ]);
   assert.match(periodic, /전체 275건 선택됨/);
-  assert.match(periodic, /총 폐기 문서 수가 <strong>275건<\/strong>이 맞습니까/);
-  assert.match(periodic, /예, 275건 전체 폐기합니다/);
+  assert.match(periodic, /폐기할 문서가 총 <strong>275건<\/strong>이 맞나요/);
+  assert.match(periodic, /네, 275건 모두 폐기할게요/);
 });
 
 async function htmlPage(response, title) {

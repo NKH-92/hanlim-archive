@@ -135,6 +135,6 @@ test("기존 13열 workbook은 최신 대장 재추출 안내와 함께 거부�
       size: buffer.byteLength,
       arrayBuffer: async () => buffer
     }),
-    /현재 대장을 다시 추출하세요/
+    /현재 대장을 다시 추출해 주세요/
   );
 });
