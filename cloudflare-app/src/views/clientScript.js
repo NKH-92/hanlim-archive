@@ -6,6 +6,7 @@ import { bootstrapScript } from "./clientScript/bootstrap.js";
 import { bulkCommandScript } from "./clientScript/bulkCommands.js";
 import { documentDetailScript } from "./clientScript/documentDetail.js";
 import { instantSearchScript } from "./clientScript/instantSearch.js";
+import { landingShowreelScript } from "./clientScript/landingShowreel.js";
 import { masterManagementScript } from "./clientScript/masterManagement.js";
 import { navigationFeedbackScript } from "./clientScript/navigationFeedback.js";
 import { suggestionScript } from "./clientScript/suggestions.js";
@@ -30,6 +31,7 @@ export function clientScript() {
     instantSearchScript(),
     workspaceInteractionScript(),
     formFeedbackScript(),
+    landingShowreelScript(),
     "    });",
     "  "
   ].join("\n");

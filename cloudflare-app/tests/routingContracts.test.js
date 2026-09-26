@@ -57,6 +57,63 @@ test("전역 CSS와 JS asset은 인증 없이 정적 asset binding에서 제공�
   }
 });
 
+test("Worker를 거치는 영상 asset은 단일 byte range를 206으로 잘라 iOS 재생 계약을 지킨다", async (t) => {
+  const env = {
+    ASSETS: {
+      fetch() {
+        // 운영 정적 asset binding처럼 Range를 무시하고 전체 200을 돌려준다.
+        return new Response("0123456789", {
+          headers: { "Content-Type": "video/mp4", "Content-Length": "10", ETag: "\"reel\"" }
+        });
+      }
+    }
+  };
+  const request = (headers = {}) => worker.fetch(new Request(`${ORIGIN}/media/landing/archive-showreel-v1.mp4`, { headers }), env);
+  const cases = [
+    { name: "시작 2바이트", headers: { Range: "bytes=0-1" }, status: 206, range: "bytes 0-1/10", body: "01" },
+    { name: "열린 끝", headers: { Range: "bytes=7-" }, status: 206, range: "bytes 7-9/10", body: "789" },
+    { name: "끝에서 3바이트", headers: { Range: "bytes=-3" }, status: 206, range: "bytes 7-9/10", body: "789" },
+    { name: "길이를 넘는 끝", headers: { Range: "bytes=8-99" }, status: 206, range: "bytes 8-9/10", body: "89" },
+    { name: "같은 ETag의 If-Range", headers: { Range: "bytes=2-3", "If-Range": "\"reel\"" }, status: 206, range: "bytes 2-3/10", body: "23" },
+    { name: "범위 밖", headers: { Range: "bytes=10-" }, status: 416, range: "bytes */10", body: "" },
+    { name: "여러 구간은 전체", headers: { Range: "bytes=0-1,4-5" }, status: 200, range: null, body: "0123456789" }
+  ];
+
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const response = await request(item.headers);
+      assert.equal(response.status, item.status);
+      assert.equal(response.headers.get("Content-Range"), item.range);
+      assert.equal(response.headers.get("Accept-Ranges"), "bytes");
+      assert.equal(response.headers.get("Content-Type"), "video/mp4");
+      assert.equal(await response.text(), item.body);
+    });
+  }
+
+  await t.test("Range가 없거나 If-Range ETag가 다르면 전체 200을 준다", async () => {
+    for (const headers of [{}, { Range: "bytes=0-1", "If-Range": "\"old\"" }]) {
+      const response = await request(headers);
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), "0123456789");
+    }
+  });
+
+  await t.test("asset binding이 직접 206을 주면 그대로 전달한다", async () => {
+    const response = await worker.fetch(new Request(`${ORIGIN}/media/landing/archive-showreel-v1.mp4`, {
+      headers: { Range: "bytes=0-1" }
+    }), {
+      ASSETS: {
+        fetch() {
+          return new Response("01", { status: 206, headers: { "Content-Range": "bytes 0-1/10" } });
+        }
+      }
+    });
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get("Content-Range"), "bytes 0-1/10");
+    assert.equal(await response.text(), "01");
+  });
+});
+
 test("공개 GET 경로의 HEAD와 OPTIONS는 본문 없이 정상 method 계약을 응답한다", async (t) => {
   const env = {
     ...sessionEnv(false),
