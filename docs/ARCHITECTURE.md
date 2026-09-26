@@ -73,6 +73,8 @@ src/shared/                  업무 의미가 없는 text, CSV, pagination, coer
    `public/assets/app.css`, `app.js`다. Excel 동기화 코드는 일반 화면의 전역 JS에서 분리해 해당 화면에서만
    `excel-app.js`를 지연 로드한다. ExcelJS와 OOXML 호환 처리용 JSZip도 build 시
    `public/assets/exceljs.min.js`, `jszip.min.js`로 고정하며 `check:browser`가 여섯 asset의 drift를 차단한다.
+   공개 영상 `public/media/`는 Worker를 거친다. 정적 asset binding이 Range 요청에 전체 200을 주므로
+   `platform/http/assets.js`가 단일 byte range를 206으로 잘라 iOS `<video>` 재생을 보장한다.
 5. **D1 원자성**: 다중 변경은 `env.DB.batch()` 한 경계에 둔다. 감사·이력 INSERT가 상태
    UPDATE/DELETE보다 먼저 오고, 마지막 mutation guard가 no-op과 경합을 검출해야 한다.
 6. **낙관적 잠금**: 문서 수정·이동은 `updated_at`과 단조 증가 `row_version`을 함께 검사한다. 대분류·태그·랙·문서 세트의 수정·상태 변경·구성 변경도 화면에서 받은 `expectedRowVersion`과 DB `row_version`이 일치할 때만 수행한다.

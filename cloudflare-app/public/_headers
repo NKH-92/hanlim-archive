@@ -20,6 +20,18 @@
   X-Frame-Options: DENY
   X-Robots-Tag: noindex, nofollow
 
+# /media/*는 run_worker_first 제외 목록에 넣지 않는다. Worker가 Range 요청을 206으로 잘라 줘야 iOS에서 영상이 재생된다.
+/media/*
+  Cache-Control: public, max-age=0, must-revalidate
+  Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), browsing-topics=()
+  Referrer-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  X-Robots-Tag: noindex, nofollow
+
 /favicon.ico
   Cache-Control: public, max-age=0, must-revalidate
   Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'

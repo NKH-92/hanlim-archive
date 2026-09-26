@@ -8,6 +8,7 @@
 |---|---|---|---|---|---|
 | `assets.generated` | `*` | `/assets/:path*` | public | public | `blocked` |
 | `assets.images` | `*` | `/images/:path*` | public | public | `blocked` |
+| `assets.media` | `*` | `/media/:path*` | public | public | `blocked` |
 | `assets.favicon` | `*` | `/favicon.ico` | public | public | `blocked` |
 | `health.read` | `GET` | `/healthz` | public | public | `screen` |
 | `readiness.read` | `GET` | `/readyz` | public | public | `screen` |
@@ -148,4 +149,4 @@
 | policy:always-404 | `session.signup.blocked` |
 | policy:any-management-permission | `admin.dashboard` |
 | policy:move-or-audit | `admin.movements` |
-| public | `assets.generated`, `assets.images`, `assets.favicon`, `health.read`, `readiness.read`, `session.login.form`, `session.login` |
+| public | `assets.generated`, `assets.images`, `assets.media`, `assets.favicon`, `health.read`, `readiness.read`, `session.login.form`, `session.login` |
