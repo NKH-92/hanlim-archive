@@ -102,7 +102,10 @@ test("사용자 권한 화면은 DB 역할 템플릿 3종과 개별 예외 권�
   assert.match(html, /현재 구성: 사용자 지정/);
   assert.match(html, /name="expectedRowVersion" value="3"/);
   assert.match(html, /name="templateVersions" value="[^"]*&quot;document_manager&quot;:1[^"]*"/);
-  assert.match(html, /역할을 선택해 저장하면 서버가 그 역할의 표준 권한을 그대로 적용해요/);
+  // 구현 설명("서버가 적용해요") 대신, 바뀐 것이 있을 때만 확인 체크와 저장 버튼을 쓰게 한다.
+  assert.doesNotMatch(html, /서버가 그 역할의 표준 권한/);
+  assert.match(html, /<label class="checkbox" data-permission-confirm><input type="checkbox" name="confirmPermissions" value="1" required>/);
+  assert.match(html, /var initialKey = "custom";|var initialKey = "[a-z_]+";/);
   for (const permission of PERMISSION_KEYS) {
     assert.match(html, new RegExp(`name="${permission}"`));
   }
@@ -234,7 +237,7 @@ test("사용자 관리 화면은 반려와 사용중지를 분리한다", async 
   assert.doesNotMatch(html, /href="\/admin\/users\/10\/reset-password"/);
 });
 
-test("사용자 관리 화면은 세 그룹을 접힌 행으로 쌓고 완전삭제 경로를 제공한다", async () => {
+test("사용자 관리 화면은 세 그룹을 행으로 쌓고 승인된 사용자만 펼치며 완전삭제 경로를 제공한다", async () => {
   const session = { role: "Admin", username: "admin", userId: 1, displayName: "관리자", csrfToken: "token".repeat(8) };
   const html = await adminSettingsPage({
     session,
@@ -246,12 +249,15 @@ test("사용자 관리 화면은 세 그룹을 접힌 행으로 쌓고 완전삭
     ]
   }).text();
 
-  // 3열 병렬 배치를 3행 접힘 그룹으로 바꾼다. 기본 상태는 접힘이므로 open 속성이 없다.
+  // 3열 병렬 배치 대신 행 그룹으로 쌓는다. 자주 보는 승인된 사용자만 펼치고 나머지는 접는다.
+  // 대기 중인 가입 요청이 없으면 큰 빈 구획 대신 접힌 한 줄(0건)로 둔다.
   assert.doesNotMatch(html, /<section class="two-col">/);
   assert.match(html, /class="user-group-stack"/);
-  assert.equal((html.match(/<details class="panel user-group">/g) || []).length, 3);
-  assert.doesNotMatch(html, /<details class="panel user-group" open>/);
-  for (const label of ["승인된 사용자", "사용중지 사용자", "반려된 요청"]) {
+  assert.equal((html.match(/<details class="panel user-group"( open)?>/g) || []).length, 4);
+  assert.match(html, /<details class="panel user-group" open>\s*<summary><span class="user-group-title">승인된 사용자</);
+  assert.match(html, /<details class="panel user-group">\s*<summary><span class="user-group-title">가입 요청<\/span><span class="count-badge">0건</);
+  assert.doesNotMatch(html, /가입 요청<\/h2>/);
+  for (const label of ["가입 요청", "승인된 사용자", "사용중지 사용자", "반려된 요청"]) {
     assert.match(html, new RegExp(`user-group-title">${label}<`));
   }
 

@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var excelRoot = document.querySelector('[data-excel-snapshot]');
       var excelUploadForm = document.querySelector('[data-excel-snapshot-upload]');
       var excelHeaders = ["문서번호","개정번호","제/개정일","폐기 예정 년도","문서명","문서종류","랙 위치 (구역)","랙 위치 (번호)","랙 위치 (열)","랙 위치 (선반)","랙 위치 (단면)","태그","비고","상태"];
+      var excelFieldLabels = {"documentNumber":"문서번호","revisionNumber":"개정번호","revisionDate":"제/개정일","disposalDueYear":"폐기 예정 년도","documentName":"문서명","categoryId":"문서종류","categoryName":"문서종류","zoneNumber":"랙 위치 (구역)","rackNumber":"랙 위치 (번호)","rackColumn":"랙 위치 (열)","shelfNumber":"랙 위치 (선반)","rackFace":"랙 위치 (단면)","rackSlotId":"랙 위치","location":"랙 위치","tagIds":"태그","tags":"태그","note":"비고","status":"상태","syncState":"대장 포함","sourceRowKey":"숨김 관리 ID","identity":"문서번호·개정번호","match":"행 대조","text":"셀 내용","record":"행 전체"};
       var excelSchemaVersion = 4;
       var excelCachedFile = null;
       var excelCachedParsed = null;
@@ -262,6 +263,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var latest = document.querySelector('[data-excel-latest]');
         var exported = document.querySelector('[data-excel-exported-at]');
         var stale = document.querySelector('[data-excel-stale-warning]');
+        document.querySelectorAll('[data-excel-file-context]').forEach(function (node) { node.hidden = false; });
         if (base) base.textContent = parsed.baseVersion ? 'V' + parsed.baseVersion : '메타데이터 없음';
         if (exported) exported.textContent = parsed.exportedAt || '기록 없음';
         if (latest) latest.textContent = parsed.baseVersion && parsed.baseVersion === currentVersion ? '현재 버전과 일치' : parsed.baseVersion ? '현재 버전과 불일치' : '서버 검증 필요';
@@ -287,8 +289,10 @@ document.addEventListener('DOMContentLoaded', function () {
         items.forEach(function (error, index) {
           var row = document.createElement('tr');
           if (index >= 20) row.hidden = true;
-          var labels = ['행', '필드', '코드', '오류'];
-          [error.rowNumber || '-', error.field || '-', error.code || 'SNAPSHOT_INVALID_FIELD', error.message || '검증 오류'].forEach(function (value, cellIndex) {
+          var labels = ['행', '엑셀 열', '오류'];
+          row.setAttribute('data-error-field', error.field || '');
+          row.setAttribute('data-error-code', error.code || 'SNAPSHOT_INVALID_FIELD');
+          [error.rowNumber || '-', excelFieldLabels[error.field] || error.field || '-', error.message || '검증 오류'].forEach(function (value, cellIndex) {
             var cell = document.createElement('td');
             cell.setAttribute('data-label', labels[cellIndex]);
             cell.textContent = String(value);
@@ -300,7 +304,10 @@ document.addEventListener('DOMContentLoaded', function () {
         var count = panel.querySelector('[data-excel-error-count]');
         if (count) count.textContent = items.length.toLocaleString('ko-KR') + '건';
         var summary = panel.querySelector('[data-excel-error-summary]');
-        if (summary) summary.textContent = items.length > 20 ? '앞의 20건을 표시해요. 외 ' + (items.length - 20).toLocaleString('ko-KR') + '건은 CSV에서 확인해 주세요.' : '검증 오류를 수정한 뒤 다시 업로드해 주세요.';
+        if (summary) {
+          summary.hidden = items.length <= 20;
+          summary.textContent = items.length > 20 ? '앞의 20건을 표시해요. 외 ' + (items.length - 20).toLocaleString('ko-KR') + '건은 CSV에서 확인해 주세요.' : '';
+        }
       }
 
       function excelCsvCell(value) {
@@ -313,9 +320,10 @@ document.addEventListener('DOMContentLoaded', function () {
         button.addEventListener('click', function () {
           var table = button.closest('[data-excel-errors]')?.querySelector('[data-snapshot-error-table]');
           if (!table) return;
-          var lines = [['행', '필드', '코드', '오류']];
+          // 화면에 없는 내부 필드 키와 오류 코드는 CSV에만 담아 개발·운영 담당자가 추적할 수 있게 한다.
+          var lines = [['행', '엑셀 열', '오류', '필드', '코드']];
           table.querySelectorAll('tbody tr').forEach(function (row) {
-            lines.push(Array.from(row.cells).map(function (cell) { return cell.textContent || ''; }));
+            lines.push(Array.from(row.cells).map(function (cell) { return cell.textContent || ''; }).concat([row.getAttribute('data-error-field') || '', row.getAttribute('data-error-code') || '']));
           });
           var csv = '﻿' + lines.map(function (line) { return line.map(excelCsvCell).join(','); }).join('\r\n');
           var url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));

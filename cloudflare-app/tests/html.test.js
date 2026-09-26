@@ -83,6 +83,8 @@ test("disposal workspace renders target/history tabs and a review-first disposal
   assert.match(html, />정기폐기 작업<\/a>/);
   assert.match(html, />폐기 문서<\/a>/);
   assert.match(html, /href="\/disposal-batches\/new">정기폐기 시작<\/a>/);
+  // 화면 설명·주의 카드 대신 확인 대화상자에서 수량과 사유를 한 번 확인한다.
+  assert.doesNotMatch(html, /disposal-safety-panel|복구 권한 필요|문서가 적으면 하나씩/);
   assert.match(html, /action="\/documents\/disposal\/process"/);
   assert.match(html, /id="disposal-review-modal"/);
   assert.match(html, /data-bulk-summary/);
@@ -122,7 +124,9 @@ test("disposal workspace renders target/history tabs and a review-first disposal
     feedback: { type: "success", message: "문서 1건을 폐기했습니다." }
   }).text();
   const historyMain = historyHtml.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] || "";
-  assert.match(historyMain, /class="status document-disposed">폐기<\/span>/);
+  // 폐기 문서 탭은 모든 행이 폐기 상태라 상태 열을 두지 않고, 번호·개정은 문서명 아래에 모은다.
+  assert.doesNotMatch(historyMain, /<th>상태<\/th>|class="status document-disposed"/);
+  assert.match(historyMain, /<small class="mono">PV-2026-014 · Rev\.1<\/small>/);
   assert.match(historyMain, /보존기간 만료/);
   assert.match(historyMain, /QA-APP-2026-041/);
   assert.match(historyMain, /href="\/disposal-batches\/4">DSP-2026-0004<\/a>/);
@@ -163,7 +167,7 @@ test("copy controls use delegated events for dynamically rendered search results
   assert.match(APP_SCRIPT, /button\.textContent = '복사했어요'/);
 });
 
-test("도움말은 권한별 작업 바로가기와 선택적 문의 정보를 제공한다", async () => {
+test("도움말은 메뉴를 되풀이하지 않고 검색 요령과 선택적 문의 정보를 제공한다", async () => {
   const session = { username: "user", displayName: "사용자", role: "User", csrfToken: "csrf" };
   const configured = await qaPage({
     session,
@@ -171,16 +175,12 @@ test("도움말은 권한별 작업 바로가기와 선택적 문의 정보를 �
   }).text();
   const unconfigured = await qaPage({ session, support: {} }).text();
   const adminHelp = await qaPage({ session: { ...session, role: "Admin" }, support: {} }).text();
+  const adminMain = adminHelp.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] || "";
 
   assert.match(configured, /<h1>도움말·문의<\/h1>/);
-  assert.match(configured, /aria-label="주요 작업 바로가기"/);
-  assert.match(configured, /href="\/app"[^>]*>[\s\S]*?문서 찾기/);
-  assert.match(configured, /href="\/floor-plan"[^>]*>[\s\S]*?보관 위치 확인/);
-  assert.doesNotMatch(configured, /href="\/documents\/(?:new|import|disposal)"|href="\/admin"/);
-  assert.match(adminHelp, /href="\/documents\/new"[^>]*>[\s\S]*?문서 등록/);
-  assert.match(adminHelp, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀 대장 동기화/);
-  assert.match(adminHelp, /href="\/documents\/disposal"[^>]*>[\s\S]*?문서 폐기/);
-  assert.match(adminHelp, /href="\/admin"[^>]*>[\s\S]*?확인할 일/);
+  assert.match(configured, /<h2>검색 방법<\/h2>/);
+  // 사이드바·하단 탭과 같은 작업 바로가기 타일과 작업 개수 배지를 두지 않는다.
+  assert.doesNotMatch(adminMain, /주요 작업 바로가기|help-task|개 작업|어떤 작업을 할까요/);
   assert.match(configured, /SQA팀 \/ 남광현/);
   assert.match(configured, /mailto:archive@example\.com/);
   assert.doesNotMatch(unconfigured, /mailto:/);
@@ -582,7 +582,7 @@ test("unknown filter totals keep visible rows and announce that more results exi
 
   assert.match(html, /1건을 표시했어요\. 다음 결과가 더 있어요\./);
   assert.doesNotMatch(html, /검색 결과가 없습니다/);
-  assert.match(html, /data-results-count>1건 표시 · 더 있음</);
+  assert.match(html, /data-results-count>1건\+</);
 });
 
 test("home mode keeps visible rows when the fast total is unknown", async () => {
@@ -607,7 +607,7 @@ test("home mode keeps visible rows when the fast total is unknown", async () => 
   }).text();
 
   assert.match(html, /1건을 표시했어요\. 다음 결과가 더 있어요\./);
-  assert.match(html, /data-results-count>1건 표시 · 더 있음</);
+  assert.match(html, /data-results-count>1건\+</);
   assert.doesNotMatch(html, /보관 중인 문서가 없습니다/);
 });
 
@@ -631,9 +631,9 @@ test("floor plan page keeps the map separate from search and opens rack results 
   assert.match(main, /<h1>문서고 도면<\/h1>/);
   assert.match(main, /src="\/images\/Archive\.png"/);
   assert.match(main, /data-rack-code="1-03"/);
-  assert.match(main, /class="mobile-floor-plan-note"/);
   assert.match(main, /<details open><summary>/);
-  assert.match(main, /랙 목록에서 충분히 큰 항목으로 랙을 선택/);
+  // 도면은 설명 카드·안내 문장 없이 도면과 랙 목록만 둔다.
+  assert.doesNotMatch(main, /mobile-floor-plan-note|운영하고 있어요|랙을 선택하면 그 랙에|각 면을 바라본 기준 =|zone-list/);
   assert.match(main, /data-floor-rack-search/);
   assert.match(main, /data-floor-plan-fit/);
   assert.match(main, /data-rack-inspector/);
@@ -641,7 +641,6 @@ test("floor plan page keeps the map separate from search and opens rack results 
   assert.match(main, /<dt>설명<\/dt><dd data-rack-inspector-description>설명 없음<\/dd>/);
   assert.match(main, /data-rack-inspector-description[^\n]+data-rack-description/);
   assert.match(main, /1면 · 0열 · 0단|data-rack-inspector-structure/);
-  assert.match(main, /각 면을 바라본 기준 = 왼쪽 1열 · 아래 1선반/);
   assert.doesNotMatch(main, /각 면의 1열 = 통로 안쪽|1열 오른쪽 시작/);
   assert.match(main, /href="\/app\?rack=3&amp;status=active&amp;sort=location"/);
   assert.doesNotMatch(main, /<a[^>]*data-rack-inspector-edit/);
@@ -668,19 +667,20 @@ test("admin navigation exposes permission-scoped work routes", async () => {
   assert.doesNotMatch(nav, /<details class="nav-group" aria-label="문서"/);
   assert.match(nav, /aria-label="업무"/);
   assert.match(nav, /aria-label="운영"/);
-  for (const label of ["업무", "운영"]) {
-    assert.match(nav, new RegExp(`<details class="nav-group" aria-label="${label}" data-nav-group="${label}"><summary class="nav-group-label">${label}<\\/summary>`));
-  }
-  assert.doesNotMatch(nav, /<details class="nav-group"[^>]*\sopen(?:\s|>)/, "서버 마크업은 저장 상태를 추측하지 않는다");
+  // 서버는 기본값만 그린다(업무는 펼침, 운영은 접힘). 사용자가 바꾼 상태는 브라우저가 적용한다.
+  assert.match(nav, /<details class="nav-group" aria-label="업무" data-nav-group="업무" data-nav-default="open" open><summary class="nav-group-label">업무<\/summary>/);
+  assert.match(nav, /<details class="nav-group" aria-label="운영" data-nav-group="운영" data-nav-default="closed"><summary class="nav-group-label">운영<\/summary>/);
   assert.match(APP_STYLES, /\.topbar nav \{[^}]*overflow-y: auto;[^}]*scrollbar-gutter: stable;/, "긴 메뉴는 내부에서 스크롤한다");
   assert.match(nav, /href="\/app"[^>]*>[\s\S]*?문서/);
   assert.match(nav, /href="\/floor-plan"[^>]*>[\s\S]*?보관 위치/);
   assert.match(nav, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀 대장 동기화/);
   assert.match(nav, /href="\/documents\/new"[^>]*>[\s\S]*?문서 등록/);
   assert.match(nav, /href="\/documents\/disposal"[^>]*>[\s\S]*?문서 폐기/);
-  assert.match(nav, /class="nav-settings"/);
-  assert.match(nav, />기준정보<\/summary>/);
-  assert.match(nav, />이력·증적<\/summary>/);
+  // 운영 그룹 안에 다시 접는 하위 그룹(기준정보·이력·증적)을 두지 않고 한 목록으로 둔다.
+  assert.doesNotMatch(nav, /class="nav-settings"|>기준정보<\/summary>|>이력·증적<\/summary>/);
+  for (const href of ["/racks", "/categories", "/tags", "/admin/audit", "/admin/movements"]) {
+    assert.match(nav, new RegExp(`<a href="${href}" class="archive-nav-item">`));
+  }
   assert.match(APP_STYLES, /\.topbar ~ \.app-shell/);
   assert.match(commands, /href="\/documents\/import"[^>]*>[\s\S]*?엑셀 대장 동기화/);
   assert.match(commands, /href="\/documents\/new"[^>]*>[\s\S]*?문서 등록/);
@@ -923,8 +923,9 @@ test("document details page keeps core information and permission-scoped actions
   assert.match(coreAdminMain, /data-back-to-results/);
   assert.match(coreAdminMain, /document-location-hero/);
   assert.doesNotMatch(coreAdminMain, /현장 찾기|location-find|data-find-|data-rack-code-input|data-field-readability/);
-  assert.match(coreAdminHtml, /기본 정보/);
-  assert.match(coreAdminHtml, /보존 정보/);
+  assert.match(coreAdminHtml, /<h2>문서 정보<\/h2>/);
+  // 위치는 위치 카드 한 곳에서만 문장으로 말하고, 정상 상태 배지·중복 정보 구획을 두지 않는다.
+  assert.doesNotMatch(coreAdminMain, /기본 정보|보존 정보|현재 대장 포함|노란 핀이 이 문서가|글자가 작으면|사용자 시선|mini-compass/);
   assert.match(coreAdminHtml, /href="\/documents\/7\/edit"[^>]*>정보 수정/);
   assert.match(coreAdminHtml, /href="\/documents\/7\/revise"[^>]*>문서 개정/);
   assert.match(coreAdminHtml, /href="\/documents\/7\/move"[^>]*>위치 이동/);
@@ -942,7 +943,7 @@ test("document details page keeps core information and permission-scoped actions
   assert.match(coreAdminMain, /왼쪽에서 2번째 열/);
   assert.match(coreAdminMain, /1열 · 왼쪽[\s\S]*7열 · 오른쪽/);
   assert.doesNotMatch(coreAdminMain, /통로 안쪽|바깥쪽|오른쪽이 1열/);
-  assert.ok(coreAdminMain.indexOf("document-location-hero") < coreAdminMain.indexOf("기본 정보"));
+  assert.ok(coreAdminMain.indexOf("document-location-hero") < coreAdminMain.indexOf("문서 정보"));
   assert.ok(coreAdminMain.indexOf("document-location-visuals") < coreAdminMain.indexOf("document-detail-sections"));
   const detailFloorPlan = coreAdminMain.match(/<section class="panel doc-floor-plan"[\s\S]*?<\/section>/)?.[0] || "";
   assert.doesNotMatch(detailFloorPlan, /href="\/documents\?rack=/);
@@ -955,7 +956,7 @@ test("document details page keeps core information and permission-scoped actions
     ...coreEmptyLogs
   }).text();
   const faceBMain = faceBHtml.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] || "";
-  assert.match(faceBMain, /2면을 바라본 기준으로 왼쪽이 1열/);
+  assert.match(faceBMain, /2면을 바라보고 왼쪽에서 2번째 열/);
   assert.match(faceBMain, /왼쪽에서 2번째 열/);
   assert.ok(faceBMain.indexOf('title="1열 6선반"') < faceBMain.indexOf('title="7열 6선반"'));
 

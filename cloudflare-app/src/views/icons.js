@@ -2,6 +2,7 @@
 
 const ICONS = Object.freeze({
   search: `<path d="M11 4a7 7 0 1 0 4.9 12l4 4 1.4-1.4-4-4A7 7 0 0 0 11 4Zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z"/>`,
+  filter: `<path d="M3 5h18v2H3V5Zm11-2h3v6h-3V3ZM3 11h18v2H3v-2Zm3-2h3v6H6V9Zm-3 8h18v2H3v-2Zm12-2h3v6h-3v-6Z"/>`,
   archive: `<path d="M4 4h16v4H4V4Zm1 6h14v10H5V10Zm4 3v2h6v-2H9Z"/>`,
   document: `<path d="M6 3h8l4 4v14H6V3Zm8 2v4h4M9 13h6M9 17h6" fill="none" stroke="black" stroke-width="2"/>`,
   settings: `<path d="M10 2h4l1 3 3 1 3-1 2 4-2 2v3l2 2-2 4-3-1-3 1-1 3h-4l-1-3-3-1-3 1-2-4 2-2v-3L1 9l2-4 3 1 3-1 1-3Zm2 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/>`,
@@ -54,7 +55,8 @@ function dataUrl(body) {
 
 export function iconStyles() {
   const groups = {
-    search: ["magnifying-glass", "sliders"],
+    search: ["magnifying-glass"],
+    filter: ["sliders"],
     archive: ["box-archive", "building-columns", "folder-open"],
     document: ["file-lines", "file-csv"],
     spreadsheet: ["file-excel"],

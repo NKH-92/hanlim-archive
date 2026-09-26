@@ -15,12 +15,12 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
   const attentionCount = pending + qualityIssues + searchAttention + capacityAttention;
   const groups = [];
   if (hasReadPermission(session, PERMISSIONS.MANAGE_USERS)) {
-    groups.push(managementGroup("사용자 및 접근", "계정 승인과 사용 권한을 관리해요.", [
+    groups.push(managementGroup("사용자 및 접근", [
       ["/admin/settings", "fa-users-gear", "사용자 관리", `${pending}건 승인 대기`]
     ]));
   }
   if (hasReadPermission(session, PERMISSIONS.MANAGE_MASTERS)) {
-    groups.push(managementGroup("문서고 기준정보", "보관 위치와 검색 분류 기준을 관리해요.", [
+    groups.push(managementGroup("문서고 기준정보", [
       ["/racks", "fa-box-archive", "랙 관리", "랙 목록과 위치 확인"],
       ["/racks/configure", "fa-table-cells-large", "랙 구성", "구역별 랙 수 조정"],
       ["/categories", "fa-layer-group", "대분류 관리", "문서 분류 기준"],
@@ -39,7 +39,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
     dataLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력", "문서 위치 변경 조회"]);
   }
   if (dataLinks.length) {
-    groups.push(managementGroup("데이터 및 감사", "데이터와 변경 증적을 확인해요.", dataLinks));
+    groups.push(managementGroup("데이터 및 감사", dataLinks));
   }
   const advancedLinks = [];
   if (hasReadPermission(session, PERMISSIONS.MANAGE_SETS)) {
@@ -53,7 +53,7 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
     advancedLinks.push(["/admin/search-report", "fa-chart-simple", "검색 리포트", "자주 찾는·실패 검색어"]);
   }
   if (advancedLinks.length) {
-    groups.push(managementGroup("관리자 고급 도구", "일상 업무와 분리한 전문 관리 기능이에요.", advancedLinks, true));
+    groups.push(managementGroup("관리자 고급 도구", advancedLinks, true));
   }
   const heroAction = pending && hasReadPermission(session, PERMISSIONS.MANAGE_USERS)
     ? `<a class="button action-button" href="/admin/settings">승인 요청 확인</a>`
@@ -62,15 +62,14 @@ export function adminDashboardPage({ session, pendingCount, quality = null, capa
       : "";
   return page("운영 관리", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>운영 관리</span></nav><h1>운영 관리</h1><p class="muted">문서고 운영에 필요한 기준정보와 관리 도구를 한곳에서 확인할 수 있어요.</p></div>
+      <h1>운영 관리</h1>
     </section>
     <section class="panel admin-status-panel ${attentionCount ? "is-attention" : "is-stable"}" aria-label="운영 상태 요약">
-      <div class="admin-status-copy"><h2>${attentionCount ? `확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있어요` : "문서고를 안정적으로 운영하고 있어요"}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 색인 ${searchIndex.level === "ok" ? "정상" : "확인 필요"}` : ""}</p>${heroAction}</div>
-      <div class="admin-status-count"><strong>${attentionCount.toLocaleString("ko-KR")}</strong><span>확인 필요</span></div>
+      <div class="admin-status-copy"><h2>${attentionCount ? `확인할 운영 항목이 ${attentionCount.toLocaleString("ko-KR")}건 있어요` : "문서고를 안정적으로 운영하고 있어요"}</h2><p>승인 대기 ${pending.toLocaleString("ko-KR")}건 · 데이터 품질 ${qualityIssues.toLocaleString("ko-KR")}건${searchIndex ? ` · 검색 색인 ${searchIndex.level === "ok" ? "정상" : "확인 필요"}` : ""}${capacity ? ` · 문서 ${Number(capacity.currentCount).toLocaleString("ko-KR")} / ${Number(capacity.hardCount).toLocaleString("ko-KR")}건` : ""}</p>${heroAction}</div>
     </section>
     ${quality ? dataQualityPanel(quality) : ""}
-    ${capacity ? capacityPanel(capacity) : ""}
-    ${searchIndex ? searchIndexPanel(searchIndex) : ""}
+    ${capacity && capacity.level !== "ok" ? capacityPanel(capacity) : ""}
+    ${searchIndex && searchIndex.level !== "ok" ? searchIndexPanel(searchIndex) : ""}
     <div class="management-grid">
       ${groups.join("")}
     </div>
@@ -101,10 +100,10 @@ function qualityIssueCount(quality) {
   ].reduce((sum, value) => sum + Number(value || 0), 0);
 }
 
-function managementGroup(title, description, links, advanced = false) {
+function managementGroup(title, links, advanced = false) {
   return `
     <section class="panel management-section${advanced ? " is-advanced" : ""}">
-      <div class="management-heading"><div><h2>${escapeHtml(title)}</h2><p class="muted">${escapeHtml(description)}</p></div>${advanced ? `<span class="count-badge">고급</span>` : ""}</div>
+      <div class="management-heading"><h2>${escapeHtml(title)}</h2></div>
       <div class="admin-grid management-links">
         ${links.map(([href, icon, label, caption]) => `<a class="panel admin-tile" href="${href}"><span class="icon-frame" aria-hidden="true"><i class="fa-solid ${icon}"></i></span><span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(caption)}</small></span></a>`).join("")}
       </div>
@@ -176,10 +175,11 @@ export function adminSettingsPage({ session, users }) {
     ? `<a class="button" href="/admin/users/new">승인 사용자 추가</a>`
     : "";
   return page("사용자 관리", `
-    <section class="page-head"><div><h1>사용자 관리</h1><p class="muted">가입 요청과 승인된 계정을 관리해요.</p></div><div class="button-group">${userCreation}${templateManagement}<a class="button secondary" href="/admin">운영 관리</a></div></section>
-    <section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${pending.length ? userRequestTable(pending, session) : emptyState("대기 중인 가입 요청이 없어요.")}</section>
+    <section class="page-head"><h1>사용자 관리</h1><div class="button-group">${templateManagement}${userCreation}</div></section>
+    ${pending.length ? `<section class="panel">${sectionHeader("가입 요청", `${pending.length}건`)}${userRequestTable(pending, session)}</section>` : ""}
     <div class="user-group-stack">
-      ${userGroupSection("승인된 사용자", `${approved.length}명`, approved, session, "승인된 사용자가 없어요.")}
+      ${pending.length ? "" : userGroupSection("가입 요청", "0건", pending, session, "대기 중인 가입 요청이 없어요.")}
+      ${userGroupSection("승인된 사용자", `${approved.length}명`, approved, session, "승인된 사용자가 없어요.", true)}
       ${userGroupSection("사용중지 사용자", `${disabled.length}명`, disabled, session, "사용중지된 사용자가 없어요.")}
       ${userGroupSection("반려된 요청", `${rejected.length}건`, rejected, session, "반려된 요청이 없어요.")}
     </div>
@@ -192,7 +192,7 @@ export function approvedUserCreatePage({ session, values = {}, error = "", minLe
   const team = String(values.team ?? "").trim();
   return page("승인 사용자 추가", `
     <section class="page-head">
-      <div><h1>승인 사용자 추가</h1><p class="muted">가입 요청 없이 바로 쓸 수 있는 일반 사용자 계정을 만들어요.</p></div>
+      <h1>승인 사용자 추가</h1>
       <a class="button secondary" href="/admin/settings">사용자 관리로 돌아가기</a>
     </section>
     <section class="panel narrow">
@@ -205,17 +205,16 @@ export function approvedUserCreatePage({ session, values = {}, error = "", minLe
         <label>임시 비밀번호<input type="password" name="temporaryPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
         <label>임시 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
         <label class="checkbox"><input type="checkbox" name="confirmCreate" value="1" required><span>일반 사용자·조회 전용으로 승인하고, 다음 로그인 때 비밀번호를 바꾸게 한다는 것을 확인했어요.</span></label>
-        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 정하고, 사용자에게는 별도 보안 채널로 전달해 주세요. 비밀번호 값과 해시는 감사로그에 남기지 않아요.</p>
+        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 정하고, 사용자에게는 별도 보안 채널로 전달해 주세요.</p>
         <button type="submit" class="button">승인 사용자 추가</button>
       </form>
     </section>
   `, session);
 }
 
-// 세 사용자 그룹은 한 행씩 쌓고 기본은 접어 둔다. 목록이 길어도 상단에서 건수만 훑고
-// 필요한 그룹만 펼쳐 볼 수 있게 한다.
-function userGroupSection(title, count, users, session, emptyMessage) {
-  return `<details class="panel user-group">
+// 세 사용자 그룹은 한 행씩 쌓는다. 자주 보는 승인된 사용자만 펼쳐 두고 나머지는 건수만 보이게 접는다.
+function userGroupSection(title, count, users, session, emptyMessage, open = false) {
+  return `<details class="panel user-group"${open ? " open" : ""}>
     <summary><span class="user-group-title">${escapeHtml(title)}</span><span class="count-badge">${escapeHtml(count)}</span></summary>
     <div class="user-group-body">${users.length ? userRequestTable(users, session) : emptyState(emptyMessage)}</div>
   </details>`;
@@ -305,7 +304,7 @@ export function userPasswordResetPage({ session, user, error = "", minLength = P
         <label>임시 비밀번호<input type="password" name="temporaryPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
         <label>임시 비밀번호 확인<input type="password" name="confirmPassword" autocomplete="new-password" minlength="${Number(minLength)}" required></label>
         <label class="checkbox"><input type="checkbox" name="confirmReset" value="1" required><span>기존 세션이 끝나고, 다음 로그인 때 비밀번호를 바꿔야 한다는 것을 확인했어요.</span></label>
-        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 정하고, 사용자에게는 별도 보안 채널로 전달해 주세요. 감사로그에는 비밀번호 값이나 해시를 남기지 않아요.</p>
+        <p class="muted">임시 비밀번호는 ${Number(minLength)}자 이상으로 정하고, 사용자에게는 별도 보안 채널로 전달해 주세요.</p>
         <button type="submit" class="danger-button">비밀번호 초기화</button>
       </form>
     </section>

@@ -22,9 +22,8 @@ export function baseStyles() {
     .topbar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) clamp(12px, 3vw, 24px); background: var(--surface); border-bottom: 1px solid var(--line); }
     .brand { display: inline-flex; align-items: center; gap: var(--sp-2); text-decoration: none; min-width: max-content; }
     .brand-logo { display: block; width: 56px; height: 40px; object-fit: contain; flex: none; }
-    .brand strong, .brand small { display: block; }
+    .brand strong { display: block; }
     .brand strong { font-weight: 700; font-size: 14px; letter-spacing: 0; }
-    .brand small { color: var(--gray-500); font-size: 11.5px; font-weight: 500; }
     .topbar nav { display: flex; align-items: center; gap: var(--sp-1); flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
     .archive-nav-item, .nav-sub-link, .logout-link { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); text-decoration: none; color: var(--gray-600); font-weight: 600; font-size: 13.5px; transition: background .15s ease, color .15s ease; }
     .logout-form { display: inline; margin: 0; }
@@ -40,16 +39,9 @@ export function baseStyles() {
     .nav-group[open] > .nav-group-label::after { content: "−"; }
     .nav-group-label:hover { background: var(--gray-100); color: var(--gray-900); }
     .nav-group.has-active > .nav-group-label { background: var(--primary-soft); color: var(--primary); }
-    .nav-group-label:focus-visible, .nav-settings summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .nav-group-label:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
     .nav-group-content { display: none; }
     .nav-group[open] > .nav-group-content { display: grid; gap: var(--sp-1); padding-top: var(--sp-1); }
-    .nav-group .nav-settings { margin-top: 0; border-top: 0; padding-top: 0; }
-    .nav-settings { margin-top: var(--sp-2); border-top: 1px solid var(--line); padding-top: var(--sp-2); }
-    .nav-settings summary { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); color: var(--gray-600); font-size: 13.5px; font-weight: 600; cursor: pointer; list-style: none; }
-    .nav-settings summary::-webkit-details-marker { display: none; }
-    .nav-settings summary:hover { background: var(--gray-100); color: var(--gray-900); }
-    .nav-settings summary i { width: 16px; text-align: center; }
-    .nav-settings > div { display: grid; gap: var(--sp-1); padding: var(--sp-1) 0 0 var(--sp-3); }
     .mobile-tabs { display: none; }
     .nav-user { margin-left: auto; display: flex; align-items: center; gap: var(--sp-1); }
     .session-pill { padding: var(--sp-1) var(--sp-3); background: var(--gray-100); border-radius: 999px; color: var(--gray-700); font-size: 12px; font-weight: 600; white-space: nowrap; }

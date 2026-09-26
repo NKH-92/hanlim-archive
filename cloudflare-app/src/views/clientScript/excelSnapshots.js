@@ -1,6 +1,7 @@
 import { excelOpenXmlCompatibilityScript } from "./excelOpenXmlCompatibility.js";
 import { FREE_TIER_BUDGET } from "../../freeTierBudget.js";
 import {
+  EXCEL_SNAPSHOT_FIELD_LABELS,
   EXCEL_SNAPSHOT_HEADERS,
   EXCEL_SNAPSHOT_SCHEMA_VERSION
 } from "../../domains/snapshots/domain/workbookSchema.js";
@@ -12,6 +13,7 @@ export function excelSnapshotScript() {
       var excelRoot = document.querySelector('[data-excel-snapshot]');
       var excelUploadForm = document.querySelector('[data-excel-snapshot-upload]');
       var excelHeaders = ${JSON.stringify(EXCEL_SNAPSHOT_HEADERS)};
+      var excelFieldLabels = ${JSON.stringify(EXCEL_SNAPSHOT_FIELD_LABELS)};
       var excelSchemaVersion = ${EXCEL_SNAPSHOT_SCHEMA_VERSION};
       var excelCachedFile = null;
       var excelCachedParsed = null;
@@ -180,6 +182,7 @@ export function excelSnapshotScript() {
         var latest = document.querySelector('[data-excel-latest]');
         var exported = document.querySelector('[data-excel-exported-at]');
         var stale = document.querySelector('[data-excel-stale-warning]');
+        document.querySelectorAll('[data-excel-file-context]').forEach(function (node) { node.hidden = false; });
         if (base) base.textContent = parsed.baseVersion ? 'V' + parsed.baseVersion : '메타데이터 없음';
         if (exported) exported.textContent = parsed.exportedAt || '기록 없음';
         if (latest) latest.textContent = parsed.baseVersion && parsed.baseVersion === currentVersion ? '현재 버전과 일치' : parsed.baseVersion ? '현재 버전과 불일치' : '서버 검증 필요';
@@ -205,8 +208,10 @@ export function excelSnapshotScript() {
         items.forEach(function (error, index) {
           var row = document.createElement('tr');
           if (index >= 20) row.hidden = true;
-          var labels = ['행', '필드', '코드', '오류'];
-          [error.rowNumber || '-', error.field || '-', error.code || 'SNAPSHOT_INVALID_FIELD', error.message || '검증 오류'].forEach(function (value, cellIndex) {
+          var labels = ['행', '엑셀 열', '오류'];
+          row.setAttribute('data-error-field', error.field || '');
+          row.setAttribute('data-error-code', error.code || 'SNAPSHOT_INVALID_FIELD');
+          [error.rowNumber || '-', excelFieldLabels[error.field] || error.field || '-', error.message || '검증 오류'].forEach(function (value, cellIndex) {
             var cell = document.createElement('td');
             cell.setAttribute('data-label', labels[cellIndex]);
             cell.textContent = String(value);
@@ -218,7 +223,10 @@ export function excelSnapshotScript() {
         var count = panel.querySelector('[data-excel-error-count]');
         if (count) count.textContent = items.length.toLocaleString('ko-KR') + '건';
         var summary = panel.querySelector('[data-excel-error-summary]');
-        if (summary) summary.textContent = items.length > 20 ? '앞의 20건을 표시해요. 외 ' + (items.length - 20).toLocaleString('ko-KR') + '건은 CSV에서 확인해 주세요.' : '검증 오류를 수정한 뒤 다시 업로드해 주세요.';
+        if (summary) {
+          summary.hidden = items.length <= 20;
+          summary.textContent = items.length > 20 ? '앞의 20건을 표시해요. 외 ' + (items.length - 20).toLocaleString('ko-KR') + '건은 CSV에서 확인해 주세요.' : '';
+        }
       }
 
       function excelCsvCell(value) {
@@ -231,9 +239,10 @@ export function excelSnapshotScript() {
         button.addEventListener('click', function () {
           var table = button.closest('[data-excel-errors]')?.querySelector('[data-snapshot-error-table]');
           if (!table) return;
-          var lines = [['행', '필드', '코드', '오류']];
+          // 화면에 없는 내부 필드 키와 오류 코드는 CSV에만 담아 개발·운영 담당자가 추적할 수 있게 한다.
+          var lines = [['행', '엑셀 열', '오류', '필드', '코드']];
           table.querySelectorAll('tbody tr').forEach(function (row) {
-            lines.push(Array.from(row.cells).map(function (cell) { return cell.textContent || ''; }));
+            lines.push(Array.from(row.cells).map(function (cell) { return cell.textContent || ''; }).concat([row.getAttribute('data-error-field') || '', row.getAttribute('data-error-code') || '']));
           });
           var csv = '\uFEFF' + lines.map(function (line) { return line.map(excelCsvCell).join(','); }).join('\\r\\n');
           var url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));

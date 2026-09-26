@@ -35,7 +35,7 @@ test("masters 수정·사용중지 폼은 동일한 expectedRowVersion을 제출
   assert.equal((html.match(/name="expectedRowVersion" value="7"/g) || []).length, 2);
 });
 
-test("대분류 관리는 정렬 숫자 대신 필요한 기능과 확장 가능한 목록을 제공한다", async () => {
+test("대분류 관리는 정렬 숫자와 설명 문단 없이 확장 가능한 목록을 제공한다", async () => {
   const response = masters.categoriesPage({
     session: { username: "admin", displayName: "관리자", role: "Admin", csrfToken: "csrf-token-123" },
     categories: [
@@ -46,8 +46,9 @@ test("대분류 관리는 정렬 숫자 대신 필요한 기능과 확장 가능
   const html = await response.text();
 
   assert.match(html, /class="page-head master-page-head"/);
-  assert.match(html, /<strong>필요한 기능<\/strong>/);
-  assert.match(html, /찾기 · 추가 · 이름과 설명 수정 · 사용중지와 다시 사용/);
+  // 구현 메모 같은 기능 목록·화면 설명 문단을 두지 않고, 예외 상태(사용중지)만 배지로 표시한다.
+  assert.doesNotMatch(html, /필요한 기능|master-head-guide|분류 이름을 관리해요|이름순으로 보여드려요|>사용 중</);
+  assert.equal((html.match(/class="status master-inactive">사용중지</g) || []).length, 1);
   assert.match(html, /data-master-search/);
   assert.match(html, /data-master-inactive-toggle/);
   assert.match(html, /data-master-row data-master-active="true"/);

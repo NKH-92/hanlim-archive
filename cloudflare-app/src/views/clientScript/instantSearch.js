@@ -270,7 +270,9 @@ export function instantSearchScript() {
           if (resultsTitle) resultsTitle.textContent = '보관중 문서';
           var hasKnownTotal = payload.candidateCount !== null && payload.candidateCount !== undefined;
           var totalFound = hasKnownTotal ? Number(payload.candidateCount) : currentItems.length;
-          if (resultsCount) resultsCount.textContent = currentItems.length.toLocaleString('ko-KR') + '건 표시' + (payload.hasMore ? ' · 더 있음' : '');
+          if (resultsCount) resultsCount.textContent = hasKnownTotal
+            ? totalFound.toLocaleString('ko-KR') + '건'
+            : currentItems.length.toLocaleString('ko-KR') + '건' + (payload.hasMore ? '+' : '');
           if (searchLive) {
             searchLive.textContent = !currentItems.length
               ? '검색 결과가 없어요.'

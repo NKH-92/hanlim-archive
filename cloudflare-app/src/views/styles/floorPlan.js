@@ -14,8 +14,6 @@ export function floorPlanStyles() {
     .floor-plan-shell { display: grid; gap: var(--sp-2); }
     .floor-plan-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); color: var(--gray-500); font-size: 12.5px; }
     .floor-rack-search { flex: 1 1 260px; max-width: 420px; }
-    .floor-plan-page-head p { max-width: 720px; margin: var(--sp-1) 0 0; color: var(--gray-500); font-size: 13px; }
-    .mobile-floor-plan-note { display: none; }
     .archive-floor-plan-page { overflow: hidden; }
     .floor-plan-scroll { width: 100%; overflow-x: auto; padding-bottom: var(--sp-1); scrollbar-gutter: stable; }
     /* aspect-ratio는 반드시 도면 이미지 원본 비율(1024x797)과 같아야 퍼센트 오버레이가 어긋나지 않는다. */
@@ -57,9 +55,8 @@ export function floorPlanStyles() {
     .floor-zoom.is-spotlight .floor-rack[data-face-hit="B"] .rack-face-b { background: var(--action); }
     .floor-zoom.is-spotlight .floor-rack[data-face-hit] .rack-num,
     .floor-zoom.is-spotlight .floor-rack.is-hit .rack-num { border-color: var(--action); background: var(--action); color: var(--action-ink); box-shadow: 0 0 0 3px var(--action-soft); }
-    .floor-plan-summary, .zone-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; color: var(--gray-500); font-size: 12.5px; }
-    .floor-plan-summary span, .zone-list a { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-3); border-radius: 999px; background: var(--gray-100); text-decoration: none; font-weight: 600; }
-    .zone-list a:hover { background: var(--primary-soft); color: var(--primary); }
+    .floor-plan-summary { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; color: var(--gray-500); font-size: 12.5px; }
+    .floor-plan-summary span { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-3); border-radius: 999px; background: var(--gray-100); text-decoration: none; font-weight: 600; }
     .zone-overview details { border-bottom: 1px solid var(--gray-100); }
     .zone-overview details:last-child { border-bottom: 0; }
     .zone-overview summary { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) 0; cursor: pointer; }

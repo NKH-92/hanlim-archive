@@ -7,7 +7,6 @@ export function responsivePrintStyles() {
       .nav-group { width: 100%; }
       .brand { padding: var(--sp-1) var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); margin-bottom: var(--sp-2); }
       .archive-nav-item, .nav-sub-link, .logout-link { justify-content: flex-start; }
-      .nav-settings { display: block; }
       .nav-user { margin: auto 0 0; flex-direction: column; align-items: stretch; gap: var(--sp-1); padding-top: var(--sp-2); border-top: 1px solid var(--line); }
       .session-pill { border-radius: var(--r-md); white-space: normal; text-align: center; }
       .topbar ~ .app-shell { width: auto; max-width: 1440px; margin-left: calc(240px + var(--sp-6)); margin-right: var(--sp-6); }
@@ -82,7 +81,8 @@ export function responsivePrintStyles() {
       .document-detail-sections { grid-template-columns: 1fr; }
       .detail-section dl div { grid-template-columns: 96px minmax(0, 1fr); }
       .mini-rack-scroll { overflow-x: hidden; padding-inline: 0; scrollbar-gutter: auto; }
-      .mini-rack-grid { inline-size: 100%; min-inline-size: 0; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--sp-1); }
+      .mini-rack-grid { inline-size: 100%; min-inline-size: 0; grid-template-columns: var(--rack-axis-width) repeat(var(--cols), minmax(0, 1fr)); gap: var(--sp-1); }
+      .mini-column-guide { padding-inline: calc(var(--rack-axis-width) + var(--sp-1)) 0; }
       .mini-slot { min-height: 40px; font-size: 11px; }
       .mini-slot i { display: none; }
       .document-form-layout { grid-template-columns: 1fr; }
@@ -116,7 +116,6 @@ export function responsivePrintStyles() {
       .icon-button { width: 44px; }
       .filter-row, .viewer-filter-row, .disposal-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .master-row, .master-form, .set-add-grid { grid-template-columns: 1fr; }
-      .master-head-guide { flex-basis: auto; width: 100%; }
       .master-create-form, .category-master-edit-form { grid-template-columns: 1fr; }
       .master-list-heading { align-items: stretch; flex-direction: column; }
       .master-list-tools { width: 100%; grid-template-columns: minmax(0, 1fr) auto; }
@@ -144,6 +143,8 @@ export function responsivePrintStyles() {
       .doc-table td { display: grid; grid-template-columns: minmax(104px, 34%) minmax(0, 1fr); gap: var(--sp-3); width: 100%; padding: var(--sp-2) 0; border-bottom: 1px solid var(--gray-100); white-space: normal; }
       .doc-table td:last-child { border-bottom: 0; }
       .doc-table td::before { content: attr(data-label); color: var(--gray-500); font-size: 12px; font-weight: 600; }
+      /* 카드형 행에서 보조 줄(번호·일시 등)은 라벨 열이 아니라 값 열 아래에 쌓는다. */
+      .doc-table td > * { grid-column: 2; }
       .doc-table .name-cell { padding-top: 0; }
       .doc-table .name-cell a { font-size: 14px; }
       .doc-table .check-col { width: 100%; grid-template-columns: minmax(104px, 34%) minmax(0, 1fr); }
@@ -153,11 +154,8 @@ export function responsivePrintStyles() {
       .metric-card:nth-child(even) { border-left: 1px solid var(--line); }
       .metric-card:nth-child(n+3) { border-top: 1px solid var(--line); }
       .panel { padding: var(--sp-4); }
-      .help-task-grid { grid-template-columns: 1fr; }
-      .help-task-card { min-height: 64px; padding: var(--sp-3); }
       .floor-plan-scroll:not(.is-zoomed) .floor-rack .rack-num { display: none; }
       .floor-plan-layout > .floor-plan-side { order: -1; }
-      .mobile-floor-plan-note { display: block; margin: 0 0 var(--sp-3); padding: var(--sp-3); border-radius: var(--r-md); background: var(--primary-soft); color: var(--primary); font-size: 12.5px; font-weight: 600; }
       .floor-plan-media [data-rack-select] { pointer-events: none; }
       .floor-plan-scroll.is-zoomed .floor-plan-media { min-width: 760px; }
       .floor-plan-tools { align-items: flex-start; }

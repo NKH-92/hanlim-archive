@@ -52,21 +52,27 @@ export function navigationFeedbackScript() {
         if (item.getAttribute('href') === activeHref) { item.classList.add('active'); item.setAttribute('aria-current', 'page'); }
       });
 
-      // 검색·위치는 항상 보이고, 접힌 업무 그룹은 현재 화면과 사용자가 열어 둔 상태를 반영한다.
-      var storedNavigationGroups = [];
+      // 검색·위치는 항상 보인다. 그룹은 현재 화면이 속하면 열고, 그 밖에는 사용자가 마지막으로 둔 상태,
+      // 기억한 상태가 없으면 서버가 정한 기본값(업무는 펼침)을 따른다. 이전 배열 형식 값은 무시한다.
+      var storedNavigationGroups = {};
       try {
-        storedNavigationGroups = JSON.parse(localStorage.getItem('hanlimNavigationGroups') || '[]');
-        if (!Array.isArray(storedNavigationGroups)) storedNavigationGroups = [];
-      } catch { storedNavigationGroups = []; }
+        var parsedNavigationGroups = JSON.parse(localStorage.getItem('hanlimNavigationGroups') || '{}');
+        storedNavigationGroups = parsedNavigationGroups && typeof parsedNavigationGroups === 'object' && !Array.isArray(parsedNavigationGroups) ? parsedNavigationGroups : {};
+      } catch { storedNavigationGroups = {}; }
       var navigationGroups = Array.from(document.querySelectorAll('[data-nav-group]'));
       navigationGroups.forEach(function (group) {
         var key = group.getAttribute('data-nav-group') || '';
         var hasActiveItem = Boolean(group.querySelector('.archive-nav-item.active, .nav-sub-link.active'));
+        var remembered = storedNavigationGroups[key];
         group.classList.toggle('has-active', hasActiveItem);
-        group.open = hasActiveItem || storedNavigationGroups.includes(key);
+        group.open = hasActiveItem || (typeof remembered === 'boolean' ? remembered : group.getAttribute('data-nav-default') === 'open');
         group.addEventListener('toggle', function () {
-          var opened = navigationGroups.filter(function (item) { return item.open; }).map(function (item) { return item.getAttribute('data-nav-group') || ''; }).filter(Boolean);
-          try { localStorage.setItem('hanlimNavigationGroups', JSON.stringify(opened)); } catch {}
+          var state = {};
+          navigationGroups.forEach(function (item) {
+            var itemKey = item.getAttribute('data-nav-group') || '';
+            if (itemKey) state[itemKey] = item.open;
+          });
+          try { localStorage.setItem('hanlimNavigationGroups', JSON.stringify(state)); } catch {}
         });
       });
 

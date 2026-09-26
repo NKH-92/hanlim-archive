@@ -75,19 +75,13 @@ export function adminStyles() {
     .doc-floor-plan-scroll.is-zoomed { overflow-x: auto; overflow-y: hidden; padding-bottom: var(--sp-1); }
     .doc-floor-plan-scroll.is-zoomed .floor-zoom { inline-size: 640px; max-inline-size: none; }
     .rack-result-link { justify-self: start; }
-    .mini-rack-grid { display: grid; inline-size: max(100%, var(--grid-min)); min-inline-size: var(--grid-min); grid-template-columns: repeat(var(--cols), minmax(44px, 1fr)); gap: var(--sp-2); }
+    /* 랙 위치: 첫 열은 선반 번호, 나머지는 좌표 라벨 없는 칸. 문서가 있는 칸만 강조한다. */
+    .mini-rack-grid { display: grid; inline-size: max(100%, var(--grid-min)); min-inline-size: var(--grid-min); grid-template-columns: var(--rack-axis-width) repeat(var(--cols), minmax(44px, 1fr)); gap: var(--sp-2); }
     .mini-slot { min-height: 44px; border-radius: var(--r-sm); display: grid; place-items: center; background: var(--gray-50); border: 1px solid var(--gray-100); position: relative; color: var(--gray-500); font-size: 12px; }
     .mini-slot.active { background: var(--primary); border-color: var(--primary); color: var(--surface); font-weight: 700; }
-    .mini-slot i { position: absolute; top: var(--sp-1); right: var(--sp-1); }
-    /* 선반 나침반 */
-    .mini-rack-stage { display: flex; align-items: stretch; gap: var(--sp-3); }
+    .mini-axis-shelf { display: grid; place-items: center; color: var(--gray-500); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .mini-rack-scroll { flex: 1 1 auto; inline-size: 100%; min-inline-size: 0; max-inline-size: 100%; overflow-x: auto; overflow-y: hidden; padding: var(--sp-1); overscroll-behavior-inline: contain; scrollbar-gutter: stable; outline-offset: 2px; }
-    .mini-axis { display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--gray-500); padding: var(--sp-1) 0; white-space: nowrap; }
-    .mini-column-guide { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); color: var(--gray-500); font-size: 11px; font-weight: 600; }
-    .mini-column-guide span:last-child { text-align: right; }
-    .mini-column-guide strong { padding: var(--sp-1) var(--sp-3); border-radius: 999px; background: var(--gray-100); color: var(--gray-700); font-size: 11px; }
-    .mini-orientation-note { margin: var(--sp-2) 0 0; color: var(--gray-500); font-size: 12.5px; }
-    .mini-compass { margin: var(--sp-3) 0 0; display: inline-flex; align-items: center; gap: var(--sp-2); font-size: 13px; font-weight: 700; color: var(--primary); background: var(--primary-soft); border-radius: 999px; padding: var(--sp-2) var(--sp-3); font-variant-numeric: tabular-nums; }
+    .mini-column-guide { display: flex; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-1); padding-inline: calc(var(--sp-1) + var(--rack-axis-width) + var(--sp-2)) var(--sp-1); color: var(--gray-500); font-size: 12px; font-weight: 600; }
 
 
     .timeline-container { display: grid; gap: var(--sp-2); }

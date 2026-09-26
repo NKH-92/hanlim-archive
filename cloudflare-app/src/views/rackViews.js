@@ -40,17 +40,17 @@ export function rackDetailsPage({ session, rack, documents, grid = [], selectedF
   const faceDocuments = readBoolean(rack.is_single_sided)
     ? documents
     : documents.filter((document) => document.rack_face === face);
+  // 랙 규격(7열×6선반)은 격자가 보여 주므로 문장으로 되풀이하지 않고, 식별 코드와 문서 수만 제목 아래에 둔다.
   return page(`${rack.code} 랙`, `
     <section class="page-head">
-      <h1>${rack.zone_number}구역 ${rack.rack_number}번 랙</h1>
-      <a class="button" href="/racks/${rack.id}/edit">랙 수정</a>
-    </section>
-    <section class="locator-hero">
-      <div><strong class="mono">${escapeHtml(rack.code)}</strong><span>${readBoolean(rack.is_single_sided) ? `단면 ${rack.rack_number}` : `양면 ${rack.rack_number}-1 / ${rack.rack_number}-2`} · 면당 ${rack.column_count || 7}열 × ${rack.shelf_count || 6}선반 = ${(rack.column_count || 7) * (rack.shelf_count || 6)}칸 · 문서 ${documents.length}건</span></div>
-      <a class="button secondary" href="/app?rack=${rack.id}&face=${face}&status=active&sort=location">이 면의 문서 보기</a>
+      <div><h1>${rack.zone_number}구역 ${rack.rack_number}번 랙</h1><p class="page-sub"><span class="mono">${escapeHtml(rack.code)}</span> · ${readBoolean(rack.is_single_sided) ? "단면" : "양면"} · 문서 ${documents.length}건</p></div>
+      <div class="button-group"><a class="button secondary" href="/app?rack=${rack.id}&face=${face}&status=active&sort=location">이 면의 문서 검색</a><a class="button" href="/racks/${rack.id}/edit">랙 수정</a></div>
     </section>
     ${rackGridView({ rack, grid, face, selectedColumn, selectedShelf })}
-    <section class="panel">${documentResults(faceDocuments, { emptyMessage: "이 면에 등록된 문서가 없어요." })}</section>
+    <section class="panel" aria-labelledby="rack-documents-title">
+      <div class="section-title"><h2 id="rack-documents-title">${readBoolean(rack.is_single_sided) ? "등록 문서" : `${rack.rack_number}-${face === "B" ? "2" : "1"}면 등록 문서`}</h2><span class="count-badge">${faceDocuments.length}건</span></div>
+      ${documentResults(faceDocuments, { emptyMessage: "이 면에 등록된 문서가 없어요." })}
+    </section>
   `, session);
 }
 
@@ -65,7 +65,9 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
   const cells = [];
 
   // 모든 면은 사용자가 바라본 기준으로 왼쪽부터 1열, 아래부터 1선반이다.
+  // 칸마다 좌표를 적지 않고 왼쪽 선반 번호와 위쪽 방향 안내로 읽게 한다. 빈 칸은 건수를 적지 않는다.
   for (let shelf = 6; shelf >= 1; shelf -= 1) {
+    cells.push(`<span class="rack-axis-shelf" aria-hidden="true">${shelf}</span>`);
     for (const column of columns) {
       const row = byCell.get(`${face}:${column}:${shelf}`) || {};
       const active = Number(row.active_count || 0);
@@ -74,9 +76,7 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
       const base = `/app?rack=${rack.id}&face=${face}&column=${column}&shelf=${shelf}&sort=location`;
       cells.push(`
         <div class="rack-cell${selected ? " is-selected" : ""}${active + disposed === 0 ? " is-empty" : ""}" role="gridcell">
-          <a href="${base}&status=active" aria-label="${column}열 ${shelf}선반 보관중 ${active}건">
-            <span>${column}열 · ${shelf}선반</span><strong>${active}건</strong>
-          </a>
+          <a href="${base}&status=active" aria-label="${column}열 ${shelf}선반 보관중 ${active}건">${active ? `<strong>${active}건</strong>` : ""}</a>
           ${disposed ? `<a class="rack-cell-disposed" href="/documents/disposal?tab=documents">폐기 ${disposed}건</a>` : ""}
         </div>`);
     }
@@ -86,14 +86,13 @@ function rackGridView({ rack, grid, face, selectedColumn, selectedShelf }) {
     <a href="/racks/${rack.id}?face=A" class="${face === "A" ? "active" : ""}" aria-current="${face === "A" ? "page" : "false"}">${rack.rack_number}-1면</a>
     <a href="/racks/${rack.id}?face=B" class="${face === "B" ? "active" : ""}" aria-current="${face === "B" ? "page" : "false"}">${rack.rack_number}-2면</a>
   </nav>`;
-  return `<section class="panel rack-digital-twin">
-    <div class="section-title"><h2>${single ? `${rack.rack_number}번 단면` : `${rack.rack_number}-${face === "B" ? "2" : "1"}면`} 위치 격자</h2><span class="count-badge">7열 × 6선반</span></div>
+  return `<section class="panel rack-digital-twin" aria-labelledby="rack-grid-title">
+    <div class="section-title"><h2 id="rack-grid-title">${single ? "칸별 문서" : `${rack.rack_number}-${face === "B" ? "2" : "1"}면 칸별 문서`}</h2></div>
     ${faceTabs}
-    <div class="rack-column-guide" data-column-origin="${origin}"><span>1열</span><strong>면을 바라본 모습</strong><span>7열</span></div>
-    <div class="rack-grid-scroll" tabindex="0" aria-label="랙 위치 격자. 가로로 스크롤할 수 있어요.">
+    <div class="rack-grid-scroll" tabindex="0" aria-label="랙 칸별 문서 격자. 가로로 스크롤할 수 있어요.">
+      <div class="rack-column-guide" data-column-origin="${origin}"><span>1열 · 왼쪽</span><span>7열 · 오른쪽</span></div>
       <div class="rack-digital-grid" role="grid" aria-rowcount="6" aria-colcount="7">${cells.join("")}</div>
     </div>
-    <p class="muted">면을 바라본 기준으로 왼쪽부터 1열, 아래부터 1선반이에요. 화면에는 위쪽 6선반부터 아래쪽 1선반까지 표시해요.</p>
   </section>`;
 }
 

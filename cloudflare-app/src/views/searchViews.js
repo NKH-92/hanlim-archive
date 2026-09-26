@@ -67,14 +67,15 @@ export function dashboardPage({
       : shownItems < totalItems
         ? `${totalItems.toLocaleString("ko-KR")}건 중 ${shownItems.toLocaleString("ko-KR")}건을 표시했어요.`
         : `${totalItems.toLocaleString("ko-KR")}건을 찾았어요.`;
+  // 건수는 결과 제목 옆 한 곳에만 둔다. 문장형 상태는 화면 읽기 프로그램에만 알린다.
+  const resultCountText = totalItems === null
+    ? `${shownItems.toLocaleString("ko-KR")}건${viewerSearch.pagination?.hasMore ? "+" : ""}`
+    : `${totalItems.toLocaleString("ko-KR")}건`;
 
   // 검색 모드: 고정 열의 행 목록만 보여 주어 비교와 스캔을 우선한다.
   return page("문서", `
     <section class="search-band page-head search-workspace-head" aria-labelledby="viewer-title">
-      <div>
-        <h1 id="viewer-title">문서 검색</h1>
-        <p class="page-sub">문서명이나 문서번호로 찾으면 보관 위치까지 바로 보여드려요.</p>
-      </div>
+      <h1 id="viewer-title">문서 검색</h1>
       ${viewerSearchForm({ query, suggestions, categories, tags, filters: uiFilters, showFilters: false, formId: "viewer-search-form" })}
     </section>
     ${viewerFilterControls({
@@ -82,19 +83,18 @@ export function dashboardPage({
       categories,
       tags,
       filters: uiFilters,
-      statusText: resultStatusText,
       supplemental: `${parsedChipRow(parsedQuery, query)}${activeFilterChips({ query, filters: uiFilters, categories, tags, racks })}`
     })}
 
     <section class="viewer-workspace" data-viewer-app data-can-search-disposed="${capabilities.canManageDisposals ? "true" : "false"}">
       <article class="panel results-panel" aria-labelledby="viewer-results-title" data-viewer-results>
         <div class="section-title viewer-results-heading">
-          <h2 id="viewer-results-title" data-results-title>보관중 문서</h2>
+          <div class="viewer-results-title"><h2 id="viewer-results-title" data-results-title>보관중 문서</h2><span class="result-count" data-results-count>${resultCountText}</span></div>
           <div class="viewer-result-tools">
             ${columnSettings()}
-            <span class="count-badge" data-results-count>${shownItems}건 표시${viewerSearch.pagination?.hasMore ? " · 더 있음" : ""}</span>
           </div>
         </div>
+        <p class="sr-only" data-search-live aria-live="polite">${resultStatusText}</p>
         <div data-results-body>
           ${viewerDocumentResults(documents, query, capabilities, selectedDocumentIds, true, viewerUrl({ query, filters: uiFilters }))}
           ${!documents.length && didYouMean.length ? didYouMeanView(didYouMean) : ""}
@@ -124,15 +124,12 @@ function viewerSearchForm({ query, suggestions, categories, tags, filters, home 
   `;
 }
 
-function viewerFilterControls({ query, categories, tags, filters, statusText, supplemental = "" }) {
+// 필터는 검색창 바로 아래 한 줄에 둔다. 별도 카드·제목을 두지 않아 결과가 위로 올라온다.
+function viewerFilterControls({ query, categories, tags, filters, supplemental = "" }) {
   const resetHref = query ? `/app?q=${encodeURIComponent(query)}` : "/app";
-  return `<section class="panel search-results-controls" aria-label="검색 조건" data-viewer-filter-controls>
-    <div class="desktop-filter-controls"><details class="filter-details" open>
-      <summary><i class="fa-solid fa-sliders" aria-hidden="true"></i>상세 필터${activeFilterBadge(filters)}</summary>
-      ${filterSelectRow({ categories, tags, filters, viewer: true, formId: "viewer-search-form", resetHref })}
-    </details></div>
-    <button type="button" class="button secondary mobile-search-filter-button" data-open-modal="viewer-filter-dialog"><i class="fa-solid fa-sliders" aria-hidden="true"></i>검색 필터${activeFilterBadge(filters)}</button>
-    <p class="search-live-status" data-search-live aria-live="polite">${statusText}</p>
+  return `<section class="search-results-controls" aria-label="검색 조건" data-viewer-filter-controls>
+    <div class="desktop-filter-controls">${filterSelectRow({ categories, tags, filters, viewer: true, formId: "viewer-search-form", resetHref })}</div>
+    <button type="button" class="button secondary mobile-search-filter-button" data-open-modal="viewer-filter-dialog"><i class="fa-solid fa-sliders" aria-hidden="true"></i>필터${activeFilterBadge(filters)}</button>
     ${supplemental}
   </section>`;
 }
@@ -299,34 +296,14 @@ function viewerUrl({ query, filters = {}, patch = {}, page = 1 }) {
   ]);
 }
 
+// 작업 바로가기는 사이드바·하단 탭과 같은 목록이라 두지 않고, 메뉴로 알 수 없는 검색 요령과 담당자만 안내한다.
 export function qaPage({ session, support = {} }) {
   const contactName = [support.department, support.name].filter(Boolean).join(" / ");
   const contactEmail = support.email || "";
-  const capabilities = capabilitiesFromSession(session);
-  const tasks = [
-    ["/app", "fa-magnifying-glass", "문서 찾기", "문서번호·문서명·보관 위치로 검색해요."],
-    ["/floor-plan", "fa-location-dot", "보관 위치 확인", "구역과 랙 배치를 도면에서 확인해요."]
-  ];
-  if (capabilities.canPreviewDocuments) {
-    tasks.push(["/documents/new", "fa-file-circle-plus", "문서 등록", "문서 정보와 보관 위치를 입력해요."]);
-    tasks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화", "최신 대장을 검증한 뒤 변경 사항을 반영해요."]);
-  }
-  if (capabilities.canPreviewDisposals) {
-    tasks.push(["/documents/disposal", "fa-box-archive", "문서 폐기", "폐기 대상을 골라 처리해요."]);
-  }
-  if (capabilities.canOpenManagement) {
-    tasks.push(["/admin", "fa-list-check", "확인할 일", "운영 중 확인이 필요한 항목을 점검해요."]);
-  }
   return page("도움말·문의", `
     <section class="page-head">
-      <div><h1>도움말·문의</h1><p class="muted">하려는 작업을 고르거나 검색 방법을 확인해 보세요.</p></div>
+      <h1>도움말·문의</h1>
       ${contactEmail ? `<a class="button secondary" href="mailto:${escapeHtml(contactEmail)}">담당자 문의</a>` : ""}
-    </section>
-    <section class="panel help-task-panel" aria-labelledby="help-task-title">
-      <div class="section-title"><h2 id="help-task-title">어떤 작업을 할까요?</h2><span class="count-badge">${tasks.length}개 작업</span></div>
-      <nav class="help-task-grid" aria-label="주요 작업 바로가기">
-        ${tasks.map(([href, icon, label, description]) => `<a class="help-task-card" href="${href}"><span class="icon-frame" aria-hidden="true"><i class="fa-solid ${icon}"></i></span><span><strong>${label}</strong><small>${description}</small></span><span class="help-task-arrow" aria-hidden="true">›</span></a>`).join("")}
-      </nav>
     </section>
     <section class="content-grid">
       <article class="panel">

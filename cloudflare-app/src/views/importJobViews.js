@@ -14,7 +14,7 @@ export function documentImportJobsPage({ session, jobs = [] }) {
     </tr>
   `).join("");
   return page("CSV 가져오기 작업", `
-    <section class="page-head"><div><h1>CSV 가져오기 작업</h1><p class="muted">검증을 마친 행을 한 문서씩 처리하고, 중단해도 나중에 이어서 처리할 수 있어요.</p></div><a class="button" href="/documents/import">새 가져오기</a></section>
+    <section class="page-head"><h1>CSV 가져오기 작업</h1><a class="button" href="/documents/import">새 가져오기</a></section>
     <section class="panel results-panel">
       <div class="section-title"><h2>작업 목록</h2><span class="count-badge">${jobs.length}건</span></div>
       <div class="table-wrap"><table class="doc-table"><thead><tr><th>작업 번호</th><th>원본</th><th>상태</th><th>전체</th><th>완료</th><th>실패</th><th>대기</th><th>생성자</th><th>생성일</th></tr></thead>
@@ -35,7 +35,7 @@ export function documentImportJobCreatePage({ session, error = "", preview = [],
     <td data-label="상태">${escapeHtml(item.status)}</td>
   </tr>`).join("");
   return page("CSV 가져오기", `
-    <section class="page-head"><div><h1>문서 대량 등록</h1><p class="muted">최대 50행까지 먼저 검증한 뒤 작업으로 저장해요.</p></div><a class="button secondary" href="/document-import-jobs">작업 목록</a></section>
+    <section class="page-head"><h1>문서 대량 등록</h1><a class="button secondary" href="/document-import-jobs">작업 목록</a></section>
     <section class="panel${preview.length ? "" : " narrow"}">
       ${error ? alertDanger(error) : ""}
       ${preview.length ? `

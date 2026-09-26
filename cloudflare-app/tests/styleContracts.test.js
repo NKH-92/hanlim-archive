@@ -147,11 +147,11 @@ test("전역 CSS는 desktop·mobile·print·reduced-motion 계약을 포함한�
   assert.match(css, /\.viewer-result-identity \{ display: flex; flex-wrap: wrap;/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.workflow-stepper \{ grid-template-columns: repeat\(5, minmax\(0, 1fr\)\);[^}]*overflow: hidden/);
   assert.match(css, /\.workflow-current-step \{ display: grid; grid-template-columns: auto minmax\(0, 1fr\)/);
-  assert.match(css, /\.mini-rack-grid \{ inline-size: 100%; min-inline-size: 0; grid-template-columns: repeat\(var\(--cols\), minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.mini-rack-grid \{ inline-size: 100%; min-inline-size: 0; grid-template-columns: var\(--rack-axis-width\) repeat\(var\(--cols\), minmax\(0, 1fr\)\)/);
   assert.match(css, /\.modal, \.modal\.disposal-review-modal \{ width: calc\(100vw - var\(--sp-6\)\);[^}]*overflow-x: clip/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.modal-actions \{ grid-template-columns: 1fr; \}/);
   assert.match(css, /\.zone-rack-links a \{ min-height: 44px; align-items: center; \}/);
-  assert.match(css, /\.help-task-grid \{ grid-template-columns: 1fr; \}/);
+  assert.doesNotMatch(css, /\.help-task-/);
   assert.match(css, /\.master-create-form \{ display: grid; grid-template-columns: minmax\(180px, 1fr\) minmax\(260px, 2fr\) auto/);
   assert.match(css, /\.category-master-summary \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto auto;[^}]*min-height: 56px/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.master-create-form, \.category-master-edit-form \{ grid-template-columns: 1fr; \}/);

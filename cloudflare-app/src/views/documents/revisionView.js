@@ -14,7 +14,6 @@ export function documentRevisionPage({ session, document, values = {}, validatio
     <section class="page-head">
       <nav class="breadcrumb" aria-label="경로"><a href="${escapeHtml(documentLink(document.id, "", values.returnTo))}">문서 상세</a><span>/</span><span>문서 개정</span></nav>
       <h1>문서 개정</h1>
-      <p>같은 바인더에서 현재 개정본을 신규 개정본으로 교체해요.</p>
     </section>
 
     <section class="document-form-layout revision-form-layout">
@@ -41,7 +40,7 @@ export function documentRevisionPage({ session, document, values = {}, validatio
         </fieldset>
 
         <fieldset class="form-section">
-          <legend>신규 개정 정보</legend><p class="revision-change-summary"><strong>${escapeHtml(formatRevisionLabel(document.revision_number))}</strong> → <strong data-new-revision>${revisionNumber ? escapeHtml(formatRevisionLabel(revisionNumber)) : "신규 개정 입력"}</strong><span>이전본 자동 폐기 · 보관 위치 유지</span></p>
+          <legend>신규 개정 정보</legend><p class="revision-change-summary"><strong>${escapeHtml(formatRevisionLabel(document.revision_number))}</strong> → <strong data-new-revision>${revisionNumber ? escapeHtml(formatRevisionLabel(revisionNumber)) : "신규 개정 입력"}</strong></p>
           <div class="form-grid two-column">
             ${field("revisionNumber", "새 개정번호", revisionNumber, fieldErrors, "text")}
             ${field("revisionDate", "새 제·개정일", revisionDate, fieldErrors, "date")}

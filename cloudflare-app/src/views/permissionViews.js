@@ -23,7 +23,7 @@ export function userPermissionsPage({ session, user, templates, error = "" }) {
   ));
   return page("사용자 권한", `
     <section class="page-head">
-      <div><h1>사용자 권한</h1><p class="muted">${escapeHtml(user.display_name)} (${escapeHtml(user.username)}) 계정의 관리 범위를 설정해요.</p></div>
+      <div><h1>사용자 권한</h1><p class="page-sub">${escapeHtml(user.display_name)} (${escapeHtml(user.username)})</p></div>
       <a class="button secondary" href="/admin/settings">사용자 관리</a>
     </section>
     <section class="panel narrow">
@@ -48,29 +48,27 @@ export function userPermissionsPage({ session, user, templates, error = "" }) {
           <strong>변경 미리보기</strong>
           <p>현재 권한과 같아요.</p>
         </section>
-        <p class="muted">역할을 선택해 저장하면 서버가 그 역할의 표준 권한을 그대로 적용해요. 개별 예외가 필요하면 <strong>사용자 지정</strong>을 선택한 뒤 아래 체크박스를 조정해 주세요.</p>
-        <label class="checkbox"><input type="checkbox" name="confirmPermissions" value="1" required> 위 변경 결과를 확인했어요.</label>
-        <button type="submit" class="button">역할·권한 저장</button>
+        <label class="checkbox" data-permission-confirm><input type="checkbox" name="confirmPermissions" value="1" required> 위 변경 결과를 확인했어요.</label>
+        <button type="submit" class="button" data-permission-submit>역할·권한 저장</button>
       </form>
     </section>
-    ${permissionPreviewScript(flags)}
+    ${permissionPreviewScript(flags, currentKey)}
   `, session);
 }
 
 export function roleTemplatesPage({ session, templates }) {
   return page("역할 템플릿", `
     <section class="page-head">
-      <div><h1>역할 템플릿</h1><p class="muted">표준 권한 구성을 관리하고, 선택한 사용자에게 직접 반영해요.</p></div>
+      <h1>역할 템플릿</h1>
       <a class="button secondary" href="/admin/settings">사용자 관리</a>
     </section>
     <section class="panel">
       <div class="table-wrap"><table class="doc-table">
         <caption class="sr-only">역할 템플릿 목록</caption>
-        <thead><tr><th>역할</th><th>권한</th><th>버전</th><th>관리</th></tr></thead>
+        <thead><tr><th>역할</th><th>권한</th><th>관리</th></tr></thead>
         <tbody>${templates.map((template) => `<tr>
-          <td data-label="역할"><strong>${escapeHtml(template.label)}</strong><br><span class="muted">${escapeHtml(template.key)}${template.fixed ? " · 고정" : ""}</span></td>
+          <td data-label="역할"><strong>${escapeHtml(template.label)}</strong>${template.fixed ? `<br><span class="muted">수정 불가</span>` : ""}</td>
           <td data-label="권한">${permissionSummary(template)}</td>
-          <td data-label="버전">${Number(template.row_version)}</td>
           <td data-label="관리"><a class="button secondary sm" href="/admin/role-templates/${escapeHtml(template.key)}/edit">${template.fixed ? "사용자 반영" : "편집·반영"}</a></td>
         </tr>`).join("")}</tbody>
       </table></div>
@@ -82,7 +80,7 @@ export function roleTemplateEditPage({ session, template, users, error = "" }) {
   const flags = permissionFlags(template);
   return page("역할 템플릿 편집", `
     <section class="page-head">
-      <div><h1>${escapeHtml(template.label)}</h1><p class="muted">${escapeHtml(template.key)} · 현재 버전 ${Number(template.row_version)}</p></div>
+      <h1>${escapeHtml(template.label)}</h1>
       <a class="button secondary" href="/admin/role-templates">역할 템플릿</a>
     </section>
     ${error ? `<section class="panel narrow">${alertDanger(error)}</section>` : ""}
@@ -99,18 +97,17 @@ export function roleTemplateEditPage({ session, template, users, error = "" }) {
       </section>`}
     <section class="panel">
       ${sectionHeader("사용자에게 명시적으로 반영", `후보 ${users.length}명`)}
-      <p class="muted">승인된 일반 사용자만 후보가 돼요. 선택한 사용자마다 감사로그를 남기고, 표시된 버전이 모두 일치할 때만 한꺼번에 반영해요. 한 번에 최대 38명까지 선택할 수 있어요.</p>
+      <p class="muted">승인된 일반 사용자에게 한 번에 최대 38명까지 반영할 수 있어요.</p>
       ${users.length ? `<form method="post" action="/admin/role-templates/${escapeHtml(template.key)}/apply" class="stack">
         <input type="hidden" name="expectedTemplateRowVersion" value="${Number(template.row_version)}">
         <div class="table-wrap"><table class="doc-table">
           <caption class="sr-only">역할을 반영할 사용자 선택</caption>
-          <thead><tr><th>선택</th><th>사용자</th><th>팀</th><th>현재 역할</th><th>버전</th></tr></thead>
+          <thead><tr><th>선택</th><th>사용자</th><th>팀</th><th>현재 역할</th></tr></thead>
           <tbody>${users.map((user) => `<tr>
             <td data-label="선택"><input type="checkbox" name="userId" value="${Number(user.id)}" aria-label="${escapeHtml(user.display_name)} 선택"><input type="hidden" name="rowVersion_${Number(user.id)}" value="${Number(user.row_version)}"></td>
             <td data-label="사용자">${escapeHtml(user.display_name)}<br><span class="muted">${escapeHtml(user.username)}</span></td>
             <td data-label="팀">${escapeHtml(user.team || "-")}</td>
             <td data-label="현재 역할">${escapeHtml(user.role_template_label || "사용자 지정")}</td>
-            <td data-label="버전">${Number(user.row_version)}</td>
           </tr>`).join("")}</tbody>
         </table></div>
         <p class="muted" role="status" data-bulk-selection>선택한 사용자 없음</p>
@@ -156,14 +153,21 @@ function enabledPermissions(source) {
   return PERMISSION_KEYS.filter((permission) => flags[permission]);
 }
 
-function permissionPreviewScript(flags) {
+function permissionPreviewScript(flags, currentKey) {
   const initial = JSON.stringify(flags);
   return `<script>
     (function () {
       var initial = ${initial};
+      var initialKey = ${JSON.stringify(currentKey)};
       var preset = document.querySelector('[data-permission-preset]');
       var boxes = Array.from(document.querySelectorAll('[data-permission-key]'));
       var diff = document.querySelector('[data-permission-diff]');
+      var confirmRow = document.querySelector('[data-permission-confirm]');
+      var submit = document.querySelector('[data-permission-submit]');
+      function syncConfirm(changed) {
+        if (confirmRow) confirmRow.hidden = !changed;
+        if (submit) submit.disabled = !changed;
+      }
       function renderDiff() {
         var added = [];
         var removed = [];
@@ -172,6 +176,7 @@ function permissionPreviewScript(flags) {
           if (box.checked && !initial[box.name]) added.push(label);
           if (!box.checked && initial[box.name]) removed.push(label);
         });
+        syncConfirm(Boolean(added.length || removed.length || (preset && preset.value !== initialKey)));
         if (!diff) return;
         var heading = document.createElement('strong');
         heading.textContent = '변경 미리보기';

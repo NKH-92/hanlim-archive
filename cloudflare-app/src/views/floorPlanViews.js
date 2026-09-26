@@ -75,12 +75,7 @@ export function floorPlanView(regions, hits = new Set()) {
         ${activeRackCount ? `<span>일치 랙 ${activeRackCount}개</span>` : ""}
         <span><i class="legend-box"></i>양면 랙</span>
         <span><i class="legend-box single"></i>단면 랙</span>
-        ${regions.some((region) => region.zoneNumber === 1) ? `<span>1구역 위쪽 = 벽면</span>` : ""}
-        <span>각 면을 바라본 기준 = 왼쪽 1열 · 아래 1선반</span>
         ${activeRackCount ? `<span><i class="legend-box hit"></i>검색 위치</span>` : ""}
-      </div>
-      <div class="zone-list">
-        ${regions.map((region) => `<a href="/app?zone=${region.zoneNumber}&amp;sort=location"><strong>${escapeHtml(region.label)}</strong><span>${region.racks.length}개 랙</span></a>`).join("")}
       </div>
     </div>
   `;
@@ -191,7 +186,6 @@ export function archiveMap(racks, hits) {
 
 export function floorPlanPage({ session, floorPlan = [] }) {
   const canManageMasters = hasReadPermission(session, PERMISSIONS.MANAGE_MASTERS);
-  const rackCount = floorPlan.reduce((sum, region) => sum + region.racks.length, 0);
   const zoneRows = floorPlan.map((region) => ({
     zoneNumber: Number(region.zoneNumber),
     label: region.label,
@@ -200,25 +194,17 @@ export function floorPlanPage({ session, floorPlan = [] }) {
   }));
   return page("문서고 도면", `
     <section class="page-head floor-plan-page-head">
-      <div>
-        <nav class="breadcrumb" aria-label="경로"><a href="/app">문서검색</a><span>/</span><span>문서고 도면</span></nav>
-        <h1>문서고 도면</h1>
-        <p>구역과 랙의 실제 배치를 확인하고, 랙을 선택해 그 위치의 문서를 찾을 수 있어요.</p>
-      </div>
-      <div class="button-group"><button type="button" class="button secondary" data-print><i class="fa-solid fa-print" aria-hidden="true"></i>도면 인쇄</button><a class="button action-button" href="/app"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>위치 검색</a></div>
-    </section>
-    <section class="panel floor-plan-summary" aria-label="문서고 운영 요약">
-      <div><strong>현재 ${floorPlan.length}개 구역 · ${rackCount}개 랙을 운영하고 있어요.</strong><p>랙을 선택하면 그 랙에 보관 중인 문서 목록으로 바로 이동할 수 있어요.</p></div>
+      <h1>문서고 도면</h1>
+      <div class="button-group"><button type="button" class="button secondary" data-print><i class="fa-solid fa-print" aria-hidden="true"></i>도면 인쇄</button></div>
     </section>
     <div class="floor-plan-layout">
       <section class="panel archive-floor-plan-page" aria-label="문서고 전체 도면">
-        <p class="mobile-floor-plan-note">랙 목록에서 충분히 큰 항목으로 랙을 선택하고, 아래 도면에서 실제 배치를 확인해 주세요.</p>
         ${floorPlan.length
           ? floorPlanView(floorPlan)
           : `<div class="empty-state"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><p>표시할 랙 도면이 없어요.</p></div>`}
       </section>
       ${zoneRows.length ? `<aside class="panel floor-plan-side" aria-labelledby="zone-overview-title">
-        <div class="section-title"><h2 id="zone-overview-title">구역·랙 목록</h2><span class="count-badge">${rackCount}개 랙</span></div>
+        <div class="section-title"><h2 id="zone-overview-title">구역·랙 목록</h2></div>
         <div class="zone-overview">${floorPlan.map((region, regionIndex) => `<details${regionIndex === 0 ? " open" : ""}><summary><span><strong>${escapeHtml(region.label)}</strong><small>${region.racks.reduce((sum, rack) => sum + Number(rack.documentCount || 0), 0).toLocaleString("ko-KR")}건</small></span><span>${region.racks.length}개 랙</span></summary><div class="zone-rack-links">${region.racks.map((rack) => `<a href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location" data-rack-select data-rack-id="${Number(rack.id)}" data-rack-code="${escapeHtml(rack.code)}" data-rack-description="${escapeHtml(rack.description || "")}" data-rack-type="${rack.isSingleSided ? "단면" : "양면"}" data-rack-faces="${rack.isSingleSided ? 1 : 2}" data-rack-columns="${Number(rack.columnCount || 0)}" data-rack-shelves="${Number(rack.shelfCount || 0)}" data-rack-documents="${Number(rack.documentCount || 0)}" data-zone="${Number(region.zoneNumber)}"><span class="mono">${escapeHtml(rack.code)}</span><span>${Number(rack.documentCount || 0).toLocaleString("ko-KR")}건</span></a>`).join("")}</div></details>`).join("")}</div>
         <section class="floor-rack-inspector" data-rack-inspector aria-live="polite" tabindex="-1">
           <button type="button" class="icon-button floor-rack-inspector-close" data-rack-inspector-close aria-label="랙 정보 닫기"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>

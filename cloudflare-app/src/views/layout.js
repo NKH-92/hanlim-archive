@@ -88,15 +88,12 @@ function header(session) {
   if (capabilities.canViewMovements) {
     evidenceLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
   }
-  const navLink = ([href, icon, text], sub = false) =>
-    `<a href="${href}" class="${sub ? "nav-sub-link" : "archive-nav-item"}"><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(text)}</a>`;
-  const navGroup = (label, links, extras = "") => links.length || extras
-    ? `<details class="nav-group" aria-label="${escapeHtml(label)}" data-nav-group="${escapeHtml(label)}"><summary class="nav-group-label">${escapeHtml(label)}</summary><div class="nav-group-content">${links.map((link) => navLink(link)).join("")}${extras}</div></details>`
+  const navLink = ([href, icon, text]) =>
+    `<a href="${href}" class="archive-nav-item"><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(text)}</a>`;
+  // 그룹 안에 다시 접힘을 두지 않는다. 자주 쓰는 업무 그룹은 기본으로 펼치고, 사용자가 접은 상태는 브라우저가 기억한다.
+  const navGroup = (label, links, defaultOpen = false) => links.length
+    ? `<details class="nav-group" aria-label="${escapeHtml(label)}" data-nav-group="${escapeHtml(label)}" data-nav-default="${defaultOpen ? "open" : "closed"}"${defaultOpen ? " open" : ""}><summary class="nav-group-label">${escapeHtml(label)}</summary><div class="nav-group-content">${links.map((link) => navLink(link)).join("")}</div></details>`
     : "";
-  const nestedGroup = (label, icon, links) => links.length
-    ? `<details class="nav-settings"><summary><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(label)}</summary><div>${links.map((link) => navLink(link, true)).join("")}</div></details>`
-    : "";
-  const operationExtras = `${nestedGroup("기준정보", "fa-database", masterLinks)}${nestedGroup("이력·증적", "fa-folder-tree", evidenceLinks)}`;
   const allLinks = [
     ...documentLinks,
     ...workLinks,
@@ -115,20 +112,22 @@ function header(session) {
 
   return `
     <header class="topbar">
-      <a href="/app" class="brand"><img class="brand-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약"><span><strong>한림문서고</strong><small>통합 문서 위치 검색</small></span></a>
+      <a href="/app" class="brand"><img class="brand-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약"><span><strong>한림문서고</strong></span></a>
       <button type="button" class="command-trigger" data-command-open aria-haspopup="dialog"><i class="fa-solid fa-magnifying-glass"></i><span>메뉴 찾기</span><kbd>Ctrl+K</kbd></button>
       <nav id="primary-navigation" aria-label="주 메뉴" data-nav-menu>
         <button type="button" class="drawer-close" data-drawer-close aria-label="메뉴 닫기">×</button>
         <div class="nav-primary-links" role="group" aria-label="주요 문서 메뉴">${documentLinks.map((link) => navLink(link)).join("")}</div>
-        ${navGroup("업무", workLinks)}
-        ${navGroup("운영", operationLinks, operationExtras)}
+        ${navGroup("업무", workLinks, true)}
+        ${navGroup("운영", [...operationLinks, ...masterLinks, ...evidenceLinks])}
         <div class="nav-user">
           <span class="session-pill"><strong>${escapeHtml(session.displayName)}</strong><small>${escapeHtml(roleLabel)}</small></span>
-          <a href="/qa" class="nav-sub-link"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>도움말·문의</a>
-          <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key"></i>비밀번호</a>
-          <form method="post" action="/logout" class="logout-form">
-            <button type="submit" class="logout-link"><i class="fa-solid fa-right-from-bracket"></i>로그아웃</button>
-          </form>
+          <div class="nav-user-links">
+            <a href="/qa" class="nav-sub-link"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>도움말</a>
+            <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key" aria-hidden="true"></i>비밀번호</a>
+            <form method="post" action="/logout" class="logout-form">
+              <button type="submit" class="logout-link"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>로그아웃</button>
+            </form>
+          </div>
         </div>
       </nav>
       <div class="nav-scrim" data-nav-scrim></div>

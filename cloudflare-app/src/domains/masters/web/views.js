@@ -7,22 +7,12 @@ export function categoriesPage({ session, categories, values = {}, error = "" })
   const formValues = /** @type {Record<string, unknown>} */ (values);
   return page("대분류 관리", `
     <section class="page-head master-page-head">
-      <div>
-        <h1>대분류 관리</h1>
-        <p>문서 등록·검색·폐기 조건에 쓰는 분류 이름을 관리해요. 사용중지해도 기존 문서의 분류는 그대로 유지돼요.</p>
-      </div>
-      <div class="master-head-guide" aria-label="이 화면의 필요한 기능">
-        <strong>필요한 기능</strong>
-        <span>찾기 · 추가 · 이름과 설명 수정 · 사용중지와 다시 사용</span>
-      </div>
+      <h1>대분류 관리</h1>
     </section>
     ${error ? alertDanger(error) : ""}
     <section class="panel master-create-panel" aria-labelledby="category-create-title">
       <div class="section-title master-section-title">
-        <div>
-          <h2 id="category-create-title">새 대분류 추가</h2>
-          <p>업무에서 실제로 구분해 찾아야 하는 이름만 등록해 주세요.</p>
-        </div>
+        <h2 id="category-create-title">새 대분류 추가</h2>
       </div>
       <form method="post" action="/categories" class="master-create-form">
         <label><span>이름</span><input name="name" value="${escapeHtml(formValues.name || "")}" required placeholder="예: 품질관리"></label>
@@ -32,10 +22,7 @@ export function categoriesPage({ session, categories, values = {}, error = "" })
     </section>
     <section class="panel master-management" data-master-management aria-labelledby="category-list-title">
       <div class="master-list-heading">
-        <div>
-          <h2 id="category-list-title">대분류 목록</h2>
-          <p>이름순으로 보여드려요. 항목을 열면 이름과 설명을 수정할 수 있어요.</p>
-        </div>
+        <h2 id="category-list-title">대분류 목록</h2>
         <div class="master-list-tools">
           <label class="master-search-field">
             <span>대분류 찾기</span>
@@ -98,7 +85,7 @@ function categoryRow(row) {
           <strong>${name}</strong>
           <small>${description || "설명 없음"}</small>
         </span>
-        <span class="status ${active ? "master-active" : "master-inactive"}">${active ? "사용 중" : "사용중지"}</span>
+        <span class="category-master-state">${active ? "" : `<span class="status master-inactive">사용중지</span>`}</span>
         <span class="category-master-toggle">수정</span>
       </summary>
       <div class="category-master-edit">

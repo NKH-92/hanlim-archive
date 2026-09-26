@@ -24,7 +24,7 @@ export function documentsPage({
   const activeFilterCount = [filters.categoryId, filters.tagId, filters.zoneNumber, filters.sort && filters.sort !== "updated"].filter(Boolean).length;
   return page("문서 관리", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 관리</span></nav><h1>문서 관리</h1><p class="muted">문서 정보와 보관 위치를 확인하고 수정할 수 있어요.</p></div>
+      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서고</a><span>/</span><span>문서 관리</span></nav><h1>문서 관리</h1></div>
       ${documentToolbar(session)}
     </section>
 
@@ -65,18 +65,12 @@ export function disposalWorkspacePage({
   tab = "active",
   feedback = null
 }) {
-  const targetCount = Number(pagination.totalItems || documents.length || 0);
+  // 원본 수량·사유 확인은 폐기 확인 대화상자에서 한 번만 받는다. 화면 위쪽에는 탭과 조건만 둔다.
   return page("폐기 관리", `
     <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/app">문서</a><span>/</span><span>폐기 관리</span></nav><h1>폐기 관리</h1><p class="muted">문서가 적으면 하나씩 골라 폐기하고, 정기폐기는 필터 결과 전체를 한 캠페인으로 처리해요.</p></div>
+      <h1>폐기 관리</h1>
       <div class="button-group"><a class="button" href="/disposal-batches/new">정기폐기 시작</a></div>
     </section>
-    ${tab === "active" ? `
-      <section class="panel disposal-safety-panel" aria-label="폐기 작업 주의">
-        <div><strong>폐기는 원본 한 부씩 처리해요.</strong><p>현재 조건에서 ${targetCount.toLocaleString("ko-KR")}건을 확인할 수 있어요. 마지막으로 실제 원본과 건수·사유가 맞는지 확인해 주세요.</p></div>
-        <span class="status policy-required">복구 권한 필요</span>
-      </section>
-    ` : ""}
     ${disposalFeedback(feedback)}
     <nav class="workspace-tabs" aria-label="폐기 작업 화면">
       <a href="${escapeHtml(disposalListUrl(filters))}" ${tab === "active" ? `aria-current="page"` : ""}>폐기 대상</a>
@@ -109,7 +103,7 @@ function disposalTargetsView({ documents, categories, racks, years, filters, cap
     ${disposalFilterChips({ filters, categories, racks })}
     <section class="panel results-panel">
       <div class="section-title"><h2>폐기 대상</h2><span class="count-badge">${documents.length}${capped ? "+" : ""}건</span></div>
-      ${capped ? `<div class="alert warning">선택 폐기는 한 번에 ${limit}건까지 처리할 수 있어서 앞의 ${limit}건만 보여드려요. 조건에 맞는 문서를 모두 처리하려면 위쪽의 <a href="/disposal-batches/new">정기폐기</a>를 이용해 주세요.</div>` : ""}
+      ${capped ? `<div class="alert neutral" role="note">한 번에 ${limit}건까지 선택 폐기할 수 있어서 앞의 ${limit}건만 보여 드려요. 모두 처리하려면 <a href="/disposal-batches/new">정기폐기</a>를 이용해 주세요.</div>` : ""}
       ${documentResults(documents, { bulk: true, selectAll: true, emptyMessage: "조건에 맞는 보관중 문서가 없어요." })}
       ${bulkActionBar("/documents/disposal/process", filters, limit)}
     </section>
@@ -136,19 +130,20 @@ function disposalFilterChips({ filters = {}, categories = [], racks = [] }) {
 }
 
 function disposalHistoryView(history, pagination, filters) {
-  const rows = history.map((item) => `
-    <tr class="is-disposed">
-      <td data-label="문서명"><a href="/documents/${item.document_id}">${escapeHtml(item.document_name)}</a></td>
-      <td class="mono-cell" data-label="문서번호">${escapeHtml(item.document_number)}</td>
-      <td data-label="개정">${escapeHtml(item.revision_number)}</td>
+  const rows = history.map((item) => {
+    const basis = [
+      item.batch_code ? `<a class="mono" href="/disposal-batches/${item.disposal_batch_id}">${escapeHtml(item.batch_code)}</a>` : "",
+      item.approval_reference ? escapeHtml(item.approval_reference) : ""
+    ].filter(Boolean).join(" · ");
+    return `
+    <tr>
+      <td class="name-cell" data-label="문서"><a href="/documents/${item.document_id}">${escapeHtml(item.document_name)}</a><small class="mono">${escapeHtml(item.document_number)} · ${escapeHtml(item.revision_number)}</small></td>
       <td data-label="대분류">${escapeHtml(item.category_name || "-")}</td>
-      <td class="location-cell" data-label="보관 위치">${escapeHtml(item.location_snapshot || "-")}</td>
-      <td data-label="상태"><span class="status document-disposed">폐기</span></td>
-      <td data-label="캠페인">${item.batch_code ? `<a class="mono" href="/disposal-batches/${item.disposal_batch_id}">${escapeHtml(item.batch_code)}</a>` : "-"}</td>
-      <td data-label="폐기 사유">${escapeHtml(item.reason || "-")}</td>
-      <td data-label="승인 참조">${escapeHtml(item.approval_reference || "-")}</td>
+      <td class="location-cell" data-label="마지막 위치">${escapeHtml(item.location_snapshot || "-")}</td>
+      <td data-label="폐기 사유">${escapeHtml(item.reason || "-")}${basis ? `<small>${basis}</small>` : ""}</td>
       <td data-label="처리">${escapeHtml(item.performed_by || "-")}<small>${escapeHtml(item.created_at || item.updated_at || "-")}</small></td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
   const query = escapeHtml(filters.query || "");
   return `
     <section class="panel">
@@ -162,8 +157,8 @@ function disposalHistoryView(history, pagination, filters) {
     <section class="panel results-panel">
       <div class="section-title"><h2>폐기 문서</h2><span class="count-badge">${pagination.totalItems || 0}건</span></div>
       <div class="table-wrap"><table class="doc-table disposal-history-table">
-        <thead><tr><th>문서명</th><th>문서번호</th><th>개정</th><th>대분류</th><th>보관 위치</th><th>상태</th><th>캠페인</th><th>폐기 사유</th><th>승인 참조</th><th>처리</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="10" class="empty">현재 폐기 상태인 문서가 없어요.</td></tr>`}</tbody>
+        <thead><tr><th>문서</th><th>대분류</th><th>마지막 위치</th><th>폐기 사유</th><th>처리</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="5" class="empty">현재 폐기 상태인 문서가 없어요.</td></tr>`}</tbody>
       </table></div>
       ${historyPagination(pagination, filters.query)}
     </section>`;

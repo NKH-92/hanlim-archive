@@ -200,7 +200,7 @@ test("server and browser keep the exact-code row fields and key markup", async (
     assert.match(html, /data-preview-open/);
   }
   assert.equal(browser.title, "보관중 문서");
-  assert.equal(browser.count, "1건 표시");
+  assert.equal(browser.count, "1건");
 });
 
 test("server and browser always keep row-only behavior for dominant and ambiguous matches", async () => {

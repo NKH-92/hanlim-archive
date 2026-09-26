@@ -25,21 +25,22 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
   const orientation = rackViewOrientation(document);
   const rackLabel = rackFaceLabel(document);
   const locationAction = locationPrimaryAction(document, { replacementId, isExcluded });
+  // 정상(현재 대장 포함) 상태는 표시하지 않고 예외인 대장 제외만 배지로 알린다.
+  // 문서번호·개정·문서명·상태는 제목 영역에, 폐기 사유·처리일은 폐기 기록에 있으므로 문서 정보에서 되풀이하지 않는다.
   const syncBadge = isExcluded
     ? `<span class="status ledger-excluded" title="현재 대장에는 포함되지 않은 문서">현재 대장 제외</span>`
-    : `<span class="status ledger-current">현재 대장 포함</span>`;
+    : "";
 
   return page(document.document_name, `<div class="document-detail-page" data-document-detail>
     <section class="document-detail-head">
-      <nav class="breadcrumb" aria-label="경로"><a href="${escapeHtml(returnTo || "/app")}" data-back-to-results>검색 결과로</a><span>/</span><span>문서 상세</span></nav>
-      <div class="document-title-row"><div class="document-title-copy"><h1>${escapeHtml(document.document_name)}</h1><p><span class="mono">${escapeHtml(document.document_number)}</span> · ${escapeHtml(formatRevisionLabel(document.revision_number))}</p></div><div class="document-state-badges">${statusBadge(document.status)} ${syncBadge}</div></div>
+      <nav class="breadcrumb" aria-label="경로"><a href="${escapeHtml(returnTo || "/app")}" data-back-to-results>검색 결과로</a></nav>
+      <div class="document-title-row"><div class="document-title-copy"><h1>${escapeHtml(document.document_name)}</h1><p><span class="mono">${escapeHtml(document.document_number)}</span> · ${escapeHtml(formatRevisionLabel(document.revision_number))}</p></div><div class="document-state-badges">${statusBadge(document.status)}${syncBadge ? ` ${syncBadge}` : ""}</div></div>
       ${isExcluded ? "" : documentActions(document, { canManageDocuments, canMoveDocuments, canManageDisposals, isAdmin: session.role === "Admin" || session.demoReadAuthorized, replacementId, returnTo })}
     </section>
 
     <div class="document-detail-alerts">
       ${isExcluded ? `<div class="alert warning" role="status">이 문서는 현재 대장에서 제외됐어요. 최신 대장 파일에 다시 넣어 재등록하면 수정·이동·폐기를 할 수 있어요.${document.last_snapshot_id ? ` 마지막 관련 스냅샷: <a href="/document-snapshots/${Number(document.last_snapshot_id)}">#${Number(document.last_snapshot_id)}</a>` : ""}</div>` : ""}
       ${replacementId ? `<div class="alert info" role="status">개정으로 자동 폐기된 이전본이에요. <a href="/documents/${replacementId}">현재 개정본 보기</a></div>` : ""}
-      ${document.status === "disposed" && !replacementId ? `<div class="alert neutral" role="status">폐기된 문서예요. 위치보다 폐기 사유와 이력을 먼저 확인해 주세요.</div>` : ""}
     </div>
 
     ${document.status === "disposed" ? `<section class="panel document-state-summary"><h2>폐기 기록</h2><dl>${detailRow("폐기 사유", latestDisposal?.reason || "기록 없음")}${detailRow("폐기 처리일", latestDisposal?.created_at || "기록 없음")}</dl>${replacementId ? `<a class="button" href="${escapeHtml(documentLink(replacementId, "", returnTo))}">연결된 후속 개정 보기</a>` : ""}</section>` : ""}
@@ -48,7 +49,7 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
       <div class="location-hero-copy">
         <small>${document.status === "disposed" || isExcluded ? "마지막 기록 위치" : "보관 위치"}</small>
         <strong id="document-location-title">${escapeHtml(location)}</strong>
-        <span>${escapeHtml(locationGuidance(document, orientation, rackLabel))}</span>
+        <span>${escapeHtml(locationGuidance(document, orientation))}</span>
       </div>
       ${locationAction ? `<div class="location-hero-actions">${locationAction}</div>` : ""}
     </section>
@@ -61,50 +62,36 @@ export function documentDetailsPage({ session, document, tags, disposalLogs, aud
     ${document.status === "disposed" || isExcluded ? "</details>" : ""}
 
     <section class="document-detail-sections">
-      <article class="panel detail-section">
-        <h2>기본 정보</h2>
+      <article class="panel detail-section document-info">
+        <h2>문서 정보</h2>
         <dl>
-          ${detailRow("문서번호", document.document_number, true)}
-          ${detailRow("개정번호", formatRevisionLabel(document.revision_number))}
-          ${detailRow("문서명", document.document_name)}
-          ${detailRow("제·개정일", document.revision_date || "없음")}
           ${detailRow("대분류", document.category_name || "없음")}
-          ${detailRow("태그", tags.length ? tags.map((tag) => tag.name).join(", ") : "없음")}
-        </dl>
-      </article>
-      <article class="panel detail-section">
-        <h2>보존 정보</h2>
-        <dl>
+          ${detailRow("제·개정일", document.revision_date || "없음")}
           ${detailRow("폐기 예정 연도", document.disposal_due_year ? `${document.disposal_due_year}년` : "없음")}
-          ${detailRow("문서 상태", document.status === "active" ? "보관중" : "폐기")}
-          ${detailRow("대장 포함 상태", isExcluded ? "현재 대장 제외" : "현재 대장 포함")}
+          ${detailRow("태그", tags.length ? tags.map((tag) => tag.name).join(", ") : "없음")}
           ${detailRow("비고", document.note || "없음")}
-          ${document.status === "disposed" ? detailRow("폐기 사유", latestDisposal?.reason || "-") : ""}
-          ${document.status === "disposed" ? detailRow("폐기 처리일", latestDisposal?.created_at || "-") : ""}
         </dl>
       </article>
     </section>
 
     ${revisionHistory.length > 1 ? renderRevisionHistory(revisionHistory, document.id) : ""}
 
-
-
-    ${canViewAudit ? `<details class="panel detail-history"><summary>감사 이력 <span class="count-badge">${auditLogs.length}건</span></summary>${timeline(auditLogs, renderAuditLog, "감사 이력이 없어요.")}</details>` : ""}
-    ${canViewMovements ? `<details class="panel detail-history"><summary>위치 이동 이력 <span class="count-badge">${movements.length}건</span></summary>${timeline(movements, renderMovementLog, "위치 이동 이력이 없어요.")}</details>` : ""}
+    ${canViewAudit || canViewMovements ? `<section class="panel detail-history-group" aria-labelledby="detail-history-title">
+      <h2 id="detail-history-title">이력</h2>
+      ${canViewAudit ? `<details class="detail-history"><summary>감사 이력 <span class="count-badge">${auditLogs.length}건</span></summary>${timeline(auditLogs, renderAuditLog, "감사 이력이 없어요.")}</details>` : ""}
+      ${canViewMovements ? `<details class="detail-history"><summary>위치 이동 이력 <span class="count-badge">${movements.length}건</span></summary>${timeline(movements, renderMovementLog, "위치 이동 이력이 없어요.")}</details>` : ""}
+    </section>` : ""}
     ${!isExcluded && canManageDisposals && document.status === "active" ? disposeModal(document) : ""}
     ${!isExcluded && (session.role === "Admin" || session.demoReadAuthorized) && document.status === "disposed" && !replacementId ? restoreModal(document) : ""}
   </div>`, session);
 }
 
-function locationGuidance(document, orientation, rackLabel) {
-  const parts = [
-    document.zone_number ? `${document.zone_number}구역` : "",
-    rackLabel || document.rack_code ? `${rackLabel || document.rack_code}번 랙` : "",
-    readBoolean(document.is_single_sided) ? "단면" : `${rackLabel} 면`,
-    document.column_number ? `${orientation.originLabel}에서 ${document.column_number}번째 열` : "",
-    document.shelf_number ? `아래에서 ${document.shelf_number}번째 선반` : ""
-  ];
-  return parts.filter(Boolean).join(" · ");
+// 위치 제목의 구역·랙은 되풀이하지 않고, 찾아가는 순서(바라볼 면 → 열 → 선반)만 한 줄로 쓴다.
+function locationGuidance(document, orientation) {
+  const facing = readBoolean(document.is_single_sided) ? "" : `${document.rack_face === "B" ? "2면" : "1면"}을 바라보고`;
+  const column = document.column_number ? `${orientation.originLabel}에서 ${document.column_number}번째 열` : "";
+  const shelf = document.shelf_number ? `아래에서 ${document.shelf_number}번째 선반` : "";
+  return [[facing, column].filter(Boolean).join(" "), shelf].filter(Boolean).join(" · ");
 }
 
 function locationPrimaryAction(document, { replacementId, isExcluded }) {
@@ -162,37 +149,33 @@ function renderDocumentFloorPlan(document, floorPlan = []) {
   if (!floorPlan.length) return "";
 
   const region = floorPlan.find((item) => item.racks.some((rack) => rack.code === document.rack_code));
-  const rackLabel = rackFaceLabel(document);
-  const badge = `${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙`;
 
   if (!region) {
     return `
       <section class="panel doc-floor-plan" aria-labelledby="location-map-title">
-        <div class="section-title"><h2 id="location-map-title">위치 도면</h2><span class="count-badge">${badge}</span></div>
+        <div class="section-title"><h2 id="location-map-title">위치 도면</h2></div>
         <p class="muted">이 문서의 랙은 도면에 없는 구역에 있어요.</p>
       </section>
     `;
   }
 
-  const single = readBoolean(document.is_single_sided);
-  const orientation = rackViewOrientation(document);
+  // 위치 문장은 위치 카드에만 둔다. 도면은 노란 핀 하나로 문서가 있는 랙을 보여 준다.
   const rack = region.racks.find((item) => item.code === document.rack_code);
   const scrollId = "document-location-map-scroll";
   return `
     <section class="panel doc-floor-plan" aria-labelledby="location-map-title">
-      <div class="section-title"><h2 id="location-map-title">위치 도면 · ${escapeHtml(region.label)}</h2><span class="count-badge">${badge}</span></div>
+      <div class="section-title"><h2 id="location-map-title">위치 도면 · ${escapeHtml(region.label)}</h2><button type="button" class="button secondary sm" data-document-floor-zoom aria-controls="${scrollId}" aria-pressed="false">도면 크게 보기</button></div>
       <div class="doc-floor-plan-body">
-        <div class="floor-plan-tools"><span>노란 핀이 문서가 있는 랙이에요. 글자가 작으면 크게 볼 수 있어요.</span><button type="button" class="button secondary sm" data-document-floor-zoom aria-controls="${scrollId}" aria-pressed="false">도면 크게 보기</button></div>
-        <div id="${scrollId}" class="doc-floor-plan-scroll" data-document-floor-scroll tabindex="0" aria-label="${escapeHtml(region.label)} 문서 위치 도면. 크게 보기에서는 도면 안에서 좌우로 움직일 수 있어요.">
+        <div id="${scrollId}" class="doc-floor-plan-scroll" data-document-floor-scroll tabindex="0" aria-label="${escapeHtml(region.label)} 문서 위치 도면. 노란 핀이 문서가 있는 랙이에요. 크게 보기에서는 도면 안에서 좌우로 움직일 수 있어요.">
           ${zoneFloorPlanView(region, { hitCode: document.rack_code, hitFace: document.rack_face, interactive: false, spotlight: true })}
         </div>
-        <p class="muted">노란 핀이 이 문서가 보관된 ${single ? `단면 랙이에요. ${orientation.description}` : `${escapeHtml(rackLabel)} 면(양면 랙의 ${document.rack_face === "B" ? "우측" : "좌측"})이에요. ${orientation.description}`}</p>
         ${rack ? `<a class="button secondary sm rack-result-link" href="/app?rack=${Number(rack.id)}&amp;status=active&amp;sort=location">이 랙의 보관중 문서 보기</a>` : ""}
       </div>
     </section>
   `;
 }
 
+// 칸마다 좌표를 적지 않고 왼쪽 선반 번호와 위쪽 방향 안내만 둔다. 문서가 있는 칸만 노랑으로 강조한다.
 function renderMiniRackContent(document) {
   const cols = Math.max(1, Math.min(50, Number(document.column_count) || 1));
   const rows = Math.max(1, Math.min(50, Number(document.shelf_count) || 3));
@@ -203,34 +186,25 @@ function renderMiniRackContent(document) {
   let slots = "";
 
   for (let row = rows; row >= 1; row -= 1) {
+    slots += `<span class="mini-axis-shelf">${row}</span>`;
     for (const col of columns) {
       const active = col === activeCol && row === activeRow;
-      slots += `<div class="mini-slot ${active ? "active" : ""}" title="${col}열 ${row}선반"><span>${col}-${row}</span>${active ? `<i class="fa-solid fa-location-dot" aria-hidden="true"></i>` : ""}</div>`;
+      slots += `<div class="mini-slot ${active ? "active" : ""}" title="${col}열 ${row}선반">${active ? `<i class="fa-solid fa-location-dot" aria-hidden="true"></i>` : ""}</div>`;
     }
   }
 
-  const ordinal = [
-    activeRow ? `아래에서 ${activeRow}번째 선반` : "",
-    activeCol ? `${orientation.originLabel}에서 ${activeCol}번째 열` : ""
-  ].filter(Boolean).join(" · ");
   const rackLabel = rackFaceLabel(document);
   const layoutKey = `mini-rack-${Math.max(0, Number(document.id) || 0)}`;
 
-  return `<style>[data-mini-rack-layout="${layoutKey}"]{--cols:${cols};--rows:${rows};--grid-min:${cols * 44}px;}</style>
-      <div class="section-title"><h2 id="rack-position-title">랙 위치 · ${document.zone_number ? `${document.zone_number}구역 ` : ""}${escapeHtml(rackLabel || document.rack_code)}번 랙</h2><span class="count-badge">${activeCol}열 ${activeRow}선반</span></div>
+  return `<style>[data-mini-rack-layout="${layoutKey}"]{--cols:${cols};--rows:${rows};--grid-min:${32 + cols * 52}px;}</style>
+      <div class="section-title"><h2 id="rack-position-title">랙 위치 · ${escapeHtml(rackLabel || document.rack_code)}번 랙</h2></div>
       <div class="mini-column-guide" data-column-origin="${orientation.origin}">
         <span>1열 · 왼쪽</span>
-        <strong>사용자 시선</strong>
         <span>${cols}열 · 오른쪽</span>
       </div>
-      <div class="mini-rack-stage">
-        <div class="mini-axis" aria-hidden="true"><span>위 ↑</span><span>아래 ↓</span></div>
-        <div class="mini-rack-scroll" data-rack-scroll tabindex="0" aria-label="랙 열과 선반 위치. 현재 위치는 ${activeCol}열 ${activeRow}선반이에요.">
-          <div class="mini-rack-grid" data-mini-rack-layout="${layoutKey}" data-column-origin="${orientation.origin}" aria-hidden="true">${slots}</div>
-        </div>
+      <div class="mini-rack-scroll" data-rack-scroll tabindex="0" aria-label="랙 열과 선반 위치. 현재 위치는 ${activeCol}열 ${activeRow}선반이에요.">
+        <div class="mini-rack-grid" data-mini-rack-layout="${layoutKey}" data-column-origin="${orientation.origin}" aria-hidden="true">${slots}</div>
       </div>
-      <p class="mini-orientation-note">${escapeHtml(orientation.description)} 선반은 아래에서 1선반부터 위로 올라가요.</p>
-      ${ordinal ? `<p class="mini-compass"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> ${escapeHtml(ordinal)}${readBoolean(document.is_single_sided) ? "" : ` · 양면 랙 ${escapeHtml(rackLabel)} 면`}</p>` : ""}
   `;
 }
 

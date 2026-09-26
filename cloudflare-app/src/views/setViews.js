@@ -15,7 +15,6 @@ export function setsPage({ session, sets, filters = {} }) {
         ${canManage ? `<a class="button" href="/sets/new">세트 만들기</a>` : ""}
       </div>
     </section>
-    <p class="muted">감사 준비문서 목록처럼 자주 찾는 문서 묶음을 저장해 두고 한눈에 관리할 수 있어요.</p>
     <section class="panel">
       <form method="get" action="/sets" class="filter-row set-list-filters">
         <label class="search-input"><span>세트 검색</span><input type="search" name="q" value="${escapeHtml(filters.q || "")}" placeholder="세트 이름 또는 설명"></label>
@@ -66,12 +65,11 @@ export function setFormPage({ session, values = {}, action, title, error = "" })
 export function setClonePage({ session, set, documentCount = 0, values = {}, error = "" }) {
   const suggestedName = values.name || `${set.name} 복사본`;
   return page("준비 문서 세트 복제", `
-    <section class="page-head"><div><h1>준비 문서 세트 복제</h1><p class="muted">원본 구성원 ${Number(documentCount).toLocaleString("ko-KR")}건을 그대로 복사하고, 새 세트는 편집할 수 있는 상태로 만들어요.</p></div></section>
+    <section class="page-head"><div><h1>준비 문서 세트 복제</h1><p class="page-sub">${escapeHtml(set.name)} · 문서 ${Number(documentCount).toLocaleString("ko-KR")}건</p></div></section>
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <dl class="detail-list">
         <div><dt>원본 세트</dt><dd>${escapeHtml(set.name)}</dd></div>
-        <div><dt>원본 버전</dt><dd>${Number(set.row_version || 0)}</dd></div>
         <div><dt>새 세트 상태</dt><dd>편집 가능</dd></div>
       </dl>
       <form method="post" action="/sets/${Number(set.id)}/clone" class="stack">
