@@ -88,7 +88,7 @@ async function renderServer(items, query, totalItems = items.length) {
   return response.text();
 }
 
-async function renderBrowser(items, query) {
+async function renderBrowser(items, query, payloadOverrides = {}) {
   const listeners = {};
   const inputListeners = {};
   const input = {
@@ -100,6 +100,7 @@ async function renderBrowser(items, query) {
   const resultsBody = { innerHTML: "" };
   const resultsTitle = { textContent: "" };
   const resultsCount = { textContent: "" };
+  const searchLive = { textContent: "" };
   const viewerApp = {
     hidden: false,
     dataset: {},
@@ -122,7 +123,8 @@ async function renderBrowser(items, query) {
     ["[data-viewer-context]", { textContent: "{}" }],
     ["[data-results-body]", resultsBody],
     ["[data-results-title]", resultsTitle],
-    ["[data-results-count]", resultsCount]
+    ["[data-results-count]", resultsCount],
+    ["[data-search-live]", searchLive]
   ]);
   const document = {
     body: { dataset: {} },
@@ -149,7 +151,8 @@ async function renderBrowser(items, query) {
         items,
         candidateCount: items.length,
         hasMore: false,
-        nextCursor: ""
+        nextCursor: "",
+        ...payloadOverrides
       })
     }),
     location: { href: "https://archive.example.com/app", pathname: "/app", search: "" },
@@ -176,6 +179,7 @@ async function renderBrowser(items, query) {
     html: resultsBody.innerHTML,
     title: resultsTitle.textContent,
     count: resultsCount.textContent,
+    live: searchLive.textContent,
     core: sandbox.SearchCore
   };
 }
@@ -201,6 +205,39 @@ test("server and browser keep the exact-code row fields and key markup", async (
   }
   assert.equal(browser.title, "보관중 문서");
   assert.equal(browser.count, "1건");
+});
+
+test("server and browser keep a candidate-window count inexact", async () => {
+  const query = "밸리데이션";
+  // 색인 재구성 중 fallback은 후보 창(최대 200건)에서 센 건수를 보낸다. 전체 건수처럼 보이면 안 된다.
+  const windowed = { candidateCount: 200, candidateCountExact: false, fallback: true };
+  const browserMore = await renderBrowser([serverItem()], query, { ...windowed, hasMore: true });
+  assert.equal(browserMore.count, "1건+");
+  assert.equal(browserMore.live, "1건을 표시했어요. 더보기로 이어서 볼 수 있어요.");
+
+  const browserLast = await renderBrowser([serverItem()], query, { ...windowed, candidateCount: 1, hasMore: false });
+  assert.equal(browserLast.count, "1건");
+  assert.equal(browserLast.live, "1건을 표시했어요.");
+
+  const response = dashboardPage({
+    session: SESSION,
+    query,
+    viewerSearch: {
+      items: [serverItem()],
+      hasMore: true,
+      candidateCount: 200,
+      candidateCountExact: false,
+      pagination: { page: 1, pageSize: 30, totalItems: 200, totalPages: 7 },
+      suggestions: []
+    },
+    categories: [],
+    tags: [],
+    filters: { sort: "relevance" }
+  });
+  const serverHtml = await response.text();
+  assert.match(serverHtml, /data-results-count>1건\+</);
+  assert.match(serverHtml, /1건을 표시했어요\. 다음 결과가 더 있어요\./);
+  assert.doesNotMatch(serverHtml, /200건/);
 });
 
 test("server and browser always keep row-only behavior for dominant and ambiguous matches", async () => {

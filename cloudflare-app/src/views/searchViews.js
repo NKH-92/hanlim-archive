@@ -56,12 +56,14 @@ export function dashboardPage({
   });
   const documents = viewerSearch.items || [];
   const suggestions = viewerSearch.suggestions || [];
-  const totalItems = viewerSearch.pagination?.totalItems ?? null;
+  // 후보 창에서 센 건수(candidateCountExact: false)는 전체 건수로 쓰지 않고 표시한 건수만 말한다.
+  const totalItems = viewerSearch.candidateCountExact === false ? null : viewerSearch.pagination?.totalItems ?? null;
+  const hasMoreItems = Boolean(viewerSearch.hasMore ?? viewerSearch.pagination?.hasMore);
   const shownItems = documents.length;
   const resultStatusText = totalItems === null
     ? !shownItems
       ? "조건에 맞는 문서가 없어요."
-      : `${shownItems.toLocaleString("ko-KR")}건을 표시했어요.${viewerSearch.pagination?.hasMore ? " 다음 결과가 더 있어요." : ""}`
+      : `${shownItems.toLocaleString("ko-KR")}건을 표시했어요.${hasMoreItems ? " 다음 결과가 더 있어요." : ""}`
     : !totalItems
       ? "검색 결과가 없어요."
       : shownItems < totalItems
@@ -69,7 +71,7 @@ export function dashboardPage({
         : `${totalItems.toLocaleString("ko-KR")}건을 찾았어요.`;
   // 건수는 결과 제목 옆 한 곳에만 둔다. 문장형 상태는 화면 읽기 프로그램에만 알린다.
   const resultCountText = totalItems === null
-    ? `${shownItems.toLocaleString("ko-KR")}건${viewerSearch.pagination?.hasMore ? "+" : ""}`
+    ? `${shownItems.toLocaleString("ko-KR")}건${hasMoreItems ? "+" : ""}`
     : `${totalItems.toLocaleString("ko-KR")}건`;
 
   // 검색 모드: 고정 열의 행 목록만 보여 주어 비교와 스캔을 우선한다.

@@ -17,6 +17,8 @@ const ENTITY_LABELS = Object.freeze({
   import_job: "CSV 가져오기(이전)"
 });
 
+// 동작 선택지는 이 목록에서만 만든다. 코드나 migration이 기록하는 동작을 빠뜨리면 그 기록을 조건으로
+// 고를 수 없으므로, systemAudit 테스트가 소스에서 기록하는 값을 모아 이 목록과 대조한다.
 const ACTION_LABELS = Object.freeze({
   create: "추가",
   update: "수정",
@@ -24,16 +26,23 @@ const ACTION_LABELS = Object.freeze({
   revision: "개정",
   dispose: "폐기",
   restore: "폐기 복구",
+  prepare: "변경 검토",
+  validation_failed: "검증 실패",
   apply: "반영",
+  stale: "반영 충돌",
   start: "시작",
-  process: "처리",
   freeze: "동결",
-  finalize: "확정",
+  exclude: "대상 제외",
+  include: "대상 재포함",
   complete: "완료",
   cancel: "취소",
+  clone: "복제",
+  lock: "편집 잠금",
+  unlock: "잠금 해제",
   approve: "승인",
   reject: "반려",
   create_approved: "승인 사용자 추가",
+  profile_update: "프로필 수정",
   disable: "계정 사용중지",
   enable: "계정 다시 사용",
   deactivate: "기준정보 사용중지",
