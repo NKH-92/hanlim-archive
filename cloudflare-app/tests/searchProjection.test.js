@@ -306,6 +306,7 @@ test("Core projection 검색은 정확 일치·퍼지·cursor·열화 판정 계
     // 재색인 완료 전에는 색인 없는 Core 퍼지 응답이므로 열화로 표시한다.
     const beforeReady = await getViewerSearchPayload(env, { q: "2026", limit: 30 });
     assert.equal(beforeReady.fallback, true);
+    assert.equal(beforeReady.candidateCountExact, false, "후보 창에서 센 fallback 건수는 전체 건수로 보내지 않는다");
 
     await readyProjection(env);
     const ready = { DB: sqliteD1(database) };
@@ -316,12 +317,14 @@ test("Core projection 검색은 정확 일치·퍼지·cursor·열화 판정 계
     assert.equal(first.hasMore, true);
     assert.ok(first.nextCursor);
     assert.equal(first.fallback, false);
+    assert.equal(first.candidateCountExact, true);
 
     const exactName = await getViewerSearchPayload(ready, {
       q: "2026년 1분기 제조기록서",
       limit: 30
     });
     assert.equal(exactName.pagination.totalItems, 1);
+    assert.equal(exactName.candidateCountExact, true);
     assert.deepEqual(exactName.items.map((item) => item.documentNumber), ["MR-2026-001"]);
     assert.equal(exactName.items[0].matchReason, "문서명 정확히 일치");
 
@@ -332,6 +335,7 @@ test("Core projection 검색은 정확 일치·퍼지·cursor·열화 판정 계
       ["PV-2026-014"],
       "projection 후보 뒤 Core 퍼지 점수로 무관한 n-gram 후보를 제거한다"
     );
+    assert.equal(fuzzy.candidateCountExact, true, "후보가 상한보다 적으면 퍼지 건수도 전체 건수다");
 
     database.prepare("UPDATE search_projection_state SET generation = generation + 1 WHERE id = 1").run();
     const stale = await getViewerSearchPayload(ready, { q: "2026", limit: 1, cursor: first.nextCursor });
@@ -412,6 +416,7 @@ test("필터 전용 검색은 총건수 미계산 상태에서도 opaque cursor�
     assert.equal(first.items.length, 30);
     assert.equal(first.pagination.totalItems, null);
     assert.equal(first.candidateCount, null);
+    assert.equal(first.candidateCountExact, false);
     assert.equal(first.hasMore, true);
     assert.ok(first.nextCursor);
 
@@ -468,8 +473,51 @@ test("projection 검색은 200건을 넘는 결과의 정확한 페이지·전�
     assert.equal(payload.pagination.page, 3);
     assert.equal(payload.pagination.totalItems, 250);
     assert.equal(payload.pagination.totalPages, 9);
+    assert.equal(payload.candidateCountExact, true, "문자 그대로 일치한 건수는 200건을 넘어도 전체 건수다");
     assert.equal(payload.facets.categories.reduce((sum, item) => sum + Number(item.count), 0), 250);
     assert.equal(payload.facets.statuses.find((item) => item.value === "active")?.count, 250);
+  } finally {
+    database.close();
+  }
+});
+
+test("퍼지 검색 후보가 상한을 채우면 건수를 전체 건수로 보내지 않는다", async () => {
+  const database = await createMigratedDatabase();
+  const env = { DB: sqliteD1(database) };
+  try {
+    database.exec(`
+      WITH RECURSIVE sequence(value) AS (
+        SELECT 1
+        UNION ALL
+        SELECT value + 1 FROM sequence WHERE value < 250
+      )
+      INSERT INTO documents (
+        storage_code, category_id, document_number, revision_number, document_name,
+        rack_slot_id, rack_face, status, sync_state
+      )
+      SELECT
+        'ARC-FUZZY-' || printf('%03d', sequence.value),
+        source.category_id,
+        'FUZZY-' || printf('%03d', sequence.value),
+        'Rev.0',
+        '밸리데이션 공통 문서 ' || sequence.value,
+        source.rack_slot_id,
+        source.rack_face,
+        'active',
+        'current'
+      FROM sequence
+      CROSS JOIN (SELECT category_id, rack_slot_id, rack_face FROM documents ORDER BY id LIMIT 1) source;
+    `);
+    await readyProjection(env);
+    const ready = { DB: sqliteD1(database) };
+
+    // 오타 검색어는 문자 그대로 일치하는 문서가 없어 퍼지 후보 창(최대 200건)에서만 센다.
+    const payload = await getViewerSearchPayload(ready, { q: "밸리데이선", limit: 30 });
+    assert.equal(payload.ok, true);
+    assert.equal(payload.fallback, false);
+    assert.equal(payload.items.length, 30);
+    assert.ok(payload.candidateCount <= 200);
+    assert.equal(payload.candidateCountExact, false);
   } finally {
     database.close();
   }

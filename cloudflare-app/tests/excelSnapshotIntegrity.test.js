@@ -450,14 +450,17 @@ test("미리보기 UI는 제외 목록과 before/after를 포함한다", async (
 
   assert.match(html, /제외문서/);
   assert.match(html, /대장 제외 예정/);
-  assert.match(html, /documentName: 이전/);
-  assert.match(html, /documentName: 이후/);
+  // 변경 전후는 내부 키 대신 엑셀 열 이름으로 보여 준다.
+  assert.match(html, /문서명: 이전/);
+  assert.match(html, /문서명: 이후/);
+  assert.doesNotMatch(html, /documentName: |rackSlotId/);
   assert.match(html, /name="applyReason"/);
   assert.match(html, /name="confirmedExcludeCount"/);
   assert.match(html, /EXCLUSION/);
   assert.match(html, /LARGE_CHANGE/);
   assert.match(html, /snapshot-warnings/);
-  assert.match(html, /Identity 변경/);
+  // 0건인 지표(번호·개정 변경 등)는 표시하지 않는다.
+  assert.doesNotMatch(html, /Identity 변경|번호·개정 변경/);
   assert.match(html, /세트/);
   assert.match(html, /최근 이동/);
   assert.match(html, /\/document-snapshots\/9\/cancel/);

@@ -488,7 +488,8 @@ window.HanlimResults = { resultRow, resultTable };
       var currentUrl = new URL(location.href);
       var parentNavigation = /^\/documents\/\d+(?:\/|$)/.test(currentPath) ? '/app'
         : currentPath.startsWith('/document-snapshots/') ? '/documents/import'
-        : currentPath.startsWith('/disposal-batches') ? '/documents/disposal' : '';
+        : currentPath.startsWith('/disposal-batches') ? '/documents/disposal'
+        : currentPath.startsWith('/admin/users/') || currentPath.startsWith('/admin/role-templates') ? '/admin/settings' : '';
       var activeNavItems = Array.from(document.querySelectorAll('.archive-nav-item, .nav-sub-link, [data-command-item]')).filter(function (item) {
         var href = item.getAttribute('href') || '';
         if (!href) return false;
@@ -506,21 +507,27 @@ window.HanlimResults = { resultRow, resultTable };
         if (item.getAttribute('href') === activeHref) { item.classList.add('active'); item.setAttribute('aria-current', 'page'); }
       });
 
-      // 검색·위치는 항상 보이고, 접힌 업무 그룹은 현재 화면과 사용자가 열어 둔 상태를 반영한다.
-      var storedNavigationGroups = [];
+      // 검색·위치는 항상 보인다. 그룹은 현재 화면이 속하면 열고, 그 밖에는 사용자가 마지막으로 둔 상태,
+      // 기억한 상태가 없으면 서버가 정한 기본값(업무는 펼침)을 따른다. 이전 배열 형식 값은 무시한다.
+      var storedNavigationGroups = {};
       try {
-        storedNavigationGroups = JSON.parse(localStorage.getItem('hanlimNavigationGroups') || '[]');
-        if (!Array.isArray(storedNavigationGroups)) storedNavigationGroups = [];
-      } catch { storedNavigationGroups = []; }
+        var parsedNavigationGroups = JSON.parse(localStorage.getItem('hanlimNavigationGroups') || '{}');
+        storedNavigationGroups = parsedNavigationGroups && typeof parsedNavigationGroups === 'object' && !Array.isArray(parsedNavigationGroups) ? parsedNavigationGroups : {};
+      } catch { storedNavigationGroups = {}; }
       var navigationGroups = Array.from(document.querySelectorAll('[data-nav-group]'));
       navigationGroups.forEach(function (group) {
         var key = group.getAttribute('data-nav-group') || '';
         var hasActiveItem = Boolean(group.querySelector('.archive-nav-item.active, .nav-sub-link.active'));
+        var remembered = storedNavigationGroups[key];
         group.classList.toggle('has-active', hasActiveItem);
-        group.open = hasActiveItem || storedNavigationGroups.includes(key);
+        group.open = hasActiveItem || (typeof remembered === 'boolean' ? remembered : group.getAttribute('data-nav-default') === 'open');
         group.addEventListener('toggle', function () {
-          var opened = navigationGroups.filter(function (item) { return item.open; }).map(function (item) { return item.getAttribute('data-nav-group') || ''; }).filter(Boolean);
-          try { localStorage.setItem('hanlimNavigationGroups', JSON.stringify(opened)); } catch {}
+          var state = {};
+          navigationGroups.forEach(function (item) {
+            var itemKey = item.getAttribute('data-nav-group') || '';
+            if (itemKey) state[itemKey] = item.open;
+          });
+          try { localStorage.setItem('hanlimNavigationGroups', JSON.stringify(state)); } catch {}
         });
       });
 
@@ -859,14 +866,18 @@ window.HanlimResults = { resultRow, resultTable };
             resultsBody.insertAdjacentHTML('beforeend', '<nav class="pagination"><button type="button" class="button secondary sm" data-search-more>더보기</button></nav>');
           }
           if (resultsTitle) resultsTitle.textContent = '보관중 문서';
-          var hasKnownTotal = payload.candidateCount !== null && payload.candidateCount !== undefined;
+          // 서버가 전체 건수라고 밝힌 값만 "N건"으로 보여 준다. 후보 창에서 센 값(candidateCountExact: false)은
+          // 표시한 건수에 "+"를 붙이고, 모두 표시했다고 알리지 않는다.
+          var hasKnownTotal = payload.candidateCount !== null && payload.candidateCount !== undefined && payload.candidateCountExact !== false;
           var totalFound = hasKnownTotal ? Number(payload.candidateCount) : currentItems.length;
-          if (resultsCount) resultsCount.textContent = currentItems.length.toLocaleString('ko-KR') + '건 표시' + (payload.hasMore ? ' · 더 있음' : '');
+          if (resultsCount) resultsCount.textContent = hasKnownTotal
+            ? totalFound.toLocaleString('ko-KR') + '건'
+            : currentItems.length.toLocaleString('ko-KR') + '건' + (payload.hasMore ? '+' : '');
           if (searchLive) {
             searchLive.textContent = !currentItems.length
               ? '검색 결과가 없어요.'
-              : !hasKnownTotal && payload.hasMore
-                ? currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요. 더보기로 이어서 볼 수 있어요.'
+              : !hasKnownTotal
+                ? currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요.' + (payload.hasMore ? ' 더보기로 이어서 볼 수 있어요.' : '')
                 : currentItems.length < totalFound
                 ? totalFound.toLocaleString('ko-KR') + '건 중 ' + currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요. 더보기로 이어서 볼 수 있어요.'
                 : totalFound.toLocaleString('ko-KR') + '건을 모두 표시했어요.';

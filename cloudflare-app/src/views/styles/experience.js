@@ -40,7 +40,7 @@ export function experienceStyles() {
     .workflow-step { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--sp-2); align-items: center; min-width: 0; }
     .workflow-step:not(:last-child)::after { content: ""; position: absolute; top: 14px; left: 38px; right: var(--sp-2); height: 1px; background: var(--line); }
     .workflow-step-index { position: relative; z-index: 1; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: var(--gray-100); color: var(--gray-500); font-size: 12px; font-weight: 800; }
-    .workflow-step strong { display: block; font-size: 12.5px; }
+    .workflow-step strong { display: block; font-size: var(--text-meta); }
     .workflow-step small { display: block; color: var(--gray-500); font-size: 11.5px; }
     .workflow-step.is-complete .workflow-step-index { background: var(--success-soft); color: var(--success); }
     .workflow-step.is-current .workflow-step-index { background: var(--primary); color: var(--surface); box-shadow: 0 0 0 3px var(--ring); }
@@ -52,7 +52,7 @@ export function experienceStyles() {
     .permission-current span, .permission-diff p { margin: 0; color: var(--gray-600); }
     .permission-added { color: var(--success) !important; }
     .permission-removed { color: var(--danger) !important; }
-    .login-help { display: grid; gap: var(--sp-1); margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--line); font-size: 12.5px; }
+    .login-help { display: grid; gap: var(--sp-1); margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--line); font-size: var(--text-meta); }
     .login-help p { margin: 0; }
     .mobile-filter-toggle { display: none; margin-bottom: var(--sp-2); }
     .disposal-review-actions { display: grid; gap: var(--sp-3); margin-top: var(--sp-4); }
@@ -66,9 +66,6 @@ export function experienceStyles() {
     .admin-status-copy { display: grid; gap: var(--sp-2); }
     .admin-status-copy h2, .admin-status-copy p { margin: 0; }
     .admin-status-copy .action-button { justify-self: start; margin-top: var(--sp-1); }
-    .admin-status-count { min-width: 112px; padding-left: var(--sp-4); border-left: 1px solid var(--line); text-align: center; }
-    .admin-status-count strong { display: block; color: var(--gray-900); font-size: 28px; line-height: 1.2; }
-    .admin-status-count span { color: var(--gray-600); font-size: 12px; font-weight: 600; }
     .management-section { padding: 0; overflow: hidden; }
     .management-heading { padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--line); }
     .management-heading p { margin: var(--sp-1) 0 0; }
@@ -110,7 +107,7 @@ export function experienceStyles() {
       .mobile-filter-dialog .viewer-filter-row { grid-template-columns: 1fr; }
       .mobile-filter-dialog .viewer-filter-row > .button { display: none; }
       .revision-source-summary { grid-template-columns: 1fr; }
-      .topbar .brand small, .topbar .command-trigger { display: none; }
+      .topbar .command-trigger { display: none; }
       .topbar .brand-logo { width: 48px; height: 34px; }
       .document-detail-head { grid-template-columns: minmax(0, 1fr); max-inline-size: none; }
       .document-detail-head .breadcrumb { display: flex; align-items: center; margin: 0; }
@@ -133,9 +130,6 @@ export function experienceStyles() {
       .detail-action-groups .button, .detail-action-groups button { width: 100%; justify-content: center; min-height: 44px; }
       .doc-floor-plan .floor-plan-tools { align-items: stretch; flex-direction: column; }
       .doc-floor-plan .floor-plan-tools .button { width: 100%; justify-content: center; min-height: 44px; }
-      .mini-column-guide { gap: var(--sp-2); }
-      .mini-column-guide strong { padding-inline: var(--sp-2); }
-      .mini-compass { display: flex; border-radius: var(--r-md); line-height: 1.45; }
       .admin-status-panel { align-items: flex-start; }
       .workflow-stepper { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: var(--sp-2); overflow: hidden; padding: var(--sp-3) var(--sp-2); }
       .workflow-step { grid-template-columns: 24px; justify-items: center; text-align: center; }

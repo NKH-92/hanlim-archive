@@ -1,32 +1,57 @@
 import { escapeHtml } from "../../../ui/html/escape.js";
 import { page, paginationNav } from "../../../views/layout.js";
 
+// 감사 이력에 저장되는 대상·동작 값(영문 키)을 화면과 조회 조건에서는 한국어로만 보여 준다.
 const ENTITY_LABELS = Object.freeze({
+  document: "문서",
+  document_snapshot: "엑셀 대장 동기화",
+  disposal_batch: "폐기 캠페인",
+  document_set: "문서 세트",
   user: "사용자",
+  user_role_template: "역할 템플릿",
   category: "대분류",
   tag: "태그",
   rack: "랙",
-  disposal_batch: "폐기 캠페인",
-  document: "문서",
-  document_set: "문서 세트",
-  import_job: "CSV 가져오기"
+  rack_configuration: "구역별 랙 수",
+  document_import_job: "CSV 가져오기",
+  import_job: "CSV 가져오기(이전)"
 });
 
+// 동작 선택지는 이 목록에서만 만든다. 코드나 migration이 기록하는 동작을 빠뜨리면 그 기록을 조건으로
+// 고를 수 없으므로, systemAudit 테스트가 소스에서 기록하는 값을 모아 이 목록과 대조한다.
 const ACTION_LABELS = Object.freeze({
-  approve: "승인",
-  reject: "반려",
-  disable: "사용중지",
-  enable: "다시 사용",
-  permissions_update: "권한 변경",
   create: "추가",
   update: "수정",
-  deactivate: "사용중지",
-  reactivate: "다시 사용",
-  freeze: "동결",
-  cancel: "취소",
-  complete: "완료",
   move: "위치 이동",
+  revision: "개정",
+  dispose: "폐기",
   restore: "폐기 복구",
+  prepare: "변경 검토",
+  validation_failed: "검증 실패",
+  apply: "반영",
+  stale: "반영 충돌",
+  start: "시작",
+  freeze: "동결",
+  exclude: "대상 제외",
+  include: "대상 재포함",
+  complete: "완료",
+  cancel: "취소",
+  clone: "복제",
+  lock: "편집 잠금",
+  unlock: "잠금 해제",
+  approve: "승인",
+  reject: "반려",
+  create_approved: "승인 사용자 추가",
+  profile_update: "프로필 수정",
+  disable: "계정 사용중지",
+  enable: "계정 다시 사용",
+  deactivate: "기준정보 사용중지",
+  reactivate: "기준정보 다시 사용",
+  permissions_update: "권한 변경",
+  password_reset: "비밀번호 초기화",
+  role_template_update: "역할 템플릿 수정",
+  role_template_apply: "역할 템플릿 반영",
+  delete: "삭제",
   delete_permanent: "완전삭제"
 });
 
@@ -34,10 +59,9 @@ export function auditPage({ session, items = [], filters = {}, pagination = { pa
   const currentPage = Number(pagination.page || 1);
   const totalPages = Math.max(1, Number(pagination.totalPages || 1));
   const totalItems = Number(pagination.totalItems || 0);
-  return page("전역 감사로그", `
+  return page("감사 이력", `
     <section class="page-head">
-      <div><h1>전역 감사로그</h1><p class="muted">중요한 관리 작업을 누가 했고 값이 어떻게 바뀌었는지 확인할 수 있어요.</p></div>
-      <a class="button secondary" href="/admin">관리 설정</a>
+      <h1>감사 이력</h1>
     </section>
     ${auditFilterForm(filters)}
     <section class="panel">
@@ -57,18 +81,25 @@ function auditFilterForm(filters) {
       <label>시작일<input type="date" name="from" value="${escapeHtml(filters.from || "")}"></label>
       <label>종료일<input type="date" name="to" value="${escapeHtml(filters.to || "")}"></label>
       <label>행위자<input name="actor" value="${escapeHtml(filters.actor || "")}" placeholder="아이디 또는 이름"></label>
-      <label>대상 유형<input name="entityType" value="${escapeHtml(filters.entityType || "")}" placeholder="user, rack ..."></label>
-      <label>동작 유형<input name="action" value="${escapeHtml(filters.action || "")}" placeholder="approve, update ..."></label>
+      <label>대상<select name="entityType">${labelOptions(ENTITY_LABELS, filters.entityType)}</select></label>
+      <label>동작<select name="action">${labelOptions(ACTION_LABELS, filters.action)}</select></label>
       <label>참조번호<input name="reference" value="${escapeHtml(filters.reference || "")}" placeholder="문서번호 또는 참조번호"></label>
       <div class="button-group"><button type="submit" class="button">조회</button><a class="button secondary" href="/admin/audit">초기화</a></div>
     </form>
   `;
 }
 
+// 목록에 없는 현재 조건 값(과거 기록의 동작 등)은 그대로 보존해 조회 조건이 사라지지 않게 한다.
+function labelOptions(labels, selected = "") {
+  const options = Object.entries(labels);
+  if (selected && !labels[selected]) options.push([selected, selected]);
+  return `<option value="">전체</option>${options.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}`;
+}
+
 function auditTable(items) {
   return `
     <div class="table-wrap"><table>
-      <caption class="sr-only">전역 감사로그 목록</caption>
+      <caption class="sr-only">감사 이력 목록</caption>
       <thead><tr><th>일시</th><th>행위자</th><th>대상</th><th>동작</th><th>요약</th><th>상세</th></tr></thead>
       <tbody>${items.map((item) => `
         <tr>

@@ -35,7 +35,7 @@ test("masters 수정·사용중지 폼은 동일한 expectedRowVersion을 제출
   assert.equal((html.match(/name="expectedRowVersion" value="7"/g) || []).length, 2);
 });
 
-test("대분류 관리는 정렬 숫자 대신 필요한 기능과 확장 가능한 목록을 제공한다", async () => {
+test("대분류 관리는 정렬 숫자와 설명 문단 없이 확장 가능한 목록을 제공한다", async () => {
   const response = masters.categoriesPage({
     session: { username: "admin", displayName: "관리자", role: "Admin", csrfToken: "csrf-token-123" },
     categories: [
@@ -46,8 +46,9 @@ test("대분류 관리는 정렬 숫자 대신 필요한 기능과 확장 가능
   const html = await response.text();
 
   assert.match(html, /class="page-head master-page-head"/);
-  assert.match(html, /<strong>필요한 기능<\/strong>/);
-  assert.match(html, /찾기 · 추가 · 이름과 설명 수정 · 사용중지와 다시 사용/);
+  // 구현 메모 같은 기능 목록·화면 설명 문단을 두지 않고, 예외 상태(사용중지)만 배지로 표시한다.
+  assert.doesNotMatch(html, /필요한 기능|master-head-guide|분류 이름을 관리해요|이름순으로 보여드려요|>사용 중</);
+  assert.equal((html.match(/class="status master-inactive">사용중지</g) || []).length, 1);
   assert.match(html, /data-master-search/);
   assert.match(html, /data-master-inactive-toggle/);
   assert.match(html, /data-master-row data-master-active="true"/);
@@ -67,6 +68,30 @@ test("태그 수정 입력란은 각 태그 이름을 포함한 접근 가능한
 
   assert.match(html, /name="name" value="중요문서" aria-label="중요문서 태그 이름"/);
   assert.match(html, /name="description" value="우선 관리" aria-label="중요문서 태그 설명"/);
+});
+
+test("태그 관리는 대분류와 같이 목록에서 펼쳐 수정하고, 수정 저장이 사용 상태를 바꾸지 않는다", async () => {
+  const response = masters.tagsPage({
+    session: { username: "admin", displayName: "관리자", role: "Admin", csrfToken: "csrf-token-123" },
+    tags: [
+      { id: 3, name: "중요문서", description: "우선 관리", is_active: 1, row_version: 7 },
+      { id: 4, name: "이전태그", description: "", is_active: 0, row_version: 2 }
+    ]
+  });
+  const html = await response.text();
+
+  assert.match(html, /<h1>태그 관리<\/h1>/);
+  assert.match(html, /data-master-management/);
+  assert.match(html, /data-master-search/);
+  assert.equal((html.match(/<details class="category-master-item" data-master-row/g) || []).length, 2);
+  // 행마다 열린 입력 폼과 빨간 사용중지 버튼을 늘어놓지 않는다.
+  assert.doesNotMatch(html, /class="master-row"|class="master-form"/);
+  // 사용 중인 태그의 수정 폼은 사용 상태를 유지하도록 isActive를 함께 보낸다.
+  const activeEdit = html.match(/<form method="post" action="\/tags\/3\/edit"[\s\S]*?<\/form>/)?.[0] || "";
+  assert.match(activeEdit, /name="isActive" value="1"/);
+  assert.match(html, /action="\/tags\/3\/delete"/);
+  assert.match(html, /<form method="post" action="\/tags\/4\/edit">[\s\S]*?name="isActive" value="1"[\s\S]*?다시 사용/);
+  assert.equal((html.match(/class="status master-inactive">사용중지</g) || []).length, 1);
 });
 
 test("masters의 SQL은 infrastructure에만 존재한다", async () => {

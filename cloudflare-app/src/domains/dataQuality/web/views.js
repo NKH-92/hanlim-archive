@@ -3,7 +3,7 @@
 import { locationLabel } from "../../racks/index.js";
 import { escapeHtml } from "../../../ui/html/escape.js";
 import { formatRevisionLabel } from "../../../shared/documents/revision.js";
-import { emptyState, page, paginationNav, sectionHeader, statusBadge } from "../../../views/layout.js";
+import { emptyState, page, pageHead, paginationNav, sectionHeader, statusBadge } from "../../../views/layout.js";
 
 export function dataQualityPage({ session, result }) {
   const issueLinks = result.issues.map(({ key, label }) =>
@@ -12,7 +12,7 @@ export function dataQualityPage({ session, result }) {
   const previousUrl = `/admin/data-quality?issue=${result.issue}&page=${Math.max(1, result.page - 1)}`;
   const nextUrl = `/admin/data-quality?issue=${result.issue}&page=${Math.min(result.totalPages, result.page + 1)}`;
   return page("데이터 품질", `
-    <section class="page-head"><div><h1>데이터 품질 작업목록</h1><p class="page-sub">문제 건수에서 실제 문서로 이동해 원인을 확인하고 수정할 수 있어요.</p></div><a class="button secondary" href="/admin">관리 설정</a></section>
+    ${pageHead({ title: "데이터 품질 작업목록", parent: { href: "/admin", label: "운영 관리" } })}
     <nav class="quality-issue-nav" aria-label="데이터 품질 문제 유형">${issueLinks}</nav>
     <section class="panel">
       ${sectionHeader(result.label, `${result.totalItems}건`)}

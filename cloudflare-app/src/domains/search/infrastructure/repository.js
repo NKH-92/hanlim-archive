@@ -417,6 +417,8 @@ async function getFuzzyProjectionViewerPage(env, query, filters, filter, express
   return {
     documents: documents.slice(offset, offset + pageSize),
     totalItems: documents.length,
+    // 후보를 상한까지 채웠다면 상한 밖에도 일치 문서가 있을 수 있다.
+    totalExact: ids.length < FREE_TIER_BUDGET.searchCandidateMaxItems,
     ...(includeFacets ? { facets: buildViewerFacets(documents) } : {})
   };
 }
@@ -660,6 +662,8 @@ export function buildViewerFacets(documents) {
   };
 }
 
+// candidateCountExact는 candidateCount가 조건에 맞는 전체 건수일 때만 true다. 후보 창(최대
+// searchCandidateMaxItems)에서 센 건수는 false로 보내 화면이 "N건" 대신 "N건+"로 보여 주게 한다.
 export async function getViewerSearchPayload(env, params = {}, { includeFacets = true, includeCursor = true } = {}) {
   const query = clean(params.q || params.query);
   const rawPageSize = Number(params.pageSize);
@@ -695,6 +699,7 @@ export async function getViewerSearchPayload(env, params = {}, { includeFacets =
       hasMore: window.hasMore,
       nextCursor: includeCursor && window.hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null,
       candidateCount: totalItems,
+      candidateCountExact: totalItems !== null,
       ...(includeCursor ? { indexGeneration: generation } : {}),
       pagination: {
         page,
@@ -718,6 +723,7 @@ export async function getViewerSearchPayload(env, params = {}, { includeFacets =
       nextCursor: includeCursor && hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null,
       hasMore,
       candidateCount: exactNamePage.totalItems,
+      candidateCountExact: true,
       ...(includeCursor ? { indexGeneration: generation } : {}),
       fallback: false,
       pagination: {
@@ -741,6 +747,7 @@ export async function getViewerSearchPayload(env, params = {}, { includeFacets =
       nextCursor: includeCursor && hasMore ? encodeSearchCursor({ fingerprint, generation, offset: nextOffset }) : null,
       hasMore,
       candidateCount: indexedPage.totalItems,
+      candidateCountExact: indexedPage.totalExact !== false,
       ...(includeCursor ? { indexGeneration: generation } : {}),
       fallback: false,
       pagination: {
@@ -773,6 +780,8 @@ export async function getViewerSearchPayload(env, params = {}, { includeFacets =
     nextCursor,
     hasMore,
     candidateCount: Math.min(allDocuments.length, FREE_TIER_BUDGET.searchCandidateMaxItems),
+    // fallback 경로는 최근 수정순 후보 창과 최대 건수 안에서만 세므로 전체 건수로 보지 않는다.
+    candidateCountExact: false,
     ...(includeCursor ? { indexGeneration: generation } : {}),
     fallback: await isSearchIndexDegraded(env),
     pagination: {

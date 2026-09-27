@@ -268,14 +268,18 @@ export function instantSearchScript() {
             resultsBody.insertAdjacentHTML('beforeend', '<nav class="pagination"><button type="button" class="button secondary sm" data-search-more>더보기</button></nav>');
           }
           if (resultsTitle) resultsTitle.textContent = '보관중 문서';
-          var hasKnownTotal = payload.candidateCount !== null && payload.candidateCount !== undefined;
+          // 서버가 전체 건수라고 밝힌 값만 "N건"으로 보여 준다. 후보 창에서 센 값(candidateCountExact: false)은
+          // 표시한 건수에 "+"를 붙이고, 모두 표시했다고 알리지 않는다.
+          var hasKnownTotal = payload.candidateCount !== null && payload.candidateCount !== undefined && payload.candidateCountExact !== false;
           var totalFound = hasKnownTotal ? Number(payload.candidateCount) : currentItems.length;
-          if (resultsCount) resultsCount.textContent = currentItems.length.toLocaleString('ko-KR') + '건 표시' + (payload.hasMore ? ' · 더 있음' : '');
+          if (resultsCount) resultsCount.textContent = hasKnownTotal
+            ? totalFound.toLocaleString('ko-KR') + '건'
+            : currentItems.length.toLocaleString('ko-KR') + '건' + (payload.hasMore ? '+' : '');
           if (searchLive) {
             searchLive.textContent = !currentItems.length
               ? '검색 결과가 없어요.'
-              : !hasKnownTotal && payload.hasMore
-                ? currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요. 더보기로 이어서 볼 수 있어요.'
+              : !hasKnownTotal
+                ? currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요.' + (payload.hasMore ? ' 더보기로 이어서 볼 수 있어요.' : '')
                 : currentItems.length < totalFound
                 ? totalFound.toLocaleString('ko-KR') + '건 중 ' + currentItems.length.toLocaleString('ko-KR') + '건을 표시했어요. 더보기로 이어서 볼 수 있어요.'
                 : totalFound.toLocaleString('ko-KR') + '건을 모두 표시했어요.';

@@ -2,6 +2,11 @@
 
 const ICONS = Object.freeze({
   search: `<path d="M11 4a7 7 0 1 0 4.9 12l4 4 1.4-1.4-4-4A7 7 0 0 0 11 4Zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z"/>`,
+  filter: `<path d="M3 5h18v2H3V5Zm11-2h3v6h-3V3ZM3 11h18v2H3v-2Zm3-2h3v6H6V9Zm-3 8h18v2H3v-2Zm12-2h3v6h-3v-6Z"/>`,
+  gauge: `<path d="M12 4a9 9 0 0 0-7.2 14.4l1.6-1.2A7 7 0 1 1 19 13a7 7 0 0 1-1.4 4.2l1.6 1.2A9 9 0 0 0 12 4Zm4.6 4.8-5.4 4.1a1.6 1.6 0 1 0 1.9 1.9l3.5-6Z"/>`,
+  disposedFile: `<path d="M6 2h8l5 5v6h-2V8h-4V4H8v16h6v2H6V2Zm10.6 13.2 1.9 1.9 1.9-1.9 1.4 1.4-1.9 1.9 1.9 1.9-1.4 1.4-1.9-1.9-1.9 1.9-1.4-1.4 1.9-1.9-1.9-1.9 1.4-1.4Z"/>`,
+  stack: `<path d="M8 3h12v12h-2V5H8V3ZM4 7h12v14H4V7Zm2 2v10h8V9H6Z"/>`,
+  crosshairs: `<path d="M11 2h2v3.1a7 7 0 0 1 5.9 5.9H22v2h-3.1a7 7 0 0 1-5.9 5.9V22h-2v-3.1A7 7 0 0 1 5.1 13H2v-2h3.1A7 7 0 0 1 11 5.1V2Zm1 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/>`,
   archive: `<path d="M4 4h16v4H4V4Zm1 6h14v10H5V10Zm4 3v2h6v-2H9Z"/>`,
   document: `<path d="M6 3h8l4 4v14H6V3Zm8 2v4h4M9 13h6M9 17h6" fill="none" stroke="black" stroke-width="2"/>`,
   settings: `<path d="M10 2h4l1 3 3 1 3-1 2 4-2 2v3l2 2-2 4-3-1-3 1-1 3h-4l-1-3-3-1-3 1-2-4 2-2v-3L1 9l2-4 3 1 3-1 1-3Zm2 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/>`,
@@ -54,7 +59,8 @@ function dataUrl(body) {
 
 export function iconStyles() {
   const groups = {
-    search: ["magnifying-glass", "sliders"],
+    search: ["magnifying-glass"],
+    filter: ["sliders"],
     archive: ["box-archive", "building-columns", "folder-open"],
     document: ["file-lines", "file-csv"],
     spreadsheet: ["file-excel"],
@@ -73,7 +79,11 @@ export function iconStyles() {
     grid: ["table-cells-large"],
     checklist: ["list-check"],
     copy: ["copy", "print"],
-    location: ["location-dot", "location-crosshairs"],
+    location: ["location-dot"],
+    crosshairs: ["location-crosshairs"],
+    gauge: ["gauge"],
+    disposedFile: ["file-circle-xmark"],
+    stack: ["clone"],
     database: ["database"],
     tree: ["folder-tree"],
     columns: ["table-columns"],

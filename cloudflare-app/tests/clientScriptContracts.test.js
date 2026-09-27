@@ -98,7 +98,7 @@ test("명령 팔레트는 키보드 이동과 포커스 복귀 계약을 유지�
   assert.match(script, /scrollIntoView\(\{ block: 'nearest' \}\)/);
 });
 
-test("접이식 내비게이션은 현재 그룹을 열고 사용자가 연 상태를 기억한다", () => {
+test("접이식 내비게이션은 현재 그룹을 열고 사용자가 둔 열림·접힘 상태와 기본값을 따른다", () => {
   const script = clientScriptModule.clientScript();
 
   assert.match(script, /var currentUrl = new URL\(location\.href\)/);
@@ -107,7 +107,7 @@ test("접이식 내비게이션은 현재 그룹을 열고 사용자가 연 상�
   assert.match(script, /hanlimNavigationGroups/);
   assert.match(script, /document\.querySelectorAll\('\[data-nav-group\]'\)/);
   assert.match(script, /group\.classList\.toggle\('has-active', hasActiveItem\)/);
-  assert.match(script, /group\.open = hasActiveItem \|\| storedNavigationGroups\.includes\(key\)/);
+  assert.match(script, /group\.open = hasActiveItem \|\| \(typeof remembered === 'boolean' \? remembered : group\.getAttribute\('data-nav-default'\) === 'open'\)/);
   assert.match(script, /group\.addEventListener\('toggle'/);
   assert.match(script, /localStorage\.setItem\('hanlimNavigationGroups'/);
 });

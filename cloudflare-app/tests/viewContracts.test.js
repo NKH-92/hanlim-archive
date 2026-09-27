@@ -68,7 +68,9 @@ test("관리자 dashboard는 전문 도구를 권한별 고급 영역에 두고 
     pendingCount: 0
   }), "운영 관리");
   assert.match(documentHtml, /<section class="panel management-section is-advanced">/);
-  assert.match(documentHtml, /관리자 고급 도구[\s\S]*<span class="count-badge">고급<\/span>/);
+  assert.match(documentHtml, /<h2>관리자 고급 도구<\/h2>/);
+  // 그룹 제목이 이미 말하는 내용을 설명 문단·배지로 되풀이하지 않는다.
+  assert.doesNotMatch(documentHtml, /<span class="count-badge">고급<\/span>|일상 업무와 분리한|한곳에서 확인할 수 있어요|admin-status-count/);
   assert.match(documentHtml, /href="\/document-import-jobs"[\s\S]*CSV 가져오기/);
   assert.match(documentHtml, /href="\/admin\/data-quality"[\s\S]*데이터 품질/);
   assert.match(documentHtml, /데이터 및 감사[\s\S]*href="\/documents\/import"[\s\S]*엑셀 대장 동기화/);
@@ -94,7 +96,7 @@ test("랙 목록·설정·상세·폼은 위치 구조와 입력 계약을 공�
     session: admin,
     racks: [{ id: 7, zone_number: 1, rack_number: 2, code: `1-02<script>bad()</script>`, is_single_sided: 0, active_document_count: 3 }]
   }), "랙 관리");
-  assert.match(list, /<h1>보관 랙 목록<\/h1>/);
+  assert.match(list, /<h1>랙 관리<\/h1>/);
   assert.match(list, /href="\/racks\/7"/);
   assert.match(list, /1-02&lt;script&gt;bad\(\)&lt;\/script&gt;/);
   assert.doesNotMatch(list, /<script>bad\(\)<\/script>/);
@@ -111,11 +113,12 @@ test("랙 목록·설정·상세·폼은 위치 구조와 입력 계약을 공�
     selectedFace: "B"
   }), "1-02 랙");
   assert.match(details, /role="grid" aria-rowcount="6" aria-colcount="7"/);
-  assert.match(details, /2-2면 위치 격자/);
-  assert.match(details, /<span>1열<\/span><strong>면을 바라본 모습<\/strong><span>7열<\/span>/);
-  assert.ok(details.indexOf(">1열 · 6선반<") < details.indexOf(">7열 · 6선반<"));
-  assert.ok(details.indexOf(">1열 · 6선반<") < details.indexOf(">1열 · 1선반<"));
-  assert.match(details, /왼쪽부터 1열, 아래부터 1선반/);
+  assert.match(details, /2-2면 칸별 문서/);
+  // 칸마다 좌표를 적지 않고 방향 안내·선반 축으로 읽는다. 순서는 왼쪽 1열부터, 위 6선반부터다.
+  assert.match(details, /<span>1열 · 왼쪽<\/span><span>7열 · 오른쪽<\/span>/);
+  assert.ok(details.indexOf('aria-label="1열 6선반') < details.indexOf('aria-label="7열 6선반'));
+  assert.ok(details.indexOf('aria-label="1열 6선반') < details.indexOf('aria-label="1열 1선반'));
+  assert.doesNotMatch(details, />1열 · 6선반<|위치 격자|면당 7열|면을 바라본 모습/);
   assert.doesNotMatch(details, /오른쪽이 1열|1열 오른쪽|통로 안쪽/);
   assert.match(details, /href="\/racks\/7\/edit"/);
 
@@ -166,6 +169,11 @@ test("위치 이동 화면은 권한 판정·낙관적 잠금·이력 escape 계
   assert.match(form, /name="expectedRowVersion" value="9"/);
   assert.match(form, /1구역 &lt;위치&gt;/);
   assert.doesNotMatch(form, /<script>이유<\/script>|<img src=x>/);
+  // 이동 미리보기는 현재 위치와 같은 표기로 비교하고, 같은 위치면 이동 버튼을 쓰지 않게 한다.
+  assert.match(form, /data-current-location="1구역 \/ 2-1번 랙 \/ 3열 \/ 4선반"/);
+  assert.match(form, /<button type="submit" class="primary" data-movement-submit>위치 이동<\/button>/);
+  assert.match(form, /지금 위치와 같아요\./);
+  assert.match(form, /'구역 \/ ' \+ rack \+ '번 랙 \/ '/);
 
   const history = await htmlPage(movementsPage({
     session: mover,
@@ -269,7 +277,9 @@ test("준비 문서 세트 목록과 생성 폼은 관리 권한에 따른 동�
     documentCount: 12
   }), "준비 문서 세트 복제");
   assertPostForm(cloneForm, "/sets/4/clone", ["expectedRowVersion", "name"]);
-  assert.match(cloneForm, /원본 구성원 12건/);
+  assert.match(cloneForm, /감사 세트 · 문서 12건/);
+  // 원본 행 버전은 낙관적 잠금 hidden 값으로만 보내고 화면에 드러내지 않는다.
+  assert.doesNotMatch(cloneForm, /원본 버전/);
   assert.match(cloneForm, /새 세트 상태[\s\S]*편집 가능/);
 });
 
@@ -309,13 +319,16 @@ test("엑셀 대장 동기화 화면은 단일 엑셀 전체 동기화 흐름만
   const managerMain = manager.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] || "";
   assert.match(managerMain, /<h1>엑셀 대장 동기화<\/h1>/);
   assert.doesNotMatch(managerMain, /방법 1/);
-  assert.match(managerMain, /<h2>엑셀 전체 동기화<\/h2>/);
+  assert.match(managerMain, /<h2>파일 올리기<\/h2>/);
   assert.doesNotMatch(managerMain, /방법 2|시스템 개별 관리|is-transaction/);
   assert.doesNotMatch(managerMain, /ledger-method-card/);
   assert.match(managerMain, /id="excel-full-sync"/);
   assert.match(managerMain, /data-excel-snapshot-upload/);
   assert.match(managerMain, /name="syncReason" required minlength="10" maxlength="500"/);
-  assert.match(managerMain, /작업을 만들 때 감사 이력에 함께 저장돼요/);
+  assert.match(managerMain, /감사 이력에 함께 저장돼요/);
+  // 같은 규칙을 화면 설명·카드 안내로 되풀이하지 않고, 파일을 고르기 전에는 선택 파일 칸을 숨긴다.
+  assert.doesNotMatch(managerMain, /엑셀 파일을 기준으로 전체 문서 대장을|최신 대장을 추출해 수정한 파일|원자 반영|선택 전/);
+  assert.match(managerMain, /<div data-excel-file-context hidden>/);
   assert.ok(manager.indexOf('/assets/jszip.min.js') < manager.indexOf('/assets/exceljs.min.js'));
   assert.ok(manager.indexOf('/assets/exceljs.min.js') < manager.indexOf('/assets/excel-app.js'));
   assert.match(managerMain, /accept="\.xlsx/);
@@ -328,7 +341,6 @@ test("엑셀 대장 동기화 화면은 단일 엑셀 전체 동기화 흐름만
   assert.match(managerMain, /aria-label="엑셀 대장 동기화 단계"/);
   assert.match(managerMain, /class="workflow-step is-current" aria-current="step"/);
   assert.match(managerMain, /class="workflow-current-step">[\s\S]*현재 단계 1\/5[\s\S]*최신 대장 내보내기/);
-  assert.match(managerMain, /최신 대장을 추출해 수정한 파일/);
   assert.match(managerMain, /개정 이력의 문서번호·개정번호 변경/);
   assert.match(managerMain, /랙과 면에 관계없이 해당 면을 바라본 기준으로 왼쪽부터 1열, 아래부터 1선반/);
 
@@ -436,6 +448,27 @@ test("폐기 캠페인 목록과 초안 폼은 조건 필드·민감 값 escape 
   assert.match(periodic, /전체 275건 선택됨/);
   assert.match(periodic, /폐기할 문서가 총 <strong>275건<\/strong>이 맞나요/);
   assert.match(periodic, /네, 275건 모두 폐기할게요/);
+});
+
+test("하위 화면은 제목 위 상위 화면 링크 하나로 돌아가고, 제목 옆에 되돌아가기 버튼을 두지 않는다", async () => {
+  const pages = [
+    [rackConfigurePage({ session: admin, counts: { 1: 2, 2: 0, 3: 0 }, expectedVersion: 1 }), "랙 설정", "/racks", "랙 관리"],
+    [rackFormPage({ session: admin, action: "/racks", title: "랙 추가" }), "랙 추가", "/racks", "랙 관리"],
+    [userPasswordResetPage({ session: admin, user: { id: 7, username: "u@hanlim.com", display_name: "사용자" }, minLength: 6 }), "비밀번호 초기화", "/admin/settings", "사용자 관리"],
+    [searchReportPage({ session: admin, report: {} }), "검색 리포트", "/admin", "운영 관리"],
+    [setsPage({ session: admin, sets: [] }), "준비 문서 세트", "/admin", "운영 관리"],
+    [disposalBatchListPage({ session: admin, batches: [] }), "정기폐기 캠페인 이력", "/documents/disposal?tab=history", "폐기 관리"],
+    [documentImportJobsPage({ session: admin, jobs: [] }), "CSV 가져오기 작업", "/admin", "운영 관리"]
+  ];
+  for (const [response, title, href, label] of pages) {
+    const html = await htmlPage(response, title);
+    const head = html.match(/<section class="page-head[^"]*">[\s\S]*?<\/section>/)?.[0] || "";
+    assert.match(head, new RegExp(`<nav class="breadcrumb page-back" aria-label="경로"><a href="${escapePattern(href.replaceAll("&", "&amp;"))}">${label}</a></nav>`), title);
+    assert.doesNotMatch(head, /돌아가기|>목록<|>관리 설정</, title);
+  }
+  // 메뉴에서 바로 가는 화면은 상위 링크 없이 제목만 둔다.
+  const racks = await htmlPage(racksPage({ session: admin, racks: [] }), "랙 관리");
+  assert.doesNotMatch(racks.match(/<section class="page-head[\s\S]*?<\/section>/)?.[0] || "", /page-back|breadcrumb/);
 });
 
 async function htmlPage(response, title) {

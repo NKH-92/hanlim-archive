@@ -61,8 +61,8 @@ function header(session) {
     workLinks.push(["/documents/import", "fa-file-excel", "엑셀 대장 동기화"]);
   }
   if (capabilities.canPreviewDisposals) {
-    workLinks.push(["/documents/disposal", "fa-box-archive", "문서 폐기"]);
-    workLinks.push(["/documents/disposal?tab=documents", "fa-box-archive", "폐기 문서"]);
+    workLinks.push(["/documents/disposal", "fa-box-archive", "폐기 관리"]);
+    workLinks.push(["/documents/disposal?tab=documents", "fa-file-circle-xmark", "폐기 문서"]);
   }
   if (capabilities.canPreviewDocuments) {
     workLinks.push(["/documents/new", "fa-file-circle-plus", "문서 등록"]);
@@ -70,16 +70,16 @@ function header(session) {
 
   const masterLinks = [];
   if (capabilities.canPreviewMasters) {
-    masterLinks.push(["/racks", "fa-table-cells-large", "랙·보관 위치"]);
-    masterLinks.push(["/categories", "fa-list-check", "대분류"]);
-    masterLinks.push(["/tags", "fa-tags", "태그"]);
+    masterLinks.push(["/racks", "fa-table-cells-large", "랙 관리"]);
+    masterLinks.push(["/categories", "fa-layer-group", "대분류 관리"]);
+    masterLinks.push(["/tags", "fa-tags", "태그 관리"]);
   }
   const operationLinks = [];
   if (capabilities.canOpenManagement) {
-    operationLinks.push(["/admin", "fa-list-check", "확인할 일"]);
+    operationLinks.push(["/admin", "fa-gauge", "운영 관리"]);
   }
   if (capabilities.canPreviewUsers) {
-    operationLinks.push(["/admin/settings", "fa-users-gear", "사용자·권한"]);
+    operationLinks.push(["/admin/settings", "fa-users-gear", "사용자 관리"]);
   }
   const evidenceLinks = [];
   if (capabilities.canPreviewAudit) {
@@ -88,15 +88,12 @@ function header(session) {
   if (capabilities.canViewMovements) {
     evidenceLinks.push(["/admin/movements", "fa-location-crosshairs", "위치 이동 이력"]);
   }
-  const navLink = ([href, icon, text], sub = false) =>
-    `<a href="${href}" class="${sub ? "nav-sub-link" : "archive-nav-item"}"><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(text)}</a>`;
-  const navGroup = (label, links, extras = "") => links.length || extras
-    ? `<details class="nav-group" aria-label="${escapeHtml(label)}" data-nav-group="${escapeHtml(label)}"><summary class="nav-group-label">${escapeHtml(label)}</summary><div class="nav-group-content">${links.map((link) => navLink(link)).join("")}${extras}</div></details>`
+  const navLink = ([href, icon, text]) =>
+    `<a href="${href}" class="archive-nav-item"><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(text)}</a>`;
+  // 그룹 안에 다시 접힘을 두지 않는다. 자주 쓰는 업무 그룹은 기본으로 펼치고, 사용자가 접은 상태는 브라우저가 기억한다.
+  const navGroup = (label, links, defaultOpen = false) => links.length
+    ? `<details class="nav-group" aria-label="${escapeHtml(label)}" data-nav-group="${escapeHtml(label)}" data-nav-default="${defaultOpen ? "open" : "closed"}"${defaultOpen ? " open" : ""}><summary class="nav-group-label">${escapeHtml(label)}</summary><div class="nav-group-content">${links.map((link) => navLink(link)).join("")}</div></details>`
     : "";
-  const nestedGroup = (label, icon, links) => links.length
-    ? `<details class="nav-settings"><summary><i class="fa-solid ${icon}" aria-hidden="true"></i>${escapeHtml(label)}</summary><div>${links.map((link) => navLink(link, true)).join("")}</div></details>`
-    : "";
-  const operationExtras = `${nestedGroup("기준정보", "fa-database", masterLinks)}${nestedGroup("이력·증적", "fa-folder-tree", evidenceLinks)}`;
   const allLinks = [
     ...documentLinks,
     ...workLinks,
@@ -105,7 +102,7 @@ function header(session) {
     ...evidenceLinks
   ];
   const mobileTabs = `${documentLinks.map(([href, icon, text]) => `<a href="${href}" class="archive-nav-item mobile-tab"><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${text === "보관 위치" ? "위치" : "검색"}</span></a>`).join("")}<button type="button" class="archive-nav-item mobile-tab" data-mobile-more aria-controls="primary-navigation" aria-expanded="false"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>더보기</span></button>`;
-  const utilityLinks = [["/qa", "fa-circle-info", "도움말·문의"]];
+  const utilityLinks = [["/qa", "fa-circle-info", "도움말"]];
   const commandLinks = [...allLinks, ...utilityLinks].map(([href, icon, text]) => `<a href="${href}" data-command-item data-command-label="${escapeHtml(text)}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(text)}</span></a>`).join("");
   const roleLabel = capabilities.isDemoReadOnly
     ? "시연 및 조회용"
@@ -115,20 +112,22 @@ function header(session) {
 
   return `
     <header class="topbar">
-      <a href="/app" class="brand"><img class="brand-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약"><span><strong>한림문서고</strong><small>통합 문서 위치 검색</small></span></a>
+      <a href="/app" class="brand"><img class="brand-logo" src="/images/hanlim-pharm-logo.svg" alt="한림제약"><span><strong>한림문서고</strong></span></a>
       <button type="button" class="command-trigger" data-command-open aria-haspopup="dialog"><i class="fa-solid fa-magnifying-glass"></i><span>메뉴 찾기</span><kbd>Ctrl+K</kbd></button>
       <nav id="primary-navigation" aria-label="주 메뉴" data-nav-menu>
         <button type="button" class="drawer-close" data-drawer-close aria-label="메뉴 닫기">×</button>
         <div class="nav-primary-links" role="group" aria-label="주요 문서 메뉴">${documentLinks.map((link) => navLink(link)).join("")}</div>
-        ${navGroup("업무", workLinks)}
-        ${navGroup("운영", operationLinks, operationExtras)}
+        ${navGroup("업무", workLinks, true)}
+        ${navGroup("운영", [...operationLinks, ...masterLinks, ...evidenceLinks])}
         <div class="nav-user">
           <span class="session-pill"><strong>${escapeHtml(session.displayName)}</strong><small>${escapeHtml(roleLabel)}</small></span>
-          <a href="/qa" class="nav-sub-link"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>도움말·문의</a>
-          <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key"></i>비밀번호</a>
-          <form method="post" action="/logout" class="logout-form">
-            <button type="submit" class="logout-link"><i class="fa-solid fa-right-from-bracket"></i>로그아웃</button>
-          </form>
+          <div class="nav-user-links">
+            <a href="/qa" class="nav-sub-link"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>도움말</a>
+            <a href="/account/password" class="nav-sub-link"><i class="fa-solid fa-key" aria-hidden="true"></i>비밀번호</a>
+            <form method="post" action="/logout" class="logout-form">
+              <button type="submit" class="logout-link"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>로그아웃</button>
+            </form>
+          </div>
         </div>
       </nav>
       <div class="nav-scrim" data-nav-scrim></div>
@@ -142,6 +141,16 @@ function header(session) {
     </header>
     <nav class="mobile-tabs" aria-label="주요 메뉴">${mobileTabs}</nav>
   `;
+}
+
+// 화면 제목(Top). 메뉴에서 바로 가는 화면은 제목만, 하위 화면은 제목 위에 상위 화면으로 돌아가는 링크 하나를 둔다.
+// 상위 화면으로 가는 버튼을 제목 옆에 따로 두지 않아 모든 화면에서 제목 위치와 버튼 의미가 같게 유지된다.
+// subtitle은 호출부가 escape한 HTML(문서번호 mono 등)을 받는다.
+export function pageHead({ title, parent = null, subtitle = "", actions = "", className = "" }) {
+  const back = parent
+    ? `<nav class="breadcrumb page-back" aria-label="경로"><a href="${escapeHtml(parent.href)}">${escapeHtml(parent.label)}</a></nav>`
+    : "";
+  return `<section class="page-head${className ? ` ${escapeHtml(className)}` : ""}"><div class="page-head-copy">${back}<h1>${escapeHtml(title)}</h1>${subtitle ? `<p class="page-sub">${subtitle}</p>` : ""}</div>${actions ? `<div class="button-group">${actions}</div>` : ""}</section>`;
 }
 
 export function alertDanger(message) {

@@ -1,5 +1,5 @@
 import { escapeHtml } from "../ui/html/escape.js";
-import { alertDanger, option, page } from "./layout.js";
+import { alertDanger, option, page, pageHead } from "./layout.js";
 
 const STATUS_LABELS = Object.freeze({
   draft: "초안",
@@ -28,10 +28,7 @@ export function disposalBatchListPage({ session, batches = [] }) {
     </tr>
   `).join("");
   return page("정기폐기 캠페인 이력", `
-    <section class="page-head">
-      <div><h1>정기폐기 캠페인 이력</h1><p class="muted">정기폐기 한 번을 캠페인 하나로 보고, 대상·사유·처리 결과를 함께 추적해요.</p></div>
-      <div class="button-group"><a class="button secondary" href="/documents/disposal">소량 폐기</a><a class="button" href="/disposal-batches/new">새 정기폐기</a></div>
-    </section>
+    ${pageHead({ title: "정기폐기 캠페인 이력", parent: { href: "/documents/disposal?tab=history", label: "폐기 관리" }, actions: `<a class="button" href="/disposal-batches/new">새 정기폐기</a>` })}
     <section class="panel results-panel">
       <div class="section-title"><h2>캠페인 목록</h2><span class="count-badge">${batches.length}건</span></div>
       <div class="table-wrap"><table class="doc-table">
@@ -73,10 +70,7 @@ export function periodicDisposalPage({
     : `정기폐기${category?.name ? ` · ${category.name}` : ""}`);
 
   return page("정기폐기 캠페인", `
-    <section class="page-head">
-      <div><nav class="breadcrumb" aria-label="경로"><a href="/documents/disposal">문서 폐기</a><span>/</span><span>정기폐기</span></nav><h1>정기폐기 캠페인</h1><p class="muted">폐기 예정 연도와 대분류로 찾은 문서 전체를 한 캠페인의 대상으로 확정하고 한 번에 처리해요.</p></div>
-      <div class="button-group"><a class="button secondary" href="/disposal-batches">캠페인 이력</a><a class="button secondary" href="/documents/disposal">돌아가기</a></div>
-    </section>
+    ${pageHead({ title: "정기폐기 캠페인", parent: { href: "/documents/disposal", label: "폐기 관리" } })}
     ${error ? alertDanger(error) : ""}
     <section class="panel">
       <div class="section-title"><h2>1. 정기폐기 대상 조회</h2>${hasCriteria ? `<span class="count-badge">전체 ${number(targetCount)}건</span>` : ""}</div>
@@ -86,7 +80,7 @@ export function periodicDisposalPage({
         <button type="submit" class="button">대상 조회</button>
         <a class="button secondary" href="/disposal-batches/new">초기화</a>
       </form>
-      <p class="muted">두 조건 중 하나 이상을 선택해 주세요. 조회한 문서가 모두 선택되고, 화면에는 검토할 수 있도록 일부만 보여드려요.</p>
+      <p class="muted">두 조건 중 하나 이상을 골라 주세요. 조회한 문서 전체가 캠페인 대상이 돼요.</p>
     </section>
     ${hasCriteria ? `
       <section class="panel results-panel">
@@ -154,10 +148,7 @@ export function disposalBatchFormPage({
     </tr>
   `).join("");
   return page(title, `
-    <section class="page-head">
-      <div><h1>${title}</h1><p class="muted">조건을 하나 이상 정하고, 미리보기로 확인한 뒤 대상을 확정해요.</p></div>
-      <a class="button secondary" href="${batch ? `/disposal-batches/${batch.id}` : "/disposal-batches"}">돌아가기</a>
-    </section>
+    ${pageHead({ title, parent: batch ? { href: `/disposal-batches/${batch.id}`, label: batch.title || batch.batch_code } : { href: "/documents/disposal?tab=history", label: "폐기 관리" } })}
     <section class="panel narrow">
       ${error ? alertDanger(error) : ""}
       <form method="post" action="${action}" class="stack">
@@ -223,16 +214,8 @@ export function disposalBatchDetailPage({
       <td data-label="동작">${itemAction(batch, item)}</td>
     </tr>
   `).join("");
-  const pending = number(batch.pending_count);
   return page(`${batch.batch_code} 폐기 캠페인`, `
-    <section class="page-head">
-      <div><h1>${escapeHtml(batch.title)}</h1><p class="mono muted">${escapeHtml(batch.batch_code)}</p></div>
-      <div class="button-group">
-        <a class="button secondary" href="/disposal-batches/${batch.id}/export.csv">CSV</a>
-        <button type="button" class="button secondary" data-print-page>인쇄</button>
-        <a class="button secondary" href="/disposal-batches">목록</a>
-      </div>
-    </section>
+    ${pageHead({ title: batch.title, parent: { href: "/documents/disposal?tab=history", label: "폐기 관리" }, subtitle: `<span class="mono">${escapeHtml(batch.batch_code)}</span>`, actions: `<a class="button secondary" href="/disposal-batches/${batch.id}/export.csv">CSV</a><button type="button" class="button secondary" data-print-page>인쇄</button>` })}
     ${error ? alertDanger(error) : ""}
     <section class="panel detail-grid">
       ${detail("상태", STATUS_LABELS[batch.status] || batch.status)}
@@ -246,12 +229,7 @@ export function disposalBatchDetailPage({
     ${batch.status === "draft" ? `<section class="panel results-panel" aria-labelledby="disposal-preview-title"><div class="section-title"><h2 id="disposal-preview-title">최신 대상 미리보기</h2><span class="count-badge">전체 ${number(previewCount)}건</span></div>${previewCapped ? `<div class="alert">앞의 ${number(preview.length)}건만 보여드려요. 대상을 확정하면 ${number(previewCount)}건 전체를 스냅샷으로 고정해요.</div>` : ""}<div class="table-wrap"><table class="doc-table"><thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>폐기연도</th><th>보관 위치</th><th>최근 수정</th></tr></thead><tbody>${previewRows || `<tr><td colspan="7" class="empty">조건에 맞는 보관중 문서가 없어요.</td></tr>`}</tbody></table></div></section>` : ""}
     <section class="panel">
       <div class="metric-grid" data-disposal-progress>
-        ${metric("대상", batch.target_count, "target_count")}
-        ${metric("완료", batch.completed_count, "completed_count")}
-        ${metric("제외", batch.excluded_count, "excluded_count")}
-        ${metric("변경", batch.changed_count, "changed_count")}
-        ${metric("실패", batch.failed_count, "failed_count")}
-        ${metric("대기", pending, "pending_count")}
+        ${progressMetrics(batch).map(([label, value, key]) => metric(label, value, key)).join("")}
       </div>
       ${batchActions(batch, previewCount)}
       <p class="muted" data-process-message aria-live="polite"></p>
@@ -262,7 +240,7 @@ export function disposalBatchDetailPage({
       </div>
       ${items.length < itemStatusCount(batch, itemStatus) ? `<div class="alert">화면에는 앞의 ${number(items.length)}건만 보여드려요. 전체 결과는 위쪽 집계와 CSV에서 확인할 수 있어요.</div>` : ""}
       <nav class="filter-row" aria-label="항목 상태 필터">
-        ${["", "pending", "excluded", "completed", "changed", "failed"].map((status) => `<a class="button secondary sm" href="/disposal-batches/${batch.id}${status ? `?status=${status}` : ""}" ${status === itemStatus ? `aria-current="page"` : ""}>${status ? STATUS_LABELS[status] : "전체"}</a>`).join("")}
+        ${["", "pending", "excluded", "completed", "changed", "failed"].filter((status) => !status || status === itemStatus || itemStatusCount(batch, status) > 0).map((status) => `<a class="button secondary sm" href="/disposal-batches/${batch.id}${status ? `?status=${status}` : ""}" ${status === itemStatus ? `aria-current="page"` : ""}>${status ? STATUS_LABELS[status] : "전체"}</a>`).join("")}
       </nav>
       <div class="table-wrap"><table class="doc-table">
         <thead><tr><th>문서번호</th><th>개정</th><th>문서명</th><th>대분류</th><th>확정 위치</th><th>폐기연도</th><th>결과</th><th>사유</th><th>동작</th></tr></thead>
@@ -391,6 +369,20 @@ function statusLabel(status) {
 
 function detail(label, value) {
   return `<div class="detail-item"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+// 처리 중에는 모든 집계가 실시간으로 바뀌므로 다 보여 주고, 그 밖에는 대상 수와 0이 아닌 집계만 보여 준다.
+function progressMetrics(batch) {
+  const metrics = [
+    ["대상", batch.target_count, "target_count"],
+    ["완료", batch.completed_count, "completed_count"],
+    ["제외", batch.excluded_count, "excluded_count"],
+    ["변경", batch.changed_count, "changed_count"],
+    ["실패", batch.failed_count, "failed_count"],
+    ["대기", batch.pending_count, "pending_count"]
+  ];
+  if (batch.status === "processing") return metrics;
+  return metrics.filter(([, value, key]) => key === "target_count" || Number(value || 0) > 0);
 }
 
 function metric(label, value, key) {

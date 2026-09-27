@@ -2,7 +2,7 @@ import { documentLink } from "../../shared/documents/navigation.js";
 import { locationLabel } from "../../domains/racks/index.js";
 import { escapeHtml } from "../../ui/html/escape.js";
 import { formatRevisionLabel } from "../../shared/documents/revision.js";
-import { page } from "../layout.js";
+import { page, pageHead } from "../layout.js";
 
 export function documentRevisionPage({ session, document, values = {}, validation = null }) {
   const fieldErrors = validation?.fieldErrors || {};
@@ -11,11 +11,7 @@ export function documentRevisionPage({ session, document, values = {}, validatio
   const revisionDate = values.revisionDate || "";
 
   return page("문서 개정", `
-    <section class="page-head">
-      <nav class="breadcrumb" aria-label="경로"><a href="${escapeHtml(documentLink(document.id, "", values.returnTo))}">문서 상세</a><span>/</span><span>문서 개정</span></nav>
-      <h1>문서 개정</h1>
-      <p>같은 바인더에서 현재 개정본을 신규 개정본으로 교체해요.</p>
-    </section>
+    ${pageHead({ title: "문서 개정", parent: { href: documentLink(document.id, "", values.returnTo), label: "문서 상세" } })}
 
     <section class="document-form-layout revision-form-layout">
       <form method="post" action="/documents/${Number(document.id)}/revise" class="panel document-form" data-revision-form>
@@ -41,7 +37,7 @@ export function documentRevisionPage({ session, document, values = {}, validatio
         </fieldset>
 
         <fieldset class="form-section">
-          <legend>신규 개정 정보</legend><p class="revision-change-summary"><strong>${escapeHtml(formatRevisionLabel(document.revision_number))}</strong> → <strong data-new-revision>${revisionNumber ? escapeHtml(formatRevisionLabel(revisionNumber)) : "신규 개정 입력"}</strong><span>이전본 자동 폐기 · 보관 위치 유지</span></p>
+          <legend>신규 개정 정보</legend><p class="revision-change-summary"><strong>${escapeHtml(formatRevisionLabel(document.revision_number))}</strong> → <strong data-new-revision>${revisionNumber ? escapeHtml(formatRevisionLabel(revisionNumber)) : "신규 개정 입력"}</strong></p>
           <div class="form-grid two-column">
             ${field("revisionNumber", "새 개정번호", revisionNumber, fieldErrors, "text")}
             ${field("revisionDate", "새 제·개정일", revisionDate, fieldErrors, "date")}

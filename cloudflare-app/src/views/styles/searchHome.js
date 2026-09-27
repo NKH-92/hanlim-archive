@@ -8,7 +8,7 @@ export function searchHomeStyles() {
     .search-home-filter { padding-top: var(--sp-1); }
     .viewer-workspace.is-home { grid-template-columns: 1fr; }
 
-    .parsed-chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--gray-500); font-size: 12.5px; font-weight: 600; }
+    .parsed-chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--gray-500); font-size: var(--text-meta); font-weight: 600; }
     .chip-panel { padding: var(--sp-3) var(--sp-5); }
 
     .didyoumean { display: grid; gap: var(--sp-2); margin-top: var(--sp-3); padding: var(--sp-4); background: var(--gray-50); border-radius: var(--r-md); }
